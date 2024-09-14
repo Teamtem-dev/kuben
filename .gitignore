@@ -1,0 +1,27 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# Node / pnpm
+node_modules
+apps/web/dist
+apps/web/dist-ssr
+apps/web/.vite
+apps/web/coverage
+apps/web/test-results
+apps/web/playwright-report
+.pnpm-store
+
+# Local dev state
+/.dev
+*.db
+*.db-wal
+*.db-shm
+/.cache
+/.cargo-home
+
+# Editors / OS
+.DS_Store
+.idea
+.vscode/*
