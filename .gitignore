@@ -16,12 +16,3 @@ apps/web/playwright-report
 # Local dev state
 /.dev
 *.db
-*.db-wal
-*.db-shm
-/.cache
-/.cargo-home
-
-# Editors / OS
-.DS_Store
-.idea
-.vscode/*
