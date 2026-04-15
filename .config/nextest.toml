@@ -1,0 +1,7 @@
+# cargo-nextest: every test runs in its own process (no shared global state
+# between tests, e.g. environment variables), tests run in parallel across
+# crates, and every failure is reported instead of stopping at the first.
+# Doctests are not run by nextest; CI runs them with `cargo test --doc`.
+
+[profile.default]
+fail-fast = false
