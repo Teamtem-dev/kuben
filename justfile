@@ -23,3 +23,16 @@ ci: lint test drift web
     scripts/ci-changes.test.sh
 
 # rustfmt, clippy (-D warnings), biome, tsc
+[group('check')]
+lint:
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    pnpm lint
+    pnpm typecheck
+
+# Rust tests (cargo-nextest when installed, plus doctests) and web tests
+[group('check')]
+test:
+    if command -v cargo-nextest >/dev/null; then cargo nextest run --workspace --locked && cargo test --workspace --doc --locked; else cargo test --workspace --locked; fi
+    pnpm test
+
