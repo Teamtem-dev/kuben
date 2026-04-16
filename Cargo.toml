@@ -6,3 +6,7 @@ members = [
   "crates/kuben-core",
   "crates/kuben-crd",
   "crates/kuben-platform",
+  "crates/kuben-store",
+]
+default-members = ["crates/kuben"]
+
