@@ -3,3 +3,8 @@
   "files": {
     "includes": [
       "**",
+      "!**/target",
+      "!**/dist",
+      "!**/charts",
+      "!packages/api-client/openapi.json",
+      "!packages/api-client/src/schema.d.ts"
