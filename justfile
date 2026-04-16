@@ -36,3 +36,16 @@ test:
     if command -v cargo-nextest >/dev/null; then cargo nextest run --workspace --locked && cargo test --workspace --doc --locked; else cargo test --workspace --locked; fi
     pnpm test
 
+# Store tests against PostgreSQL as well (set KUBEN_TEST_PG_URL=postgres://...)
+[group('check')]
+test-postgres:
+    if command -v cargo-nextest >/dev/null; then cargo nextest run -p kuben-store --locked --test matrix; else cargo test -p kuben-store --locked --test matrix; fi
+
+# Fail if a generated file is stale (compares against a fresh `just gen`; no git needed)
+[group('check')]
+drift:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=(packages/api-client/openapi.json packages/api-client/src/schema.d.ts charts/kuben/crds/kuben.dev_all.yaml)
+    snap=$(mktemp -d)
+    trap 'rm -rf "$snap"' EXIT
