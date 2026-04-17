@@ -49,3 +49,16 @@ drift:
     files=(packages/api-client/openapi.json packages/api-client/src/schema.d.ts charts/kuben/crds/kuben.dev_all.yaml)
     snap=$(mktemp -d)
     trap 'rm -rf "$snap"' EXIT
+    for f in "${files[@]}"; do mkdir -p "$snap/$(dirname "$f")"; cp "$f" "$snap/$f"; done
+    {{ just_executable() }} gen
+    stale=0
+    for f in "${files[@]}"; do diff -u "$snap/$f" "$f" || stale=1; done
+    if ((stale)); then echo "error: generated files were stale; run 'just gen' and commit the result" >&2; exit 1; fi
+    echo "generated files are up to date"
+
+# Supply-chain policy: licenses, advisories, bans, sources
+[group('check')]
+deny:
+    cargo deny check
+
+# Which CI job groups a pull request against `base` would run
