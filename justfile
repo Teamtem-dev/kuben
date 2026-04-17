@@ -62,3 +62,16 @@ deny:
     cargo deny check
 
 # Which CI job groups a pull request against `base` would run
+[group('check')]
+ci-changes base="origin/main":
+    git diff --name-only {{ base }}...HEAD | scripts/ci-changes.sh
+
+# Format Rust, TS, JSON and CSS
+[group('dev')]
+fmt:
+    cargo fmt --all
+    pnpm lint:fix
+
+# Regenerate committed artifacts: OpenAPI spec, TS client types, CRD manifests
+[group('dev')]
+gen:
