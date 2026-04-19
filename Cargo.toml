@@ -18,3 +18,8 @@ license = "Apache-2.0"
 repository = "https://github.com/Teamtem-dev/kuben"
 homepage = "https://github.com/Teamtem-dev/kuben"
 authors = ["Kuben Contributors"]
+
+[workspace.dependencies]
+# ---- internal ----
+kuben-core = { path = "crates/kuben-core", version = "0.1.0" }
+kuben-crd = { path = "crates/kuben-crd", version = "0.1.0" }
