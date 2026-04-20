@@ -27,3 +27,7 @@ kuben-store = { path = "crates/kuben-store", version = "0.1.0" }
 kuben-platform = { path = "crates/kuben-platform", version = "0.1.0" }
 kuben-api = { path = "crates/kuben-api", version = "0.1.0" }
 
+# ---- runtime / http ----
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-util", "net", "fs"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
