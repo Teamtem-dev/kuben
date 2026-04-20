@@ -75,3 +75,16 @@ fmt:
 # Regenerate committed artifacts: OpenAPI spec, TS client types, CRD manifests
 [group('dev')]
 gen:
+    cargo run -q --locked -p kuben-api --bin openapi > packages/api-client/openapi.json
+    pnpm gen
+    mkdir -p charts/kuben/crds
+    cargo run -q --locked -p kuben-crd --bin crdgen > charts/kuben/crds/kuben.dev_all.yaml
+
+# API on :8080 and Vite on :5173 (Vite proxies /api)
+[group('dev')]
+dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill 0' EXIT
+    cargo run -p kuben -- serve --roles=all --dev &
+    pnpm dev
