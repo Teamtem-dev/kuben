@@ -1,0 +1,25 @@
+[package]
+name = "kuben-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kuben domain types, configuration, errors and core traits (no IO)"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+jiff.workspace = true
+thiserror.workspace = true
+secrecy.workspace = true
+figment.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+figment = { workspace = true, features = ["test"] }
+
+[lints]
+workspace = true
