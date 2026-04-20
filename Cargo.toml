@@ -23,3 +23,7 @@ authors = ["Kuben Contributors"]
 # ---- internal ----
 kuben-core = { path = "crates/kuben-core", version = "0.1.0" }
 kuben-crd = { path = "crates/kuben-crd", version = "0.1.0" }
+kuben-store = { path = "crates/kuben-store", version = "0.1.0" }
+kuben-platform = { path = "crates/kuben-platform", version = "0.1.0" }
+kuben-api = { path = "crates/kuben-api", version = "0.1.0" }
+
