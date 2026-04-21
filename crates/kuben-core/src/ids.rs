@@ -38,3 +38,17 @@ macro_rules! id_type {
         }
 
         impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+
+        impl FromStr for $name {
+            type Err = uuid::Error;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Uuid::parse_str(s).map(Self)
+            }
+        }
+
+        impl From<$name> for Uuid {
+            fn from(id: $name) -> Uuid {
