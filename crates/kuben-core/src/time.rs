@@ -5,3 +5,6 @@
 #[must_use]
 pub fn now_ms() -> i64 {
     jiff::Timestamp::now().as_millisecond()
+}
+
+/// Add a number of hours to a unix-millisecond timestamp.
