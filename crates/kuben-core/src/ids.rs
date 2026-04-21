@@ -25,3 +25,16 @@ macro_rules! id_type {
                 Self(id)
             }
 
+            #[must_use]
+            pub const fn as_uuid(&self) -> &Uuid {
+                &self.0
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl fmt::Display for $name {
