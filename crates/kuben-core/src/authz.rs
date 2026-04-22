@@ -15,3 +15,21 @@ pub enum ScopeRef {
     Org(OrgId),
     Project(Uuid),
     Environment(Uuid),
+    App(Uuid),
+}
+
+/// The full ancestry of the resource being accessed: `Org → Project →
+/// Environment → App`. A role binding on any ancestor applies to the leaf.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeChain {
+    pub org: OrgId,
+    pub project: Option<Uuid>,
+    pub environment: Option<Uuid>,
+    pub app: Option<Uuid>,
+}
+
+impl ScopeChain {
+    #[must_use]
+    pub const fn org(org: OrgId) -> Self {
+        Self {
+            org,
