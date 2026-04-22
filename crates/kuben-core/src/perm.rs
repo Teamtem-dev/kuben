@@ -20,3 +20,25 @@ pub enum Perm {
     AppDeploy,
     AppLogsRead,
     AppExec,
+    SecretRead,
+    SecretWrite,
+    ReleasePromote,
+    ReleaseApprove,
+    AuditRead,
+    UserAdmin,
+}
+
+/// Built-in roles. Custom roles map to a set of [`Perm`]s (future work).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Owner,
+    Admin,
+    Developer,
+    Viewer,
+}
+
+impl Role {
+    /// Permissions granted by this role.
+    #[must_use]
+    pub fn perms(self) -> &'static [Perm] {
