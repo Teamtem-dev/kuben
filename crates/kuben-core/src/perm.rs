@@ -87,3 +87,25 @@ impl Role {
                 UserAdmin,
             ],
             Self::Developer => &[
+                OrgRead,
+                ProjectRead,
+                EnvRead,
+                AppRead,
+                AppWrite,
+                AppDeploy,
+                AppLogsRead,
+                AppExec,
+                SecretRead,
+            ],
+            Self::Viewer => &[OrgRead, ProjectRead, EnvRead, AppRead, AppLogsRead],
+        }
+    }
+
+    /// Position in the strict hierarchy `viewer < developer < admin < owner`;
+    /// every role's permissions are a superset of the role below it.
+    #[must_use]
+    pub const fn rank(self) -> u8 {
+        match self {
+            Self::Viewer => 0,
+            Self::Developer => 1,
+            Self::Admin => 2,
