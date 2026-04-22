@@ -109,3 +109,26 @@ impl Role {
             Self::Viewer => 0,
             Self::Developer => 1,
             Self::Admin => 2,
+            Self::Owner => 3,
+        }
+    }
+
+    /// The weaker of two roles (e.g. the effective role of an API token is
+    /// the weaker of its own cap and its owner's role).
+    #[must_use]
+    pub const fn weaker(self, other: Self) -> Self {
+        if self.rank() <= other.rank() { self } else { other }
+    }
+
+    /// Whether this role grants `perm`.
+    #[must_use]
+    pub fn grants(self, perm: Perm) -> bool {
+        self.perms().contains(&perm)
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Owner => "owner",
+            Self::Admin => "admin",
