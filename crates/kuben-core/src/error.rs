@@ -18,3 +18,10 @@ pub enum Error {
     Unavailable(String),
     /// Too many attempts; the caller may retry after this many seconds.
     #[error("too many attempts; retry in {retry_after_secs}s")]
+    RateLimited { retry_after_secs: u64 },
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+impl Error {
+    /// Stable machine-readable code used in API responses and audit logs.
