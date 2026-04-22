@@ -11,3 +11,10 @@ pub enum Error {
     #[error("unauthorized")]
     Unauthorized,
     #[error("forbidden")]
+    Forbidden,
+    #[error("validation failed: {0}")]
+    Validation(String),
+    #[error("unavailable: {0}")]
+    Unavailable(String),
+    /// Too many attempts; the caller may retry after this many seconds.
+    #[error("too many attempts; retry in {retry_after_secs}s")]
