@@ -42,3 +42,26 @@ impl Role {
     /// Permissions granted by this role.
     #[must_use]
     pub fn perms(self) -> &'static [Perm] {
+        use Perm::{
+            AppDeploy, AppExec, AppLogsRead, AppRead, AppWrite, AuditRead, EnvDeleteProtected, EnvRead,
+            EnvWrite, OrgAdmin, OrgRead, ProjectRead, ProjectWrite, ReleaseApprove, ReleasePromote,
+            SecretRead, SecretWrite, UserAdmin,
+        };
+        match self {
+            Self::Owner => &[
+                OrgRead,
+                OrgAdmin,
+                ProjectRead,
+                ProjectWrite,
+                EnvRead,
+                EnvWrite,
+                EnvDeleteProtected,
+                AppRead,
+                AppWrite,
+                AppDeploy,
+                AppLogsRead,
+                AppExec,
+                SecretRead,
+                SecretWrite,
+                ReleasePromote,
+                ReleaseApprove,
