@@ -6,3 +6,12 @@ use crate::{
     ids::{AuditId, OrgId, TokenId, UserId},
     perm::Role,
 };
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Organization {
+    pub id: OrgId,
+    pub slug: String,
+    pub name: String,
+    pub created_at: i64,
+}
+
