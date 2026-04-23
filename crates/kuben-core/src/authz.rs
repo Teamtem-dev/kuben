@@ -33,3 +33,21 @@ impl ScopeChain {
     pub const fn org(org: OrgId) -> Self {
         Self {
             org,
+            project: None,
+            environment: None,
+            app: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn project(org: OrgId, project: Uuid) -> Self {
+        Self {
+            org,
+            project: Some(project),
+            environment: None,
+            app: None,
+        }
+    }
+
+    /// Whether `scope` is one of the nodes on this chain.
+    #[must_use]
