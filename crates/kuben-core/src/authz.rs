@@ -51,3 +51,20 @@ impl ScopeChain {
 
     /// Whether `scope` is one of the nodes on this chain.
     #[must_use]
+    pub fn contains(&self, scope: &ScopeRef) -> bool {
+        match scope {
+            ScopeRef::Org(o) => *o == self.org,
+            ScopeRef::Project(p) => self.project == Some(*p),
+            ScopeRef::Environment(e) => self.environment == Some(*e),
+            ScopeRef::App(a) => self.app == Some(*a),
+        }
+    }
+
+    /// The most specific node of the chain.
+    #[must_use]
+    pub fn leaf(&self) -> ScopeRef {
+        if let Some(a) = self.app {
+            ScopeRef::App(a)
+        } else if let Some(e) = self.environment {
+            ScopeRef::Environment(e)
+        } else if let Some(p) = self.project {
