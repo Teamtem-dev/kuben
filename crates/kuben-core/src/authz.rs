@@ -68,3 +68,21 @@ impl ScopeChain {
         } else if let Some(e) = self.environment {
             ScopeRef::Environment(e)
         } else if let Some(p) = self.project {
+            ScopeRef::Project(p)
+        } else {
+            ScopeRef::Org(self.org)
+        }
+    }
+}
+
+/// Proof that `user` holds `perm` on `scope`. Construct only via
+/// [`crate::traits::PolicyEngine::check`].
+#[derive(Clone, Debug)]
+pub struct AuthzProof {
+    user: UserId,
+    perm: Perm,
+    scope: ScopeRef,
+}
+
+impl AuthzProof {
+    pub(crate) const fn new(user: UserId, perm: Perm, scope: ScopeRef) -> Self {
