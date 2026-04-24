@@ -40,3 +40,12 @@ pub struct Session {
     pub expires_at: i64,
     pub last_seen_at: Option<i64>,
     pub revoked_at: Option<i64>,
+}
+
+impl Session {
+    #[must_use]
+    pub fn is_valid_at(&self, now_ms: i64) -> bool {
+        self.revoked_at.is_none() && self.expires_at > now_ms
+    }
+}
+
