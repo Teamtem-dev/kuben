@@ -15,3 +15,11 @@ pub struct Organization {
     pub created_at: i64,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct User {
+    pub id: UserId,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub is_active: bool,
+    /// Set for invited users until they replace their temporary password.
+    pub must_change_password: bool,
