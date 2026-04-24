@@ -60,3 +60,34 @@ pub trait LeaderElector: Send + Sync {
     async fn acquire(&self) -> Result<LeaderGuard>;
     fn is_leader(&self) -> bool;
 }
+
+/// RAII guard held while leading. Dropping it releases leadership.
+#[derive(Debug)]
+pub struct LeaderGuard {
+    _priv: (),
+}
+
+/// Always-leader implementation for single-replica deployments.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopLeader;
+
+#[async_trait]
+impl LeaderElector for NoopLeader {
+    async fn acquire(&self) -> Result<LeaderGuard> {
+        Ok(LeaderGuard { _priv: () })
+    }
+
+    fn is_leader(&self) -> bool {
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::ids::OrgId;
+
+    fn subject(role: Role, scope: ScopeRef) -> Subject {
+        Subject {
