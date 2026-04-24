@@ -49,3 +49,11 @@ impl Session {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RoleBinding {
+    pub org_id: OrgId,
+    pub subject_kind: SubjectKind,
+    pub subject_id: String,
+    pub role: Role,
+    pub scope_kind: ScopeKind,
+    pub scope_uid: Option<String>,
