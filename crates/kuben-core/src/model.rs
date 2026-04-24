@@ -32,3 +32,11 @@ pub struct UserCredentials {
     pub user: User,
     pub password_hash: Option<String>,
 }
+
+#[derive(Clone, Debug)]
+pub struct Session {
+    pub user_id: UserId,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub last_seen_at: Option<i64>,
+    pub revoked_at: Option<i64>,
