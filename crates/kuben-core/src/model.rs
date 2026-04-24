@@ -66,3 +66,11 @@ pub enum SubjectKind {
     Team,
     Token,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScopeKind {
+    Org,
+    Project,
+    Environment,
+    App,
