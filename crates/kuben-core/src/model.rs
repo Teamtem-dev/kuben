@@ -23,3 +23,12 @@ pub struct User {
     pub is_active: bool,
     /// Set for invited users until they replace their temporary password.
     pub must_change_password: bool,
+    pub created_at: i64,
+}
+
+/// A user together with its password hash (PHC string). Never serialized.
+#[derive(Clone, Debug)]
+pub struct UserCredentials {
+    pub user: User,
+    pub password_hash: Option<String>,
+}
