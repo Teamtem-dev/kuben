@@ -74,3 +74,12 @@ pub enum ScopeKind {
     Project,
     Environment,
     App,
+}
+
+impl SubjectKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Team => "team",
+            Self::Token => "token",
