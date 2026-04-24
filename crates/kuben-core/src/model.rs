@@ -57,3 +57,12 @@ pub struct RoleBinding {
     pub role: Role,
     pub scope_kind: ScopeKind,
     pub scope_uid: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubjectKind {
+    User,
+    Team,
+    Token,
+}
