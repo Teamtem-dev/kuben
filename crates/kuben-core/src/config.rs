@@ -60,3 +60,35 @@ pub struct RuntimeCfg {
     pub max_blocking_threads: usize,
     /// ADR-013: run controllers on a second runtime (off in phase 0).
     pub bulkhead: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KubeCfg {
+    pub kubeconfig: Option<String>,
+    pub context: Option<String>,
+    pub watch_namespace: Option<String>,
+    /// If true, refuse to start when no cluster is reachable.
+    pub required: bool,
+    /// Namespace Kuben itself runs in (controller lease, initial admin
+    /// Secret). Defaults to the pod's service-account namespace.
+    pub namespace: Option<String>,
+    /// Run the controllers only on the replica holding the `kuben-controller`
+    /// Lease (ADR-023). Required whenever more than one replica has the
+    /// controller role; the Helm chart always enables it.
+    pub leader_election: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecurityCfg {
+    pub session_ttl_hours: u64,
+    pub session_cache_ttl_secs: u64,
+    pub argon2_m_kib: u32,
+    pub argon2_t: u32,
+    pub argon2_p: u32,
+    pub login_concurrency: usize,
+    /// Set `Secure` on the session cookie (disable only for plain-http dev).
+    pub cookie_secure: bool,
+    /// Failed logins allowed per (email, client IP) within `login_window_secs`.
+    pub login_max_failures: u32,
