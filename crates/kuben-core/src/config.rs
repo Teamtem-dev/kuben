@@ -92,3 +92,34 @@ pub struct SecurityCfg {
     pub cookie_secure: bool,
     /// Failed logins allowed per (email, client IP) within `login_window_secs`.
     pub login_max_failures: u32,
+    /// Failed logins allowed per client IP, across all accounts.
+    pub login_max_failures_per_ip: u32,
+    /// Failed logins allowed per account, across all IPs (high on purpose, so
+    /// victims cannot be locked out cheaply).
+    pub login_max_failures_per_account: u32,
+    pub login_window_secs: u64,
+    /// Take the client IP from the **last** `X-Forwarded-For` hop. Enable only
+    /// behind a proxy that appends it (the Helm chart does); otherwise the
+    /// TCP peer address is used.
+    pub trust_forwarded_for: bool,
+    pub password_min_length: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TelemetryCfg {
+    /// `json` or `pretty`.
+    pub log_format: String,
+    pub log_level: String,
+    pub otlp_endpoint: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BootstrapCfg {
+    pub org_slug: String,
+    pub org_name: String,
+    pub admin_email: String,
+    /// Initial admin password. If unset, a random one is generated: in a pod
+    /// it is stored in the `kuben-initial-admin` Secret (never logged),
+    /// elsewhere it is printed once.
