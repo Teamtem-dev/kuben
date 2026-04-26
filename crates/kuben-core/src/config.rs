@@ -154,3 +154,35 @@ impl Default for RuntimeCfg {
         Self {
             worker_threads: None,
             max_blocking_threads: 16,
+            bulkhead: false,
+        }
+    }
+}
+
+impl Default for SecurityCfg {
+    fn default() -> Self {
+        Self {
+            session_ttl_hours: 12,
+            session_cache_ttl_secs: 5,
+            argon2_m_kib: 19 * 1024,
+            argon2_t: 2,
+            argon2_p: 1,
+            login_concurrency: 2,
+            cookie_secure: true,
+            login_max_failures: 5,
+            login_max_failures_per_ip: 30,
+            login_max_failures_per_account: 100,
+            login_window_secs: 900,
+            trust_forwarded_for: false,
+            password_min_length: 12,
+        }
+    }
+}
+
+impl Default for TelemetryCfg {
+    fn default() -> Self {
+        Self {
+            log_format: "json".into(),
+            log_level: "info".into(),
+            otlp_endpoint: None,
+        }
