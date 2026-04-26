@@ -123,3 +123,34 @@ pub struct BootstrapCfg {
     /// Initial admin password. If unset, a random one is generated: in a pod
     /// it is stored in the `kuben-initial-admin` Secret (never logged),
     /// elsewhere it is printed once.
+    pub admin_password: Option<String>,
+}
+
+impl Default for ServerCfg {
+    fn default() -> Self {
+        Self {
+            bind: "0.0.0.0:8080".into(),
+            metrics_bind: "0.0.0.0:9090".into(),
+            activator_bind: "0.0.0.0:8081".into(),
+            public_url: None,
+            roles: vec![Role::All],
+            request_timeout_secs: 30,
+            max_body_bytes: 1 << 20,
+        }
+    }
+}
+
+impl Default for DatabaseCfg {
+    fn default() -> Self {
+        Self {
+            url: "sqlite:///data/kuben.db".into(),
+            max_connections: 4,
+        }
+    }
+}
+
+impl Default for RuntimeCfg {
+    fn default() -> Self {
+        Self {
+            worker_threads: None,
+            max_blocking_threads: 16,
