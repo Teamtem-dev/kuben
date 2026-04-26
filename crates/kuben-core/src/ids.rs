@@ -52,3 +52,16 @@ macro_rules! id_type {
 
         impl From<$name> for Uuid {
             fn from(id: $name) -> Uuid {
+                id.0
+            }
+        }
+    };
+}
+
+id_type!(
+    /// A user account.
+    UserId
+);
+id_type!(
+    /// An organization (tenant).
+    OrgId
