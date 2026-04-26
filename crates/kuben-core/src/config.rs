@@ -186,3 +186,34 @@ impl Default for TelemetryCfg {
             log_level: "info".into(),
             otlp_endpoint: None,
         }
+    }
+}
+
+impl Default for BootstrapCfg {
+    fn default() -> Self {
+        Self {
+            org_slug: "default".into(),
+            org_name: "Default".into(),
+            admin_email: "admin@kuben.local".into(),
+            admin_password: None,
+        }
+    }
+}
+
+impl Config {
+    /// Load configuration using the documented precedence.
+    #[allow(clippy::result_large_err)] // figment::Error is large by design; load runs once at startup
+    pub fn load() -> figment::Result<Self> {
+        Self::figment().extract()
+    }
+
+    /// The raw figment, exposed so tests and the CLI can layer overrides.
+    #[must_use]
+    pub fn figment() -> Figment {
+        Figment::from(Serialized::defaults(Self::default()))
+            .merge(Toml::file("/etc/kuben/config.toml"))
+            .merge(Toml::file("kuben.toml"))
+            .merge(Env::prefixed("KUBEN_").split("__"))
+    }
+
+    /// Whether the given role is enabled (`All` enables every role).
