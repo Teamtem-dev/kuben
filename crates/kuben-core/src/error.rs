@@ -25,3 +25,10 @@ pub enum Error {
 
 impl Error {
     /// Stable machine-readable code used in API responses and audit logs.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NotFound(_) => "not_found",
+            Self::Conflict(_) => "conflict",
+            Self::Unauthorized => "unauthorized",
+            Self::Forbidden => "forbidden",
