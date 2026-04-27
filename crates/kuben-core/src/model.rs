@@ -91,3 +91,12 @@ impl ScopeKind {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Org => "org",
+            Self::Project => "project",
+            Self::Environment => "environment",
+            Self::App => "app",
+        }
+    }
+}
+
+/// Append-only audit record.
