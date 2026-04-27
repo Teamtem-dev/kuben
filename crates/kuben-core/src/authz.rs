@@ -86,3 +86,21 @@ pub struct AuthzProof {
 
 impl AuthzProof {
     pub(crate) const fn new(user: UserId, perm: Perm, scope: ScopeRef) -> Self {
+        Self { user, perm, scope }
+    }
+
+    #[must_use]
+    pub const fn user(&self) -> &UserId {
+        &self.user
+    }
+
+    #[must_use]
+    pub const fn perm(&self) -> Perm {
+        self.perm
+    }
+
+    #[must_use]
+    pub const fn scope(&self) -> &ScopeRef {
+        &self.scope
+    }
+}
