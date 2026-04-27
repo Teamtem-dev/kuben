@@ -83,3 +83,11 @@ impl SubjectKind {
             Self::User => "user",
             Self::Team => "team",
             Self::Token => "token",
+        }
+    }
+}
+
+impl ScopeKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
