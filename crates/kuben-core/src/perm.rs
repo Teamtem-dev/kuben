@@ -132,3 +132,25 @@ impl fmt::Display for Role {
         let s = match self {
             Self::Owner => "owner",
             Self::Admin => "admin",
+            Self::Developer => "developer",
+            Self::Viewer => "viewer",
+        };
+        f.write_str(s)
+    }
+}
+
+impl FromStr for Role {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "owner" => Ok(Self::Owner),
+            "admin" => Ok(Self::Admin),
+            "developer" => Ok(Self::Developer),
+            "viewer" => Ok(Self::Viewer),
+            other => Err(crate::Error::Validation(format!("unknown role `{other}`"))),
+        }
+    }
+}
+
+#[cfg(test)]
