@@ -108,3 +108,12 @@ pub struct AuditEvent {
     pub org_id: Option<OrgId>,
     pub actor_kind: String,
     pub actor_id: Option<String>,
+    pub action: String,
+    pub target_kind: Option<String>,
+    pub target_ref: Option<String>,
+    pub outcome: String,
+    pub ip: Option<String>,
+    pub request_id: Option<String>,
+    pub data: Option<serde_json::Value>,
+    pub created_at: i64,
+}
