@@ -168,3 +168,11 @@ pub struct AppRelease {
     pub id: String,
     pub revision: i64,
     pub namespace: String,
+    pub app: String,
+    pub image: Option<String>,
+    pub spec: serde_json::Value,
+    /// `create`, `deploy`, `config`, `rollback`, `promote` or `template`.
+    pub reason: String,
+    pub actor_id: Option<String>,
+    pub note: Option<String>,
+    pub created_at: i64,
