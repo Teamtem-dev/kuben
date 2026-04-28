@@ -100,3 +100,11 @@ impl ScopeKind {
 }
 
 /// Append-only audit record.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AuditEvent {
+    /// Monotonic insertion order (pagination cursor).
+    pub seq: i64,
+    pub id: AuditId,
+    pub org_id: Option<OrgId>,
+    pub actor_kind: String,
+    pub actor_id: Option<String>,
