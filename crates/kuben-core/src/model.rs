@@ -134,3 +134,11 @@ pub struct TokenScope {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<uuid::Uuid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<uuid::Uuid>,
+}
+
+/// A personal API token. Only `sha256(secret)` is ever stored.
+#[derive(Clone, Debug)]
+pub struct ApiToken {
+    pub id: TokenId,
+    pub org_id: OrgId,
