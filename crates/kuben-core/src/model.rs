@@ -159,3 +159,12 @@ impl ApiToken {
     pub fn is_usable_at(&self, now_ms: i64) -> bool {
         self.revoked_at.is_none() && self.expires_at.is_none_or(|at| at > now_ms)
     }
+}
+
+/// One deployed revision of an App: a snapshot of its spec (which only ever
+/// holds Secret *references*, never values).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AppRelease {
+    pub id: String,
+    pub revision: i64,
+    pub namespace: String,
