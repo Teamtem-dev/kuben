@@ -117,3 +117,11 @@ pub struct AuditEvent {
     pub data: Option<serde_json::Value>,
     pub created_at: i64,
 }
+
+/// A member of an organization with its org-level role.
+#[derive(Clone, Debug)]
+pub struct Member {
+    pub user: User,
+    pub role: Role,
+}
+
