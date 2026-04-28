@@ -125,3 +125,12 @@ pub struct Member {
     pub role: Role,
 }
 
+/// What an API token may do, stored as JSON in `api_tokens.scopes`. The
+/// effective role is the weaker of `role` and the owner's own role; the
+/// optional project/environment narrows the token to that subtree.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenScope {
+    pub role: Role,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<uuid::Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
