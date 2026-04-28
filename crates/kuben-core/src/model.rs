@@ -142,3 +142,12 @@ pub struct TokenScope {
 pub struct ApiToken {
     pub id: TokenId,
     pub org_id: OrgId,
+    pub owner: Option<UserId>,
+    pub name: String,
+    /// Non-secret display prefix, e.g. `kbn_pat_0192f3a1`.
+    pub prefix: String,
+    pub secret_hash: Vec<u8>,
+    pub scope: TokenScope,
+    pub expires_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+    pub revoked_at: Option<i64>,
