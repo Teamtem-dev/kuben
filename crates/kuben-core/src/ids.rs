@@ -65,3 +65,17 @@ id_type!(
 id_type!(
     /// An organization (tenant).
     OrgId
+);
+id_type!(
+    /// An audit event.
+    AuditId
+);
+id_type!(
+    /// An API token.
+    TokenId
+);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
