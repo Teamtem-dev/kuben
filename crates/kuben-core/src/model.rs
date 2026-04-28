@@ -151,3 +151,11 @@ pub struct ApiToken {
     pub expires_at: Option<i64>,
     pub last_used_at: Option<i64>,
     pub revoked_at: Option<i64>,
+    pub created_at: i64,
+}
+
+impl ApiToken {
+    #[must_use]
+    pub fn is_usable_at(&self, now_ms: i64) -> bool {
+        self.revoked_at.is_none() && self.expires_at.is_none_or(|at| at > now_ms)
+    }
