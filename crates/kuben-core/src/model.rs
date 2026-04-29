@@ -193,3 +193,12 @@ mod tests {
             secret_hash: vec![0; 32],
             scope: TokenScope {
                 role: Role::Developer,
+                project: None,
+                environment: None,
+            },
+            expires_at: Some(1_000),
+            last_used_at: None,
+            revoked_at: None,
+            created_at: 0,
+        };
+        assert!(t.is_usable_at(999));
