@@ -176,3 +176,26 @@ mod tests {
             let (lower, higher) = (pair[0], pair[1]);
             assert!(lower.rank() < higher.rank());
             for perm in lower.perms() {
+                assert!(
+                    higher.grants(*perm),
+                    "{higher} must grant {perm:?} (from {lower})"
+                );
+            }
+        }
+        assert_eq!(Role::Owner.weaker(Role::Developer), Role::Developer);
+        assert_eq!(Role::Viewer.weaker(Role::Admin), Role::Viewer);
+    }
+
+    #[test]
+    fn viewer_cannot_exec_or_write() {
+        assert!(!Role::Viewer.grants(Perm::AppExec));
+        assert!(!Role::Viewer.grants(Perm::AppWrite));
+        assert!(Role::Viewer.grants(Perm::AppLogsRead));
+    }
+
+    #[test]
+    fn role_parses_from_str() {
+        assert_eq!("developer".parse::<Role>().expect("parse"), Role::Developer);
+        assert!("root".parse::<Role>().is_err());
+    }
+}
