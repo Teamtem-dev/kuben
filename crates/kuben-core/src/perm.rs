@@ -154,3 +154,25 @@ impl FromStr for Role {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_is_superset_of_every_role() {
+        for role in [Role::Admin, Role::Developer, Role::Viewer] {
+            for perm in role.perms() {
+                assert!(
+                    Role::Owner.grants(*perm),
+                    "owner must grant {perm:?} (from {role})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn roles_form_a_strict_hierarchy() {
+        let ordered = [Role::Viewer, Role::Developer, Role::Admin, Role::Owner];
+        for pair in ordered.windows(2) {
+            let (lower, higher) = (pair[0], pair[1]);
+            assert!(lower.rank() < higher.rank());
+            for perm in lower.perms() {
