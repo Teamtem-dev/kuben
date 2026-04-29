@@ -185,3 +185,11 @@ mod tests {
     #[test]
     fn tokens_expire_and_revoke() {
         let mut t = ApiToken {
+            id: TokenId::new(),
+            org_id: OrgId::new(),
+            owner: None,
+            name: "ci".into(),
+            prefix: "kbn_pat_x".into(),
+            secret_hash: vec![0; 32],
+            scope: TokenScope {
+                role: Role::Developer,
