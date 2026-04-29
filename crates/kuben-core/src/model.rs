@@ -202,3 +202,11 @@ mod tests {
             created_at: 0,
         };
         assert!(t.is_usable_at(999));
+        assert!(!t.is_usable_at(1_000));
+        t.expires_at = None;
+        assert!(t.is_usable_at(i64::MAX));
+        t.revoked_at = Some(5);
+        assert!(!t.is_usable_at(0));
+    }
+
+    #[test]
