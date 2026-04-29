@@ -176,3 +176,12 @@ pub struct AppRelease {
     pub actor_id: Option<String>,
     pub note: Option<String>,
     pub created_at: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokens_expire_and_revoke() {
+        let mut t = ApiToken {
