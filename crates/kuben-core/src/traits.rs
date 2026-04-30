@@ -91,3 +91,35 @@ mod tests {
 
     fn subject(role: Role, scope: ScopeRef) -> Subject {
         Subject {
+            user: UserId::new(),
+            bindings: vec![Binding { scope, role }],
+        }
+    }
+
+    #[test]
+    fn org_binding_applies_to_nested_project() {
+        let org = OrgId::new();
+        let project = Uuid::now_v7();
+        let s = subject(Role::Developer, ScopeRef::Org(org));
+        let chain = ScopeChain::project(org, project);
+        let proof = StaticPolicy.check(&s, Perm::AppDeploy, &chain).expect("allowed");
+        assert_eq!(proof.scope(), &ScopeRef::Project(project));
+    }
+
+    #[test]
+    fn binding_on_other_org_is_rejected() {
+        let s = subject(Role::Owner, ScopeRef::Org(OrgId::new()));
+        let chain = ScopeChain::org(OrgId::new());
+        assert!(matches!(
+            StaticPolicy.check(&s, Perm::OrgRead, &chain),
+            Err(Error::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn viewer_cannot_exec() {
+        let org = OrgId::new();
+        let s = subject(Role::Viewer, ScopeRef::Org(org));
+        assert!(!StaticPolicy.allowed(&s, Perm::AppExec, &ScopeChain::org(org)));
+    }
+}
