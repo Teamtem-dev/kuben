@@ -217,3 +217,35 @@ impl Config {
     }
 
     /// Whether the given role is enabled (`All` enables every role).
+    #[must_use]
+    pub fn has_role(&self, role: Role) -> bool {
+        self.server.roles.iter().any(|r| *r == Role::All || *r == role)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_are_sane() {
+        let cfg = Config::default();
+        assert_eq!(cfg.server.bind, "0.0.0.0:8080");
+        assert!(cfg.has_role(Role::Api));
+        assert!(cfg.has_role(Role::Controller));
+        assert!(cfg.security.cookie_secure);
+    }
+
+    #[test]
+    #[allow(clippy::result_large_err)] // figment::Jail closures return figment::Error
+    fn env_overrides_nested_keys() {
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("KUBEN_SERVER__BIND", "127.0.0.1:1234");
+            jail.set_env("KUBEN_SECURITY__SESSION_TTL_HOURS", "1");
+            let cfg: Config = Config::figment().extract()?;
+            assert_eq!(cfg.server.bind, "127.0.0.1:1234");
+            assert_eq!(cfg.security.session_ttl_hours, 1);
+            Ok(())
+        });
+    }
+}
