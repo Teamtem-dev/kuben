@@ -210,3 +210,12 @@ mod tests {
     }
 
     #[test]
+    fn token_scope_json_is_compact() {
+        let s = TokenScope {
+            role: Role::Viewer,
+            project: None,
+            environment: None,
+        };
+        assert_eq!(serde_json::to_string(&s).expect("json"), r#"{"role":"viewer"}"#);
+    }
+}
