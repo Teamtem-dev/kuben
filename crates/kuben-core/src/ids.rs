@@ -79,3 +79,17 @@ id_type!(
 mod tests {
     use super::*;
 
+    #[test]
+    fn ids_roundtrip_through_strings() {
+        let id = UserId::new();
+        let parsed: UserId = id.to_string().parse().expect("parse");
+        assert_eq!(id, parsed);
+    }
+
+    #[test]
+    fn ids_are_time_ordered() {
+        let a = OrgId::new();
+        let b = OrgId::new();
+        assert!(a <= b);
+    }
+}
