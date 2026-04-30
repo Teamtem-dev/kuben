@@ -32,3 +32,10 @@ impl Error {
             Self::Conflict(_) => "conflict",
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
+            Self::Validation(_) => "validation_failed",
+            Self::Unavailable(_) => "unavailable",
+            Self::RateLimited { .. } => "rate_limited",
+            Self::Internal(_) => "internal",
+        }
+    }
+
