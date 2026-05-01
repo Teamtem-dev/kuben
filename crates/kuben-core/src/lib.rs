@@ -9,3 +9,6 @@ pub mod ids;
 pub mod model;
 pub mod perm;
 pub mod time;
+pub mod traits;
+
+pub use error::{Error, Result};
