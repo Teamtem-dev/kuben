@@ -39,3 +39,10 @@ impl Error {
         }
     }
 
+    /// Wrap any error as an internal error, keeping only its display string.
+    pub fn internal(err: impl std::fmt::Display) -> Self {
+        Self::Internal(err.to_string())
+    }
+}
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
