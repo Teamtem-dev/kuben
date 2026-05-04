@@ -31,3 +31,14 @@ pub struct EnvironmentSpec {
     pub deletion_policy: DeletionPolicy,
     /// Production protection rules (approvals, windows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protection: Option<Protection>,
+    /// Resource quota applied to the namespace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quota: Option<Quota>,
+    /// Preview-only: time-to-live settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<Ttl>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
