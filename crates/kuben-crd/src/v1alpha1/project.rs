@@ -24,3 +24,16 @@ pub struct ProjectSpec {
     pub display_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Preview environment policy.
+    #[serde(default)]
+    pub previews: PreviewPolicy,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewPolicy {
+    /// Maximum concurrent preview environments.
+    #[serde(default = "default_max_previews")]
+    pub max: u32,
+    /// Environment used as template for previews.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
