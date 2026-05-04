@@ -20,3 +20,14 @@ use super::common::Condition;
     printcolumn = r#"{"name":"Namespace","type":"string","jsonPath":".status.namespace"}"#,
     printcolumn = r#"{"name":"Phase","type":"string","jsonPath":".status.phase"}"#
 )]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentSpec {
+    /// Name of the owning `Project`.
+    pub project: String,
+    #[serde(default, rename = "type")]
+    pub type_: EnvironmentType,
+    /// What happens to the namespace when this resource is deleted.
+    #[serde(default)]
+    pub deletion_policy: DeletionPolicy,
+    /// Production protection rules (approvals, windows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
