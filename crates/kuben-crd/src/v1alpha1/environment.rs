@@ -42,3 +42,15 @@ pub struct EnvironmentSpec {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
+pub enum EnvironmentType {
+    #[default]
+    Standard,
+    Production,
+    Preview,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum DeletionPolicy {
+    /// Keep the namespace and its data; only remove Kuben ownership.
+    #[default]
+    Retain,
