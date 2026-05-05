@@ -37,3 +37,12 @@ pub struct AppSpec {
     pub volumes: Vec<Volume>,
 }
 
+/// A persistent volume mounted into the app's process. Backed by a PVC named
+/// `<app>-<name>` that is **retained** when the app is deleted.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Volume {
+    pub name: String,
+    /// Absolute path inside the container, e.g. `/data`.
+    pub mount_path: String,
+    /// Requested capacity, e.g. `5Gi`. Can grow, never shrink.
