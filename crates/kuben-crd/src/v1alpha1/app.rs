@@ -56,3 +56,13 @@ pub struct Volume {
 fn default_volume_size() -> String {
     "1Gi".into()
 }
+
+/// How a process's port is exposed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Protocol {
+    /// Routed through the Gateway (HTTPRoute) on the app's hostnames.
+    #[default]
+    Http,
+    /// Cluster-internal TCP (databases, caches): a Service on the real port,
+    /// never a public route.
