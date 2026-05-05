@@ -76,3 +76,13 @@ impl Protocol {
     }
 }
 
+/// Where the image comes from. Set exactly one of `image` or `git`
+/// (Kubernetes one-of style: structural CRD schemas cannot express tagged enums).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Source {
+    /// Prebuilt image, e.g. `ghcr.io/acme/api:1.2.3`. Pinned to a digest at `Release` time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// Build from a git repository.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
