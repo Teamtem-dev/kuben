@@ -27,3 +27,13 @@ use super::common::{Condition, KeyRef};
 pub struct AppSpec {
     pub source: Source,
     pub runtime: Runtime,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<EnvVar>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<Domain>,
+    /// Persistent volumes (scenario 6). An app with volumes runs a single
+    /// process with at most one replica (ReadWriteOnce).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub volumes: Vec<Volume>,
+}
+
