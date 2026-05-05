@@ -46,3 +46,13 @@ pub struct Volume {
     /// Absolute path inside the container, e.g. `/data`.
     pub mount_path: String,
     /// Requested capacity, e.g. `5Gi`. Can grow, never shrink.
+    #[serde(default = "default_volume_size")]
+    pub size: String,
+    /// StorageClass; the cluster default when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_class: Option<String>,
+}
+
+fn default_volume_size() -> String {
+    "1Gi".into()
+}
