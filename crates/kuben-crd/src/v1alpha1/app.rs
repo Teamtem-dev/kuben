@@ -66,3 +66,13 @@ pub enum Protocol {
     Http,
     /// Cluster-internal TCP (databases, caches): a Service on the real port,
     /// never a public route.
+    Tcp,
+}
+
+impl Protocol {
+    #[must_use]
+    pub const fn is_http(&self) -> bool {
+        matches!(self, Self::Http)
+    }
+}
+
