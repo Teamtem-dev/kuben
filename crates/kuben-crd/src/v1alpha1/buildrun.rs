@@ -25,3 +25,17 @@ use super::{app::BuildStrategy, common::Condition};
 pub struct BuildRunSpec {
     /// `namespace/name` of the App being built.
     pub app: String,
+    pub repo: String,
+    /// Commit SHA (preferred) or ref.
+    pub git_ref: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    #[serde(default)]
+    pub strategy: BuildStrategy,
+    /// Target image (tag form); the resulting digest lands in status.
+    pub image: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildRunStatus {
