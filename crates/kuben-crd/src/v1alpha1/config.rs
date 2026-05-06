@@ -45,3 +45,50 @@ pub struct KubenConfigSpec {
 #[serde(rename_all = "camelCase")]
 pub struct RegistryCfg {
     /// e.g. `ghcr.io/acme`.
+    pub prefix: String,
+    /// Secret (in `kuben-system`) holding a `.dockerconfigjson`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials_secret: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct KubenConfigStatus {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_generation: Option<i64>,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
+}
+
+fn default_sizes() -> Vec<SizePreset> {
+    vec![
+        SizePreset {
+            name: "nano".into(),
+            cpu_request: "50m".into(),
+            cpu_limit: None,
+            memory_request: "64Mi".into(),
+            memory_limit: "128Mi".into(),
+        },
+        SizePreset {
+            name: "small".into(),
+            cpu_request: "100m".into(),
+            cpu_limit: None,
+            memory_request: "128Mi".into(),
+            memory_limit: "256Mi".into(),
+        },
+        SizePreset {
+            name: "medium".into(),
+            cpu_request: "250m".into(),
+            cpu_limit: None,
+            memory_request: "512Mi".into(),
+            memory_limit: "1Gi".into(),
+        },
+        SizePreset {
+            name: "large".into(),
+            cpu_request: "1".into(),
+            cpu_limit: None,
+            memory_request: "2Gi".into(),
+            memory_limit: "4Gi".into(),
+        },
+    ]
+}
