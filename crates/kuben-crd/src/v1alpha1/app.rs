@@ -86,3 +86,12 @@ pub struct Source {
     pub image: Option<String>,
     /// Build from a git repository.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git: Option<GitSource>,
+}
+
+impl Source {
+    /// A prebuilt-image source.
+    #[must_use]
+    pub fn from_image(image: impl Into<String>) -> Self {
+        Self {
+            image: Some(image.into()),
