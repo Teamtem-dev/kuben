@@ -26,3 +26,17 @@ pub struct ReleaseSpec {
     pub app: String,
     /// Fully qualified image reference pinned by digest (`repo@sha256:...`).
     pub image_digest: String,
+    /// Git commit that produced the image, if built by Kuben.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_sha: Option<String>,
+    /// Snapshot of the App spec at release time.
+    pub app_spec: AppSpec,
+    /// Secret names + resourceVersions in effect at release time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_refs: Vec<SecretVersionRef>,
+    /// Who/what created this release (user id or `webhook:github`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
