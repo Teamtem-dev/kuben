@@ -40,3 +40,18 @@ pub struct ReleaseSpec {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretVersionRef {
+    pub name: String,
+    pub resource_version: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseStatus {
+    /// `Pending | AwaitingApproval | RollingOut | Active | Superseded | Failed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
+}
