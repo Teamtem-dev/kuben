@@ -54,3 +54,14 @@ pub enum DeletionPolicy {
     /// Keep the namespace and its data; only remove Kuben ownership.
     #[default]
     Retain,
+    /// Delete the namespace after the grace period.
+    Delete,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Protection {
+    /// Distinct approvers required to promote a release here.
+    #[serde(default)]
+    pub require_approvals: u32,
+    /// Grace period before a soft-deleted environment is purged, e.g. `168h`.
