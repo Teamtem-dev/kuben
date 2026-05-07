@@ -95,3 +95,13 @@ impl Source {
     pub fn from_image(image: impl Into<String>) -> Self {
         Self {
             image: Some(image.into()),
+            git: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GitSource {
+    pub repo: String,
+    #[serde(default = "default_branch")]
