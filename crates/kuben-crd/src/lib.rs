@@ -32,3 +32,12 @@ pub mod labels {
 
 /// All CRDs, in install order.
 #[must_use]
+pub fn all_crds()
+-> Vec<k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition> {
+    use kube::CustomResourceExt;
+    vec![
+        KubenConfig::crd(),
+        Project::crd(),
+        Environment::crd(),
+        App::crd(),
+        Release::crd(),
