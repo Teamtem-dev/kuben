@@ -115,3 +115,13 @@ pub struct GitSource {
 fn default_branch() -> String {
     "main".into()
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Build {
+    #[serde(default)]
+    pub strategy: BuildStrategy,
+    /// Dockerfile path relative to `path` (strategy `dockerfile`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dockerfile: Option<String>,
+}
