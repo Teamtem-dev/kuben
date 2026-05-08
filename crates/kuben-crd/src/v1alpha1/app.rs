@@ -125,3 +125,13 @@ pub struct Build {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dockerfile: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum BuildStrategy {
+    /// Dockerfile if present, otherwise Railpack.
+    #[default]
+    Auto,
+    Dockerfile,
+    Railpack,
+}
