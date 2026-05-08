@@ -41,3 +41,11 @@ pub fn all_crds()
         Environment::crd(),
         App::crd(),
         Release::crd(),
+        BuildRun::crd(),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use kube::CustomResourceExt;
+
