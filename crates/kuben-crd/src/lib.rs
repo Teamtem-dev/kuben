@@ -23,3 +23,12 @@ pub mod labels {
     pub const ORG: &str = "kuben.dev/org";
     pub const PROJECT: &str = "kuben.dev/project";
     pub const ENVIRONMENT: &str = "kuben.dev/environment";
+    pub const APP: &str = "kuben.dev/app";
+    pub const PROCESS: &str = "kuben.dev/process";
+
+    /// Label selector matching everything Kuben manages.
+    pub const MANAGED_SELECTOR: &str = "app.kubernetes.io/managed-by=kuben";
+}
+
+/// All CRDs, in install order.
+#[must_use]
