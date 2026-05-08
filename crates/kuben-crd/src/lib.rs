@@ -15,3 +15,11 @@ pub const GROUP: &str = "kuben.dev";
 pub const VERSION: &str = "v1alpha1";
 /// Field manager used for server-side apply.
 pub const FIELD_MANAGER: &str = "kuben";
+
+/// Well-known labels.
+pub mod labels {
+    pub const MANAGED_BY: &str = "app.kubernetes.io/managed-by";
+    pub const MANAGER: &str = "kuben";
+    pub const ORG: &str = "kuben.dev/org";
+    pub const PROJECT: &str = "kuben.dev/project";
+    pub const ENVIRONMENT: &str = "kuben.dev/environment";

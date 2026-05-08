@@ -1,0 +1,152 @@
+---
+source: crates/kuben-crd/src/lib.rs
+expression: yaml
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: apps.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: App
+    plural: apps
+    shortNames:
+    - kapp
+    singular: app
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.currentRelease
+      name: Release
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for AppSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              domains:
+                items:
+                  properties:
+                    host:
+                      type: string
+                    tls:
+                      default: auto
+                      description: '`auto` (cert-manager), `none`, or a Secret name.'
+                      type: string
+                  required:
+                  - host
+                  type: object
+                type: array
+              env:
+                items:
+                  description: Environment variable. Exactly one of `value`, `fromSecret`, `fromService`.
+                  properties:
+                    fromSecret:
+                      description: Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+                      nullable: true
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                    fromService:
+                      description: Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+                      nullable: true
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                    name:
+                      type: string
+                    value:
+                      nullable: true
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              runtime:
+                properties:
+                  fsGroup:
+                    description: |-
+                      Group id that owns the volumes (`fsGroup`), for images running as a
+                      non-root user, e.g. `1000`.
+                    format: int64
+                    nullable: true
+                    type: integer
+                  healthCheck:
+                    nullable: true
+                    properties:
+                      path:
+                        type: string
+                      port:
+                        format: uint16
+                        maximum: 65535.0
+                        minimum: 0.0
+                        nullable: true
+                        type: integer
+                    required:
+                    - path
+                    type: object
+                  processes:
+                    additionalProperties:
+                      properties:
+                        command:
+                          items:
+                            type: string
+                          type: array
+                        idle:
+                          description: Scale-to-zero / throttling configuration (Master Blueprint §3.3).
+                          nullable: true
+                          properties:
+                            after:
+                              default: 15m
+                              description: Inactivity before sleeping, e.g. `15m`.
+                              type: string
+                            mode:
+                              default: off
+                              enum:
+                              - off
+                              - zero
+                              - throttle
+                              type: string
+                          type: object
+                        port:
+                          format: uint16
+                          maximum: 65535.0
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        protocol:
+                          description: How a process's port is exposed.
+                          enum:
+                          - http
+                          - tcp
+                          type: string
+                        replicas:
+                          default:
+                            max: 1
+                            min: 1
+                          properties:
+                            max:
