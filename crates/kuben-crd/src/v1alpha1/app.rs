@@ -105,3 +105,13 @@ impl Source {
 pub struct GitSource {
     pub repo: String,
     #[serde(default = "default_branch")]
+    pub branch: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    #[serde(default)]
+    pub build: Build,
+}
+
+fn default_branch() -> String {
+    "main".into()
+}

@@ -37,3 +37,16 @@ pub struct PreviewPolicy {
     pub max: u32,
     /// Environment used as template for previews.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+}
+
+impl Default for PreviewPolicy {
+    fn default() -> Self {
+        Self {
+            max: default_max_previews(),
+            template: None,
+        }
+    }
+}
+
+fn default_max_previews() -> u32 {

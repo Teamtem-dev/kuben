@@ -65,3 +65,14 @@ pub struct Protection {
     #[serde(default)]
     pub require_approvals: u32,
     /// Grace period before a soft-deleted environment is purged, e.g. `168h`.
+    #[serde(default = "default_grace")]
+    pub deletion_grace: String,
+}
+
+fn default_grace() -> String {
+    "168h".into()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Quota {
