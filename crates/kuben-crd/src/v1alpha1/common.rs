@@ -16,3 +16,12 @@ pub struct Condition {
     pub reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_transition_time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_generation: Option<i64>,
+}
+
+impl Condition {
+    #[must_use]
+    pub fn new(type_: impl Into<String>, status: bool, reason: impl Into<String>) -> Self {
