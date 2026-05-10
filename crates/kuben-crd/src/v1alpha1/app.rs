@@ -154,3 +154,13 @@ pub struct Runtime {
 pub struct Process {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub command: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// Size preset name from `KubenConfig.spec.sizes`.
+    #[serde(default = "default_size")]
+    pub size: String,
+    #[serde(default)]
+    pub replicas: Replicas,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle: Option<Idle>,
+    /// Cron expression (scenario 7). A scheduled process runs as a CronJob
