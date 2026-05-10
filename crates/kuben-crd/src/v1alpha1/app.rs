@@ -144,3 +144,13 @@ pub struct Runtime {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub health_check: Option<HealthCheck>,
     /// Group id that owns the volumes (`fsGroup`), for images running as a
+    /// non-root user, e.g. `1000`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fs_group: Option<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Process {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command: Vec<String>,
