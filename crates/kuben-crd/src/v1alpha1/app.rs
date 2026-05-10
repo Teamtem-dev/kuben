@@ -164,3 +164,13 @@ pub struct Process {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle: Option<Idle>,
     /// Cron expression (scenario 7). A scheduled process runs as a CronJob
+    /// instead of a Deployment and may not expose a port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+    /// IANA time zone for `schedule`, e.g. `Europe/Berlin` (default UTC).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<String>,
+    #[serde(default, skip_serializing_if = "Protocol::is_http")]
+    pub protocol: Protocol,
+}
+
