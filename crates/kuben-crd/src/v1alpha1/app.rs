@@ -213,3 +213,13 @@ pub struct Idle {
 pub enum IdleMode {
     #[default]
     Off,
+    Zero,
+    Throttle,
+}
+
+fn default_idle_after() -> String {
+    "15m".into()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
