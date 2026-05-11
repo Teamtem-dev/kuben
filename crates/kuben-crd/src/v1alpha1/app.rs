@@ -193,3 +193,13 @@ impl Default for Replicas {
     }
 }
 
+const fn one() -> u32 {
+    1
+}
+
+/// Scale-to-zero / throttling configuration (Master Blueprint §3.3).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Idle {
+    #[serde(default)]
+    pub mode: IdleMode,
