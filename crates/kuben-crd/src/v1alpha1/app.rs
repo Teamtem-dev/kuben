@@ -203,3 +203,13 @@ const fn one() -> u32 {
 pub struct Idle {
     #[serde(default)]
     pub mode: IdleMode,
+    /// Inactivity before sleeping, e.g. `15m`.
+    #[serde(default = "default_idle_after")]
+    pub after: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum IdleMode {
+    #[default]
+    Off,
