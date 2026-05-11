@@ -183,3 +183,13 @@ fn default_size() -> String {
 pub struct Replicas {
     #[serde(default = "one")]
     pub min: u32,
+    #[serde(default = "one")]
+    pub max: u32,
+}
+
+impl Default for Replicas {
+    fn default() -> Self {
+        Self { min: 1, max: 1 }
+    }
+}
+
