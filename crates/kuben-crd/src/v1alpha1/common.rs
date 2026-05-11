@@ -25,3 +25,12 @@ pub struct Condition {
 impl Condition {
     #[must_use]
     pub fn new(type_: impl Into<String>, status: bool, reason: impl Into<String>) -> Self {
+        Self {
+            type_: type_.into(),
+            status: if status { "True".into() } else { "False".into() },
+            reason: Some(reason.into()),
+            message: None,
+            last_transition_time: None,
+            observed_generation: None,
+        }
+    }
