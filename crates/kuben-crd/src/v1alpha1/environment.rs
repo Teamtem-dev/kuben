@@ -87,3 +87,14 @@ pub struct Quota {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Ttl {
+    /// Delete after this much time without traffic, e.g. `48h`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle: Option<String>,
+    /// Hard maximum lifetime, e.g. `14d`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentStatus {
