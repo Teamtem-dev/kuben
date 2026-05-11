@@ -174,3 +174,12 @@ pub struct Process {
     pub protocol: Protocol,
 }
 
+fn default_size() -> String {
+    "small".into()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Replicas {
+    #[serde(default = "one")]
+    pub min: u32,
