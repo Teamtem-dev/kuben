@@ -50,3 +50,16 @@ impl Default for PreviewPolicy {
 }
 
 fn default_max_previews() -> u32 {
+    10
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStatus {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_generation: Option<i64>,
+    #[serde(default)]
+    pub environments: u32,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
+}
