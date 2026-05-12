@@ -49,3 +49,12 @@ pub fn all_crds()
 mod tests {
     use kube::CustomResourceExt;
 
+    use super::*;
+
+    #[test]
+    fn crd_names_follow_group() {
+        assert_eq!(App::crd_name(), "apps.kuben.dev");
+        assert_eq!(Project::crd_name(), "projects.kuben.dev");
+        assert_eq!(Environment::crd_name(), "environments.kuben.dev");
+        assert_eq!(Release::crd_name(), "releases.kuben.dev");
+        assert_eq!(BuildRun::crd_name(), "buildruns.kuben.dev");
