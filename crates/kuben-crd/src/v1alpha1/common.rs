@@ -34,3 +34,12 @@ impl Condition {
             observed_generation: None,
         }
     }
+}
+
+/// Standard condition types used across Kuben resources.
+pub mod condition {
+    pub const READY: &str = "Ready";
+    pub const PROGRESSING: &str = "Progressing";
+    pub const DEGRADED: &str = "Degraded";
+}
+
