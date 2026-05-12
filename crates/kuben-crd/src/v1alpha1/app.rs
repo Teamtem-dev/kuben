@@ -232,3 +232,13 @@ pub struct HealthCheck {
 /// Environment variable. Exactly one of `value`, `fromSecret`, `fromService`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct EnvVar {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_secret: Option<KeyRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_service: Option<KeyRef>,
+}
+
