@@ -150,3 +150,156 @@ spec:
                             min: 1
                           properties:
                             max:
+                              default: 1
+                              format: uint32
+                              minimum: 0.0
+                              type: integer
+                            min:
+                              default: 1
+                              format: uint32
+                              minimum: 0.0
+                              type: integer
+                          type: object
+                        schedule:
+                          description: |-
+                            Cron expression (scenario 7). A scheduled process runs as a CronJob
+                            instead of a Deployment and may not expose a port.
+                          nullable: true
+                          type: string
+                        size:
+                          default: small
+                          description: Size preset name from `KubenConfig.spec.sizes`.
+                          type: string
+                        timeZone:
+                          description: IANA time zone for `schedule`, e.g. `Europe/Berlin` (default UTC).
+                          nullable: true
+                          type: string
+                      type: object
+                    description: Named processes (`web`, `worker`, ...). Exactly one may expose a port.
+                    type: object
+                required:
+                - processes
+                type: object
+              source:
+                description: |-
+                  Where the image comes from. Set exactly one of `image` or `git`
+                  (Kubernetes one-of style: structural CRD schemas cannot express tagged enums).
+                properties:
+                  git:
+                    description: Build from a git repository.
+                    nullable: true
+                    properties:
+                      branch:
+                        default: main
+                        type: string
+                      build:
+                        default:
+                          strategy: auto
+                        properties:
+                          dockerfile:
+                            description: Dockerfile path relative to `path` (strategy `dockerfile`).
+                            nullable: true
+                            type: string
+                          strategy:
+                            default: auto
+                            enum:
+                            - dockerfile
+                            - railpack
+                            - auto
+                            type: string
+                        type: object
+                      path:
+                        type: string
+                      repo:
+                        type: string
+                    required:
+                    - repo
+                    type: object
+                  image:
+                    description: Prebuilt image, e.g. `ghcr.io/acme/api:1.2.3`. Pinned to a digest at `Release` time.
+                    nullable: true
+                    type: string
+                type: object
+              volumes:
+                description: |-
+                  Persistent volumes (scenario 6). An app with volumes runs a single
+                  process with at most one replica (ReadWriteOnce).
+                items:
+                  description: |-
+                    A persistent volume mounted into the app's process. Backed by a PVC named
+                    `<app>-<name>` that is **retained** when the app is deleted.
+                  properties:
+                    mountPath:
+                      description: Absolute path inside the container, e.g. `/data`.
+                      type: string
+                    name:
+                      type: string
+                    size:
+                      default: 1Gi
+                      description: Requested capacity, e.g. `5Gi`. Can grow, never shrink.
+                      type: string
+                    storageClass:
+                      description: StorageClass; the cluster default when omitted.
+                      nullable: true
+                      type: string
+                  required:
+                  - mountPath
+                  - name
+                  type: object
+                type: array
+            required:
+            - runtime
+            - source
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              currentRelease:
+                nullable: true
+                type: string
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+              url:
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: App
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
