@@ -252,3 +252,13 @@ pub struct Domain {
 }
 
 fn default_tls() -> String {
+    "auto".into()
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AppStatus {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_generation: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_release: Option<String>,
