@@ -242,3 +242,13 @@ pub struct EnvVar {
     pub from_service: Option<KeyRef>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Domain {
+    pub host: String,
+    /// `auto` (cert-manager), `none`, or a Secret name.
+    #[serde(default = "default_tls")]
+    pub tls: String,
+}
+
+fn default_tls() -> String {
