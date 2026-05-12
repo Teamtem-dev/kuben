@@ -58,3 +58,11 @@ mod tests {
         assert_eq!(Environment::crd_name(), "environments.kuben.dev");
         assert_eq!(Release::crd_name(), "releases.kuben.dev");
         assert_eq!(BuildRun::crd_name(), "buildruns.kuben.dev");
+        assert_eq!(KubenConfig::crd_name(), "kubenconfigs.kuben.dev");
+    }
+
+    #[test]
+    fn all_crds_have_structural_schema() {
+        for crd in all_crds() {
+            let version = &crd.spec.versions[0];
+            assert!(
