@@ -66,3 +66,12 @@ mod tests {
         for crd in all_crds() {
             let version = &crd.spec.versions[0];
             assert!(
+                version.schema.is_some(),
+                "{} must have a schema",
+                crd.metadata.name.as_deref().unwrap_or("?")
+            );
+            assert!(
+                version.subresources.as_ref().is_some_and(|s| s.status.is_some()),
+                "status subresource"
+            );
+        }
