@@ -291,3 +291,13 @@ domains:
 volumes:
   - { name: data, mountPath: /data }
 ";
+        let spec: AppSpec = serde_yaml_ng::from_str(yaml).expect("parse");
+        assert!(spec.source.git.as_ref().is_some_and(|g| g.branch == "main"));
+        assert_eq!(spec.runtime.processes["web"].replicas.max, 4);
+        assert_eq!(spec.domains[0].tls, "auto");
+        assert_eq!(spec.volumes[0].size, "1Gi");
+        assert_eq!(spec.runtime.processes["web"].protocol, Protocol::Http);
+    }
+
+    #[test]
+    fn scheduled_tcp_fields_roundtrip_and_stay_compact() {
