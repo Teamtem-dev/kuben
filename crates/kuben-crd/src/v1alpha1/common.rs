@@ -52,3 +52,12 @@ pub struct KeyRef {
 }
 
 /// Compute size preset (resolved from `KubenConfig.spec.sizes`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SizePreset {
+    pub name: String,
+    pub cpu_request: String,
+    pub cpu_limit: Option<String>,
+    pub memory_request: String,
+    pub memory_limit: String,
+}
