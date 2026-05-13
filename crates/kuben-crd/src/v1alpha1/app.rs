@@ -281,3 +281,13 @@ source:
     branch: main
 runtime:
   processes:
+    web:
+      port: 8080
+      replicas: { min: 2, max: 4 }
+env:
+  - { name: LOG_LEVEL, value: info }
+domains:
+  - { host: api.acme.com }
+volumes:
+  - { name: data, mountPath: /data }
+";
