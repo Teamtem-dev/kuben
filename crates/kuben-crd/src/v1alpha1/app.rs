@@ -301,3 +301,13 @@ volumes:
 
     #[test]
     fn scheduled_tcp_fields_roundtrip_and_stay_compact() {
+        let yaml = r"
+source: { image: postgres:17-alpine }
+runtime:
+  processes:
+    db: { port: 5432, protocol: tcp }
+    backup: { schedule: '0 3 * * *', timeZone: Europe/Berlin }
+";
+        let spec: AppSpec = serde_yaml_ng::from_str(yaml).expect("parse");
+        assert_eq!(spec.runtime.processes["db"].protocol, Protocol::Tcp);
+        assert_eq!(
