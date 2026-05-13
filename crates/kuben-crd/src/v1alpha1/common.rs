@@ -43,3 +43,12 @@ pub mod condition {
     pub const DEGRADED: &str = "Degraded";
 }
 
+/// Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyRef {
+    pub name: String,
+    pub key: String,
+}
+
+/// Compute size preset (resolved from `KubenConfig.spec.sizes`).
