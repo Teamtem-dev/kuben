@@ -262,3 +262,13 @@ pub struct AppStatus {
     pub observed_generation: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_release: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
