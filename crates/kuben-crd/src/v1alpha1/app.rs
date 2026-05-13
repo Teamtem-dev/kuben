@@ -272,3 +272,12 @@ pub struct AppStatus {
 mod tests {
     use super::*;
 
+    #[test]
+    fn app_spec_roundtrips_yaml() {
+        let yaml = r"
+source:
+  git:
+    repo: https://github.com/acme/shop
+    branch: main
+runtime:
+  processes:
