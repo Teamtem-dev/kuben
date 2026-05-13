@@ -7,3 +7,13 @@ license.workspace = true
 repository.workspace = true
 description = "Kuben CustomResourceDefinitions (kuben.dev/v1alpha1)"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "crdgen"
+path = "src/bin/crdgen.rs"
+
+[dependencies]
+kube = { workspace = true, default-features = false, features = ["derive", "cel"] }
+k8s-openapi.workspace = true
