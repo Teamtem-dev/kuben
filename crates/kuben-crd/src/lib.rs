@@ -75,3 +75,12 @@ mod tests {
                 "status subresource"
             );
         }
+    }
+
+    #[test]
+    fn app_crd_snapshot() {
+        let crd = App::crd();
+        let yaml = serde_yaml_ng::to_string(&crd).expect("yaml");
+        insta::assert_snapshot!(yaml);
+    }
+}
