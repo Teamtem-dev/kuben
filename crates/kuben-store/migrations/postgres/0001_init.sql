@@ -10,3 +10,15 @@ CREATE TABLE organizations (
 );
 
 CREATE TABLE users (
+  id            TEXT PRIMARY KEY,
+  email         TEXT NOT NULL UNIQUE,
+  display_name  TEXT,
+  password_hash TEXT,
+  is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at    BIGINT NOT NULL
+);
+
+CREATE TABLE identities (
+  id       TEXT PRIMARY KEY,
+  user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
