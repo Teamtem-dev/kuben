@@ -1,0 +1,11 @@
+[package]
+name = "kuben-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kuben persistence: sqlx (SQLite WAL / Postgres) with embedded migrations"
+
+[dependencies]
+kuben-core.workspace = true
