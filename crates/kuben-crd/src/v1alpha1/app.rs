@@ -311,3 +311,13 @@ runtime:
         let spec: AppSpec = serde_yaml_ng::from_str(yaml).expect("parse");
         assert_eq!(spec.runtime.processes["db"].protocol, Protocol::Tcp);
         assert_eq!(
+            spec.runtime.processes["backup"].schedule.as_deref(),
+            Some("0 3 * * *")
+        );
+        let json = serde_json::to_value(&spec).expect("json");
+        assert!(
+            json["runtime"]["processes"]["backup"].get("protocol").is_none(),
+            "default protocol is not serialized"
+        );
+    }
+}
