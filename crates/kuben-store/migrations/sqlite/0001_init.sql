@@ -34,3 +34,15 @@ CREATE TABLE memberships (
 CREATE TABLE role_bindings (
   id           TEXT PRIMARY KEY,
   org_id       TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  subject_kind TEXT NOT NULL,
+  subject_id   TEXT NOT NULL,
+  role         TEXT NOT NULL,
+  scope_kind   TEXT NOT NULL,
+  scope_uid    TEXT,
+  created_at   BIGINT NOT NULL
+);
+CREATE INDEX rb_subject ON role_bindings (subject_kind, subject_id);
+
+CREATE TABLE sessions (
+  id_hash      BLOB PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
