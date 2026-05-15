@@ -46,3 +46,16 @@ CREATE INDEX rb_subject ON role_bindings (subject_kind, subject_id);
 CREATE TABLE sessions (
   id_hash      BLOB PRIMARY KEY,
   user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at   BIGINT NOT NULL,
+  expires_at   BIGINT NOT NULL,
+  last_seen_at BIGINT,
+  ip           TEXT,
+  ua_hash      BLOB,
+  revoked_at   BIGINT
+);
+CREATE INDEX sessions_user ON sessions (user_id);
+
+CREATE TABLE api_tokens (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
