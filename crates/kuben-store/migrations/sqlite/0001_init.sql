@@ -83,3 +83,15 @@ CREATE TABLE audit_events (
   action      TEXT NOT NULL,
   target_kind TEXT,
   target_ref  TEXT,
+  outcome     TEXT NOT NULL,
+  ip          TEXT,
+  request_id  TEXT,
+  data        TEXT,
+  created_at  BIGINT NOT NULL
+);
+CREATE INDEX audit_org_time ON audit_events (org_id, created_at);
+
+CREATE TABLE idempotency_keys (
+  key          TEXT PRIMARY KEY,
+  user_id      TEXT,
+  request_hash BLOB,
