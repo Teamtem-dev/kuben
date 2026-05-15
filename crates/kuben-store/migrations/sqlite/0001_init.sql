@@ -59,3 +59,15 @@ CREATE TABLE api_tokens (
   id            TEXT PRIMARY KEY,
   org_id        TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  name          TEXT NOT NULL,
+  prefix        TEXT NOT NULL,
+  secret_hash   BLOB NOT NULL UNIQUE,
+  scopes        TEXT NOT NULL,
+  expires_at    BIGINT,
+  last_used_at  BIGINT,
+  revoked_at    BIGINT,
+  created_at    BIGINT NOT NULL
+);
+
+CREATE TABLE revocations (
+  subject_hash BLOB PRIMARY KEY,
