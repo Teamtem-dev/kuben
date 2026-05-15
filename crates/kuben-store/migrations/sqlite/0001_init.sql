@@ -71,3 +71,15 @@ CREATE TABLE api_tokens (
 
 CREATE TABLE revocations (
   subject_hash BLOB PRIMARY KEY,
+  at           BIGINT NOT NULL
+);
+
+CREATE TABLE audit_events (
+  seq         INTEGER PRIMARY KEY,
+  id          TEXT NOT NULL UNIQUE,
+  org_id      TEXT,
+  actor_kind  TEXT NOT NULL,
+  actor_id    TEXT,
+  action      TEXT NOT NULL,
+  target_kind TEXT,
+  target_ref  TEXT,
