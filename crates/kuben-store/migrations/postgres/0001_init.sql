@@ -96,3 +96,16 @@ CREATE TABLE idempotency_keys (
   key          TEXT PRIMARY KEY,
   user_id      TEXT,
   request_hash BYTEA,
+  response     TEXT,
+  created_at   BIGINT NOT NULL
+);
+
+CREATE TABLE outbox (
+  id              TEXT PRIMARY KEY,
+  topic           TEXT NOT NULL,
+  payload         TEXT NOT NULL,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at BIGINT NOT NULL,
+  created_at      BIGINT NOT NULL
+);
+CREATE INDEX outbox_next ON outbox (next_attempt_at);
