@@ -4,3 +4,10 @@
 
 ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
+CREATE TABLE app_releases (
+  id         TEXT PRIMARY KEY,
+  org_id     TEXT,
+  namespace  TEXT NOT NULL,
+  app        TEXT NOT NULL,
+  revision   BIGINT NOT NULL,
+  image      TEXT,
