@@ -11,3 +11,10 @@ CREATE TABLE app_releases (
   app        TEXT NOT NULL,
   revision   BIGINT NOT NULL,
   image      TEXT,
+  spec       TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  actor_id   TEXT,
+  note       TEXT,
+  created_at BIGINT NOT NULL,
+  UNIQUE (namespace, app, revision)
+);
