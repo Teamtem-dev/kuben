@@ -39,3 +39,17 @@ pub struct Store {
 impl Store {
     /// Connect according to the URL scheme and run embedded migrations.
     pub async fn connect(cfg: &DatabaseCfg) -> Result<Self, StoreError> {
+        let db = if cfg.url.starts_with("sqlite:") {
+            connect_sqlite(&cfg.url, cfg.max_connections).await?
+        } else if cfg.url.starts_with("postgres:") || cfg.url.starts_with("postgresql:") {
+            connect_postgres(&cfg.url, cfg.max_connections).await?
+        } else {
+            return Err(StoreError::UnsupportedUrl(cfg.url.clone()));
+        };
+        let store = Self { db: Arc::new(db) };
+        store.migrate().await?;
+        Ok(store)
+    }
+
+    /// In-memory SQLite, for tests and `--dev` mode.
+    pub async fn memory() -> Result<Self, StoreError> {
