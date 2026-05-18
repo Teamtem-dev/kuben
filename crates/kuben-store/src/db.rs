@@ -25,3 +25,17 @@ impl From<StoreError> for kuben_core::Error {
 
 /// Backend-specific pools.
 #[derive(Debug)]
+pub(crate) enum Db {
+    Sqlite { writer: SqlitePool, reader: SqlitePool },
+    Postgres(PgPool),
+}
+
+/// Cheap-to-clone handle to the database.
+#[derive(Clone, Debug)]
+pub struct Store {
+    pub(crate) db: Arc<Db>,
+}
+
+impl Store {
+    /// Connect according to the URL scheme and run embedded migrations.
+    pub async fn connect(cfg: &DatabaseCfg) -> Result<Self, StoreError> {
