@@ -53,3 +53,16 @@ impl Store {
 
     /// In-memory SQLite, for tests and `--dev` mode.
     pub async fn memory() -> Result<Self, StoreError> {
+        Self::connect(&DatabaseCfg {
+            url: "sqlite::memory:".into(),
+            max_connections: 1,
+        })
+        .await
+    }
+
+    /// Apply pending migrations (idempotent; safe to call on every boot).
+    pub async fn migrate(&self) -> Result<(), StoreError> {
+        match &*self.db {
+            Db::Sqlite { writer, .. } => sqlx::migrate!("./migrations/sqlite").run(writer).await?,
+            Db::Postgres(pool) => sqlx::migrate!("./migrations/postgres").run(pool).await?,
+        }
