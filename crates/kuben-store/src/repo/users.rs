@@ -25,3 +25,17 @@ impl TryFrom<UserRow> for UserCredentials {
     fn try_from(r: UserRow) -> Result<Self, Self::Error> {
         Ok(Self {
             user: User {
+                id: r
+                    .id
+                    .parse()
+                    .map_err(|e: uuid::Error| sqlx::Error::Decode(e.into()))?,
+                email: r.email,
+                display_name: r.display_name,
+                is_active: r.is_active,
+                must_change_password: r.must_change_password,
+                created_at: r.created_at,
+            },
+            password_hash: r.password_hash,
+        })
+    }
+}
