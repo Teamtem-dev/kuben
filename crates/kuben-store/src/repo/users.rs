@@ -53,3 +53,17 @@ const UPDATE_PASSWORD: &str =
 
 impl Store {
     /// Create a user. `password_hash` is a PHC string produced by the API
+    /// layer (Argon2id) — the store never sees plaintext.
+    pub async fn create_user(
+        &self,
+        email: &str,
+        display_name: Option<&str>,
+        password_hash: Option<&str>,
+    ) -> Result<User, StoreError> {
+        self.insert_user(email, display_name, password_hash, false).await
+    }
+
+    /// Create a user who must replace the (temporary) password on first login.
+    pub async fn create_invited_user(
+        &self,
+        email: &str,
