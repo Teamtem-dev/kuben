@@ -39,3 +39,17 @@ impl TryFrom<UserRow> for UserCredentials {
         })
     }
 }
+
+const INSERT_USER: &str = "INSERT INTO users \
+     (id, email, display_name, password_hash, is_active, must_change_password, created_at) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7)";
+const SELECT_USER_COLS: &str =
+    "SELECT id, email, display_name, password_hash, is_active, must_change_password, created_at FROM users";
+const SELECT_USER_BY_EMAIL: &str = "SELECT id, email, display_name, password_hash, is_active, must_change_password, created_at FROM users WHERE email = $1";
+const SELECT_USER_BY_ID: &str = "SELECT id, email, display_name, password_hash, is_active, must_change_password, created_at FROM users WHERE id = $1";
+const COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
+const UPDATE_PASSWORD: &str =
+    "UPDATE users SET password_hash = $2, must_change_password = FALSE WHERE id = $1";
+
+impl Store {
+    /// Create a user. `password_hash` is a PHC string produced by the API
