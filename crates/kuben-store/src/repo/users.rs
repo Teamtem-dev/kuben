@@ -67,3 +67,17 @@ impl Store {
     pub async fn create_invited_user(
         &self,
         email: &str,
+        display_name: Option<&str>,
+        password_hash: Option<&str>,
+    ) -> Result<User, StoreError> {
+        self.insert_user(email, display_name, password_hash, true).await
+    }
+
+    async fn insert_user(
+        &self,
+        email: &str,
+        display_name: Option<&str>,
+        password_hash: Option<&str>,
+        must_change_password: bool,
+    ) -> Result<User, StoreError> {
+        let user = User {
