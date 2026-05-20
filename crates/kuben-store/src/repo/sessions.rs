@@ -19,3 +19,14 @@ pub struct NewSession {
 #[derive(Debug, sqlx::FromRow)]
 struct SessionRow {
     user_id: String,
+    created_at: i64,
+    expires_at: i64,
+    last_seen_at: Option<i64>,
+    revoked_at: Option<i64>,
+}
+
+impl TryFrom<SessionRow> for Session {
+    type Error = StoreError;
+    fn try_from(r: SessionRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            user_id: r
