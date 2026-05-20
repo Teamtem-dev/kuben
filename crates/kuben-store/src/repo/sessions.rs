@@ -30,3 +30,14 @@ impl TryFrom<SessionRow> for Session {
     fn try_from(r: SessionRow) -> Result<Self, Self::Error> {
         Ok(Self {
             user_id: r
+                .user_id
+                .parse()
+                .map_err(|e: uuid::Error| sqlx::Error::Decode(e.into()))?,
+            created_at: r.created_at,
+            expires_at: r.expires_at,
+            last_seen_at: r.last_seen_at,
+            revoked_at: r.revoked_at,
+        })
+    }
+}
+
