@@ -81,3 +81,17 @@ impl Store {
         must_change_password: bool,
     ) -> Result<User, StoreError> {
         let user = User {
+            id: UserId::new(),
+            email: email.trim().to_ascii_lowercase(),
+            display_name: display_name.map(str::to_owned),
+            is_active: true,
+            must_change_password,
+            created_at: now_ms(),
+        };
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_USER)
+                .bind(user.id.to_string())
+                .bind(&user.email)
+                .bind(&user.display_name)
+                .bind(password_hash)
+                .bind(user.is_active)
