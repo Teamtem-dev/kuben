@@ -133,3 +133,30 @@ impl Store {
                 .bind(Option::<String>::None)
                 .bind(now_ms())
                 .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+
+    pub async fn bindings_for_user(&self, user: UserId) -> Result<Vec<RoleBinding>, StoreError> {
+        let rows: Vec<BindingRow> = with_reader!(self, |pool| {
+            sqlx::query_as(SELECT_BINDINGS_FOR_USER)
+                .bind(user.to_string())
+                .fetch_all(pool)
+                .await?
+        });
+        rows.into_iter()
+            .map(|r| {
+                Ok(RoleBinding {
+                    org_id: r
+                        .org_id
+                        .parse()
+                        .map_err(|e: uuid::Error| sqlx::Error::Decode(e.into()))?,
+                    subject_kind: match r.subject_kind.as_str() {
+                        "team" => SubjectKind::Team,
+                        "token" => SubjectKind::Token,
+                        _ => SubjectKind::User,
+                    },
+                    subject_id: r.subject_id,
+                    role: r
+                        .role
