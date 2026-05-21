@@ -106,3 +106,30 @@ impl Store {
                 .fetch_optional(pool)
                 .await?
         });
+        row.map(Organization::try_from).transpose()
+    }
+
+    pub async fn add_membership(&self, org: OrgId, user: UserId) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_MEMBERSHIP)
+                .bind(org.to_string())
+                .bind(user.to_string())
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+
+    /// Bind `role` for `user` at org scope.
+    pub async fn bind_org_role(&self, org: OrgId, user: UserId, role: Role) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_BINDING)
+                .bind(uuid::Uuid::now_v7().to_string())
+                .bind(org.to_string())
+                .bind(SubjectKind::User.as_str())
+                .bind(user.to_string())
+                .bind(role.to_string())
+                .bind(ScopeKind::Org.as_str())
+                .bind(Option::<String>::None)
+                .bind(now_ms())
+                .execute(pool)
