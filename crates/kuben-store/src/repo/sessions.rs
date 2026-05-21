@@ -41,3 +41,13 @@ impl TryFrom<SessionRow> for Session {
     }
 }
 
+const INSERT_SESSION: &str = "INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_seen_at, ip, ua_hash) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7)";
+const SELECT_SESSION: &str =
+    "SELECT user_id, created_at, expires_at, last_seen_at, revoked_at FROM sessions WHERE id_hash = $1";
+const TOUCH_SESSION: &str = "UPDATE sessions SET last_seen_at = $2 WHERE id_hash = $1";
+const REVOKE_SESSION: &str = "UPDATE sessions SET revoked_at = $2 WHERE id_hash = $1 AND revoked_at IS NULL";
+const REVOKE_ALL_FOR_USER: &str =
+    "UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL";
+const REVOKE_OTHERS_FOR_USER: &str =
+    "UPDATE sessions SET revoked_at = $3 WHERE user_id = $1 AND id_hash <> $2 AND revoked_at IS NULL";
