@@ -51,3 +51,14 @@ const REVOKE_ALL_FOR_USER: &str =
     "UPDATE sessions SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL";
 const REVOKE_OTHERS_FOR_USER: &str =
     "UPDATE sessions SET revoked_at = $3 WHERE user_id = $1 AND id_hash <> $2 AND revoked_at IS NULL";
+const DELETE_EXPIRED: &str = "DELETE FROM sessions WHERE expires_at < $1";
+
+impl Store {
+    pub async fn create_session(&self, s: NewSession) -> Result<(), StoreError> {
+        let now = now_ms();
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_SESSION)
+                .bind(&s.id_hash)
+                .bind(s.user_id.to_string())
+                .bind(now)
+                .bind(s.expires_at)
