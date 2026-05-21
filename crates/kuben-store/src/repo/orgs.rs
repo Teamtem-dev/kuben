@@ -79,3 +79,30 @@ const INSERT_BINDING: &str = "INSERT INTO role_bindings (id, org_id, subject_kin
 const SELECT_BINDINGS_FOR_USER: &str = "SELECT org_id, subject_kind, subject_id, role, scope_kind, scope_uid FROM role_bindings \
      WHERE subject_kind = 'user' AND subject_id = $1";
 
+impl Store {
+    pub async fn create_org(&self, slug: &str, name: &str) -> Result<Organization, StoreError> {
+        let org = Organization {
+            id: OrgId::new(),
+            slug: slug.into(),
+            name: name.into(),
+            created_at: now_ms(),
+        };
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_ORG)
+                .bind(org.id.to_string())
+                .bind(&org.slug)
+                .bind(&org.name)
+                .bind(org.created_at)
+                .execute(pool)
+                .await?;
+        });
+        Ok(org)
+    }
+
+    pub async fn find_org_by_slug(&self, slug: &str) -> Result<Option<Organization>, StoreError> {
+        let row: Option<OrgRow> = with_reader!(self, |pool| {
+            sqlx::query_as(SELECT_ORG_BY_SLUG)
+                .bind(slug)
+                .fetch_optional(pool)
+                .await?
+        });
