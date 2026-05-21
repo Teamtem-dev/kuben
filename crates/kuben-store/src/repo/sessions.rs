@@ -62,3 +62,14 @@ impl Store {
                 .bind(s.user_id.to_string())
                 .bind(now)
                 .bind(s.expires_at)
+                .bind(now)
+                .bind(&s.ip)
+                .bind(&s.ua_hash)
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+
+    pub async fn find_session(&self, id_hash: &[u8]) -> Result<Option<Session>, StoreError> {
+        let row: Option<SessionRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_SESSION)
