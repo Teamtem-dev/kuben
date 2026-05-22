@@ -105,3 +105,30 @@ impl Store {
             last_used_at: None,
             revoked_at: None,
             created_at,
+        })
+    }
+
+    pub async fn find_token(&self, id: TokenId) -> Result<Option<ApiToken>, StoreError> {
+        let row: Option<TokenRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_TOKEN)
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await?);
+        row.map(ApiToken::try_from).transpose()
+    }
+
+    pub async fn list_tokens(&self, owner: UserId) -> Result<Vec<ApiToken>, StoreError> {
+        let rows: Vec<TokenRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_TOKENS_OF_OWNER)
+            .bind(owner.to_string())
+            .fetch_all(pool)
+            .await?);
+        rows.into_iter().map(ApiToken::try_from).collect()
+    }
+
+    /// Revoke one of `owner`'s tokens. `false` when there was nothing to revoke.
+    pub async fn revoke_token(&self, id: TokenId, owner: UserId) -> Result<bool, StoreError> {
+        let n = with_writer!(self, |pool| sqlx::query(REVOKE_TOKEN)
+            .bind(id.to_string())
+            .bind(owner.to_string())
+            .bind(now_ms())
+            .execute(pool)
+            .await?
