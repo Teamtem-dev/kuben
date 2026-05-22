@@ -25,3 +25,17 @@ pub struct NewAudit {
 }
 
 #[derive(Debug, sqlx::FromRow)]
+struct AuditRow {
+    seq: i64,
+    id: String,
+    org_id: Option<String>,
+    actor_kind: String,
+    actor_id: Option<String>,
+    action: String,
+    target_kind: Option<String>,
+    target_ref: Option<String>,
+    outcome: String,
+    ip: Option<String>,
+    request_id: Option<String>,
+    data: Option<String>,
+    created_at: i64,
