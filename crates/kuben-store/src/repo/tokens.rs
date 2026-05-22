@@ -78,3 +78,30 @@ const TOUCH_TOKEN: &str = "UPDATE api_tokens SET last_used_at = $2 WHERE id = $1
 impl Store {
     pub async fn create_token(&self, t: NewToken) -> Result<ApiToken, StoreError> {
         let created_at = now_ms();
+        let scopes = serde_json::to_string(&t.scope).map_err(|e| sqlx::Error::Encode(e.into()))?;
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_TOKEN)
+                .bind(t.id.to_string())
+                .bind(t.org_id.to_string())
+                .bind(t.owner.to_string())
+                .bind(&t.name)
+                .bind(&t.prefix)
+                .bind(&t.secret_hash)
+                .bind(&scopes)
+                .bind(t.expires_at)
+                .bind(created_at)
+                .execute(pool)
+                .await?;
+        });
+        Ok(ApiToken {
+            id: t.id,
+            org_id: t.org_id,
+            owner: Some(t.owner),
+            name: t.name,
+            prefix: t.prefix,
+            secret_hash: t.secret_hash,
+            scope: t.scope,
+            expires_at: t.expires_at,
+            last_used_at: None,
+            revoked_at: None,
+            created_at,
