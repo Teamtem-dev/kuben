@@ -39,3 +39,17 @@ struct AuditRow {
     request_id: Option<String>,
     data: Option<String>,
     created_at: i64,
+}
+
+impl TryFrom<AuditRow> for AuditEvent {
+    type Error = StoreError;
+    fn try_from(r: AuditRow) -> Result<Self, Self::Error> {
+        let decode = |e: uuid::Error| sqlx::Error::Decode(e.into());
+        Ok(Self {
+            seq: r.seq,
+            id: r.id.parse().map_err(decode)?,
+            org_id: r.org_id.map(|s| s.parse().map_err(decode)).transpose()?,
+            actor_kind: r.actor_kind,
+            actor_id: r.actor_id,
+            action: r.action,
+            target_kind: r.target_kind,
