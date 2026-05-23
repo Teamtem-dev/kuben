@@ -16,3 +16,21 @@ pub struct NewRelease {
     pub namespace: String,
     pub app: String,
     pub image: Option<String>,
+    pub spec: serde_json::Value,
+    pub reason: String,
+    pub actor_id: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct ReleaseRow {
+    id: String,
+    revision: i64,
+    namespace: String,
+    app: String,
+    image: Option<String>,
+    spec: String,
+    reason: String,
+    actor_id: Option<String>,
+    note: Option<String>,
+    created_at: i64,
