@@ -34,3 +34,22 @@ struct ReleaseRow {
     actor_id: Option<String>,
     note: Option<String>,
     created_at: i64,
+}
+
+impl TryFrom<ReleaseRow> for AppRelease {
+    type Error = StoreError;
+    fn try_from(r: ReleaseRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: r.id,
+            revision: r.revision,
+            namespace: r.namespace,
+            app: r.app,
+            image: r.image,
+            spec: serde_json::from_str(&r.spec).map_err(|e| sqlx::Error::Decode(e.into()))?,
+            reason: r.reason,
+            actor_id: r.actor_id,
+            note: r.note,
+            created_at: r.created_at,
+        })
+    }
+}
