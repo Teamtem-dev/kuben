@@ -53,3 +53,21 @@ impl TryFrom<ReleaseRow> for AppRelease {
         })
     }
 }
+
+const NEXT_REVISION: &str =
+    "SELECT COALESCE(MAX(revision), 0) FROM app_releases WHERE namespace = $1 AND app = $2";
+const INSERT_RELEASE: &str = "INSERT INTO app_releases \
+     (id, org_id, namespace, app, revision, image, spec, reason, actor_id, note, created_at) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)";
+const SELECT_RELEASES: &str = "SELECT id, revision, namespace, app, image, spec, reason, actor_id, note, created_at \
+     FROM app_releases WHERE namespace = $1 AND app = $2 ORDER BY revision DESC LIMIT $3";
+const SELECT_RELEASE: &str = "SELECT id, revision, namespace, app, image, spec, reason, actor_id, note, created_at \
+     FROM app_releases WHERE namespace = $1 AND app = $2 AND revision = $3";
+
+/// Concurrent writers (Postgres HA) may race for the same revision; the
+/// unique index makes the loser retry with the next number.
+const MAX_ATTEMPTS: u32 = 3;
+
+impl Store {
+    pub async fn record_release(&self, r: NewRelease) -> Result<AppRelease, StoreError> {
+        let spec = r.spec.to_string();
