@@ -71,3 +71,21 @@ const MAX_ATTEMPTS: u32 = 3;
 impl Store {
     pub async fn record_release(&self, r: NewRelease) -> Result<AppRelease, StoreError> {
         let spec = r.spec.to_string();
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let (max,): (i64,) = with_writer!(self, |pool| sqlx::query_as(NEXT_REVISION)
+                .bind(&r.namespace)
+                .bind(&r.app)
+                .fetch_one(pool)
+                .await?);
+            let release = AppRelease {
+                id: uuid::Uuid::now_v7().to_string(),
+                revision: max + 1,
+                namespace: r.namespace.clone(),
+                app: r.app.clone(),
+                image: r.image.clone(),
+                spec: r.spec.clone(),
+                reason: r.reason.clone(),
+                actor_id: r.actor_id.clone(),
+                note: r.note.clone(),
