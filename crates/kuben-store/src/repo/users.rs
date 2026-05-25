@@ -95,3 +95,17 @@ impl Store {
                 .bind(&user.display_name)
                 .bind(password_hash)
                 .bind(user.is_active)
+                .bind(user.must_change_password)
+                .bind(user.created_at)
+                .execute(pool)
+                .await?;
+        });
+        Ok(user)
+    }
+
+    pub async fn find_user_by_email(&self, email: &str) -> Result<Option<UserCredentials>, StoreError> {
+        let email = email.trim().to_ascii_lowercase();
+        let row: Option<UserRow> = with_reader!(self, |pool| {
+            sqlx::query_as(SELECT_USER_BY_EMAIL)
+                .bind(&email)
+                .fetch_optional(pool)
