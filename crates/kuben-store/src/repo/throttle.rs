@@ -40,3 +40,17 @@ impl Store {
         bucket: &str,
         now: i64,
         window_start: i64,
+    ) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(RECORD_FAILURE)
+                .bind(bucket)
+                .bind(now)
+                .bind(window_start)
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+
+    pub async fn throttle_clear(&self, bucket: &str) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
