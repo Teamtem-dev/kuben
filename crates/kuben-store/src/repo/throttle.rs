@@ -26,3 +26,17 @@ const PURGE: &str = "DELETE FROM login_throttle WHERE started_at <= $1";
 
 impl Store {
     pub async fn throttle_window(&self, bucket: &str) -> Result<Option<ThrottleWindow>, StoreError> {
+        let row: Option<(i64, i64)> = with_reader!(self, |pool| sqlx::query_as(SELECT_WINDOW)
+            .bind(bucket)
+            .fetch_optional(pool)
+            .await?);
+        Ok(row.map(|(failures, started_at)| ThrottleWindow { failures, started_at }))
+    }
+
+    /// Record a failed attempt at `now`; windows that started at or before
+    /// `window_start` are replaced by a new one.
+    pub async fn throttle_record_failure(
+        &self,
+        bucket: &str,
+        now: i64,
+        window_start: i64,
