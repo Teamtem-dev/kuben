@@ -53,3 +53,16 @@ impl TryFrom<AuditRow> for AuditEvent {
             actor_id: r.actor_id,
             action: r.action,
             target_kind: r.target_kind,
+            target_ref: r.target_ref,
+            outcome: r.outcome,
+            ip: r.ip,
+            request_id: r.request_id,
+            data: r.data.and_then(|d| serde_json::from_str(&d).ok()),
+            created_at: r.created_at,
+        })
+    }
+}
+
+const INSERT_AUDIT: &str = "INSERT INTO audit_events \
+     (id, org_id, actor_kind, actor_id, action, target_kind, target_ref, outcome, ip, request_id, data, created_at) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)";
