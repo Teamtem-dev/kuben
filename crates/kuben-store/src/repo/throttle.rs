@@ -54,3 +54,18 @@ impl Store {
 
     pub async fn throttle_clear(&self, bucket: &str) -> Result<(), StoreError> {
         with_writer!(self, |pool| {
+            sqlx::query(CLEAR).bind(bucket).execute(pool).await?;
+        });
+        Ok(())
+    }
+
+    /// Drop windows that started at or before `window_start` (expired).
+    pub async fn throttle_purge(&self, window_start: i64) -> Result<u64, StoreError> {
+        let done = with_writer!(self, |pool| sqlx::query(PURGE)
+            .bind(window_start)
+            .execute(pool)
+            .await?
+            .rows_affected());
+        Ok(done)
+    }
+}
