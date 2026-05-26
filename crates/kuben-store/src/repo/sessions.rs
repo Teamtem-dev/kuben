@@ -73,3 +73,14 @@ impl Store {
 
     pub async fn find_session(&self, id_hash: &[u8]) -> Result<Option<Session>, StoreError> {
         let row: Option<SessionRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_SESSION)
+            .bind(id_hash)
+            .fetch_optional(pool)
+            .await?);
+        row.map(Session::try_from).transpose()
+    }
+
+    pub async fn touch_session(&self, id_hash: &[u8]) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(TOUCH_SESSION)
+                .bind(id_hash)
+                .bind(now_ms())
