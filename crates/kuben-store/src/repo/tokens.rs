@@ -132,3 +132,30 @@ impl Store {
             .bind(now_ms())
             .execute(pool)
             .await?
+            .rows_affected());
+        Ok(n > 0)
+    }
+
+    /// Revoke every token a user owns in an org (used when a member is removed).
+    pub async fn revoke_user_tokens(&self, org: OrgId, user: UserId) -> Result<u64, StoreError> {
+        let n = with_writer!(self, |pool| sqlx::query(REVOKE_USER_TOKENS)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .bind(now_ms())
+            .execute(pool)
+            .await?
+            .rows_affected());
+        Ok(n)
+    }
+
+    pub async fn touch_token(&self, id: TokenId) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(TOUCH_TOKEN)
+                .bind(id.to_string())
+                .bind(now_ms())
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+}
