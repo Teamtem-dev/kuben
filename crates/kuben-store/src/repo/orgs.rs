@@ -160,3 +160,30 @@ impl Store {
                     subject_id: r.subject_id,
                     role: r
                         .role
+                        .parse()
+                        .map_err(|e: kuben_core::Error| sqlx::Error::Decode(e.to_string().into()))?,
+                    scope_kind: match r.scope_kind.as_str() {
+                        "project" => ScopeKind::Project,
+                        "environment" => ScopeKind::Environment,
+                        "app" => ScopeKind::App,
+                        _ => ScopeKind::Org,
+                    },
+                    scope_uid: r.scope_uid,
+                })
+            })
+            .collect()
+    }
+
+    /// Members of an org with their org-level role, ordered by email.
+    pub async fn list_members(&self, org: OrgId) -> Result<Vec<Member>, StoreError> {
+        let rows: Vec<MemberRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_MEMBERS)
+            .bind(org.to_string())
+            .fetch_all(pool)
+            .await?);
+        rows.into_iter()
+            .map(|r| {
+                Ok(Member {
+                    role: parse_role(&r.role)?,
+                    user: User {
+                        id: r
+                            .id
