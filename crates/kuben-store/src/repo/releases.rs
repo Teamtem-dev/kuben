@@ -89,3 +89,22 @@ impl Store {
                 reason: r.reason.clone(),
                 actor_id: r.actor_id.clone(),
                 note: r.note.clone(),
+                created_at: now_ms(),
+            };
+            let inserted = with_writer!(self, |pool| sqlx::query(INSERT_RELEASE)
+                .bind(&release.id)
+                .bind(r.org_id.map(|o| o.to_string()))
+                .bind(&release.namespace)
+                .bind(&release.app)
+                .bind(release.revision)
+                .bind(&release.image)
+                .bind(&spec)
+                .bind(&release.reason)
+                .bind(&release.actor_id)
+                .bind(&release.note)
+                .bind(release.created_at)
+                .execute(pool)
+                .await
+                .map(|_| ()));
+            match inserted {
+                Ok(()) => return Ok(release),
