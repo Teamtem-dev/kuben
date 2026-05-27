@@ -109,3 +109,17 @@ impl Store {
             sqlx::query_as(SELECT_USER_BY_EMAIL)
                 .bind(&email)
                 .fetch_optional(pool)
+                .await?
+        });
+        row.map(UserCredentials::try_from).transpose()
+    }
+
+    pub async fn find_user_by_id(&self, id: UserId) -> Result<Option<User>, StoreError> {
+        let row: Option<UserRow> = with_reader!(self, |pool| {
+            sqlx::query_as(SELECT_USER_BY_ID)
+                .bind(id.to_string())
+                .fetch_optional(pool)
+                .await?
+        });
+        row.map(UserCredentials::try_from)
+            .transpose()
