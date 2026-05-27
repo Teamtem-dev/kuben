@@ -187,3 +187,30 @@ impl Store {
                     user: User {
                         id: r
                             .id
+                            .parse()
+                            .map_err(|e: uuid::Error| sqlx::Error::Decode(e.into()))?,
+                        email: r.email,
+                        display_name: r.display_name,
+                        is_active: r.is_active,
+                        must_change_password: r.must_change_password,
+                        created_at: r.created_at,
+                    },
+                })
+            })
+            .collect()
+    }
+
+    /// Change a member's org-level role (creates the binding if missing).
+    pub async fn set_org_role(&self, org: OrgId, user: UserId, role: Role) -> Result<(), StoreError> {
+        let updated = with_writer!(self, |pool| sqlx::query(UPDATE_ORG_ROLE)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .bind(role.to_string())
+            .execute(pool)
+            .await?
+            .rows_affected());
+        if updated == 0 {
+            self.bind_org_role(org, user, role).await?;
+        }
+        Ok(())
+    }
