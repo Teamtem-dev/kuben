@@ -84,3 +84,13 @@ impl Store {
             sqlx::query(TOUCH_SESSION)
                 .bind(id_hash)
                 .bind(now_ms())
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+
+    pub async fn revoke_session(&self, id_hash: &[u8]) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(REVOKE_SESSION)
+                .bind(id_hash)
