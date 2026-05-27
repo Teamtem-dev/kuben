@@ -94,3 +94,14 @@ impl Store {
         with_writer!(self, |pool| {
             sqlx::query(REVOKE_SESSION)
                 .bind(id_hash)
+                .bind(now_ms())
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+
+    pub async fn revoke_all_sessions(&self, user: UserId) -> Result<u64, StoreError> {
+        let n = with_writer!(self, |pool| {
+            sqlx::query(REVOKE_ALL_FOR_USER)
+                .bind(user.to_string())
