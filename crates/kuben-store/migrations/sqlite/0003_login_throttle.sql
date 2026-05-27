@@ -5,3 +5,7 @@
 CREATE TABLE login_throttle (
   bucket     TEXT PRIMARY KEY,
   failures   BIGINT NOT NULL,
+  started_at BIGINT NOT NULL
+);
+
+CREATE INDEX login_throttle_started_at ON login_throttle (started_at);
