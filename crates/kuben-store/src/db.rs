@@ -66,3 +66,17 @@ impl Store {
             Db::Sqlite { writer, .. } => sqlx::migrate!("./migrations/sqlite").run(writer).await?,
             Db::Postgres(pool) => sqlx::migrate!("./migrations/postgres").run(pool).await?,
         }
+        Ok(())
+    }
+
+    /// Lightweight liveness probe.
+    pub async fn ping(&self) -> Result<(), StoreError> {
+        match &*self.db {
+            Db::Sqlite { reader, .. } => {
+                sqlx::query("SELECT 1").execute(reader).await?;
+            }
+            Db::Postgres(pool) => {
+                sqlx::query("SELECT 1").execute(pool).await?;
+            }
+        }
+        Ok(())
