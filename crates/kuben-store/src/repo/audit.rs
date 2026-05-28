@@ -66,3 +66,17 @@ impl TryFrom<AuditRow> for AuditEvent {
 const INSERT_AUDIT: &str = "INSERT INTO audit_events \
      (id, org_id, actor_kind, actor_id, action, target_kind, target_ref, outcome, ip, request_id, data, created_at) \
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)";
+const SELECT_RECENT: &str = "SELECT seq, id, org_id, actor_kind, actor_id, action, target_kind, target_ref, outcome, ip, \
+     request_id, data, created_at FROM audit_events ORDER BY seq DESC LIMIT $1";
+
+const SELECT_ORG_PAGE: &str = "SELECT seq, id, org_id, actor_kind, actor_id, action, target_kind, target_ref, \
+     outcome, ip, request_id, data, created_at FROM audit_events WHERE org_id = $1 AND seq < $2 \
+     ORDER BY seq DESC LIMIT $3";
+
+impl Store {
+    pub async fn append_audit(&self, a: NewAudit) -> Result<AuditId, StoreError> {
+        let id = AuditId::new();
+        let data = a.data.as_ref().map(serde_json::Value::to_string);
+        with_writer!(self, |pool| {
+            sqlx::query(INSERT_AUDIT)
+                .bind(id.to_string())
