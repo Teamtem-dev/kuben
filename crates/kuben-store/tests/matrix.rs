@@ -115,3 +115,61 @@ async fn roundtrip(store: Store) {
     assert!(!store.revoke_token(token.id, user.id).await.expect("revoke twice"));
     let revoked = store.find_token(token.id).await.expect("q").expect("found");
     assert!(!revoked.is_usable_at(now_ms()));
+
+    // ---- members (scenario 4) ----
+    let members = store.list_members(org.id).await.expect("members");
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].role, Role::Developer);
+    store
+        .set_org_role(org.id, user.id, Role::Owner)
+        .await
+        .expect("promote");
+    assert_eq!(store.count_owners(org.id).await.expect("owners"), 1);
+    let invited = store
+        .create_invited_user("Bob@Example.com", None, Some("$argon2id$tmp"))
+        .await
+        .expect("invite");
+    assert!(invited.must_change_password);
+    store
+        .bind_org_role(org.id, invited.id, Role::Viewer)
+        .await
+        .expect("bind");
+    assert_eq!(store.list_members(org.id).await.expect("members").len(), 2);
+    store
+        .set_password_hash(invited.id, "$argon2id$new")
+        .await
+        .expect("password");
+    let bob = store.find_user_by_id(invited.id).await.expect("q").expect("bob");
+    assert!(!bob.must_change_password, "a new password clears the flag");
+    store.remove_member(org.id, invited.id).await.expect("remove");
+    assert_eq!(store.list_members(org.id).await.expect("members").len(), 1);
+
+    // ---- releases (scenario 5) ----
+    for (i, image) in ["nginx:1.27", "nginx:1.28"].into_iter().enumerate() {
+        let r = store
+            .record_release(NewRelease {
+                org_id: Some(org.id),
+                namespace: "kb-shop-prod".into(),
+                app: "api".into(),
+                image: Some(image.into()),
+                spec: serde_json::json!({ "source": { "image": image } }),
+                reason: "deploy".into(),
+                actor_id: Some(user.id.to_string()),
+                note: None,
+            })
+            .await
+            .expect("release");
+        assert_eq!(r.revision, i64::try_from(i).expect("small") + 1);
+    }
+    let releases = store
+        .list_releases("kb-shop-prod", "api", 10)
+        .await
+        .expect("releases");
+    assert_eq!(
+        releases.iter().map(|r| r.revision).collect::<Vec<_>>(),
+        vec![2, 1]
+    );
+    let first = store
+        .find_release("kb-shop-prod", "api", 1)
+        .await
+        .expect("q")
