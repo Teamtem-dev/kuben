@@ -123,3 +123,17 @@ impl Store {
         });
         row.map(UserCredentials::try_from)
             .transpose()
+            .map(|c| c.map(|c| c.user))
+    }
+
+    pub async fn list_users(&self) -> Result<Vec<User>, StoreError> {
+        let rows: Vec<UserRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_USER_COLS)
+            .fetch_all(pool)
+            .await?);
+        rows.into_iter()
+            .map(|r| UserCredentials::try_from(r).map(|c| c.user))
+            .collect()
+    }
+
+    pub async fn count_users(&self) -> Result<i64, StoreError> {
+        let (n,): (i64,) = with_reader!(self, |pool| sqlx::query_as(COUNT_USERS).fetch_one(pool).await?);
