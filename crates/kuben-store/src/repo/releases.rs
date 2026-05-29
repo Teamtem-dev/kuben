@@ -108,3 +108,21 @@ impl Store {
                 .map(|_| ()));
             match inserted {
                 Ok(()) => return Ok(release),
+                Err(sqlx::Error::Database(e)) if e.is_unique_violation() && attempt < MAX_ATTEMPTS => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+
+    /// Newest first.
+    pub async fn list_releases(
+        &self,
+        namespace: &str,
+        app: &str,
+        limit: i64,
+    ) -> Result<Vec<AppRelease>, StoreError> {
+        let rows: Vec<ReleaseRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_RELEASES)
+            .bind(namespace)
+            .bind(app)
+            .bind(limit)
+            .fetch_all(pool)
