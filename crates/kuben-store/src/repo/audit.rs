@@ -80,3 +80,17 @@ impl Store {
         with_writer!(self, |pool| {
             sqlx::query(INSERT_AUDIT)
                 .bind(id.to_string())
+                .bind(a.org_id.map(|o| o.to_string()))
+                .bind(&a.actor_kind)
+                .bind(&a.actor_id)
+                .bind(&a.action)
+                .bind(&a.target_kind)
+                .bind(&a.target_ref)
+                .bind(&a.outcome)
+                .bind(&a.ip)
+                .bind(&a.request_id)
+                .bind(&data)
+                .bind(now_ms())
+                .execute(pool)
+                .await?;
+        });
