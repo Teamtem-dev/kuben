@@ -80,3 +80,17 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    /// Backend name for logs and `/healthz/details`.
+    #[must_use]
+    pub fn backend(&self) -> &'static str {
+        match &*self.db {
+            Db::Sqlite { .. } => "sqlite",
+            Db::Postgres(_) => "postgres",
+        }
+    }
+
+    /// Flush WAL and close pools. Part of the ordered shutdown (Invariant I-15).
+    pub async fn checkpoint_and_close(&self) -> Result<(), StoreError> {
+        match &*self.db {
