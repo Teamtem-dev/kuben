@@ -105,3 +105,14 @@ impl Store {
         let n = with_writer!(self, |pool| {
             sqlx::query(REVOKE_ALL_FOR_USER)
                 .bind(user.to_string())
+                .bind(now_ms())
+                .execute(pool)
+                .await?
+                .rows_affected()
+        });
+        Ok(n)
+    }
+
+    /// Revoke every session of `user` except `keep` (after a password change).
+    pub async fn revoke_other_sessions(&self, user: UserId, keep: &[u8]) -> Result<u64, StoreError> {
+        let n = with_writer!(self, |pool| {
