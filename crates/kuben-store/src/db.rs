@@ -94,3 +94,17 @@ impl Store {
     /// Flush WAL and close pools. Part of the ordered shutdown (Invariant I-15).
     pub async fn checkpoint_and_close(&self) -> Result<(), StoreError> {
         match &*self.db {
+            Db::Sqlite { writer, reader } => {
+                sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                    .execute(writer)
+                    .await
+                    .ok();
+                reader.close().await;
+                writer.close().await;
+            }
+            Db::Postgres(pool) => pool.close().await,
+        }
+        Ok(())
+    }
+}
+
