@@ -173,3 +173,62 @@ async fn roundtrip(store: Store) {
         .find_release("kb-shop-prod", "api", 1)
         .await
         .expect("q")
+        .expect("revision 1");
+    assert_eq!(first.image.as_deref(), Some("nginx:1.27"));
+    assert_eq!(first.spec["source"]["image"], "nginx:1.27");
+
+    // ---- audit pagination (scenario 2) ----
+    for action in ["createApp", "updateApp"] {
+        store
+            .append_audit(NewAudit {
+                org_id: Some(org.id),
+                actor_kind: "user".into(),
+                action: action.into(),
+                outcome: "success".into(),
+                ..NewAudit::default()
+            })
+            .await
+            .expect("audit");
+    }
+    let page = store.list_audit(org.id, None, 1).await.expect("page");
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0].action, "updateApp");
+    let older = store
+        .list_audit(org.id, Some(page[0].seq), 10)
+        .await
+        .expect("older");
+    assert!(
+        older
+            .iter()
+            .all(|e| e.seq < page[0].seq && e.org_id == Some(org.id))
+    );
+    assert!(older.iter().any(|e| e.action == "createApp"));
+
+    // ---- login throttle windows (scenario 1) ----
+    let now = now_ms();
+    let window = 60_000;
+    for i in 0..2 {
+        store
+            .throttle_record_failure("bucket-a", now + i, now + i - window)
+            .await
+            .expect("failure");
+    }
+    let w = store
+        .throttle_window("bucket-a")
+        .await
+        .expect("q")
+        .expect("window");
+    assert_eq!((w.failures, w.started_at), (2, now));
+    let later = now + 2 * window;
+    store
+        .throttle_record_failure("bucket-a", later, later - window)
+        .await
+        .expect("failure");
+    let w = store
+        .throttle_window("bucket-a")
+        .await
+        .expect("q")
+        .expect("window");
+    assert_eq!(
+        (w.failures, w.started_at),
+        (1, later),
