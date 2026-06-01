@@ -137,3 +137,17 @@ impl Store {
 
     pub async fn count_users(&self) -> Result<i64, StoreError> {
         let (n,): (i64,) = with_reader!(self, |pool| sqlx::query_as(COUNT_USERS).fetch_one(pool).await?);
+        Ok(n)
+    }
+
+    pub async fn set_password_hash(&self, id: UserId, password_hash: &str) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            sqlx::query(UPDATE_PASSWORD)
+                .bind(id.to_string())
+                .bind(password_hash)
+                .execute(pool)
+                .await?;
+        });
+        Ok(())
+    }
+}
