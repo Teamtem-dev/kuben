@@ -108,3 +108,16 @@ impl Store {
     }
 }
 
+async fn connect_sqlite(url: &str, max_readers: u32) -> Result<Db, StoreError> {
+    let in_memory = url.contains(":memory:") || url.contains("mode=memory");
+    let base = SqliteConnectOptions::from_str(url)?
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(5))
+        .foreign_keys(true) // Invariant I-16: never OFF
+        .pragma("temp_store", "memory")
+        .pragma("cache_size", "-2000");
+
+    let writer = SqlitePoolOptions::new()
+        .max_connections(1)
