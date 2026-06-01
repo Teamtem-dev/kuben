@@ -214,3 +214,31 @@ impl Store {
         }
         Ok(())
     }
+
+    /// Remove every binding and the membership of `user` in `org`, atomically.
+    pub async fn remove_member(&self, org: OrgId, user: UserId) -> Result<(), StoreError> {
+        with_writer!(self, |pool| {
+            let mut tx = pool.begin().await?;
+            sqlx::query(DELETE_USER_BINDINGS)
+                .bind(org.to_string())
+                .bind(user.to_string())
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(DELETE_MEMBERSHIP)
+                .bind(org.to_string())
+                .bind(user.to_string())
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+        });
+        Ok(())
+    }
+
+    pub async fn count_owners(&self, org: OrgId) -> Result<i64, StoreError> {
+        let (n,): (i64,) = with_reader!(self, |pool| sqlx::query_as(COUNT_OWNERS)
+            .bind(org.to_string())
+            .fetch_one(pool)
+            .await?);
+        Ok(n)
+    }
+}
