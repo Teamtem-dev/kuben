@@ -94,3 +94,17 @@ impl Store {
                 .execute(pool)
                 .await?;
         });
+        Ok(id)
+    }
+
+    /// One page of an org's audit log, newest first. `before` is the `seq`
+    /// of the last event of the previous page.
+    pub async fn list_audit(
+        &self,
+        org: OrgId,
+        before: Option<i64>,
+        limit: i64,
+    ) -> Result<Vec<AuditEvent>, StoreError> {
+        let rows: Vec<AuditRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_ORG_PAGE)
+            .bind(org.to_string())
+            .bind(before.unwrap_or(i64::MAX))
