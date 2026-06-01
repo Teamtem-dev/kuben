@@ -232,3 +232,61 @@ async fn roundtrip(store: Store) {
     assert_eq!(
         (w.failures, w.started_at),
         (1, later),
+        "an expired window restarts"
+    );
+    store
+        .throttle_record_failure("bucket-b", now, now - window)
+        .await
+        .expect("failure");
+    assert_eq!(
+        store.throttle_purge(now).await.expect("purge"),
+        1,
+        "only the window of bucket-b has expired"
+    );
+    store.throttle_clear("bucket-a").await.expect("clear");
+    assert!(store.throttle_window("bucket-a").await.expect("q").is_none());
+
+    store.ping().await.expect("ping");
+    store.checkpoint_and_close().await.expect("close");
+}
+
+#[tokio::test]
+async fn sqlite_memory_roundtrip() {
+    let store = Store::memory().await.expect("connect");
+    assert_eq!(store.backend(), "sqlite");
+    roundtrip(store).await;
+}
+
+#[tokio::test]
+async fn sqlite_file_roundtrip_uses_separate_reader_pool() {
+    let dir = std::env::temp_dir().join(format!("kuben-store-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).expect("tmp dir");
+    let url = format!("sqlite://{}", dir.join("kuben.db").display());
+    let store = Store::connect(&DatabaseCfg {
+        url,
+        max_connections: 2,
+    })
+    .await
+    .expect("connect");
+    roundtrip(store).await;
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
+async fn postgres_roundtrip() {
+    let Ok(url) = std::env::var("KUBEN_TEST_PG_URL") else {
+        eprintln!("KUBEN_TEST_PG_URL not set; skipping postgres matrix test");
+        return;
+    };
+    let store = Store::connect(&DatabaseCfg {
+        url,
+        max_connections: 4,
+    })
+    .await
+    .expect("connect");
+    assert_eq!(store.backend(), "postgres");
+    roundtrip(store).await;
+}
+
+/// Both backends ship the same migration files, declaring the same tables
+/// and columns. New migrations are picked up from the directories.
