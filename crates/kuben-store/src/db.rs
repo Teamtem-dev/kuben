@@ -121,3 +121,17 @@ async fn connect_sqlite(url: &str, max_readers: u32) -> Result<Db, StoreError> {
 
     let writer = SqlitePoolOptions::new()
         .max_connections(1)
+        .connect_with(base.clone())
+        .await?;
+    let reader = if in_memory {
+        // A second connection to `:memory:` would be a different database.
+        writer.clone()
+    } else {
+        SqlitePoolOptions::new()
+            .max_connections(max_readers.max(1))
+            .connect_with(base.read_only(true))
+            .await?
+    };
+    Ok(Db::Sqlite { writer, reader })
+}
+
