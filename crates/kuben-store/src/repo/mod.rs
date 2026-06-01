@@ -8,3 +8,6 @@ mod releases;
 mod sessions;
 mod throttle;
 mod tokens;
+mod users;
+
+pub use audit::NewAudit;
