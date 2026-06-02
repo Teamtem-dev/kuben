@@ -127,3 +127,14 @@ impl Store {
         Ok(n)
     }
 
+    pub async fn purge_expired_sessions(&self) -> Result<u64, StoreError> {
+        let n = with_writer!(self, |pool| {
+            sqlx::query(DELETE_EXPIRED)
+                .bind(now_ms())
+                .execute(pool)
+                .await?
+                .rows_affected()
+        });
+        Ok(n)
+    }
+}
