@@ -6,3 +6,5 @@
 //!   (`max_connections = 1`) plus a small read pool, so `SQLITE_BUSY` from
 //!   transaction upgrades can never happen.
 //! * **Postgres** for HA installs.
+//!
+//! SQL is written in the portable subset shared by both engines and every
