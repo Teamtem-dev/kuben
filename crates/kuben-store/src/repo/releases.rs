@@ -126,3 +126,22 @@ impl Store {
             .bind(app)
             .bind(limit)
             .fetch_all(pool)
+            .await?);
+        rows.into_iter().map(AppRelease::try_from).collect()
+    }
+
+    pub async fn find_release(
+        &self,
+        namespace: &str,
+        app: &str,
+        revision: i64,
+    ) -> Result<Option<AppRelease>, StoreError> {
+        let row: Option<ReleaseRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_RELEASE)
+            .bind(namespace)
+            .bind(app)
+            .bind(revision)
+            .fetch_optional(pool)
+            .await?);
+        row.map(AppRelease::try_from).transpose()
+    }
+}
