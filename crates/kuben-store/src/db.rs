@@ -135,3 +135,17 @@ async fn connect_sqlite(url: &str, max_readers: u32) -> Result<Db, StoreError> {
     Ok(Db::Sqlite { writer, reader })
 }
 
+async fn connect_postgres(url: &str, max_connections: u32) -> Result<Db, StoreError> {
+    let pool = PgPoolOptions::new()
+        .max_connections(max_connections.max(2))
+        .acquire_timeout(Duration::from_secs(10))
+        .connect(url)
+        .await?;
+    Ok(Db::Postgres(pool))
+}
+
+/// Run `$body` against the write pool of whichever backend is active.
+macro_rules! with_writer {
+    ($store:expr, |$pool:ident| $body:expr) => {
+        match &*$store.db {
+            $crate::db::Db::Sqlite { writer, .. } => {
