@@ -8,3 +8,6 @@
 //! * **Postgres** for HA installs.
 //!
 //! SQL is written in the portable subset shared by both engines and every
+//! repository test runs against both (`KUBEN_TEST_PG_URL`).
+
+mod db;
