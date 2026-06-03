@@ -9,3 +9,15 @@ description = "Kuben persistence: sqlx (SQLite WAL / Postgres) with embedded mig
 
 [dependencies]
 kuben-core.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+
+[lints]
+workspace = true
