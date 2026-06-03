@@ -290,3 +290,62 @@ async fn postgres_roundtrip() {
 
 /// Both backends ship the same migration files, declaring the same tables
 /// and columns. New migrations are picked up from the directories.
+#[test]
+fn schema_parity_between_sqlite_and_postgres() {
+    fn columns(sql: &str) -> Vec<(String, Vec<String>)> {
+        let mut out = Vec::new();
+        let mut current: Option<(String, Vec<String>)> = None;
+        for line in sql.lines() {
+            let l = line.trim();
+            if let Some(rest) = l.strip_prefix("CREATE TABLE ") {
+                let name = rest
+                    .trim_end_matches(" (")
+                    .trim_end_matches('(')
+                    .trim()
+                    .to_string();
+                current = Some((name, Vec::new()));
+            } else if l == ");" {
+                if let Some(t) = current.take() {
+                    out.push(t);
+                }
+            } else if let Some((_, cols)) = current.as_mut() {
+                let first = l.split_whitespace().next().unwrap_or_default();
+                if !first.is_empty() && !matches!(first, "PRIMARY" | "UNIQUE" | "--") {
+                    cols.push(first.to_string());
+                }
+            }
+        }
+        out
+    }
+    fn migrations(backend: &str) -> (Vec<String>, String) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("migrations")
+            .join(backend);
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .expect("migrations dir")
+            .map(|e| e.expect("entry").path())
+            .collect();
+        files.sort();
+        let names = files
+            .iter()
+            .map(|p| p.file_name().expect("name").to_string_lossy().into_owned())
+            .collect();
+        let sql = files
+            .iter()
+            .map(|p| std::fs::read_to_string(p).expect("read migration"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        (names, sql)
+    }
+    let (sqlite_files, sqlite) = migrations("sqlite");
+    let (postgres_files, postgres) = migrations("postgres");
+    assert_eq!(
+        sqlite_files, postgres_files,
+        "every migration needs a twin for the other backend"
+    );
+    assert_eq!(
+        columns(&sqlite),
+        columns(&postgres),
+        "sqlite and postgres schemas diverged"
+    );
+}
