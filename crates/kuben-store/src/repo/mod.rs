@@ -11,3 +11,7 @@ mod tokens;
 mod users;
 
 pub use audit::NewAudit;
+pub use releases::NewRelease;
+pub use sessions::NewSession;
+pub use throttle::ThrottleWindow;
+pub use tokens::NewToken;
