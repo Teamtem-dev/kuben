@@ -163,3 +163,17 @@ macro_rules! with_writer {
 /// Run `$body` against the read pool of whichever backend is active.
 macro_rules! with_reader {
     ($store:expr, |$pool:ident| $body:expr) => {
+        match &*$store.db {
+            $crate::db::Db::Sqlite { reader, .. } => {
+                let $pool = reader;
+                $body
+            }
+            $crate::db::Db::Postgres(pool) => {
+                let $pool = pool;
+                $body
+            }
+        }
+    };
+}
+
+pub(crate) use {with_reader, with_writer};
