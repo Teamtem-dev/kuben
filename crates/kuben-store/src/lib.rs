@@ -11,3 +11,6 @@
 //! repository test runs against both (`KUBEN_TEST_PG_URL`).
 
 mod db;
+pub mod repo;
+
+pub use db::{Store, StoreError};
