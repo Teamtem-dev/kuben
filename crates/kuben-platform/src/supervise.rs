@@ -19,3 +19,13 @@ where
 {
     let mut backoff = ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(500))
+        .with_max_delay(Duration::from_mins(1))
+        .with_jitter()
+        .without_max_times()
+        .build();
+
+    health.starting(name);
+    loop {
+        let handle = tokio::spawn(make(token.child_token()));
+        let outcome = handle.await;
+        if token.is_cancelled() {
