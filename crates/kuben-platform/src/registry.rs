@@ -104,3 +104,109 @@ impl ClusterRegistry {
         }
     }
 
+    /// Connect to the configured cluster. Error messages are redacted.
+    pub async fn connect(cfg: &KubeCfg) -> anyhow::Result<Self> {
+        Self::try_connect(cfg)
+            .await
+            .map_err(|e| anyhow::anyhow!(redact_credentials(&format!("{e:#}"))))
+    }
+
+    async fn try_connect(cfg: &KubeCfg) -> anyhow::Result<Self> {
+        let options = KubeConfigOptions {
+            context: cfg.context.clone(),
+            ..KubeConfigOptions::default()
+        };
+        let config = if let Some(path) = &cfg.kubeconfig {
+            let kubeconfig = kube::config::Kubeconfig::read_from(path)?;
+            Config::from_custom_kubeconfig(kubeconfig, &options).await?
+        } else if cfg.context.is_some() {
+            Config::from_kubeconfig(&options).await?
+        } else {
+            Config::infer().await?
+        };
+        Ok(Self::single(Client::try_from(config)?))
+    }
+
+    /// Registry with exactly one cluster.
+    #[must_use]
+    pub fn single(client: Client) -> Self {
+        let mut m = BTreeMap::new();
+        m.insert(ClusterId::primary(), client);
+        Self { clients: Arc::new(m) }
+    }
+
+    #[must_use]
+    pub fn get(&self, id: &ClusterId) -> Option<Client> {
+        self.clients.get(id).cloned()
+    }
+
+    /// The primary cluster (always present).
+    ///
+    /// # Panics
+    /// Never: the registry cannot be constructed without a primary cluster.
+    #[must_use]
+    pub fn primary(&self) -> Client {
+        self.clients
+            .get(&ClusterId::primary())
+            .cloned()
+            .expect("registry always has a primary cluster")
+    }
+
+    pub fn ids(&self) -> impl Iterator<Item = &ClusterId> {
+        self.clients.keys()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credentials_are_redacted_from_urls() {
+        assert_eq!(
+            redact_credentials("configured proxy http://user:s3cret@proxy.local:3128/ requires a feature"),
+            "configured proxy http://***@proxy.local:3128/ requires a feature"
+        );
+        assert_eq!(
+            redact_credentials("a postgres://kuben:pw@db:5432/kuben b https://token@api.example.com"),
+            "a postgres://***@db:5432/kuben b https://***@api.example.com"
+        );
+    }
+
+    #[test]
+    fn text_without_credentials_is_untouched() {
+        for s in [
+            "https://10.0.0.1:6443/api",
+            "no url here",
+            "https://h/path/a@b",
+            "trailing ://",
+            "",
+        ] {
+            assert_eq!(redact_credentials(s), s);
+        }
+    }
+
+    #[test]
+    fn configured_namespace_wins() {
+        assert_eq!(
+            own_namespace(Some(" kuben-system ")).as_deref(),
+            Some("kuben-system")
+        );
+    }
+
+    #[tokio::test]
+    async fn unusable_config_degrades_unless_required() {
+        let mut cfg = KubeCfg {
+            kubeconfig: Some("/nonexistent/kubeconfig".into()),
+            ..KubeCfg::default()
+        };
+        assert!(
+            ClusterRegistry::from_config(&cfg)
+                .await
+                .expect("degrades")
+                .is_none()
+        );
+        cfg.required = true;
+        assert!(ClusterRegistry::from_config(&cfg).await.is_err());
+    }
+}
