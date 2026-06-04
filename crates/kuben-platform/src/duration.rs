@@ -36,3 +36,22 @@ pub fn parse(input: &str) -> Option<Duration> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_units_and_compounds() {
+        assert_eq!(parse("90s"), Some(Duration::from_secs(90)));
+        assert_eq!(parse("15m"), Some(Duration::from_mins(15)));
+        assert_eq!(parse("168h"), Some(Duration::from_hours(168)));
+        assert_eq!(parse("14d"), Some(Duration::from_hours(14 * 24)));
+        assert_eq!(parse("1h30m"), Some(Duration::from_mins(90)));
+        assert_eq!(parse("0s"), Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        for bad in ["", "  ", "10", "h", "1x", "-1h", "1.5h", "99999999999999999999d"] {
+            assert_eq!(parse(bad), None, "{bad:?}");
+        }
+    }
+}
