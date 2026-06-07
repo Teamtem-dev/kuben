@@ -33,3 +33,21 @@ pub async fn run(ctx: Arc<Ctx>, token: CancellationToken) -> anyhow::Result<()> 
 async fn reconcile(project: Arc<Project>, ctx: Arc<Ctx>) -> Result<Action> {
     let name = project.name_any();
     // Projects are few and environments per project fewer; a LIST is cheaper
+    // than keeping a second cache in sync.
+    let envs = Api::<Environment>::all(ctx.client.clone())
+        .list(&ListParams::default())
+        .await?;
+    let count = envs
+        .items
+        .iter()
+        .filter(|e| e.spec.project == name && e.metadata.deletion_timestamp.is_none())
+        .count();
+    let previous = project
+        .status
+        .as_ref()
+        .map_or(&[][..], |s| s.conditions.as_slice());
+    let status = ProjectStatus {
+        observed_generation: project.metadata.generation,
+        environments: u32::try_from(count).unwrap_or(u32::MAX),
+        conditions: vec![condition(
+            previous,
