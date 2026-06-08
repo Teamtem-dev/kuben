@@ -22,3 +22,15 @@ use kube::{
     runtime::{Controller, controller::Action, reflector::ObjectRef, watcher},
 };
 use kuben_crd::{DeletionPolicy, Environment, EnvironmentStatus, FIELD_MANAGER, condition::READY, labels};
+use serde_json::json;
+use tokio_util::sync::CancellationToken;
+
+use super::{Ctx, Result, condition, error_policy, is_not_found, resources};
+use crate::duration;
+
+pub async fn run(ctx: Arc<Ctx>, token: CancellationToken) -> anyhow::Result<()> {
+    let client = ctx.client.clone();
+    Controller::new(Api::<Environment>::all(client.clone()), watcher::Config::default())
+        // Repair drift: a deleted or relabelled namespace re-triggers its environment.
+        .watches(
+            Api::<Namespace>::all(client),
