@@ -83,3 +83,15 @@ async fn apply(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result<A
             write_status(api, env, "Pending", None, "NamespaceTerminating", &msg, false).await?;
             return Ok(Action::requeue(Duration::from_secs(5)));
         }
+    }
+
+    let pp = PatchParams::apply(FIELD_MANAGER).force();
+    let client = &ctx.client;
+    namespaces
+        .patch(&ns, &pp, &Patch::Apply(resources::namespace(env)))
+        .await?;
+    Api::<ResourceQuota>::namespaced(client.clone(), &ns)
+        .patch(
+            resources::QUOTA_NAME,
+            &pp,
+            &Patch::Apply(resources::resource_quota(env)),
