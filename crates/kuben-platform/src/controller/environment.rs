@@ -59,3 +59,15 @@ async fn reconcile(env: Arc<Environment>, ctx: Arc<Ctx>) -> Result<Action> {
         }
         apply(&env, &api, &ctx).await?
     };
+    ctx.succeeded(env.as_ref());
+    Ok(action)
+}
+
+async fn apply(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result<Action> {
+    let name = env.name_any();
+    let ns = resources::namespace_name(&name);
+    let namespaces = Api::<Namespace>::all(ctx.client.clone());
+
+    if let Some(existing) = namespaces.get_opt(&ns).await? {
+        let l = existing.labels();
+        let ours = l.get(labels::MANAGED_BY).is_some_and(|v| v == labels::MANAGER)
