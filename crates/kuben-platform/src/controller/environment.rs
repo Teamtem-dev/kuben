@@ -95,3 +95,16 @@ async fn apply(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result<A
             resources::QUOTA_NAME,
             &pp,
             &Patch::Apply(resources::resource_quota(env)),
+        )
+        .await?;
+    Api::<LimitRange>::namespaced(client.clone(), &ns)
+        .patch(
+            resources::LIMITS_NAME,
+            &pp,
+            &Patch::Apply(resources::limit_range(env)),
+        )
+        .await?;
+    Api::<NetworkPolicy>::namespaced(client.clone(), &ns)
+        .patch(
+            resources::NETPOL_NAME,
+            &pp,
