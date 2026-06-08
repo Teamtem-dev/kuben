@@ -46,3 +46,16 @@ pub async fn run(ctx: Arc<Ctx>, token: CancellationToken) -> anyhow::Result<()> 
 
 #[allow(clippy::needless_pass_by_value)] // signature required by `Controller::run`
 async fn reconcile(env: Arc<Environment>, ctx: Arc<Ctx>) -> Result<Action> {
+    let api = Api::<Environment>::all(ctx.client.clone());
+    let has_finalizer = env.finalizers().iter().any(|f| f == resources::ENV_FINALIZER);
+    let action = if env.metadata.deletion_timestamp.is_some() {
+        if !has_finalizer {
+            return Ok(Action::await_change());
+        }
+        cleanup(&env, &api, &ctx).await?
+    } else {
+        if !has_finalizer {
+            set_finalizer(&env, &api, true).await?;
+        }
+        apply(&env, &api, &ctx).await?
+    };
