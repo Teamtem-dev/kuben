@@ -71,3 +71,15 @@ async fn apply(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result<A
     if let Some(existing) = namespaces.get_opt(&ns).await? {
         let l = existing.labels();
         let ours = l.get(labels::MANAGED_BY).is_some_and(|v| v == labels::MANAGER)
+            && l.get(labels::ENVIRONMENT).is_some_and(|v| *v == name);
+        if !ours {
+            // Never adopt a namespace someone else created.
+            let msg = format!("namespace {ns} already exists and is not managed by this environment");
+            write_status(api, env, "Degraded", None, "NamespaceConflict", &msg, false).await?;
+            return Ok(Action::requeue(Duration::from_mins(5)));
+        }
+        if existing.metadata.deletion_timestamp.is_some() {
+            let msg = format!("waiting for namespace {ns} to finish terminating");
+            write_status(api, env, "Pending", None, "NamespaceTerminating", &msg, false).await?;
+            return Ok(Action::requeue(Duration::from_secs(5)));
+        }
