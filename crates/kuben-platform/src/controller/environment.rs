@@ -34,3 +34,15 @@ pub async fn run(ctx: Arc<Ctx>, token: CancellationToken) -> anyhow::Result<()> 
         // Repair drift: a deleted or relabelled namespace re-triggers its environment.
         .watches(
             Api::<Namespace>::all(client),
+            watcher::Config::default().labels(labels::MANAGED_SELECTOR),
+            |ns| ns.labels().get(labels::ENVIRONMENT).map(|e| ObjectRef::<Environment>::new(e)),
+        )
+        .graceful_shutdown_on(token.cancelled_owned())
+        .run(reconcile, error_policy, ctx)
+        .for_each(|_| std::future::ready(()))
+        .await;
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)] // signature required by `Controller::run`
+async fn reconcile(env: Arc<Environment>, ctx: Arc<Ctx>) -> Result<Action> {
