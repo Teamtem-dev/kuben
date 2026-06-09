@@ -38,3 +38,17 @@ pub async fn run(
     token: CancellationToken,
 ) -> anyhow::Result<()> {
     let client = ctx.client.clone();
+    let managed = watcher::Config::default().labels(labels::MANAGED_SELECTOR);
+    Controller::new(Api::<App>::all(client.clone()), watcher::Config::default())
+        .owns(Api::<Deployment>::all(client.clone()), managed.clone())
+        .owns(Api::<Service>::all(client), managed)
+        .reconcile_all_on(config_changes)
+        .graceful_shutdown_on(token.cancelled_owned())
+        .run(reconcile, error_policy, ctx)
+        .for_each(|_| std::future::ready(()))
+        .await;
+    Ok(())
+}
+
+struct Desired {
+    deployments: Vec<Deployment>,
