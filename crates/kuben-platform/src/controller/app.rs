@@ -52,3 +52,16 @@ pub async fn run(
 
 struct Desired {
     deployments: Vec<Deployment>,
+    autoscalers: Vec<HorizontalPodAutoscaler>,
+    cron_jobs: Vec<CronJob>,
+    volumes: Vec<PersistentVolumeClaim>,
+    service: Option<Service>,
+    route: Option<serde_json::Value>,
+    /// The web process is HTTP and should be reachable through the gateway.
+    exposes_http: bool,
+}
+
+fn build(app: &App, platform: &Platform, owner: &OwnerReference) -> Result<Desired, BuildError> {
+    resources::validate(app)?;
+    Ok(Desired {
+        deployments: resources::deployments(app, platform, owner)?,
