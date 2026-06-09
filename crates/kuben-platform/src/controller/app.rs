@@ -11,3 +11,17 @@ use k8s_openapi::{
         autoscaling::v2::HorizontalPodAutoscaler,
         batch::v1::CronJob,
         core::v1::{PersistentVolumeClaim, Service},
+    },
+    apimachinery::pkg::apis::meta::v1::OwnerReference,
+};
+use kube::{
+    Api, Client, Resource, ResourceExt,
+    api::{ApiResource, DeleteParams, DynamicObject, GroupVersionKind, ListParams, Patch, PatchParams},
+    runtime::{Controller, controller::Action, watcher},
+};
+use kuben_crd::{App, AppStatus, Condition, FIELD_MANAGER, condition::READY, labels};
+use serde::{Serialize, de::DeserializeOwned};
+use serde_json::json;
+use tokio_util::sync::CancellationToken;
+
+use super::{
