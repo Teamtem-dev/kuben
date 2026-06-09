@@ -25,3 +25,16 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::{
+    Ctx, Error, Result, condition, error_policy, is_not_found,
+    resources::{self, BuildError, Platform},
+};
+
+/// Condition type: is the app reachable through the gateway?
+pub const EXPOSED: &str = "Exposed";
+
+pub async fn run(
+    ctx: Arc<Ctx>,
+    config_changes: impl Stream<Item = ()> + Send + 'static,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let client = ctx.client.clone();
