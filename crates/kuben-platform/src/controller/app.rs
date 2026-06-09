@@ -65,3 +65,17 @@ fn build(app: &App, platform: &Platform, owner: &OwnerReference) -> Result<Desir
     resources::validate(app)?;
     Ok(Desired {
         deployments: resources::deployments(app, platform, owner)?,
+        autoscalers: resources::autoscalers(app, owner),
+        cron_jobs: resources::cron_jobs(app, platform, owner)?,
+        volumes: resources::persistent_volume_claims(app),
+        service: resources::service(app, owner)?,
+        route: resources::http_route(app, platform, owner)?,
+        exposes_http: matches!(resources::web_process(app)?, Some((_, p)) if p.protocol.is_http()),
+    })
+}
+
+#[allow(clippy::needless_pass_by_value)] // signature required by `Controller::run`
+async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
+    let ns = app.namespace().ok_or(Error::Missing("metadata.namespace"))?;
+    let owner = app
+        .controller_owner_ref(&())
