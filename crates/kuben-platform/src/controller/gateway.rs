@@ -201,3 +201,71 @@ pub fn redirect_route(gateway: &GatewayRef) -> Value {
         },
     })
 }
+
+/// `(hostname, namespace)` of every app whose web process is routed over HTTP.
+#[must_use]
+pub fn routed_hosts(apps: &[Arc<AppView>], platform: &Platform) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for app in apps {
+        let routed = app
+            .processes
+            .iter()
+            .any(|p| p.port.is_some() && p.schedule.is_none() && p.protocol == "http");
+        if !routed {
+            continue;
+        }
+        let domains = app.domains.iter().map(String::as_str);
+        for host in hostnames_for(&app.name, app.environment.as_deref(), domains, platform) {
+            out.push((host, app.namespace.clone()));
+        }
+    }
+    out
+}
+
+fn dynamic_api(ctx: &Ctx, ns: &str, kind: &str, plural: &str) -> Api<DynamicObject> {
+    let gvk = GroupVersionKind::gvk("gateway.networking.k8s.io", "v1", kind);
+    Api::namespaced_with(
+        ctx.client.clone(),
+        ns,
+        &ApiResource::from_gvk_with_plural(&gvk, plural),
+    )
+}
+
+async fn reconcile(ctx: &Ctx, projections: &Projections, last: &mut Option<Value>) -> anyhow::Result<()> {
+    let platform = ctx.platform();
+    let (Some(gateway), Some(issuer)) = (&platform.gateway, &platform.cluster_issuer) else {
+        return Ok(()); // TLS off: the Gateway is left untouched.
+    };
+    let plan = plan_listeners(&routed_hosts(&projections.apps(), &platform), &platform);
+    for conflict in &plan.conflicts {
+        tracing::warn!(%conflict, "hostname requested by two namespaces; the first keeps it");
+    }
+    if !plan.skipped.is_empty() {
+        tracing::warn!(hosts = ?plan.skipped, max = MAX_LISTENERS, "gateway listener limit reached");
+    }
+    let body = gateway_patch(gateway, issuer, &plan);
+    if last.as_ref() == Some(&body) {
+        return Ok(());
+    }
+    let pp = PatchParams::apply(FIELD_MANAGER).force();
+    dynamic_api(ctx, &gateway.namespace, "Gateway", "gateways")
+        .patch(&gateway.name, &pp, &Patch::Apply(&body))
+        .await?;
+    dynamic_api(ctx, &gateway.namespace, "HTTPRoute", "httproutes")
+        .patch(REDIRECT_ROUTE, &pp, &Patch::Apply(&redirect_route(gateway)))
+        .await?;
+    tracing::info!(listeners = plan.listeners.len(), "gateway listeners applied");
+    *last = Some(body);
+    Ok(())
+}
+
+/// Debounced reconciler: any projection change marks the listener set dirty;
+/// at most one apply every 2 s, skipped when nothing changed; full resync
+/// every 5 minutes.
+pub async fn run(
+    ctx: Arc<Ctx>,
+    projections: Arc<Projections>,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let mut deltas = projections.subscribe();
+    let mut debounce = tokio::time::interval(Duration::from_secs(2));
