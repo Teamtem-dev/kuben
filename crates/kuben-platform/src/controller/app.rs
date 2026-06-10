@@ -92,3 +92,17 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
             let ready = condition(previous, READY, false, e.reason(), &e.to_string(), generation);
             write_status(&apps, &app, None, vec![ready]).await?;
             ctx.succeeded(app.as_ref());
+            return Ok(Action::await_change());
+        }
+    };
+
+    let client = &ctx.client;
+    let selector = format!("{}={}", labels::APP, app.name_any());
+    // Volumes first (pods wait for their claims). Never pruned: data outlives
+    // spec edits and the App itself (scenario 6).
+    let pvcs = Api::<PersistentVolumeClaim>::namespaced(client.clone(), &ns);
+    apply_all(&pvcs, &desired.volumes).await?;
+
+    let deployments = Api::<Deployment>::namespaced(client.clone(), &ns);
+    apply_all(&deployments, &desired.deployments).await?;
+    prune(&deployments, &selector, &owner.uid, &desired.deployments).await?;
