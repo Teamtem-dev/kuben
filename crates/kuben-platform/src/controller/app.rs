@@ -106,3 +106,16 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
     let deployments = Api::<Deployment>::namespaced(client.clone(), &ns);
     apply_all(&deployments, &desired.deployments).await?;
     prune(&deployments, &selector, &owner.uid, &desired.deployments).await?;
+
+    let hpas = Api::<HorizontalPodAutoscaler>::namespaced(client.clone(), &ns);
+    apply_all(&hpas, &desired.autoscalers).await?;
+    prune(&hpas, &selector, &owner.uid, &desired.autoscalers).await?;
+
+    let crons = Api::<CronJob>::namespaced(client.clone(), &ns);
+    apply_all(&crons, &desired.cron_jobs).await?;
+    prune(&crons, &selector, &owner.uid, &desired.cron_jobs).await?;
+
+    let services = Api::<Service>::namespaced(client.clone(), &ns);
+    match &desired.service {
+        Some(svc) => apply_all(&services, std::slice::from_ref(svc)).await?,
+        None => delete_if_exists(&services, &app.name_any()).await?,
