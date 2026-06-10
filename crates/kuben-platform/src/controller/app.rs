@@ -119,3 +119,17 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
     match &desired.service {
         Some(svc) => apply_all(&services, std::slice::from_ref(svc)).await?,
         None => delete_if_exists(&services, &app.name_any()).await?,
+    }
+
+    let routed = sync_route(client, &ns, &app.name_any(), desired.route.as_ref()).await?;
+    let (ready, mut reason, message) = rollout(&deployments, &desired.deployments).await?;
+    if ready && desired.deployments.is_empty() && !desired.cron_jobs.is_empty() {
+        reason = "Scheduled";
+    }
+
+    let mut conditions = vec![condition(previous, READY, ready, reason, &message, generation)];
+    if desired.exposes_http {
+        let (ok, reason, msg) = match (&desired.route, routed, &platform.gateway) {
+            (Some(_), true, _) => (true, "RouteApplied", ""),
+            (Some(_), false, _) => (
+                false,
