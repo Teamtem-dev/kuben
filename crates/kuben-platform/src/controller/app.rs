@@ -79,3 +79,16 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
     let ns = app.namespace().ok_or(Error::Missing("metadata.namespace"))?;
     let owner = app
         .controller_owner_ref(&())
+        .ok_or(Error::Missing("metadata.uid"))?;
+    let platform = ctx.platform();
+    let apps = Api::<App>::namespaced(ctx.client.clone(), &ns);
+    let generation = app.metadata.generation;
+    let previous = app.status.as_ref().map_or(&[][..], |s| s.conditions.as_slice());
+
+    let desired = match build(&app, &platform, &owner) {
+        Ok(d) => d,
+        Err(e) => {
+            // A spec problem: report it and wait for the user to change the App.
+            let ready = condition(previous, READY, false, e.reason(), &e.to_string(), generation);
+            write_status(&apps, &app, None, vec![ready]).await?;
+            ctx.succeeded(app.as_ref());
