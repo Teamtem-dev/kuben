@@ -133,3 +133,71 @@ pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> Listen
             "hostname": format!("*.{base}"),
             "tls": tls(secret),
             "allowedRoutes": { "namespaces": { "from": "Selector", "selector": {
+                "matchLabels": { labels::MANAGED_BY: labels::MANAGER }
+            } } },
+        }));
+    }
+    let mut skipped = Vec::new();
+    for (host, ns) in owners {
+        if covered_by_wildcard(host, platform) {
+            continue;
+        }
+        if listeners.len() >= MAX_LISTENERS {
+            skipped.push(host.to_owned());
+            continue;
+        }
+        listeners.push(json!({
+            "name": host_listener_name(host),
+            "protocol": "HTTPS",
+            "port": 443,
+            "hostname": host,
+            "tls": tls(&host_secret_name(host)),
+            "allowedRoutes": { "namespaces": { "from": "Selector", "selector": {
+                "matchLabels": { "kubernetes.io/metadata.name": ns }
+            } } },
+        }));
+    }
+    ListenerPlan {
+        listeners,
+        conflicts,
+        skipped,
+    }
+}
+
+/// Server-side-apply body for the Gateway: Kuben's field manager owns only the
+/// listeners it lists and the issuer annotation.
+#[must_use]
+pub fn gateway_patch(gateway: &GatewayRef, issuer: &str, plan: &ListenerPlan) -> Value {
+    json!({
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "Gateway",
+        "metadata": {
+            "name": gateway.name,
+            "namespace": gateway.namespace,
+            "annotations": { ISSUER_ANNOTATION: issuer },
+        },
+        "spec": { "listeners": plan.listeners },
+    })
+}
+
+/// Platform route answering every plain-HTTP request with a 301 to HTTPS.
+/// cert-manager's solver routes carry an exact hostname and therefore win.
+#[must_use]
+pub fn redirect_route(gateway: &GatewayRef) -> Value {
+    json!({
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "HTTPRoute",
+        "metadata": {
+            "name": REDIRECT_ROUTE,
+            "namespace": gateway.namespace,
+            "labels": { labels::MANAGED_BY: labels::MANAGER },
+        },
+        "spec": {
+            "parentRefs": [{ "name": gateway.name, "namespace": gateway.namespace, "sectionName": HTTP_LISTENER }],
+            "rules": [{ "filters": [{
+                "type": "RequestRedirect",
+                "requestRedirect": { "scheme": "https", "statusCode": 301 }
+            }] }],
+        },
+    })
+}
