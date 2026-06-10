@@ -65,3 +65,71 @@ pub fn host_secret_name(host: &str) -> String {
 }
 
 /// `*.base` matches exactly one additional DNS label.
+fn covered_by_wildcard(host: &str, platform: &Platform) -> bool {
+    match (&platform.base_domain, &platform.wildcard_tls_secret) {
+        (Some(base), Some(_)) => host
+            .strip_suffix(base.as_str())
+            .and_then(|rest| rest.strip_suffix('.'))
+            .is_some_and(|label| !label.is_empty() && !label.contains('.')),
+        _ => false,
+    }
+}
+
+/// Listener (`sectionName`) an app route must attach to for `host`.
+#[must_use]
+pub fn section_for_host(host: &str, platform: &Platform) -> String {
+    if covered_by_wildcard(host, platform) {
+        WILDCARD_LISTENER.to_owned()
+    } else {
+        host_listener_name(host)
+    }
+}
+
+/// Desired listeners plus what could not be served.
+#[derive(Debug, Default, PartialEq)]
+pub struct ListenerPlan {
+    pub listeners: Vec<Value>,
+    /// `host` claimed by more than one namespace (the first one keeps it).
+    pub conflicts: Vec<String>,
+    /// Hosts without a listener because [`MAX_LISTENERS`] was reached.
+    pub skipped: Vec<String>,
+}
+
+fn tls(secret: &str) -> Value {
+    json!({ "mode": "Terminate", "certificateRefs": [{ "kind": "Secret", "name": secret }] })
+}
+
+/// `hosts`: `(hostname, namespace)` for every routed app. Deterministic:
+/// the same input always yields the same listeners in the same order.
+#[must_use]
+pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> ListenerPlan {
+    let mut sorted: Vec<&(String, String)> = hosts.iter().collect();
+    sorted.sort();
+    let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut conflicts = Vec::new();
+    for (host, ns) in sorted {
+        match owners.get(host.as_str()) {
+            Some(existing) if *existing != ns.as_str() => {
+                conflicts.push(format!("{host}: owned by {existing}, also requested by {ns}"));
+            }
+            Some(_) => {}
+            None => {
+                owners.insert(host, ns);
+            }
+        }
+    }
+
+    let mut listeners = vec![json!({
+        "name": HTTP_LISTENER,
+        "protocol": "HTTP",
+        "port": 80,
+        "allowedRoutes": { "namespaces": { "from": "Same" } },
+    })];
+    if let (Some(base), Some(secret)) = (&platform.base_domain, &platform.wildcard_tls_secret) {
+        listeners.push(json!({
+            "name": WILDCARD_LISTENER,
+            "protocol": "HTTPS",
+            "port": 443,
+            "hostname": format!("*.{base}"),
+            "tls": tls(secret),
+            "allowedRoutes": { "namespaces": { "from": "Selector", "selector": {
