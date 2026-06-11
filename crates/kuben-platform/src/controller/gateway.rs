@@ -337,3 +337,71 @@ mod tests {
         assert!(name.starts_with("h-") && name.len() == 14, "{name}");
         assert!(host_secret_name("api.acme.com").starts_with("kuben-tls-"));
     }
+
+    #[test]
+    fn wildcard_covers_exactly_one_label() {
+        let p = platform(true);
+        assert_eq!(
+            section_for_host("api-shop-prod.apps.example.com", &p),
+            WILDCARD_LISTENER
+        );
+        assert_ne!(section_for_host("a.b.apps.example.com", &p), WILDCARD_LISTENER);
+        assert_ne!(section_for_host("apps.example.com", &p), WILDCARD_LISTENER);
+        assert_ne!(section_for_host("api.acme.com", &p), WILDCARD_LISTENER);
+        assert_ne!(
+            section_for_host("api-shop-prod.apps.example.com", &platform(false)),
+            WILDCARD_LISTENER,
+            "no wildcard secret → per-host listener"
+        );
+    }
+
+    #[test]
+    fn hosts_are_first_come_and_scoped_to_their_namespace() {
+        let plan = plan_listeners(
+            &hosts(&[
+                ("shop.acme.com", "kb-b"),
+                ("shop.acme.com", "kb-a"),
+                ("api.acme.com", "kb-a"),
+            ]),
+            &platform(false),
+        );
+        assert_eq!(plan.conflicts.len(), 1, "{:?}", plan.conflicts);
+        let shop = plan
+            .listeners
+            .iter()
+            .find(|l| l["hostname"] == "shop.acme.com")
+            .expect("shop listener");
+        assert_eq!(
+            shop["allowedRoutes"]["namespaces"]["selector"]["matchLabels"]["kubernetes.io/metadata.name"],
+            "kb-a",
+            "sorted input: kb-a claims the host first"
+        );
+        assert_eq!(
+            shop["tls"]["certificateRefs"][0]["name"],
+            host_secret_name("shop.acme.com")
+        );
+        let http = &plan.listeners[0];
+        assert_eq!(
+            (
+                http["name"].as_str(),
+                http["allowedRoutes"]["namespaces"]["from"].as_str()
+            ),
+            (Some("http"), Some("Same"))
+        );
+    }
+
+    #[test]
+    fn wildcard_listener_absorbs_generated_hosts_and_the_cap_holds() {
+        let p = platform(true);
+        let plan = plan_listeners(&hosts(&[("api-shop-prod.apps.example.com", "kb-shop-prod")]), &p);
+        assert_eq!(plan.listeners.len(), 2, "http + wildcard only");
+        assert_eq!(plan.listeners[1]["hostname"], "*.apps.example.com");
+
+        let many: Vec<(String, String)> = (0..70)
+            .map(|i| (format!("h{i}.acme.com"), "kb-x".to_owned()))
+            .collect();
+        let capped = plan_listeners(&many, &platform(false));
+        assert_eq!(capped.listeners.len(), MAX_LISTENERS);
+        assert_eq!(capped.skipped.len(), 70 - (MAX_LISTENERS - 1));
+        assert_eq!(plan_listeners(&many, &platform(false)), capped, "deterministic");
+    }
