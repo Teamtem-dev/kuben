@@ -203,3 +203,105 @@ pub fn namespace(env: &Environment) -> Namespace {
     Namespace {
         metadata: ObjectMeta {
             name: Some(namespace_name(&name)),
+            labels: Some(l),
+            ..ObjectMeta::default()
+        },
+        ..Namespace::default()
+    }
+}
+
+/// Quota: tenants can never create LoadBalancer/NodePort services (cost and
+/// exposure), plus the optional CPU/memory/pod caps from the spec.
+#[must_use]
+pub fn resource_quota(env: &Environment) -> ResourceQuota {
+    let mut hard = BTreeMap::from([
+        ("services.loadbalancers".to_owned(), q("0")),
+        ("services.nodeports".to_owned(), q("0")),
+    ]);
+    if let Some(quota) = &env.spec.quota {
+        if let Some(cpu) = &quota.cpu {
+            hard.insert("requests.cpu".into(), q(cpu));
+        }
+        if let Some(mem) = &quota.memory {
+            hard.insert("requests.memory".into(), q(mem));
+        }
+        if let Some(pods) = quota.pods {
+            hard.insert("pods".into(), Quantity(pods.to_string()));
+        }
+    }
+    ResourceQuota {
+        metadata: ObjectMeta {
+            name: Some(QUOTA_NAME.into()),
+            namespace: Some(namespace_name(&env.name_any())),
+            labels: Some(managed_labels()),
+            ..ObjectMeta::default()
+        },
+        spec: Some(ResourceQuotaSpec {
+            hard: Some(hard),
+            ..ResourceQuotaSpec::default()
+        }),
+        ..ResourceQuota::default()
+    }
+}
+
+/// Defaults for containers that declare no resources (keeps quota admission
+/// working and bounds noisy neighbours).
+#[must_use]
+pub fn limit_range(env: &Environment) -> LimitRange {
+    LimitRange {
+        metadata: ObjectMeta {
+            name: Some(LIMITS_NAME.into()),
+            namespace: Some(namespace_name(&env.name_any())),
+            labels: Some(managed_labels()),
+            ..ObjectMeta::default()
+        },
+        spec: Some(LimitRangeSpec {
+            limits: vec![LimitRangeItem {
+                type_: "Container".into(),
+                default: Some(BTreeMap::from([("memory".to_owned(), q("512Mi"))])),
+                default_request: Some(BTreeMap::from([
+                    ("cpu".to_owned(), q("50m")),
+                    ("memory".to_owned(), q("64Mi")),
+                ])),
+                ..LimitRangeItem::default()
+            }],
+        }),
+    }
+}
+
+/// Tenant isolation: ingress is allowed from the same namespace and from
+/// namespaces Kuben does *not* manage (gateway, monitoring, kuben-system), so
+/// environments cannot reach each other.
+#[must_use]
+pub fn network_policy(env: &Environment) -> NetworkPolicy {
+    let same_namespace = NetworkPolicyPeer {
+        pod_selector: Some(LabelSelector::default()),
+        ..NetworkPolicyPeer::default()
+    };
+    let unmanaged_namespaces = NetworkPolicyPeer {
+        namespace_selector: Some(LabelSelector {
+            match_expressions: Some(vec![LabelSelectorRequirement {
+                key: labels::MANAGED_BY.into(),
+                operator: "NotIn".into(),
+                values: Some(vec![labels::MANAGER.into()]),
+            }]),
+            match_labels: None,
+        }),
+        ..NetworkPolicyPeer::default()
+    };
+    NetworkPolicy {
+        metadata: ObjectMeta {
+            name: Some(NETPOL_NAME.into()),
+            namespace: Some(namespace_name(&env.name_any())),
+            labels: Some(managed_labels()),
+            ..ObjectMeta::default()
+        },
+        spec: Some(NetworkPolicySpec {
+            pod_selector: Some(LabelSelector::default()),
+            policy_types: Some(vec!["Ingress".into()]),
+            ingress: Some(vec![
+                NetworkPolicyIngressRule {
+                    from: Some(vec![same_namespace]),
+                    ports: None,
+                },
+                NetworkPolicyIngressRule {
