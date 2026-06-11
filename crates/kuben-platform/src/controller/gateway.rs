@@ -269,3 +269,71 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let mut deltas = projections.subscribe();
     let mut debounce = tokio::time::interval(Duration::from_secs(2));
+    let mut resync = tokio::time::interval(Duration::from_mins(5));
+    let mut dirty = true;
+    let mut last: Option<Value> = None;
+    loop {
+        tokio::select! {
+            () = token.cancelled() => return Ok(()),
+            delta = deltas.recv() => match delta {
+                Ok(_) | Err(RecvError::Lagged(_)) => dirty = true,
+                Err(RecvError::Closed) => return Ok(()),
+            },
+            _ = resync.tick() => {
+                dirty = true;
+                last = None;
+            }
+            _ = debounce.tick() => {
+                if dirty {
+                    dirty = false;
+                    if let Err(e) = reconcile(&ctx, &projections, &mut last).await {
+                        tracing::warn!(error = %e, "gateway reconcile failed; retrying at the next resync");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kuben_crd::KubenConfigSpec;
+
+    use super::*;
+    use crate::projection::ProcessView;
+
+    fn platform(wildcard: bool) -> Platform {
+        let mut spec = json!({
+            "baseDomain": "apps.example.com",
+            "gateway": "kuben-system/kuben",
+            "clusterIssuer": "letsencrypt"
+        });
+        if wildcard {
+            spec["wildcardTlsSecret"] = json!("apps-wildcard");
+        }
+        Platform::from_spec(Some(
+            &serde_json::from_value::<KubenConfigSpec>(spec).expect("spec"),
+        ))
+    }
+
+    fn hosts(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(h, n)| ((*h).to_owned(), (*n).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn listener_names_are_stable_and_distinct() {
+        assert_eq!(
+            host_listener_name("api.acme.com"),
+            host_listener_name("api.acme.com")
+        );
+        assert_ne!(
+            host_listener_name("api.acme.com"),
+            host_listener_name("www.acme.com")
+        );
+        let name = host_listener_name("api.acme.com");
+        assert!(name.starts_with("h-") && name.len() == 14, "{name}");
+        assert!(host_secret_name("api.acme.com").starts_with("kuben-tls-"));
+    }
