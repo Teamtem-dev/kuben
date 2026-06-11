@@ -100,3 +100,106 @@ pub struct Platform {
     /// Routes are served over TLS (a ClusterIssuer is configured).
     pub tls: bool,
     pub cluster_issuer: Option<String>,
+    /// Secret with a `*.<base_domain>` certificate (scenario 9).
+    pub wildcard_tls_secret: Option<String>,
+}
+
+impl Default for Platform {
+    fn default() -> Self {
+        Self::from_spec(None)
+    }
+}
+
+impl Platform {
+    #[must_use]
+    pub fn from_spec(spec: Option<&KubenConfigSpec>) -> Self {
+        let defaults;
+        let spec = if let Some(s) = spec {
+            s
+        } else {
+            // `{}` deserializes to the CRD defaults (size presets etc.).
+            defaults = serde_json::from_value::<KubenConfigSpec>(json!({})).ok();
+            match &defaults {
+                Some(d) => d,
+                None => {
+                    return Self {
+                        sizes: Vec::new(),
+                        base_domain: None,
+                        gateway: None,
+                        tls: false,
+                        cluster_issuer: None,
+                        wildcard_tls_secret: None,
+                    };
+                }
+            }
+        };
+        let gateway = spec.gateway.as_deref().and_then(|g| {
+            let (ns, name) = g.split_once('/')?;
+            (!ns.is_empty() && !name.is_empty()).then(|| GatewayRef {
+                namespace: ns.into(),
+                name: name.into(),
+            })
+        });
+        Self {
+            sizes: spec.sizes.clone(),
+            base_domain: spec.base_domain.clone().filter(|d| !d.is_empty()),
+            gateway,
+            tls: spec.cluster_issuer.is_some(),
+            cluster_issuer: spec.cluster_issuer.clone(),
+            wildcard_tls_secret: spec.wildcard_tls_secret.clone().filter(|s| !s.is_empty()),
+        }
+    }
+
+    fn size(&self, name: &str) -> Option<&SizePreset> {
+        self.sizes.iter().find(|s| s.name == name)
+    }
+}
+
+fn q(v: &str) -> Quantity {
+    Quantity(v.to_owned())
+}
+
+fn managed_labels() -> BTreeMap<String, String> {
+    BTreeMap::from([(labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned())])
+}
+
+// ---------------------------------------------------------------------------
+// Environment → Namespace + guard rails
+// ---------------------------------------------------------------------------
+
+#[must_use]
+pub fn namespace_name(environment: &str) -> String {
+    format!("kb-{environment}")
+}
+
+const fn env_type_str(t: EnvironmentType) -> &'static str {
+    match t {
+        EnvironmentType::Standard => "standard",
+        EnvironmentType::Production => "production",
+        EnvironmentType::Preview => "preview",
+    }
+}
+
+/// Namespace with Pod Security Admission: `baseline` is enforced (arbitrary
+/// images still run), `restricted` violations are warned and audited.
+#[must_use]
+pub fn namespace(env: &Environment) -> Namespace {
+    let name = env.name_any();
+    let mut l = managed_labels();
+    l.insert(labels::PROJECT.into(), env.spec.project.clone());
+    l.insert(labels::ENVIRONMENT.into(), name.clone());
+    l.insert(ENV_TYPE.into(), env_type_str(env.spec.type_).into());
+    if let Some(org) = env.labels().get(labels::ORG) {
+        l.insert(labels::ORG.into(), org.clone());
+    }
+    for (k, v) in [
+        ("pod-security.kubernetes.io/enforce", "baseline"),
+        ("pod-security.kubernetes.io/enforce-version", "latest"),
+        ("pod-security.kubernetes.io/warn", "restricted"),
+        ("pod-security.kubernetes.io/audit", "restricted"),
+    ] {
+        l.insert(k.into(), v.into());
+    }
+    Namespace {
+        metadata: ObjectMeta {
+            name: Some(namespace_name(&name)),
