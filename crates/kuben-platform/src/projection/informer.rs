@@ -13,3 +13,18 @@ use kuben_crd::{App, Environment, Project, labels};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 
+use super::{AppView, EnvironmentView, PodView, ProjectView, Projections};
+use crate::registry::ClusterRegistry;
+
+/// Page size for the initial LIST. Keeps CPU bursts bounded on large clusters.
+const PAGE_SIZE: u32 = 500;
+
+/// Run all informers for the primary cluster until cancelled.
+pub async fn run(
+    registry: ClusterRegistry,
+    projections: Arc<Projections>,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let client = registry.primary();
+    tokio::select! {
+        r = watch_pods(client.clone(), projections.clone(), token.child_token()) => r,
