@@ -305,3 +305,106 @@ pub fn network_policy(env: &Environment) -> NetworkPolicy {
                     ports: None,
                 },
                 NetworkPolicyIngressRule {
+                    from: Some(vec![unmanaged_namespaces]),
+                    ports: None,
+                },
+            ]),
+            egress: None,
+        }),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// App → Deployments, Service, HPAs, HTTPRoute
+// ---------------------------------------------------------------------------
+
+/// Labels shared by everything an App owns (propagated org/project/env).
+#[must_use]
+pub fn app_labels(app: &App, process: Option<&str>) -> BTreeMap<String, String> {
+    let mut l = managed_labels();
+    for key in [labels::ORG, labels::PROJECT, labels::ENVIRONMENT] {
+        if let Some(v) = app.labels().get(key) {
+            l.insert(key.into(), v.clone());
+        }
+    }
+    l.insert(labels::APP.into(), app.name_any());
+    if let Some(p) = process {
+        l.insert(labels::PROCESS.into(), p.into());
+    }
+    l
+}
+
+fn selector(app: &App, process: &str) -> BTreeMap<String, String> {
+    BTreeMap::from([
+        (labels::APP.to_owned(), app.name_any()),
+        (labels::PROCESS.to_owned(), process.to_owned()),
+    ])
+}
+
+#[must_use]
+pub fn workload_name(app: &str, process: &str) -> String {
+    format!("{app}-{process}")
+}
+
+/// Processes that run continuously (everything without a `schedule`).
+fn long_running(app: &App) -> impl Iterator<Item = (&String, &Process)> {
+    app.spec
+        .runtime
+        .processes
+        .iter()
+        .filter(|(_, p)| p.schedule.is_none())
+}
+
+/// The single long-running process that exposes a port (the one routed to).
+pub fn web_process(app: &App) -> Result<Option<(&str, &Process)>, BuildError> {
+    let exposed: Vec<(&String, &Process)> = long_running(app).filter(|(_, p)| p.port.is_some()).collect();
+    match exposed.as_slice() {
+        [] => Ok(None),
+        [(name, process)] => Ok(Some((name.as_str(), *process))),
+        many => Err(BuildError::MultiplePorts(
+            many.iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        )),
+    }
+}
+
+/// Image to run. Git sources have none until a build produced one.
+pub fn image(app: &App) -> Result<&str, BuildError> {
+    match (&app.spec.source.image, &app.spec.source.git) {
+        (Some(image), None) => Ok(image),
+        (None, Some(_)) => Err(BuildError::AwaitingBuild),
+        _ => Err(BuildError::InvalidSource),
+    }
+}
+
+/// Syntax check for a CronJob schedule: five fields or an `@hourly`-style macro.
+#[must_use]
+pub fn valid_schedule(expr: &str) -> bool {
+    let expr = expr.trim();
+    if expr.starts_with('@') {
+        return matches!(
+            expr,
+            "@yearly" | "@annually" | "@monthly" | "@weekly" | "@daily" | "@midnight" | "@hourly"
+        );
+    }
+    let fields: Vec<&str> = expr.split_whitespace().collect();
+    fields.len() == 5
+        && fields.iter().all(|f| {
+            f.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '*' | '/' | ',' | '-' | '?'))
+        })
+}
+
+/// Cross-field rules the CRD schema cannot express. Every builder calls this
+/// first, so an invalid App never produces a half-applied set of objects.
+pub fn validate(app: &App) -> Result<(), BuildError> {
+    if app.spec.runtime.processes.is_empty() {
+        return Err(BuildError::NoProcesses);
+    }
+    for (name, p) in &app.spec.runtime.processes {
+        if let Some(schedule) = &p.schedule {
+            if p.port.is_some() {
+                return Err(BuildError::ScheduledWithPort(name.clone()));
+            }
