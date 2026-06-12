@@ -408,3 +408,105 @@ pub fn validate(app: &App) -> Result<(), BuildError> {
             if p.port.is_some() {
                 return Err(BuildError::ScheduledWithPort(name.clone()));
             }
+            if !valid_schedule(schedule) {
+                return Err(BuildError::InvalidSchedule {
+                    process: name.clone(),
+                    schedule: schedule.clone(),
+                });
+            }
+        }
+    }
+    if !app.spec.volumes.is_empty() {
+        let single = app.spec.runtime.processes.len() == 1
+            && app.spec.runtime.processes.values().all(|p| p.replicas.max <= 1);
+        if !single {
+            return Err(BuildError::VolumeNeedsSingleReplica);
+        }
+    }
+    web_process(app)?;
+    image(app)?;
+    Ok(())
+}
+
+fn env_vars(app: &App, port: Option<u16>) -> Vec<EnvVar> {
+    let mut vars: Vec<EnvVar> = app
+        .spec
+        .env
+        .iter()
+        .map(|e| EnvVar {
+            name: e.name.clone(),
+            value: if e.from_secret.is_some() || e.from_service.is_some() {
+                None
+            } else {
+                e.value.clone()
+            },
+            // Service bindings are published as Secrets named after the service.
+            value_from: e
+                .from_secret
+                .as_ref()
+                .or(e.from_service.as_ref())
+                .map(|r| EnvVarSource {
+                    secret_key_ref: Some(SecretKeySelector {
+                        name: r.name.clone(),
+                        key: r.key.clone(),
+                        optional: None,
+                    }),
+                    ..EnvVarSource::default()
+                }),
+        })
+        .collect();
+    // Heroku/buildpack convention: tell the process which port to bind.
+    if let Some(port) = port
+        && !vars.iter().any(|v| v.name == "PORT")
+    {
+        vars.push(EnvVar {
+            name: "PORT".into(),
+            value: Some(port.to_string()),
+            value_from: None,
+        });
+    }
+    vars
+}
+
+fn resources(preset: &SizePreset) -> ResourceRequirements {
+    let mut limits = BTreeMap::from([("memory".to_owned(), q(&preset.memory_limit))]);
+    if let Some(cpu) = &preset.cpu_limit {
+        limits.insert("cpu".into(), q(cpu));
+    }
+    ResourceRequirements {
+        requests: Some(BTreeMap::from([
+            ("cpu".to_owned(), q(&preset.cpu_request)),
+            ("memory".to_owned(), q(&preset.memory_request)),
+        ])),
+        limits: Some(limits),
+        ..ResourceRequirements::default()
+    }
+}
+
+/// `(readiness, startup, liveness)`. Readiness gates traffic; startup gives
+/// slow boots up to 5 minutes before the other probes start; liveness only
+/// runs with an explicit health path (a TCP liveness check would restart
+/// apps that are merely busy).
+fn probes(app: &App, port: u16) -> (Probe, Probe, Option<Probe>) {
+    let target = |p: Option<u16>| IntOrString::Int(i32::from(p.unwrap_or(port)));
+    let health = app.spec.runtime.health_check.as_ref();
+    let (http_get, tcp_socket) = match health {
+        Some(h) => (
+            Some(HTTPGetAction {
+                path: Some(h.path.clone()),
+                port: target(h.port),
+                ..HTTPGetAction::default()
+            }),
+            None,
+        ),
+        None => (
+            None,
+            Some(TCPSocketAction {
+                port: target(None),
+                host: None,
+            }),
+        ),
+    };
+    let base = Probe {
+        http_get,
+        tcp_socket,
