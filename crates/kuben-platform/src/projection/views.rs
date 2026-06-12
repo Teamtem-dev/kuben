@@ -29,3 +29,34 @@ impl From<Option<&str>> for PodPhase {
             Some("Pending") => Self::Pending,
             Some("Running") => Self::Running,
             Some("Succeeded") => Self::Succeeded,
+            Some("Failed") => Self::Failed,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PodView {
+    /// `namespace/name`.
+    pub key: String,
+    pub namespace: String,
+    pub name: String,
+    pub org: Option<String>,
+    pub app: Option<String>,
+    pub process: Option<String>,
+    pub phase: PodPhase,
+    pub ready: bool,
+    pub restarts: i32,
+    /// `CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, ...
+    pub reason: Option<String>,
+    pub node: Option<String>,
+    pub started_at: Option<String>,
+}
+
+impl From<&Pod> for PodView {
+    fn from(pod: &Pod) -> Self {
+        let namespace = pod.namespace().unwrap_or_default();
+        let name = pod.name_any();
+        let labels = pod.labels();
+        let status = pod.status.as_ref();
+        let containers = status.and_then(|s| s.container_statuses.as_ref());
