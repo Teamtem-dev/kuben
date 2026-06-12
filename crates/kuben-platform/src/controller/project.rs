@@ -51,3 +51,21 @@ async fn reconcile(project: Arc<Project>, ctx: Arc<Ctx>) -> Result<Action> {
         environments: u32::try_from(count).unwrap_or(u32::MAX),
         conditions: vec![condition(
             previous,
+            READY,
+            true,
+            "Reconciled",
+            "",
+            project.metadata.generation,
+        )],
+    };
+    let patch = json!({ "apiVersion": "kuben.dev/v1alpha1", "kind": "Project", "status": status });
+    Api::<Project>::all(ctx.client.clone())
+        .patch_status(
+            &name,
+            &PatchParams::apply(FIELD_MANAGER).force(),
+            &Patch::Apply(&patch),
+        )
+        .await?;
+    ctx.succeeded(project.as_ref());
+    Ok(Action::requeue(Duration::from_mins(15)))
+}
