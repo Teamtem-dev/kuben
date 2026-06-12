@@ -60,3 +60,34 @@ impl From<&Pod> for PodView {
         let labels = pod.labels();
         let status = pod.status.as_ref();
         let containers = status.and_then(|s| s.container_statuses.as_ref());
+        let ready = containers.is_some_and(|cs| !cs.is_empty() && cs.iter().all(|c| c.ready));
+        let restarts = containers.map_or(0, |cs| cs.iter().map(|c| c.restart_count).sum());
+        let reason = containers
+            .and_then(|cs| {
+                cs.iter().find_map(|c| {
+                    let state = c.state.as_ref()?;
+                    state
+                        .waiting
+                        .as_ref()
+                        .and_then(|w| w.reason.clone())
+                        .or_else(|| state.terminated.as_ref().and_then(|t| t.reason.clone()))
+                })
+            })
+            .or_else(|| status.and_then(|s| s.reason.clone()));
+        Self {
+            key: format!("{namespace}/{name}"),
+            namespace,
+            name,
+            org: labels.get(labels::ORG).cloned(),
+            app: labels.get(labels::APP).cloned(),
+            process: labels.get(labels::PROCESS).cloned(),
+            phase: PodPhase::from(status.and_then(|s| s.phase.as_deref())),
+            ready,
+            restarts,
+            reason,
+            node: pod.spec.as_ref().and_then(|s| s.node_name.clone()),
+            started_at: status
+                .and_then(|s| s.start_time.as_ref())
+                .map(|t| t.0.to_string()),
+        }
+    }
