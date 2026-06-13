@@ -108,3 +108,15 @@ async fn apply(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result<A
         .patch(
             resources::NETPOL_NAME,
             &pp,
+            &Patch::Apply(resources::network_policy(env)),
+        )
+        .await?;
+
+    write_status(api, env, "Ready", None, "Provisioned", "", true).await?;
+    Ok(Action::requeue(Duration::from_mins(10)))
+}
+
+async fn cleanup(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result<Action> {
+    let ns = resources::namespace_name(&env.name_any());
+    let namespaces = Api::<Namespace>::all(ctx.client.clone());
+    match env.spec.deletion_policy {
