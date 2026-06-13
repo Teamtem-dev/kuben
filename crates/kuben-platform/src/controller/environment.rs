@@ -120,3 +120,15 @@ async fn cleanup(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result
     let ns = resources::namespace_name(&env.name_any());
     let namespaces = Api::<Namespace>::all(ctx.client.clone());
     match env.spec.deletion_policy {
+        DeletionPolicy::Retain => {
+            // Hand the namespace back: Kuben stops managing it, the data stays.
+            let release =
+                json!({ "metadata": { "labels": { labels::MANAGED_BY: null, labels::ENVIRONMENT: null } } });
+            if let Err(e) = namespaces
+                .patch(&ns, &PatchParams::default(), &Patch::Merge(&release))
+                .await
+                && !is_not_found(&e)
+            {
+                return Err(e.into());
+            }
+        }
