@@ -133,3 +133,16 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
             (Some(_), true, _) => (true, "RouteApplied", ""),
             (Some(_), false, _) => (
                 false,
+                "GatewayAPIMissing",
+                "the Gateway API CRDs are not installed",
+            ),
+            (None, _, None) => (
+                false,
+                "NoGateway",
+                "set spec.gateway in KubenConfig to expose apps",
+            ),
+            (None, _, Some(_)) => (
+                false,
+                "NoHostname",
+                "add a domain or set spec.baseDomain in KubenConfig",
+            ),
