@@ -510,3 +510,106 @@ fn probes(app: &App, port: u16) -> (Probe, Probe, Option<Probe>) {
     let base = Probe {
         http_get,
         tcp_socket,
+        timeout_seconds: Some(3),
+        ..Probe::default()
+    };
+    let readiness = Probe {
+        period_seconds: Some(10),
+        failure_threshold: Some(3),
+        ..base.clone()
+    };
+    let startup = Probe {
+        period_seconds: Some(5),
+        failure_threshold: Some(60),
+        ..base.clone()
+    };
+    let liveness = health.map(|_| Probe {
+        period_seconds: Some(20),
+        timeout_seconds: Some(5),
+        failure_threshold: Some(3),
+        ..base
+    });
+    (readiness, startup, liveness)
+}
+
+fn hardened() -> SecurityContext {
+    SecurityContext {
+        allow_privilege_escalation: Some(false),
+        capabilities: Some(Capabilities {
+            drop: Some(vec!["NET_RAW".into()]),
+            add: None,
+        }),
+        seccomp_profile: Some(SeccompProfile {
+            type_: "RuntimeDefault".into(),
+            localhost_profile: None,
+        }),
+        ..SecurityContext::default()
+    }
+}
+
+/// One container per process. `serve`: long-running (gets probes).
+fn container(
+    app: &App,
+    name: &str,
+    process: &Process,
+    image: &str,
+    preset: &SizePreset,
+    serve: bool,
+) -> Container {
+    let (readiness_probe, startup_probe, liveness_probe) = match process.port.filter(|_| serve) {
+        Some(port) => {
+            let (r, s, l) = probes(app, port);
+            (Some(r), Some(s), l)
+        }
+        None => (None, None, None),
+    };
+    Container {
+        name: name.to_owned(),
+        image: Some(image.to_owned()),
+        command: (!process.command.is_empty()).then(|| process.command.clone()),
+        ports: process.port.map(|p| {
+            vec![ContainerPort {
+                name: Some(if process.protocol.is_http() { "http" } else { "tcp" }.into()),
+                container_port: i32::from(p),
+                protocol: Some("TCP".into()),
+                ..ContainerPort::default()
+            }]
+        }),
+        env: Some(env_vars(app, process.port)),
+        resources: Some(resources(preset)),
+        readiness_probe,
+        startup_probe,
+        liveness_probe,
+        volume_mounts: (!app.spec.volumes.is_empty()).then(|| {
+            app.spec
+                .volumes
+                .iter()
+                .map(|v| VolumeMount {
+                    name: v.name.clone(),
+                    mount_path: v.mount_path.clone(),
+                    ..VolumeMount::default()
+                })
+                .collect()
+        }),
+        security_context: Some(hardened()),
+        ..Container::default()
+    }
+}
+
+fn pod_spec(app: &App, container: Container, restart_policy: Option<&str>) -> PodSpec {
+    PodSpec {
+        containers: vec![container],
+        volumes: (!app.spec.volumes.is_empty()).then(|| {
+            app.spec
+                .volumes
+                .iter()
+                .map(|v| PodVolume {
+                    name: v.name.clone(),
+                    persistent_volume_claim: Some(PersistentVolumeClaimVolumeSource {
+                        claim_name: pvc_name(&app.name_any(), &v.name),
+                        read_only: None,
+                    }),
+                    ..PodVolume::default()
+                })
+                .collect()
+        }),
