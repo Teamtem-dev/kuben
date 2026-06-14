@@ -405,3 +405,71 @@ mod tests {
         assert_eq!(capped.skipped.len(), 70 - (MAX_LISTENERS - 1));
         assert_eq!(plan_listeners(&many, &platform(false)), capped, "deterministic");
     }
+
+    #[test]
+    fn gateway_patch_and_redirect_route() {
+        let p = platform(false);
+        let gw = p.gateway.clone().expect("gateway");
+        let plan = plan_listeners(&hosts(&[("api.acme.com", "kb-a")]), &p);
+        let patch = gateway_patch(&gw, "letsencrypt", &plan);
+        assert_eq!(patch["metadata"]["annotations"][ISSUER_ANNOTATION], "letsencrypt");
+        assert_eq!(patch["spec"]["listeners"].as_array().map(Vec::len), Some(2));
+        let route = redirect_route(&gw);
+        assert_eq!(route["spec"]["parentRefs"][0]["sectionName"], HTTP_LISTENER);
+        assert_eq!(
+            route["spec"]["rules"][0]["filters"][0]["requestRedirect"]["scheme"],
+            "https"
+        );
+    }
+
+    #[test]
+    fn only_http_web_processes_are_routed() {
+        let view = |name: &str, protocol: &str, schedule: Option<&str>| {
+            Arc::new(AppView {
+                key: format!("kb-shop-prod/{name}"),
+                namespace: "kb-shop-prod".into(),
+                name: name.into(),
+                uid: None,
+                org: None,
+                project: Some("shop".into()),
+                environment: Some("shop-prod".into()),
+                image: None,
+                git_repo: None,
+                url: None,
+                ready: true,
+                reason: None,
+                message: None,
+                processes: vec![ProcessView {
+                    name: "web".into(),
+                    command: vec![],
+                    port: schedule.is_none().then_some(80),
+                    size: "small".into(),
+                    min_replicas: 1,
+                    max_replicas: 1,
+                    schedule: schedule.map(str::to_owned),
+                    protocol: protocol.into(),
+                }],
+                env: vec![],
+                domains: vec![format!("{name}.acme.com")],
+                volumes: vec![],
+                created_at: None,
+            })
+        };
+        let apps = vec![
+            view("api", "http", None),
+            view("db", "tcp", None),
+            view("job", "http", Some("@daily")),
+        ];
+        let got = routed_hosts(&apps, &platform(false));
+        assert_eq!(
+            got,
+            vec![
+                ("api.acme.com".to_owned(), "kb-shop-prod".to_owned()),
+                (
+                    "api-shop-prod.apps.example.com".to_owned(),
+                    "kb-shop-prod".to_owned()
+                ),
+            ]
+        );
+    }
+}
