@@ -146,3 +146,17 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
                 "NoHostname",
                 "add a domain or set spec.baseDomain in KubenConfig",
             ),
+        };
+        conditions.push(condition(previous, EXPOSED, ok, reason, msg, generation));
+    }
+    let url = routed.then(|| resources::url(&app, &platform)).flatten();
+    write_status(&apps, &app, url, conditions).await?;
+
+    ctx.succeeded(app.as_ref());
+    // Owned Deployments re-trigger us on rollout progress; the timer is a safety net.
+    Ok(Action::requeue(if ready {
+        Duration::from_mins(10)
+    } else {
+        Duration::from_secs(30)
+    }))
+}
