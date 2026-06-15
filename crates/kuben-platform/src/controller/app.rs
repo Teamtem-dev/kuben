@@ -187,3 +187,16 @@ where
         let owned = obj.owner_references().iter().any(|r| r.uid == owner_uid);
         let name = obj.name_any();
         if owned && !keep.contains(name.as_str()) {
+            delete_if_exists(api, &name).await?;
+            tracing::info!(%name, "pruned object removed from the app spec");
+        }
+    }
+    Ok(())
+}
+
+async fn delete_if_exists<K>(api: &Api<K>, name: &str) -> Result<()>
+where
+    K: Resource + Clone + DeserializeOwned + Debug,
+{
+    match api.delete(name, &DeleteParams::background()).await {
+        Ok(_) => Ok(()),
