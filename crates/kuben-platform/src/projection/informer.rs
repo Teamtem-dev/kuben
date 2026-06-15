@@ -28,3 +28,18 @@ pub async fn run(
     let client = registry.primary();
     tokio::select! {
         r = watch_pods(client.clone(), projections.clone(), token.child_token()) => r,
+        r = watch_projects(client.clone(), projections.clone(), token.child_token()) => r,
+        r = watch_environments(client.clone(), projections.clone(), token.child_token()) => r,
+        r = watch_apps(client, projections, token.child_token()) => r,
+        () = token.cancelled() => Ok(()),
+    }
+}
+
+/// A generic watch loop. `on_event` receives every event; `Init*` events are
+/// staged and swapped in at `InitDone` so readers never see a half-empty set.
+async fn watch_kind<K, F>(
+    api: Api<K>,
+    cfg: watcher::Config,
+    token: CancellationToken,
+    mut on_event: F,
+) -> anyhow::Result<()>
