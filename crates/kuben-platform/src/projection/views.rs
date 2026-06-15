@@ -122,3 +122,34 @@ impl From<&Project> for ProjectView {
             deleting: p.metadata.deletion_timestamp.is_some(),
             created_at: p.creation_timestamp().map(|t| t.0.to_string()),
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct EnvironmentView {
+    pub name: String,
+    pub uid: Option<String>,
+    pub project: String,
+    pub org: Option<String>,
+    /// `standard | production | preview`.
+    pub env_type: &'static str,
+    pub namespace: String,
+    /// `Pending | Ready | Terminating | Degraded`.
+    pub phase: Option<String>,
+    pub ready: bool,
+    pub message: Option<String>,
+    pub deleting: bool,
+    pub deletion_scheduled_at: Option<String>,
+    pub created_at: Option<String>,
+}
+
+impl From<&Environment> for EnvironmentView {
+    fn from(e: &Environment) -> Self {
+        let status = e.status.as_ref();
+        let ready = status.and_then(|s| ready_condition(&s.conditions));
+        Self {
+            name: e.name_any(),
+            uid: e.uid(),
+            project: e.spec.project.clone(),
+            org: e.labels().get(labels::ORG).cloned(),
+            env_type: match e.spec.type_ {
