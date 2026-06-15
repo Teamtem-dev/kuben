@@ -160,3 +160,16 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
         Duration::from_secs(30)
     }))
 }
+
+async fn apply_all<K>(api: &Api<K>, objects: &[K]) -> Result<()>
+where
+    K: Resource + Clone + Serialize + DeserializeOwned + Debug,
+{
+    let pp = PatchParams::apply(FIELD_MANAGER).force();
+    for obj in objects {
+        let name = obj
+            .meta()
+            .name
+            .as_deref()
+            .ok_or(Error::Missing("metadata.name"))?;
+        api.patch(name, &pp, &Patch::Apply(obj)).await?;
