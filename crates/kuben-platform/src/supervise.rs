@@ -29,3 +29,14 @@ where
         let handle = tokio::spawn(make(token.child_token()));
         let outcome = handle.await;
         if token.is_cancelled() {
+            return;
+        }
+        match outcome {
+            Ok(Ok(())) => {
+                health.ok(name);
+                return;
+            }
+            Ok(Err(e)) => {
+                health.degraded(name, &e.to_string());
+                metrics::counter!("kuben_subsystem_failures_total", "subsystem" => name).increment(1);
+                tracing::error!(subsystem = name, error = %e, "subsystem failed; restarting");
