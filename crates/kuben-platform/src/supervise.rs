@@ -40,3 +40,13 @@ where
                 health.degraded(name, &e.to_string());
                 metrics::counter!("kuben_subsystem_failures_total", "subsystem" => name).increment(1);
                 tracing::error!(subsystem = name, error = %e, "subsystem failed; restarting");
+            }
+            Err(join) if join.is_panic() => {
+                health.degraded(name, "panic");
+                metrics::counter!("kuben_subsystem_panics_total", "subsystem" => name).increment(1);
+                tracing::error!(subsystem = name, "subsystem panicked; restarting");
+            }
+            Err(_) => return, // cancelled
+        }
+        let delay = backoff.next().unwrap_or(Duration::from_mins(1));
+        tokio::select! {
