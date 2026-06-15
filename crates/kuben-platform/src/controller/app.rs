@@ -173,3 +173,17 @@ where
             .as_deref()
             .ok_or(Error::Missing("metadata.name"))?;
         api.patch(name, &pp, &Patch::Apply(obj)).await?;
+    }
+    Ok(())
+}
+
+/// Delete children of this App (by owner uid) that are no longer desired.
+async fn prune<K>(api: &Api<K>, selector: &str, owner_uid: &str, keep: &[K]) -> Result<()>
+where
+    K: Resource + Clone + DeserializeOwned + Debug,
+{
+    let keep: BTreeSet<&str> = keep.iter().filter_map(|o| o.meta().name.as_deref()).collect();
+    for obj in api.list(&ListParams::default().labels(selector)).await?.items {
+        let owned = obj.owner_references().iter().any(|r| r.uid == owner_uid);
+        let name = obj.name_any();
+        if owned && !keep.contains(name.as_str()) {
