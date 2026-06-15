@@ -91,3 +91,34 @@ impl From<&Pod> for PodView {
                 .map(|t| t.0.to_string()),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ProjectView {
+    pub name: String,
+    pub uid: Option<String>,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub org: Option<String>,
+    pub environments: u32,
+    pub ready: bool,
+    pub deleting: bool,
+    pub created_at: Option<String>,
+}
+
+impl From<&Project> for ProjectView {
+    fn from(p: &Project) -> Self {
+        let status = p.status.as_ref();
+        Self {
+            name: p.name_any(),
+            uid: p.uid(),
+            display_name: p.spec.display_name.clone(),
+            description: p.spec.description.clone(),
+            org: p.labels().get(labels::ORG).cloned(),
+            environments: status.map_or(0, |s| s.environments),
+            ready: status
+                .and_then(|s| ready_condition(&s.conditions))
+                .is_some_and(|c| c.status == "True"),
+            deleting: p.metadata.deletion_timestamp.is_some(),
+            created_at: p.creation_timestamp().map(|t| t.0.to_string()),
+        }
