@@ -14,3 +14,19 @@ activator = []
 [dependencies]
 kuben-core.workspace = true
 kuben-crd.workspace = true
+kube.workspace = true
+k8s-openapi.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dashmap.workspace = true
+backon.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+metrics.workspace = true
+
+[lints]
+workspace = true
