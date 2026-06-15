@@ -29,3 +29,19 @@ pub struct Subsystem {
     pub last_error: Option<String>,
     pub updated_at_ms: i64,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct Health {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    ready: AtomicBool,
+    /// Last watchdog heartbeat (unix ms). `/livez` fails if this goes stale.
+    heartbeat: AtomicI64,
+    subsystems: DashMap<&'static str, Subsystem>,
+}
+
+impl Default for Inner {
+    fn default() -> Self {
