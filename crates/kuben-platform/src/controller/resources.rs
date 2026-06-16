@@ -613,3 +613,105 @@ fn pod_spec(app: &App, container: Container, restart_policy: Option<&str>) -> Po
                 })
                 .collect()
         }),
+        restart_policy: restart_policy.map(str::to_owned),
+        automount_service_account_token: Some(false),
+        enable_service_links: Some(false),
+        security_context: Some(PodSecurityContext {
+            seccomp_profile: Some(SeccompProfile {
+                type_: "RuntimeDefault".into(),
+                localhost_profile: None,
+            }),
+            fs_group: app.spec.runtime.fs_group,
+            fs_group_change_policy: app.spec.runtime.fs_group.map(|_| "OnRootMismatch".to_owned()),
+            ..PodSecurityContext::default()
+        }),
+        termination_grace_period_seconds: Some(30),
+        ..PodSpec::default()
+    }
+}
+
+fn preset<'a>(platform: &'a Platform, pname: &str, process: &Process) -> Result<&'a SizePreset, BuildError> {
+    platform
+        .size(&process.size)
+        .ok_or_else(|| BuildError::UnknownSize {
+            process: pname.to_owned(),
+            size: process.size.clone(),
+        })
+}
+
+/// Autoscaling is on when `max > min`; then the HPA owns `replicas`.
+const fn autoscaled(p: &Process) -> bool {
+    p.replicas.max > p.replicas.min && p.schedule.is_none()
+}
+
+/// One Deployment per long-running process.
+pub fn deployments(
+    app: &App,
+    platform: &Platform,
+    owner: &OwnerReference,
+) -> Result<Vec<Deployment>, BuildError> {
+    validate(app)?;
+    let image = image(app)?;
+    let restarted_at = app.annotations().get(RESTARTED_AT).cloned();
+    // ReadWriteOnce volumes cannot be attached to the old and new pod at once.
+    let strategy = if app.spec.volumes.is_empty() {
+        DeploymentStrategy {
+            type_: Some("RollingUpdate".into()),
+            rolling_update: Some(RollingUpdateDeployment {
+                max_surge: Some(IntOrString::Int(1)),
+                max_unavailable: Some(IntOrString::Int(0)),
+            }),
+        }
+    } else {
+        DeploymentStrategy {
+            type_: Some("Recreate".into()),
+            rolling_update: None,
+        }
+    };
+    let mut out = Vec::new();
+    for (pname, process) in long_running(app) {
+        let container = container(
+            app,
+            pname,
+            process,
+            image,
+            preset(platform, pname, process)?,
+            true,
+        );
+        let pod_annotations = restarted_at
+            .as_ref()
+            .map(|at| BTreeMap::from([(RESTARTED_AT.to_owned(), at.clone())]));
+        out.push(Deployment {
+            metadata: ObjectMeta {
+                name: Some(workload_name(&app.name_any(), pname)),
+                namespace: app.namespace(),
+                labels: Some(app_labels(app, Some(pname))),
+                owner_references: Some(vec![owner.clone()]),
+                ..ObjectMeta::default()
+            },
+            spec: Some(DeploymentSpec {
+                replicas: (!autoscaled(process))
+                    .then(|| i32::try_from(process.replicas.min).unwrap_or(i32::MAX)),
+                revision_history_limit: Some(5),
+                progress_deadline_seconds: Some(600),
+                selector: LabelSelector {
+                    match_labels: Some(selector(app, pname)),
+                    match_expressions: None,
+                },
+                strategy: Some(strategy.clone()),
+                template: PodTemplateSpec {
+                    metadata: Some(ObjectMeta {
+                        labels: Some(app_labels(app, Some(pname))),
+                        annotations: pod_annotations,
+                        ..ObjectMeta::default()
+                    }),
+                    spec: Some(pod_spec(app, container, None)),
+                },
+                ..DeploymentSpec::default()
+            }),
+            ..Deployment::default()
+        });
+    }
+    Ok(out)
+}
+
