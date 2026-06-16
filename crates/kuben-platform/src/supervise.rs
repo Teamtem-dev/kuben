@@ -50,3 +50,14 @@ where
         }
         let delay = backoff.next().unwrap_or(Duration::from_mins(1));
         tokio::select! {
+            () = token.cancelled() => return,
+            () = tokio::time::sleep(delay) => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
