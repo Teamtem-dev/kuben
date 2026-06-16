@@ -43,3 +43,18 @@ async fn watch_kind<K, F>(
     token: CancellationToken,
     mut on_event: F,
 ) -> anyhow::Result<()>
+where
+    K: Resource + Clone + DeserializeOwned + Debug + Send + 'static,
+    K::DynamicType: Default,
+    F: FnMut(Event<K>) + Send,
+{
+    let stream = watcher(api, cfg)
+        .default_backoff()
+        .modify(|obj| obj.managed_fields_mut().clear())
+        .map_ok(|ev| match ev {
+            watcher::Event::Init => Event::Init,
+            watcher::Event::InitApply(o) => Event::InitApply(o),
+            watcher::Event::InitDone => Event::InitDone,
+            watcher::Event::Apply(o) => Event::Apply(o),
+            watcher::Event::Delete(o) => Event::Delete(o),
+        });
