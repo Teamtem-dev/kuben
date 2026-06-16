@@ -132,3 +132,15 @@ async fn cleanup(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result
                 return Err(e.into());
             }
         }
+        DeletionPolicy::Delete => {
+            let grace = env
+                .spec
+                .protection
+                .as_ref()
+                .and_then(|p| duration::parse(&p.deletion_grace))
+                .unwrap_or(Duration::ZERO);
+            let now_ms = Timestamp::now().as_millisecond();
+            let deleted_ms = env
+                .metadata
+                .deletion_timestamp
+                .as_ref()
