@@ -60,3 +60,34 @@ pub enum Decision {
 }
 
 /// The decision rule. `unchanged_for` is how long this replica has observed
+/// the Lease without any change to it.
+#[must_use]
+pub fn decide(spec: Option<&LeaseSpec>, me: &str, unchanged_for: Duration) -> Decision {
+    let Some(spec) = spec else {
+        return Decision::Create;
+    };
+    match spec.holder_identity.as_deref() {
+        Some(holder) if holder == me => Decision::Renew,
+        None | Some("") => Decision::TakeOver,
+        Some(_) => {
+            let duration = spec
+                .lease_duration_seconds
+                .and_then(|s| u64::try_from(s).ok())
+                .map_or(LEASE_DURATION, Duration::from_secs);
+            if unchanged_for >= duration {
+                Decision::TakeOver
+            } else {
+                Decision::Wait
+            }
+        }
+    }
+}
+
+struct Elector {
+    api: Api<Lease>,
+    identity: String,
+    /// `resourceVersion` last seen, and when this replica first saw it.
+    observed: Option<(String, Instant)>,
+}
+
+impl Elector {
