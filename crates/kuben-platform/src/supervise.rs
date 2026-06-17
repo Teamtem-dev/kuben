@@ -61,3 +61,14 @@ mod tests {
     use std::sync::{
         Arc,
         atomic::{AtomicU32, Ordering},
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn restarts_after_failure_then_succeeds() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let health = Health::new();
+        let token = CancellationToken::new();
+        let a = attempts.clone();
+        tokio::time::timeout(
