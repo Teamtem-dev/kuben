@@ -144,3 +144,15 @@ async fn cleanup(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result
                 .metadata
                 .deletion_timestamp
                 .as_ref()
+                .map_or(now_ms, |t| t.0.as_millisecond());
+            let purge_ms = deleted_ms.saturating_add(i64::try_from(grace.as_millis()).unwrap_or(i64::MAX));
+            if now_ms < purge_ms {
+                let at = Timestamp::from_millisecond(purge_ms).ok().map(|t| t.to_string());
+                let msg = "the namespace is deleted when the grace period ends";
+                write_status(api, env, "Terminating", at, "DeletionScheduled", msg, false).await?;
+                let remaining = Duration::from_millis(u64::try_from(purge_ms - now_ms).unwrap_or(0));
+                return Ok(Action::requeue(remaining.min(Duration::from_hours(1))));
+            }
+            if let Some(existing) = namespaces.get_opt(&ns).await? {
+                if existing.metadata.deletion_timestamp.is_none() {
+                    namespaces.delete(&ns, &DeleteParams::background()).await?;
