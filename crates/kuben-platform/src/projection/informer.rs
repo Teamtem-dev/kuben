@@ -58,3 +58,18 @@ where
             watcher::Event::Apply(o) => Event::Apply(o),
             watcher::Event::Delete(o) => Event::Delete(o),
         });
+    let mut stream = std::pin::pin!(stream.take_until(token.cancelled_owned()));
+    while let Some(ev) = stream.try_next().await? {
+        on_event(ev);
+    }
+    Ok(())
+}
+
+/// Backend-agnostic watch event (mirrors `kube::runtime::watcher::Event`).
+#[derive(Debug)]
+pub enum Event<K> {
+    Init,
+    InitApply(K),
+    InitDone,
+    Apply(K),
+    Delete(K),
