@@ -153,3 +153,35 @@ impl From<&Environment> for EnvironmentView {
             project: e.spec.project.clone(),
             org: e.labels().get(labels::ORG).cloned(),
             env_type: match e.spec.type_ {
+                EnvironmentType::Standard => "standard",
+                EnvironmentType::Production => "production",
+                EnvironmentType::Preview => "preview",
+            },
+            namespace: status
+                .and_then(|s| s.namespace.clone())
+                .unwrap_or_else(|| namespace_name(&e.name_any())),
+            phase: status.and_then(|s| s.phase.clone()),
+            ready: ready.is_some_and(|c| c.status == "True"),
+            message: ready.and_then(|c| c.message.clone()),
+            deleting: e.metadata.deletion_timestamp.is_some(),
+            deletion_scheduled_at: status.and_then(|s| s.deletion_scheduled_at.clone()),
+            created_at: e.creation_timestamp().map(|t| t.0.to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ProcessView {
+    pub name: String,
+    pub command: Vec<String>,
+    pub port: Option<u16>,
+    pub size: String,
+    pub min_replicas: u32,
+    pub max_replicas: u32,
+    /// Cron expression for scheduled processes.
+    pub schedule: Option<String>,
+    /// `http` or `tcp`.
+    pub protocol: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
