@@ -715,3 +715,106 @@ pub fn deployments(
     Ok(out)
 }
 
+/// One CronJob per scheduled process (scenario 7). Overlapping runs are
+/// skipped (`Forbid`), a run that could not start within 5 minutes is
+/// dropped, and finished Jobs are garbage-collected after a day.
+pub fn cron_jobs(app: &App, platform: &Platform, owner: &OwnerReference) -> Result<Vec<CronJob>, BuildError> {
+    validate(app)?;
+    let scheduled: Vec<(&String, &Process)> = app
+        .spec
+        .runtime
+        .processes
+        .iter()
+        .filter(|(_, p)| p.schedule.is_some())
+        .collect();
+    if scheduled.is_empty() {
+        return Ok(Vec::new());
+    }
+    let image = image(app)?;
+    let mut out = Vec::with_capacity(scheduled.len());
+    for (pname, process) in scheduled {
+        let container = container(
+            app,
+            pname,
+            process,
+            image,
+            preset(platform, pname, process)?,
+            false,
+        );
+        out.push(CronJob {
+            metadata: ObjectMeta {
+                name: Some(workload_name(&app.name_any(), pname)),
+                namespace: app.namespace(),
+                labels: Some(app_labels(app, Some(pname))),
+                owner_references: Some(vec![owner.clone()]),
+                ..ObjectMeta::default()
+            },
+            spec: Some(CronJobSpec {
+                schedule: process.schedule.clone().unwrap_or_default(),
+                time_zone: process.time_zone.clone(),
+                concurrency_policy: Some("Forbid".into()),
+                starting_deadline_seconds: Some(300),
+                successful_jobs_history_limit: Some(3),
+                failed_jobs_history_limit: Some(3),
+                job_template: JobTemplateSpec {
+                    metadata: Some(ObjectMeta {
+                        labels: Some(app_labels(app, Some(pname))),
+                        ..ObjectMeta::default()
+                    }),
+                    spec: Some(JobSpec {
+                        backoff_limit: Some(1),
+                        active_deadline_seconds: Some(3600),
+                        ttl_seconds_after_finished: Some(86_400),
+                        template: PodTemplateSpec {
+                            metadata: Some(ObjectMeta {
+                                labels: Some(app_labels(app, Some(pname))),
+                                ..ObjectMeta::default()
+                            }),
+                            spec: Some(pod_spec(app, container, Some("Never"))),
+                        },
+                        ..JobSpec::default()
+                    }),
+                },
+                ..CronJobSpec::default()
+            }),
+            status: None,
+        });
+    }
+    Ok(out)
+}
+
+/// A one-off Job from a CronJob's template ("run now"), equivalent to
+/// `kubectl create job --from=cronjob/<name>`.
+#[must_use]
+pub fn job_from_cron(cron: &CronJob, name: &str) -> Option<Job> {
+    let template = cron.spec.as_ref()?.job_template.clone();
+    let job_labels = template.metadata.as_ref().and_then(|m| m.labels.clone());
+    Some(Job {
+        metadata: ObjectMeta {
+            name: Some(name.to_owned()),
+            namespace: cron.metadata.namespace.clone(),
+            labels: job_labels,
+            annotations: Some(BTreeMap::from([(
+                "cronjob.kubernetes.io/instantiate".to_owned(),
+                "manual".to_owned(),
+            )])),
+            owner_references: cron.metadata.uid.clone().map(|uid| {
+                vec![OwnerReference {
+                    api_version: "batch/v1".into(),
+                    kind: "CronJob".into(),
+                    name: cron.name_any(),
+                    uid,
+                    controller: Some(false),
+                    block_owner_deletion: None,
+                }]
+            }),
+            ..ObjectMeta::default()
+        },
+        spec: template.spec,
+        status: None,
+    })
+}
+
+#[must_use]
+pub fn pvc_name(app: &str, volume: &str) -> String {
+    format!("{app}-{volume}")
