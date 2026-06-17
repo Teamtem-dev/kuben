@@ -45,3 +45,19 @@ struct Inner {
 
 impl Default for Inner {
     fn default() -> Self {
+        Self {
+            ready: AtomicBool::new(false),
+            heartbeat: AtomicI64::new(now_ms()),
+            subsystems: DashMap::new(),
+        }
+    }
+}
+
+fn now_ms() -> i64 {
+    i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis()),
+    )
+    .unwrap_or(i64::MAX)
+}
