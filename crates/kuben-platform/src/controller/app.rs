@@ -200,3 +200,17 @@ where
 {
     match api.delete(name, &DeleteParams::background()).await {
         Ok(_) => Ok(()),
+        Err(e) if is_not_found(&e) => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Apply or remove the HTTPRoute. `Ok(false)` when there is nothing routed
+/// (no route desired, or the Gateway API CRDs are missing).
+async fn sync_route(
+    client: &Client,
+    ns: &str,
+    name: &str,
+    route: Option<&serde_json::Value>,
+) -> Result<bool> {
+    let gvk = GroupVersionKind::gvk("gateway.networking.k8s.io", "v1", "HTTPRoute");
