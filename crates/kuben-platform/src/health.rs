@@ -61,3 +61,19 @@ fn now_ms() -> i64 {
     )
     .unwrap_or(i64::MAX)
 }
+
+impl Health {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_ready(&self, ready: bool) {
+        self.inner.ready.store(ready, Ordering::SeqCst);
+    }
+
+    #[must_use]
+    pub fn is_ready(&self) -> bool {
+        self.inner.ready.load(Ordering::SeqCst)
+    }
+
