@@ -123,3 +123,34 @@ impl Elector {
                 let lease = Lease {
                     metadata: ObjectMeta {
                         name: Some(LEASE_NAME.into()),
+                        ..ObjectMeta::default()
+                    },
+                    spec: Some(LeaseSpec {
+                        holder_identity: Some(self.identity.clone()),
+                        lease_duration_seconds: Some(LEASE_SECONDS),
+                        acquire_time: Some(now.clone()),
+                        renew_time: Some(now),
+                        lease_transitions: Some(0),
+                        ..LeaseSpec::default()
+                    }),
+                };
+                self.api.create(&PostParams::default(), &lease).await
+            }
+            (decision, Some(mut lease)) => {
+                let spec = lease.spec.get_or_insert_with(LeaseSpec::default);
+                if decision == Decision::TakeOver {
+                    spec.holder_identity = Some(self.identity.clone());
+                    spec.acquire_time = Some(now.clone());
+                    spec.lease_transitions = Some(spec.lease_transitions.unwrap_or(0).saturating_add(1));
+                }
+                spec.lease_duration_seconds = Some(LEASE_SECONDS);
+                spec.renew_time = Some(now);
+                // `replace` carries the resourceVersion we read: a concurrent
+                // writer makes this a 409 instead of a second leader.
+                self.api.replace(LEASE_NAME, &PostParams::default(), &lease).await
+            }
+            // `decide` only returns Renew/TakeOver for an existing Lease.
+            (_, None) => return Ok(false),
+        };
+        match written {
+            Ok(lease) => {
