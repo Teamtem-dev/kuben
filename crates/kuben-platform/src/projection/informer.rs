@@ -73,3 +73,18 @@ pub enum Event<K> {
     InitDone,
     Apply(K),
     Delete(K),
+}
+
+async fn watch_pods(
+    client: Client,
+    projections: Arc<Projections>,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let api = Api::<Pod>::all(client);
+    let cfg = watcher::Config::default()
+        .labels(labels::MANAGED_SELECTOR)
+        .page_size(PAGE_SIZE);
+    let mut staging: Vec<PodView> = Vec::new();
+    watch_kind(api, cfg, token, move |ev| match ev {
+        Event::Init => staging.clear(),
+        Event::InitApply(p) => staging.push(PodView::from(&p)),
