@@ -818,3 +818,105 @@ pub fn job_from_cron(cron: &CronJob, name: &str) -> Option<Job> {
 #[must_use]
 pub fn pvc_name(app: &str, volume: &str) -> String {
     format!("{app}-{volume}")
+}
+
+/// PVCs for the app's volumes (scenario 6). Deliberately **without** an
+/// ownerReference: deleting an App never deletes its data; the API removes
+/// them only on an explicit `delete_volumes=true`.
+#[must_use]
+pub fn persistent_volume_claims(app: &App) -> Vec<PersistentVolumeClaim> {
+    app.spec
+        .volumes
+        .iter()
+        .map(|v| PersistentVolumeClaim {
+            metadata: ObjectMeta {
+                name: Some(pvc_name(&app.name_any(), &v.name)),
+                namespace: app.namespace(),
+                labels: Some(app_labels(app, None)),
+                annotations: Some(BTreeMap::from([(RETAIN.to_owned(), "true".to_owned())])),
+                ..ObjectMeta::default()
+            },
+            spec: Some(PersistentVolumeClaimSpec {
+                access_modes: Some(vec!["ReadWriteOnce".into()]),
+                storage_class_name: v.storage_class.clone(),
+                resources: Some(VolumeResourceRequirements {
+                    requests: Some(BTreeMap::from([("storage".to_owned(), q(&v.size))])),
+                    limits: None,
+                }),
+                ..PersistentVolumeClaimSpec::default()
+            }),
+            ..PersistentVolumeClaim::default()
+        })
+        .collect()
+}
+
+/// HPAs for autoscaled processes (target: 80 % CPU of the request).
+#[must_use]
+pub fn autoscalers(app: &App, owner: &OwnerReference) -> Vec<HorizontalPodAutoscaler> {
+    app.spec
+        .runtime
+        .processes
+        .iter()
+        .filter(|(_, p)| autoscaled(p))
+        .map(|(pname, p)| {
+            let name = workload_name(&app.name_any(), pname);
+            HorizontalPodAutoscaler {
+                metadata: ObjectMeta {
+                    name: Some(name.clone()),
+                    namespace: app.namespace(),
+                    labels: Some(app_labels(app, Some(pname))),
+                    owner_references: Some(vec![owner.clone()]),
+                    ..ObjectMeta::default()
+                },
+                spec: Some(HorizontalPodAutoscalerSpec {
+                    scale_target_ref: CrossVersionObjectReference {
+                        api_version: Some("apps/v1".into()),
+                        kind: "Deployment".into(),
+                        name,
+                    },
+                    min_replicas: Some(i32::try_from(p.replicas.min.max(1)).unwrap_or(1)),
+                    max_replicas: i32::try_from(p.replicas.max).unwrap_or(i32::MAX),
+                    metrics: Some(vec![MetricSpec {
+                        type_: "Resource".into(),
+                        resource: Some(ResourceMetricSource {
+                            name: "cpu".into(),
+                            target: MetricTarget {
+                                type_: "Utilization".into(),
+                                average_utilization: Some(80),
+                                ..MetricTarget::default()
+                            },
+                        }),
+                        ..MetricSpec::default()
+                    }]),
+                    behavior: None,
+                }),
+                ..HorizontalPodAutoscaler::default()
+            }
+        })
+        .collect()
+}
+
+/// ClusterIP Service in front of the web process. HTTP: `:80` → container
+/// port (the gateway routes here). TCP: the real port, cluster-internal only.
+pub fn service(app: &App, owner: &OwnerReference) -> Result<Option<Service>, BuildError> {
+    let Some((pname, process)) = web_process(app)? else {
+        return Ok(None);
+    };
+    let target = process.port.map_or(8080, i32::from);
+    let http = process.protocol.is_http();
+    Ok(Some(Service {
+        metadata: ObjectMeta {
+            name: Some(app.name_any()),
+            namespace: app.namespace(),
+            labels: Some(app_labels(app, None)),
+            owner_references: Some(vec![owner.clone()]),
+            ..ObjectMeta::default()
+        },
+        spec: Some(ServiceSpec {
+            type_: Some("ClusterIP".into()),
+            selector: Some(selector(app, pname)),
+            ports: Some(vec![ServicePort {
+                name: Some(if http { "http" } else { "tcp" }.into()),
+                port: if http { SERVICE_PORT } else { target },
+                target_port: Some(IntOrString::Int(target)),
+                protocol: Some("TCP".into()),
