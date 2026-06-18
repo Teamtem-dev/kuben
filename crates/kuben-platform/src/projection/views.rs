@@ -185,3 +185,34 @@ pub struct ProcessView {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct VolumeView {
+    pub name: String,
+    pub mount_path: String,
+    pub size: String,
+}
+
+/// Environment variable *reference*. Values never travel through the shared
+/// stream; the app detail endpoint returns them after an authorization check.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct EnvVarRef {
+    pub name: String,
+    /// `secret/key` for secret-backed variables.
+    pub secret: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AppView {
+    /// `namespace/name`.
+    pub key: String,
+    pub namespace: String,
+    pub name: String,
+    pub uid: Option<String>,
+    pub org: Option<String>,
+    pub project: Option<String>,
+    pub environment: Option<String>,
+    pub image: Option<String>,
+    pub git_repo: Option<String>,
+    pub url: Option<String>,
+    pub ready: bool,
+    pub reason: Option<String>,
+    pub message: Option<String>,
