@@ -214,3 +214,16 @@ async fn sync_route(
     route: Option<&serde_json::Value>,
 ) -> Result<bool> {
     let gvk = GroupVersionKind::gvk("gateway.networking.k8s.io", "v1", "HTTPRoute");
+    let resource = ApiResource::from_gvk_with_plural(&gvk, "httproutes");
+    let api: Api<DynamicObject> = Api::namespaced_with(client.clone(), ns, &resource);
+    let Some(body) = route else {
+        delete_if_exists(&api, name).await?;
+        return Ok(false);
+    };
+    match api
+        .patch(
+            name,
+            &PatchParams::apply(FIELD_MANAGER).force(),
+            &Patch::Apply(body),
+        )
+        .await
