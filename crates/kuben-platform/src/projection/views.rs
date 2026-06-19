@@ -216,3 +216,34 @@ pub struct AppView {
     pub ready: bool,
     pub reason: Option<String>,
     pub message: Option<String>,
+    pub processes: Vec<ProcessView>,
+    pub env: Vec<EnvVarRef>,
+    pub domains: Vec<String>,
+    pub volumes: Vec<VolumeView>,
+    pub created_at: Option<String>,
+}
+
+impl From<&App> for AppView {
+    fn from(a: &App) -> Self {
+        let status = a.status.as_ref();
+        let ready = status.and_then(|s| ready_condition(&s.conditions));
+        let image = a.spec.source.image.clone();
+        let git_repo = a.spec.source.git.as_ref().map(|g| g.repo.clone());
+        let namespace = a.namespace().unwrap_or_default();
+        let name = a.name_any();
+        let l = a.labels();
+        Self {
+            key: format!("{namespace}/{name}"),
+            namespace,
+            name,
+            uid: a.uid(),
+            org: l.get(labels::ORG).cloned(),
+            project: l.get(labels::PROJECT).cloned(),
+            environment: l.get(labels::ENVIRONMENT).cloned(),
+            image,
+            git_repo,
+            url: status.and_then(|s| s.url.clone()),
+            ready: ready.is_some_and(|c| c.status == "True"),
+            reason: ready.and_then(|c| c.reason.clone()),
+            message: ready.and_then(|c| c.message.clone()),
+            processes: a
