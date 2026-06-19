@@ -88,3 +88,18 @@ async fn watch_pods(
     watch_kind(api, cfg, token, move |ev| match ev {
         Event::Init => staging.clear(),
         Event::InitApply(p) => staging.push(PodView::from(&p)),
+        Event::InitDone => {
+            tracing::info!(pods = staging.len(), "pod informer synced");
+            projections.replace_pods(std::mem::take(&mut staging));
+        }
+        Event::Apply(p) => projections.upsert_pod(PodView::from(&p)),
+        Event::Delete(p) => {
+            projections.remove_pod(&format!("{}/{}", p.namespace().unwrap_or_default(), p.name_any()));
+        }
+    })
+    .await
+}
+
+async fn watch_projects(
+    client: Client,
+    projections: Arc<Projections>,
