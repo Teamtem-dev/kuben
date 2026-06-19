@@ -77,3 +77,19 @@ impl Health {
         self.inner.ready.load(Ordering::SeqCst)
     }
 
+    /// Called by the watchdog task every second.
+    pub fn heartbeat(&self) {
+        self.inner.heartbeat.store(now_ms(), Ordering::Relaxed);
+    }
+
+    /// Liveness: the runtime has heartbeated within `max_age_ms`.
+    #[must_use]
+    pub fn is_live(&self, max_age_ms: i64) -> bool {
+        now_ms() - self.inner.heartbeat.load(Ordering::Relaxed) < max_age_ms
+    }
+
+    pub fn starting(&self, name: &'static str) {
+        self.set(name, State::Starting, None);
+    }
+
+    pub fn ok(&self, name: &'static str) {
