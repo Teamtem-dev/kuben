@@ -6,3 +6,6 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
+use crate::{health::Health, projection::Projections, registry::ClusterRegistry};
+
+pub async fn run(
