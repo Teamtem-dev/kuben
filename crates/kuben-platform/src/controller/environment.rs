@@ -156,3 +156,16 @@ async fn cleanup(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result
             if let Some(existing) = namespaces.get_opt(&ns).await? {
                 if existing.metadata.deletion_timestamp.is_none() {
                     namespaces.delete(&ns, &DeleteParams::background()).await?;
+                    tracing::info!(namespace = %ns, "environment namespace deleted");
+                }
+                // Keep the finalizer until the namespace (and every app in it) is gone.
+                return Ok(Action::requeue(Duration::from_secs(5)));
+            }
+        }
+    }
+    set_finalizer(env, api, false).await?;
+    Ok(Action::await_change())
+}
+
+async fn set_finalizer(env: &Environment, api: &Api<Environment>, present: bool) -> Result<()> {
+    let mut finalizers: Vec<String> = env
