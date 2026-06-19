@@ -227,3 +227,17 @@ async fn sync_route(
             &Patch::Apply(body),
         )
         .await
+    {
+        Ok(_) => Ok(true),
+        Err(e) if is_not_found(&e) => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `(ready, reason, message)` from the live Deployments.
+async fn rollout(api: &Api<Deployment>, desired: &[Deployment]) -> Result<(bool, &'static str, String)> {
+    let mut waiting = Vec::new();
+    for d in desired {
+        let name = d.metadata.name.as_deref().unwrap_or_default();
+        let Some(live) = api.get_opt(name).await? else {
+            waiting.push(format!("{name}: not created yet"));
