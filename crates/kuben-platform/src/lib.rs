@@ -7,3 +7,5 @@
 //! * [`controller`] — reconcilers (server-side apply, level-triggered).
 //! * [`supervise`] / [`health`] — every long-running task is supervised and
 //!   reports into a health registry; a panic in one subsystem never takes
+//!   down the API.
+
