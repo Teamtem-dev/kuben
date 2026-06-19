@@ -920,3 +920,106 @@ pub fn service(app: &App, owner: &OwnerReference) -> Result<Option<Service>, Bui
                 port: if http { SERVICE_PORT } else { target },
                 target_port: Some(IntOrString::Int(target)),
                 protocol: Some("TCP".into()),
+                app_protocol: http.then(|| "http".to_owned()),
+                ..ServicePort::default()
+            }]),
+            ..ServiceSpec::default()
+        }),
+        ..Service::default()
+    }))
+}
+
+/// Hostnames: explicit domains first, then `<app>-<environment>.<base_domain>`.
+#[must_use]
+pub fn hostnames_for<'a>(
+    app: &str,
+    environment: Option<&str>,
+    domains: impl IntoIterator<Item = &'a str>,
+    platform: &Platform,
+) -> Vec<String> {
+    let mut hosts: Vec<String> = domains.into_iter().map(str::to_ascii_lowercase).collect();
+    if let (Some(base), Some(env)) = (&platform.base_domain, environment) {
+        let generated = format!("{app}-{env}.{base}");
+        if !hosts.contains(&generated) {
+            hosts.push(generated);
+        }
+    }
+    hosts
+}
+
+#[must_use]
+pub fn hostnames(app: &App, platform: &Platform) -> Vec<String> {
+    hostnames_for(
+        &app.name_any(),
+        app.labels().get(labels::ENVIRONMENT).map(String::as_str),
+        app.spec.domains.iter().map(|d| d.host.as_str()),
+        platform,
+    )
+}
+
+/// Public URL shown in the UI (first hostname).
+#[must_use]
+pub fn url(app: &App, platform: &Platform) -> Option<String> {
+    let scheme = if platform.tls { "https" } else { "http" };
+    hostnames(app, platform)
+        .first()
+        .map(|h| format!("{scheme}://{h}"))
+}
+
+/// Gateway API `HTTPRoute` (as JSON: the Gateway API types are not part of
+/// k8s-openapi). `None` without a gateway, an HTTP web process or a host.
+/// With TLS the route attaches only to the HTTPS listeners of its hosts
+/// (scenario 9); plain HTTP is answered by the platform redirect.
+pub fn http_route(
+    app: &App,
+    platform: &Platform,
+    owner: &OwnerReference,
+) -> Result<Option<serde_json::Value>, BuildError> {
+    let Some(gateway) = &platform.gateway else {
+        return Ok(None);
+    };
+    match web_process(app)? {
+        Some((_, p)) if p.protocol.is_http() => {}
+        _ => return Ok(None),
+    }
+    let hosts = hostnames(app, platform);
+    if hosts.is_empty() {
+        return Ok(None);
+    }
+    let parent_refs: Vec<serde_json::Value> = if platform.tls {
+        let sections: BTreeSet<String> = hosts
+            .iter()
+            .map(|h| super::gateway::section_for_host(h, platform))
+            .collect();
+        sections
+            .into_iter()
+            .map(|s| json!({ "name": gateway.name, "namespace": gateway.namespace, "sectionName": s }))
+            .collect()
+    } else {
+        vec![json!({ "name": gateway.name, "namespace": gateway.namespace })]
+    };
+    Ok(Some(json!({
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "HTTPRoute",
+        "metadata": {
+            "name": app.name_any(),
+            "namespace": app.namespace(),
+            "labels": app_labels(app, None),
+            "ownerReferences": [owner],
+        },
+        "spec": {
+            "parentRefs": parent_refs,
+            "hostnames": hosts,
+            "rules": [{
+                "matches": [{ "path": { "type": "PathPrefix", "value": "/" } }],
+                "backendRefs": [{ "name": app.name_any(), "port": SERVICE_PORT }],
+            }],
+        },
+    })))
+}
+
+#[cfg(test)]
+mod tests {
+    use kube::Resource;
+    use kuben_crd::{AppSpec, EnvironmentSpec, Quota};
+
