@@ -72,3 +72,13 @@ mod tests {
         let token = CancellationToken::new();
         let a = attempts.clone();
         tokio::time::timeout(
+            Duration::from_secs(10),
+            supervise("test", token, health.clone(), move |_t| {
+                let a = a.clone();
+                async move {
+                    if a.fetch_add(1, Ordering::SeqCst) < 2 {
+                        anyhow::bail!("transient")
+                    }
+                    Ok(())
+                }
+            }),
