@@ -154,3 +154,34 @@ impl Elector {
         };
         match written {
             Ok(lease) => {
+                self.observed = lease.metadata.resource_version.map(|v| (v, Instant::now()));
+                Ok(true)
+            }
+            Err(kube::Error::Api(s)) if s.code == 409 => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Hand the Lease back so a standby replica takes over at once instead
+    /// of waiting for it to expire.
+    async fn release(&self) {
+        let Ok(Some(mut lease)) = self.api.get_opt(LEASE_NAME).await else {
+            return;
+        };
+        let spec = lease.spec.get_or_insert_with(LeaseSpec::default);
+        if spec.holder_identity.as_deref() != Some(self.identity.as_str()) {
+            return;
+        }
+        spec.holder_identity = None;
+        spec.lease_duration_seconds = Some(1);
+        spec.renew_time = Some(MicroTime(Timestamp::now()));
+        match self.api.replace(LEASE_NAME, &PostParams::default(), &lease).await {
+            Ok(_) => tracing::info!("released the controller lease"),
+            Err(e) => {
+                tracing::warn!(error = %e, "could not release the controller lease; it expires on its own")
+            }
+        }
+    }
+}
+
+/// Campaign for the Lease and run `work` while holding it.
