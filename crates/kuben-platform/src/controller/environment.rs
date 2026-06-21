@@ -169,3 +169,15 @@ async fn cleanup(env: &Environment, api: &Api<Environment>, ctx: &Ctx) -> Result
 
 async fn set_finalizer(env: &Environment, api: &Api<Environment>, present: bool) -> Result<()> {
     let mut finalizers: Vec<String> = env
+        .finalizers()
+        .iter()
+        .filter(|f| *f != resources::ENV_FINALIZER)
+        .cloned()
+        .collect();
+    if present {
+        finalizers.push(resources::ENV_FINALIZER.into());
+    }
+    // `resourceVersion` makes the write conditional: a concurrent update is a 409.
+    let patch =
+        json!({ "metadata": { "finalizers": finalizers, "resourceVersion": env.resource_version() } });
+    api.patch(&env.name_any(), &PatchParams::default(), &Patch::Merge(&patch))
