@@ -1023,3 +1023,105 @@ mod tests {
     use kube::Resource;
     use kuben_crd::{AppSpec, EnvironmentSpec, Quota};
 
+    use super::*;
+
+    fn env(quota: Option<Quota>) -> Environment {
+        let mut e = Environment::new(
+            "shop-prod",
+            serde_json::from_value::<EnvironmentSpec>(json!({ "project": "shop", "type": "production" }))
+                .expect("spec"),
+        );
+        e.spec.quota = quota;
+        e.metadata.labels = Some(BTreeMap::from([(labels::ORG.to_owned(), "org-1".to_owned())]));
+        e
+    }
+
+    fn app(spec: serde_json::Value) -> App {
+        let mut a = App::new("api", serde_json::from_value::<AppSpec>(spec).expect("app spec"));
+        a.metadata.namespace = Some("kb-shop-prod".into());
+        a.metadata.uid = Some("uid-1".into());
+        a.metadata.labels = Some(BTreeMap::from([
+            (labels::PROJECT.to_owned(), "shop".to_owned()),
+            (labels::ENVIRONMENT.to_owned(), "shop-prod".to_owned()),
+        ]));
+        a
+    }
+
+    fn web_app() -> App {
+        app(json!({
+            "source": { "image": "ghcr.io/acme/api:1.2.3" },
+            "runtime": { "processes": {
+                "web": { "port": 3000, "size": "small", "replicas": { "min": 2, "max": 2 } },
+                "worker": { "command": ["bin/worker"], "size": "nano" }
+            }, "healthCheck": { "path": "/healthz" } },
+            "env": [
+                { "name": "LOG_LEVEL", "value": "info" },
+                { "name": "DATABASE_URL", "fromSecret": { "name": "db", "key": "url" } }
+            ],
+            "domains": [{ "host": "API.acme.com" }]
+        }))
+    }
+
+    fn owner(a: &App) -> OwnerReference {
+        a.controller_owner_ref(&()).expect("owner ref")
+    }
+
+    fn platform() -> Platform {
+        let spec = serde_json::from_value::<KubenConfigSpec>(json!({
+            "baseDomain": "apps.example.com",
+            "gateway": "kuben-system/kuben",
+            "clusterIssuer": "letsencrypt"
+        }))
+        .expect("config");
+        Platform::from_spec(Some(&spec))
+    }
+
+    #[test]
+    fn namespace_has_psa_and_ownership_labels() {
+        let ns = namespace(&env(None));
+        assert_eq!(ns.metadata.name.as_deref(), Some("kb-shop-prod"));
+        let l = ns.metadata.labels.expect("labels");
+        assert_eq!(l["pod-security.kubernetes.io/enforce"], "baseline");
+        assert_eq!(l["pod-security.kubernetes.io/warn"], "restricted");
+        assert_eq!(l[labels::MANAGED_BY], "kuben");
+        assert_eq!(l[labels::PROJECT], "shop");
+        assert_eq!(l[labels::ORG], "org-1");
+        assert_eq!(l[ENV_TYPE], "production");
+    }
+
+    #[test]
+    fn quota_always_blocks_loadbalancers_and_adds_caps() {
+        let hard = |e: &Environment| resource_quota(e).spec.and_then(|s| s.hard).expect("hard");
+        let base = hard(&env(None));
+        assert_eq!(base["services.loadbalancers"], q("0"));
+        assert_eq!(base["services.nodeports"], q("0"));
+        assert!(!base.contains_key("requests.cpu"));
+        let capped = hard(&env(Some(Quota {
+            cpu: Some("4".into()),
+            memory: Some("8Gi".into()),
+            pods: Some(50),
+        })));
+        assert_eq!(capped["requests.cpu"], q("4"));
+        assert_eq!(capped["requests.memory"], q("8Gi"));
+        assert_eq!(capped["pods"], q("50"));
+    }
+
+    #[test]
+    fn network_policy_isolates_managed_namespaces() {
+        let np = network_policy(&env(None));
+        let spec = np.spec.expect("spec");
+        assert_eq!(spec.policy_types.as_deref(), Some(&["Ingress".to_owned()][..]));
+        let rules = spec.ingress.expect("ingress");
+        assert_eq!(rules.len(), 2);
+        let ns_sel = rules[1].from.as_ref().expect("from")[0]
+            .namespace_selector
+            .as_ref()
+            .expect("ns selector");
+        let req = &ns_sel.match_expressions.as_ref().expect("expr")[0];
+        assert_eq!(
+            (req.key.as_str(), req.operator.as_str()),
+            (labels::MANAGED_BY, "NotIn")
+        );
+    }
+
+    #[test]
