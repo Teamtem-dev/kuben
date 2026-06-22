@@ -103,3 +103,18 @@ async fn watch_pods(
 async fn watch_projects(
     client: Client,
     projections: Arc<Projections>,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let api = Api::<Project>::all(client);
+    let cfg = watcher::Config::default().page_size(PAGE_SIZE);
+    let mut staging: Vec<ProjectView> = Vec::new();
+    watch_kind(api, cfg, token, move |ev| match ev {
+        Event::Init => staging.clear(),
+        Event::InitApply(p) => staging.push(ProjectView::from(&p)),
+        Event::InitDone => {
+            tracing::info!(projects = staging.len(), "project informer synced");
+            projections.replace_projects(std::mem::take(&mut staging));
+        }
+        Event::Apply(p) => projections.upsert_project(ProjectView::from(&p)),
+        Event::Delete(p) => projections.remove_project(&p.name_any()),
+    })
