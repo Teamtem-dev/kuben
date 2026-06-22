@@ -82,3 +82,14 @@ mod tests {
                     Ok(())
                 }
             }),
+        )
+        .await
+        .expect("supervisor should finish");
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+        assert!(!health.any_degraded());
+    }
+
+    #[tokio::test]
+    async fn panic_is_contained() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let token = CancellationToken::new();
