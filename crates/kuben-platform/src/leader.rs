@@ -185,3 +185,35 @@ impl Elector {
 }
 
 /// Campaign for the Lease and run `work` while holding it.
+///
+/// Returns `Ok(())` once `token` is cancelled (after releasing the Lease),
+/// and an error when leadership is lost or `work` fails, so the supervisor
+/// restarts the campaign with backoff. `work` is always stopped before this
+/// returns: a replica that is not the leader never reconciles.
+pub async fn run_as_leader<F, Fut>(
+    client: Client,
+    election: &Election,
+    health: Health,
+    token: CancellationToken,
+    work: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(CancellationToken) -> Fut,
+    Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
+{
+    let mut elector = Elector::new(client, election);
+    health.standby("controllers");
+    tracing::info!(
+        identity = %election.identity,
+        namespace = %election.namespace,
+        lease = LEASE_NAME,
+        "waiting for the controller lease"
+    );
+    loop {
+        match elector.try_acquire_or_renew().await {
+            Ok(true) => break,
+            Ok(false) => health.standby("controllers"),
+            // E.g. missing RBAC for leases: surface it in /healthz/details.
+            Err(e) => {
+                health.degraded("controllers", &format!("leader election: {e}"));
+                tracing::warn!(error = %e, "leader election: cannot read or write the lease");
