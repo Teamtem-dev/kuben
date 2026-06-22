@@ -93,3 +93,13 @@ mod tests {
     async fn panic_is_contained() {
         let attempts = Arc::new(AtomicU32::new(0));
         let token = CancellationToken::new();
+        let a = attempts.clone();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            supervise("panicky", token, Health::new(), move |_t| {
+                let a = a.clone();
+                async move {
+                    assert!(a.fetch_add(1, Ordering::SeqCst) != 0, "boom");
+                    Ok(())
+                }
+            }),
