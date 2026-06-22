@@ -247,3 +247,34 @@ impl From<&App> for AppView {
             reason: ready.and_then(|c| c.reason.clone()),
             message: ready.and_then(|c| c.message.clone()),
             processes: a
+                .spec
+                .runtime
+                .processes
+                .iter()
+                .map(|(n, p)| ProcessView {
+                    name: n.clone(),
+                    command: p.command.clone(),
+                    port: p.port,
+                    size: p.size.clone(),
+                    min_replicas: p.replicas.min,
+                    max_replicas: p.replicas.max,
+                    schedule: p.schedule.clone(),
+                    protocol: if p.protocol.is_http() { "http" } else { "tcp" }.into(),
+                })
+                .collect(),
+            env: a
+                .spec
+                .env
+                .iter()
+                .map(|e| EnvVarRef {
+                    name: e.name.clone(),
+                    secret: e
+                        .from_secret
+                        .as_ref()
+                        .or(e.from_service.as_ref())
+                        .map(|r| format!("{}/{}", r.name, r.key)),
+                })
+                .collect(),
+            domains: a.spec.domains.iter().map(|d| d.host.clone()).collect(),
+            volumes: a
+                .spec
