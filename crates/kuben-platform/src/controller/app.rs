@@ -241,3 +241,16 @@ async fn rollout(api: &Api<Deployment>, desired: &[Deployment]) -> Result<(bool,
         let name = d.metadata.name.as_deref().unwrap_or_default();
         let Some(live) = api.get_opt(name).await? else {
             waiting.push(format!("{name}: not created yet"));
+            continue;
+        };
+        let want = live.spec.as_ref().and_then(|s| s.replicas).unwrap_or(1);
+        let Some(st) = live.status.as_ref() else {
+            waiting.push(format!("{name}: pending"));
+            continue;
+        };
+        let deadline_exceeded = st.conditions.as_ref().is_some_and(|cs| {
+            cs.iter()
+                .any(|c| c.type_ == "Progressing" && c.reason.as_deref() == Some("ProgressDeadlineExceeded"))
+        });
+        if deadline_exceeded {
+            return Ok((
