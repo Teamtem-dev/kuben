@@ -181,3 +181,15 @@ async fn set_finalizer(env: &Environment, api: &Api<Environment>, present: bool)
     let patch =
         json!({ "metadata": { "finalizers": finalizers, "resourceVersion": env.resource_version() } });
     api.patch(&env.name_any(), &PatchParams::default(), &Patch::Merge(&patch))
+        .await?;
+    Ok(())
+}
+
+async fn write_status(
+    api: &Api<Environment>,
+    env: &Environment,
+    phase: &str,
+    deletion_scheduled_at: Option<String>,
+    reason: &str,
+    message: &str,
+    ready: bool,
