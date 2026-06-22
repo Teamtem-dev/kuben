@@ -11,3 +11,5 @@ use crate::{health::Health, projection::Projections, registry::ClusterRegistry};
 pub async fn run(
     _registry: ClusterRegistry,
     _projections: Arc<Projections>,
+    health: Health,
+    token: CancellationToken,
