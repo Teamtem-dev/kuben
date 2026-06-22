@@ -93,3 +93,19 @@ impl Health {
     }
 
     pub fn ok(&self, name: &'static str) {
+        self.set(name, State::Ok, None);
+    }
+
+    pub fn standby(&self, name: &'static str) {
+        self.set(name, State::Standby, None);
+    }
+
+    pub fn degraded(&self, name: &'static str, error: &str) {
+        self.set(name, State::Degraded, Some(error.to_owned()));
+    }
+
+    fn set(&self, name: &'static str, state: State, last_error: Option<String>) {
+        self.inner.subsystems.insert(
+            name,
+            Subsystem {
+                state,
