@@ -1125,3 +1125,106 @@ mod tests {
     }
 
     #[test]
+    fn deployments_are_hardened_and_resourced() {
+        let a = web_app();
+        let deps = deployments(&a, &Platform::default(), &owner(&a)).expect("deployments");
+        assert_eq!(deps.len(), 2);
+        let web = deps
+            .iter()
+            .find(|d| d.metadata.name.as_deref() == Some("api-web"))
+            .expect("web");
+        let spec = web.spec.as_ref().expect("spec");
+        assert_eq!(spec.replicas, Some(2));
+        let pod = spec.template.spec.as_ref().expect("pod");
+        assert_eq!(pod.automount_service_account_token, Some(false));
+        let c = &pod.containers[0];
+        assert_eq!(c.image.as_deref(), Some("ghcr.io/acme/api:1.2.3"));
+        let sc = c.security_context.as_ref().expect("sc");
+        assert_eq!(sc.allow_privilege_escalation, Some(false));
+        let env = c.env.as_ref().expect("env");
+        assert!(
+            env.iter()
+                .any(|v| v.name == "PORT" && v.value.as_deref() == Some("3000"))
+        );
+        let db = env.iter().find(|v| v.name == "DATABASE_URL").expect("db");
+        assert!(db.value.is_none(), "secret values are never inlined");
+        assert_eq!(
+            db.value_from
+                .as_ref()
+                .and_then(|s| s.secret_key_ref.as_ref())
+                .map(|r| r.key.as_str()),
+            Some("url")
+        );
+        let probe = c
+            .readiness_probe
+            .as_ref()
+            .and_then(|p| p.http_get.as_ref())
+            .expect("http probe");
+        assert_eq!(probe.path.as_deref(), Some("/healthz"));
+        assert_eq!(
+            c.startup_probe.as_ref().and_then(|p| p.failure_threshold),
+            Some(60),
+            "slow boots get 5 minutes"
+        );
+        assert!(c.liveness_probe.is_some(), "health path → liveness");
+        assert_eq!(spec.progress_deadline_seconds, Some(600));
+        assert_eq!(
+            spec.strategy.as_ref().and_then(|s| s.type_.as_deref()),
+            Some("RollingUpdate")
+        );
+        let req = c
+            .resources
+            .as_ref()
+            .and_then(|r| r.requests.as_ref())
+            .expect("requests");
+        assert_eq!(req["memory"], q("128Mi"));
+        assert_eq!(
+            web.metadata.owner_references.as_ref().expect("owner")[0].uid,
+            "uid-1"
+        );
+
+        let worker = deps
+            .iter()
+            .find(|d| d.metadata.name.as_deref() == Some("api-worker"))
+            .expect("worker");
+        let wc = &worker
+            .spec
+            .as_ref()
+            .and_then(|s| s.template.spec.as_ref())
+            .expect("pod")
+            .containers[0];
+        assert!(wc.ports.is_none() && wc.readiness_probe.is_none());
+        assert_eq!(wc.command.as_deref(), Some(&["bin/worker".to_owned()][..]));
+    }
+
+    #[test]
+    fn autoscaled_process_leaves_replicas_to_the_hpa() {
+        let a = app(json!({
+            "source": { "image": "nginx:1.27" },
+            "runtime": { "processes": { "web": { "port": 80, "replicas": { "min": 2, "max": 6 } } } }
+        }));
+        let o = owner(&a);
+        let deps = deployments(&a, &Platform::default(), &o).expect("deployments");
+        assert_eq!(deps[0].spec.as_ref().expect("spec").replicas, None);
+        let hpas = autoscalers(&a, &o);
+        let spec = hpas[0].spec.as_ref().expect("hpa");
+        assert_eq!((spec.min_replicas, spec.max_replicas), (Some(2), 6));
+    }
+
+    #[test]
+    fn restart_annotation_reaches_the_pod_template() {
+        let mut a = web_app();
+        a.metadata.annotations = Some(BTreeMap::from([(
+            RESTARTED_AT.to_owned(),
+            "2026-09-11T00:00:00Z".to_owned(),
+        )]));
+        let deps = deployments(&a, &Platform::default(), &owner(&a)).expect("deployments");
+        let ann = deps[0]
+            .spec
+            .as_ref()
+            .and_then(|s| s.template.metadata.as_ref())
+            .and_then(|m| m.annotations.as_ref());
+        assert_eq!(
+            ann.map(|a| a[RESTARTED_AT].as_str()),
+            Some("2026-09-11T00:00:00Z")
+        );
