@@ -109,3 +109,19 @@ impl Health {
             name,
             Subsystem {
                 state,
+                last_error,
+                updated_at_ms: now_ms(),
+            },
+        );
+    }
+
+    /// Snapshot of every subsystem, sorted by name.
+    #[must_use]
+    pub fn details(&self) -> Vec<(&'static str, Subsystem)> {
+        let mut v: Vec<_> = self
+            .inner
+            .subsystems
+            .iter()
+            .map(|e| (*e.key(), e.value().clone()))
+            .collect();
+        v.sort_by_key(|(k, _)| *k);
