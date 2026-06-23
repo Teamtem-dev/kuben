@@ -118,3 +118,18 @@ async fn watch_projects(
         Event::Apply(p) => projections.upsert_project(ProjectView::from(&p)),
         Event::Delete(p) => projections.remove_project(&p.name_any()),
     })
+    .await
+}
+
+async fn watch_environments(
+    client: Client,
+    projections: Arc<Projections>,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let api = Api::<Environment>::all(client);
+    let cfg = watcher::Config::default().page_size(PAGE_SIZE);
+    let mut staging: Vec<EnvironmentView> = Vec::new();
+    watch_kind(api, cfg, token, move |ev| match ev {
+        Event::Init => staging.clear(),
+        Event::InitApply(e) => staging.push(EnvironmentView::from(&e)),
+        Event::InitDone => {
