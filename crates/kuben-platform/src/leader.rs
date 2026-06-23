@@ -217,3 +217,34 @@ where
             Err(e) => {
                 health.degraded("controllers", &format!("leader election: {e}"));
                 tracing::warn!(error = %e, "leader election: cannot read or write the lease");
+            }
+        }
+        tokio::select! {
+            () = token.cancelled() => return Ok(()),
+            () = tokio::time::sleep(RETRY_PERIOD) => {}
+        }
+    }
+    tracing::info!(identity = %election.identity, "acquired the controller lease; starting controllers");
+    metrics::gauge!("kuben_leader").set(1.0);
+
+    let work_token = token.child_token();
+    let mut work = tokio::spawn(work(work_token.clone()));
+    let mut renewed = Instant::now();
+    let mut tick = tokio::time::interval(RETRY_PERIOD);
+    tick.tick().await; // the first tick completes immediately
+    let outcome = loop {
+        tokio::select! {
+            joined = &mut work => break match joined {
+                Ok(result) => result,
+                Err(join) => Err(anyhow::anyhow!("controllers stopped: {join}")),
+            },
+            () = token.cancelled() => break Ok(()),
+            _ = tick.tick() => match elector.try_acquire_or_renew().await {
+                Ok(true) => renewed = Instant::now(),
+                Ok(false) => break Err(anyhow::anyhow!("lost the controller lease to another replica")),
+                Err(e) if renewed.elapsed() < RENEW_DEADLINE => {
+                    tracing::warn!(error = %e, "could not renew the controller lease; retrying");
+                }
+                Err(e) => break Err(anyhow::anyhow!(
+                    "could not renew the controller lease for {}s: {e}",
+                    RENEW_DEADLINE.as_secs()
