@@ -278,3 +278,34 @@ impl From<&App> for AppView {
             domains: a.spec.domains.iter().map(|d| d.host.clone()).collect(),
             volumes: a
                 .spec
+                .volumes
+                .iter()
+                .map(|v| VolumeView {
+                    name: v.name.clone(),
+                    mount_path: v.mount_path.clone(),
+                    size: v.size.clone(),
+                })
+                .collect(),
+            created_at: a.creation_timestamp().map(|t| t.0.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use k8s_openapi::api::core::v1::{ContainerState, ContainerStateWaiting, ContainerStatus, PodStatus};
+    use kube::api::ObjectMeta;
+
+    use super::*;
+
+    #[test]
+    fn pod_view_extracts_reason_and_readiness() {
+        let mut labels = std::collections::BTreeMap::new();
+        labels.insert(labels::APP.to_string(), "api".to_string());
+        labels.insert(labels::PROCESS.to_string(), "web".to_string());
+        labels.insert(labels::ORG.to_string(), "org-1".to_string());
+        let pod = Pod {
+            metadata: ObjectMeta {
+                name: Some("api-web-abc".into()),
+                namespace: Some("kb-shop-prod".into()),
+                labels: Some(labels),
