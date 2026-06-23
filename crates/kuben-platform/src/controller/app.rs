@@ -254,3 +254,17 @@ async fn rollout(api: &Api<Deployment>, desired: &[Deployment]) -> Result<(bool,
         });
         if deadline_exceeded {
             return Ok((
+                false,
+                "RolloutFailed",
+                format!("{name}: rollout exceeded its progress deadline"),
+            ));
+        }
+        let observed = st.observed_generation.unwrap_or(0) >= live.metadata.generation.unwrap_or(0);
+        let updated = st.updated_replicas.unwrap_or(0);
+        let available = st.available_replicas.unwrap_or(0);
+        let total = st.replicas.unwrap_or(0);
+        if !observed || updated < want || available < want || total > updated {
+            waiting.push(format!("{name}: {available}/{want} available"));
+        }
+    }
+    Ok(if waiting.is_empty() {
