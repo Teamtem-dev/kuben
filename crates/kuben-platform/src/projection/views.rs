@@ -309,3 +309,34 @@ mod tests {
                 name: Some("api-web-abc".into()),
                 namespace: Some("kb-shop-prod".into()),
                 labels: Some(labels),
+                ..ObjectMeta::default()
+            },
+            status: Some(PodStatus {
+                phase: Some("Running".into()),
+                container_statuses: Some(vec![ContainerStatus {
+                    name: "web".into(),
+                    ready: false,
+                    restart_count: 4,
+                    state: Some(ContainerState {
+                        waiting: Some(ContainerStateWaiting {
+                            reason: Some("CrashLoopBackOff".into()),
+                            ..ContainerStateWaiting::default()
+                        }),
+                        ..ContainerState::default()
+                    }),
+                    ..ContainerStatus::default()
+                }]),
+                ..PodStatus::default()
+            }),
+            ..Pod::default()
+        };
+        let v = PodView::from(&pod);
+        assert_eq!(v.key, "kb-shop-prod/api-web-abc");
+        assert_eq!(v.app.as_deref(), Some("api"));
+        assert_eq!(v.process.as_deref(), Some("web"));
+        assert_eq!(v.org.as_deref(), Some("org-1"));
+        assert_eq!(v.phase, PodPhase::Running);
+        assert!(!v.ready);
+        assert_eq!(v.restarts, 4);
+        assert_eq!(v.reason.as_deref(), Some("CrashLoopBackOff"));
+    }
