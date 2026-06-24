@@ -193,3 +193,15 @@ async fn write_status(
     reason: &str,
     message: &str,
     ready: bool,
+) -> Result<()> {
+    let previous = env.status.as_ref().map_or(&[][..], |s| s.conditions.as_slice());
+    let status = EnvironmentStatus {
+        observed_generation: env.metadata.generation,
+        namespace: Some(resources::namespace_name(&env.name_any())),
+        phase: Some(phase.into()),
+        deletion_scheduled_at,
+        conditions: vec![condition(
+            previous,
+            READY,
+            ready,
+            reason,
