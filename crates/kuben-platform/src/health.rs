@@ -125,3 +125,19 @@ impl Health {
             .map(|e| (*e.key(), e.value().clone()))
             .collect();
         v.sort_by_key(|(k, _)| *k);
+        v
+    }
+
+    #[must_use]
+    pub fn any_degraded(&self) -> bool {
+        self.inner
+            .subsystems
+            .iter()
+            .any(|e| e.value().state == State::Degraded)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
