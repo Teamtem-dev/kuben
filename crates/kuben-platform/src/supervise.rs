@@ -103,3 +103,14 @@ mod tests {
                     Ok(())
                 }
             }),
+        )
+        .await
+        .expect("finishes");
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn cancellation_stops_loop() {
+        let token = CancellationToken::new();
+        let t = token.clone();
+        let task = tokio::spawn(supervise("forever", token, Health::new(), |tok| async move {
