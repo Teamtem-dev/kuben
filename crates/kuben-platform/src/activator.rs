@@ -13,3 +13,5 @@ pub async fn run(
     _projections: Arc<Projections>,
     health: Health,
     token: CancellationToken,
+    bind: String,
+) -> anyhow::Result<()> {
