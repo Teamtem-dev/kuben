@@ -268,3 +268,16 @@ async fn rollout(api: &Api<Deployment>, desired: &[Deployment]) -> Result<(bool,
         }
     }
     Ok(if waiting.is_empty() {
+        (true, "Available", String::new())
+    } else {
+        (false, "Progressing", waiting.join("; "))
+    })
+}
+
+async fn write_status(
+    api: &Api<App>,
+    app: &App,
+    url: Option<String>,
+    conditions: Vec<Condition>,
+) -> Result<()> {
+    let status = AppStatus {
