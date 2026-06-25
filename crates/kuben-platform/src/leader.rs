@@ -248,3 +248,34 @@ where
                 Err(e) => break Err(anyhow::anyhow!(
                     "could not renew the controller lease for {}s: {e}",
                     RENEW_DEADLINE.as_secs()
+                )),
+            },
+        }
+    };
+
+    work_token.cancel();
+    if !work.is_finished() {
+        let _ = tokio::time::timeout(Duration::from_secs(10), &mut work).await;
+    }
+    metrics::gauge!("kuben_leader").set(0.0);
+    elector.release().await;
+    outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn held_by(holder: Option<&str>, seconds: Option<i32>) -> LeaseSpec {
+        LeaseSpec {
+            holder_identity: holder.map(str::to_owned),
+            lease_duration_seconds: seconds,
+            ..LeaseSpec::default()
+        }
+    }
+
+    #[test]
+    fn decisions() {
+        let me = "pod-a_1";
+        let fresh = Duration::from_secs(1);
+        let stale = Duration::from_secs(16);
