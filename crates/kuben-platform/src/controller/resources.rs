@@ -1228,3 +1228,105 @@ mod tests {
             ann.map(|a| a[RESTARTED_AT].as_str()),
             Some("2026-09-11T00:00:00Z")
         );
+    }
+
+    #[test]
+    fn invalid_apps_are_rejected_with_a_reason() {
+        let two_ports = app(json!({
+            "source": { "image": "x" },
+            "runtime": { "processes": { "a": { "port": 1 }, "b": { "port": 2 } } }
+        }));
+        let o = owner(&two_ports);
+        assert!(matches!(
+            deployments(&two_ports, &Platform::default(), &o),
+            Err(BuildError::MultiplePorts(_))
+        ));
+
+        let git = app(json!({
+            "source": { "git": { "repo": "https://github.com/acme/api" } },
+            "runtime": { "processes": { "web": { "port": 8080 } } }
+        }));
+        assert_eq!(
+            deployments(&git, &Platform::default(), &o).unwrap_err().reason(),
+            "AwaitingBuild"
+        );
+
+        let bad_size = app(json!({
+            "source": { "image": "x" },
+            "runtime": { "processes": { "web": { "size": "galactic" } } }
+        }));
+        assert!(matches!(
+            deployments(&bad_size, &Platform::default(), &o),
+            Err(BuildError::UnknownSize { .. })
+        ));
+    }
+
+    #[test]
+    fn service_and_route_follow_the_web_process() {
+        let a = web_app();
+        let o = owner(&a);
+        let svc = service(&a, &o).expect("ok").expect("service");
+        let port = &svc.spec.as_ref().and_then(|s| s.ports.as_ref()).expect("ports")[0];
+        assert_eq!(
+            (port.port, port.target_port.clone()),
+            (80, Some(IntOrString::Int(3000)))
+        );
+
+        let p = platform();
+        assert_eq!(
+            hostnames(&a, &p),
+            vec![
+                "api.acme.com".to_owned(),
+                "api-shop-prod.apps.example.com".to_owned()
+            ]
+        );
+        assert_eq!(url(&a, &p).as_deref(), Some("https://api.acme.com"));
+        let route = http_route(&a, &p, &o).expect("ok").expect("route");
+        assert_eq!(route["spec"]["parentRefs"][0]["namespace"], "kuben-system");
+        assert_eq!(route["spec"]["rules"][0]["backendRefs"][0]["port"], 80);
+        assert!(
+            http_route(&a, &Platform::default(), &o).expect("ok").is_none(),
+            "no gateway → no route"
+        );
+    }
+
+    #[test]
+    fn volumes_are_retained_mounted_and_force_recreate() {
+        let a = app(json!({
+            "source": { "image": "postgres:17-alpine" },
+            "runtime": { "processes": { "db": { "port": 5432, "protocol": "tcp" } } },
+            "volumes": [{ "name": "data", "mountPath": "/var/lib/postgresql/data", "size": "5Gi" }]
+        }));
+        let pvcs = persistent_volume_claims(&a);
+        assert_eq!(pvcs.len(), 1);
+        let pvc = &pvcs[0];
+        assert_eq!(pvc.metadata.name.as_deref(), Some("api-data"));
+        assert!(pvc.metadata.owner_references.is_none(), "data outlives the app");
+        assert_eq!(pvc.metadata.annotations.as_ref().expect("ann")[RETAIN], "true");
+        let req = pvc
+            .spec
+            .as_ref()
+            .and_then(|s| s.resources.as_ref())
+            .and_then(|r| r.requests.as_ref())
+            .expect("requests");
+        assert_eq!(req["storage"], q("5Gi"));
+
+        let deps = deployments(&a, &Platform::default(), &owner(&a)).expect("deployments");
+        let spec = deps[0].spec.as_ref().expect("spec");
+        assert_eq!(
+            spec.strategy.as_ref().and_then(|s| s.type_.as_deref()),
+            Some("Recreate")
+        );
+        let pod = spec.template.spec.as_ref().expect("pod");
+        assert_eq!(
+            pod.volumes.as_ref().expect("volumes")[0]
+                .persistent_volume_claim
+                .as_ref()
+                .map(|c| c.claim_name.as_str()),
+            Some("api-data")
+        );
+        assert_eq!(
+            pod.containers[0].volume_mounts.as_ref().expect("mounts")[0].mount_path,
+            "/var/lib/postgresql/data"
+        );
+        assert!(
