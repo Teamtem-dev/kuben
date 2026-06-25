@@ -133,3 +133,18 @@ async fn watch_environments(
         Event::Init => staging.clear(),
         Event::InitApply(e) => staging.push(EnvironmentView::from(&e)),
         Event::InitDone => {
+            tracing::info!(environments = staging.len(), "environment informer synced");
+            projections.replace_environments(std::mem::take(&mut staging));
+        }
+        Event::Apply(e) => projections.upsert_environment(EnvironmentView::from(&e)),
+        Event::Delete(e) => projections.remove_environment(&e.name_any()),
+    })
+    .await
+}
+
+async fn watch_apps(
+    client: Client,
+    projections: Arc<Projections>,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    let api = Api::<App>::all(client);
