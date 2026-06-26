@@ -148,3 +148,19 @@ async fn watch_apps(
     token: CancellationToken,
 ) -> anyhow::Result<()> {
     let api = Api::<App>::all(client);
+    let cfg = watcher::Config::default().page_size(PAGE_SIZE);
+    let mut staging: Vec<AppView> = Vec::new();
+    watch_kind(api, cfg, token, move |ev| match ev {
+        Event::Init => staging.clear(),
+        Event::InitApply(a) => staging.push(AppView::from(&a)),
+        Event::InitDone => {
+            tracing::info!(apps = staging.len(), "app informer synced");
+            projections.replace_apps(std::mem::take(&mut staging));
+        }
+        Event::Apply(a) => projections.upsert_app(AppView::from(&a)),
+        Event::Delete(a) => {
+            projections.remove_app(&format!("{}/{}", a.namespace().unwrap_or_default(), a.name_any()));
+        }
+    })
+    .await
+}
