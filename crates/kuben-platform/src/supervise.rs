@@ -114,3 +114,14 @@ mod tests {
         let token = CancellationToken::new();
         let t = token.clone();
         let task = tokio::spawn(supervise("forever", token, Health::new(), |tok| async move {
+            tok.cancelled().await;
+            anyhow::bail!("cancelled")
+        }));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        t.cancel();
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("stops")
+            .expect("join");
+    }
+}
