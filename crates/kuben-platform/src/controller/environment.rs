@@ -205,3 +205,16 @@ async fn write_status(
             READY,
             ready,
             reason,
+            message,
+            env.metadata.generation,
+        )],
+    };
+    let patch = json!({ "apiVersion": "kuben.dev/v1alpha1", "kind": "Environment", "status": status });
+    api.patch_status(
+        &env.name_any(),
+        &PatchParams::apply(FIELD_MANAGER).force(),
+        &Patch::Apply(&patch),
+    )
+    .await?;
+    Ok(())
+}
