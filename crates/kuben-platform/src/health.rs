@@ -141,3 +141,19 @@ impl Health {
 mod tests {
     use super::*;
 
+    #[test]
+    fn readiness_and_subsystems() {
+        let h = Health::new();
+        assert!(!h.is_ready());
+        assert!(h.is_live(10_000));
+        h.starting("informers");
+        h.degraded("controllers", "boom");
+        assert!(h.any_degraded());
+        h.ok("controllers");
+        assert!(!h.any_degraded());
+        h.set_ready(true);
+        assert!(h.is_ready());
+        let names: Vec<_> = h.details().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, vec!["controllers", "informers"]);
+    }
+}
