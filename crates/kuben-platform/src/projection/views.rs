@@ -340,3 +340,35 @@ mod tests {
         assert_eq!(v.restarts, 4);
         assert_eq!(v.reason.as_deref(), Some("CrashLoopBackOff"));
     }
+
+    #[test]
+    fn app_view_never_carries_env_values() {
+        let spec = serde_json::from_value(serde_json::json!({
+            "source": { "image": "nginx:1.27" },
+            "runtime": { "processes": { "web": { "port": 80 } } },
+            "env": [
+                { "name": "MODE", "value": "s3cr3t-plain-value" },
+                { "name": "TOKEN", "fromSecret": { "name": "api", "key": "token" } }
+            ]
+        }))
+        .expect("spec");
+        let mut app = App::new("web", spec);
+        app.metadata.namespace = Some("kb-shop-prod".into());
+        let v = AppView::from(&app);
+        assert_eq!(v.key, "kb-shop-prod/web");
+        assert_eq!(v.image.as_deref(), Some("nginx:1.27"));
+        assert_eq!(
+            v.env[0],
+            EnvVarRef {
+                name: "MODE".into(),
+                secret: None
+            }
+        );
+        assert_eq!(v.env[1].secret.as_deref(), Some("api/token"));
+        let json = serde_json::to_string(&v).expect("json");
+        assert!(
+            !json.contains("s3cr3t-plain-value"),
+            "plain values must not be serialized: {json}"
+        );
+    }
+}
