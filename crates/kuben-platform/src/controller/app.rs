@@ -281,3 +281,17 @@ async fn write_status(
     conditions: Vec<Condition>,
 ) -> Result<()> {
     let status = AppStatus {
+        observed_generation: app.metadata.generation,
+        current_release: None,
+        url,
+        conditions,
+    };
+    let patch = json!({ "apiVersion": "kuben.dev/v1alpha1", "kind": "App", "status": status });
+    api.patch_status(
+        &app.name_any(),
+        &PatchParams::apply(FIELD_MANAGER).force(),
+        &Patch::Apply(&patch),
+    )
+    .await?;
+    Ok(())
+}
