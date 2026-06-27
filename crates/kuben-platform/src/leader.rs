@@ -279,3 +279,35 @@ mod tests {
         let me = "pod-a_1";
         let fresh = Duration::from_secs(1);
         let stale = Duration::from_secs(16);
+        assert_eq!(decide(None, me, fresh), Decision::Create);
+        assert_eq!(
+            decide(Some(&held_by(Some(me), Some(15))), me, stale),
+            Decision::Renew
+        );
+        assert_eq!(
+            decide(Some(&held_by(None, Some(15))), me, fresh),
+            Decision::TakeOver
+        );
+        assert_eq!(
+            decide(Some(&held_by(Some(""), Some(1))), me, fresh),
+            Decision::TakeOver
+        );
+        let other = held_by(Some("pod-b_2"), Some(15));
+        assert_eq!(decide(Some(&other), me, fresh), Decision::Wait);
+        assert_eq!(decide(Some(&other), me, stale), Decision::TakeOver);
+        // A missing duration falls back to ours instead of "expired at once".
+        assert_eq!(
+            decide(Some(&held_by(Some("pod-b_2"), None)), me, fresh),
+            Decision::Wait
+        );
+    }
+
+    #[test]
+    fn timing_is_consistent() {
+        assert_eq!(
+            LEASE_DURATION.as_secs(),
+            u64::try_from(LEASE_SECONDS).expect("positive")
+        );
+        assert!(RETRY_PERIOD < RENEW_DEADLINE && RENEW_DEADLINE < LEASE_DURATION);
+    }
+}
