@@ -17,3 +17,6 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     tracing::info!(%bind, "activator role enabled (proxy lands in phase 2)");
     health.ok("activator");
+    token.cancelled().await;
+    Ok(())
+}
