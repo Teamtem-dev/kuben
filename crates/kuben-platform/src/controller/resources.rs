@@ -1330,3 +1330,106 @@ mod tests {
             "/var/lib/postgresql/data"
         );
         assert!(
+            pod.containers[0].liveness_probe.is_none(),
+            "no health path → no liveness"
+        );
+
+        let scaled = app(json!({
+            "source": { "image": "x" },
+            "runtime": { "processes": { "web": { "port": 80, "replicas": { "min": 1, "max": 3 } } } },
+            "volumes": [{ "name": "data", "mountPath": "/data" }]
+        }));
+        assert_eq!(validate(&scaled), Err(BuildError::VolumeNeedsSingleReplica));
+    }
+
+    #[test]
+    fn tcp_processes_get_a_real_port_and_no_route() {
+        let a = app(json!({
+            "source": { "image": "redis:7-alpine" },
+            "runtime": { "processes": { "redis": { "port": 6379, "protocol": "tcp" } } }
+        }));
+        let o = owner(&a);
+        let svc = service(&a, &o).expect("ok").expect("service");
+        let port = &svc.spec.as_ref().and_then(|s| s.ports.as_ref()).expect("ports")[0];
+        assert_eq!(
+            (port.port, port.name.as_deref(), port.app_protocol.as_deref()),
+            (6379, Some("tcp"), None)
+        );
+        assert!(
+            http_route(&a, &platform(), &o).expect("ok").is_none(),
+            "tcp is never public"
+        );
+    }
+
+    #[test]
+    fn scheduled_processes_become_cron_jobs() {
+        let a = app(json!({
+            "source": { "image": "ghcr.io/acme/api:1.2.3" },
+            "runtime": { "processes": {
+                "web": { "port": 3000 },
+                "report": { "command": ["bin/report"], "schedule": "0 3 * * *", "timeZone": "Europe/Berlin" }
+            } }
+        }));
+        let o = owner(&a);
+        let deps = deployments(&a, &Platform::default(), &o).expect("deployments");
+        assert_eq!(deps.len(), 1, "scheduled processes get no Deployment");
+        let crons = cron_jobs(&a, &Platform::default(), &o).expect("crons");
+        let spec = crons[0].spec.as_ref().expect("spec");
+        assert_eq!(crons[0].metadata.name.as_deref(), Some("api-report"));
+        assert_eq!(spec.schedule, "0 3 * * *");
+        assert_eq!(spec.time_zone.as_deref(), Some("Europe/Berlin"));
+        assert_eq!(spec.concurrency_policy.as_deref(), Some("Forbid"));
+        let pod = spec
+            .job_template
+            .spec
+            .as_ref()
+            .and_then(|j| j.template.spec.as_ref())
+            .expect("pod");
+        assert_eq!(pod.restart_policy.as_deref(), Some("Never"));
+        assert!(pod.containers[0].readiness_probe.is_none());
+
+        let mut live = crons[0].clone();
+        live.metadata.uid = Some("cron-uid".into());
+        let job = job_from_cron(&live, "api-report-manual-1").expect("job");
+        assert_eq!(
+            job.metadata.owner_references.as_ref().expect("owner")[0].kind,
+            "CronJob"
+        );
+        assert!(job.spec.is_some());
+
+        assert!(valid_schedule("*/5 * * * *") && valid_schedule("@daily"));
+        assert!(!valid_schedule("every day") && !valid_schedule("* * * *") && !valid_schedule("@often"));
+        let bad = app(json!({
+            "source": { "image": "x" },
+            "runtime": { "processes": { "job": { "port": 80, "schedule": "@hourly" } } }
+        }));
+        assert_eq!(validate(&bad), Err(BuildError::ScheduledWithPort("job".into())));
+    }
+
+    #[test]
+    fn tls_routes_attach_to_host_listeners() {
+        let a = web_app();
+        let route = http_route(&a, &platform(), &owner(&a))
+            .expect("ok")
+            .expect("route");
+        let refs = route["spec"]["parentRefs"].as_array().expect("refs");
+        let mut sections: Vec<String> = refs
+            .iter()
+            .map(|r| r["sectionName"].as_str().unwrap_or_default().to_owned())
+            .collect();
+        sections.sort();
+        let mut expected = vec![
+            super::super::gateway::host_listener_name("api.acme.com"),
+            super::super::gateway::host_listener_name("api-shop-prod.apps.example.com"),
+        ];
+        expected.sort();
+        assert_eq!(sections, expected);
+    }
+
+    #[test]
+    fn platform_defaults_include_size_presets() {
+        let p = Platform::default();
+        assert!(p.size("small").is_some());
+        assert!(p.gateway.is_none() && !p.tls);
+    }
+}
