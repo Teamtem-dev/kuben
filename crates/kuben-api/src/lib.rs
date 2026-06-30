@@ -47,3 +47,28 @@ pub fn router(state: ApiState) -> Router {
             axum::http::StatusCode::REQUEST_TIMEOUT,
             timeout,
         ))
+        .layer(RequestBodyLimitLayer::new(body_limit));
+
+    // Streams are exempt from the request timeout (they have their own idle handling).
+    let streams = Router::new().route("/api/v1/stream", get(stream::handler));
+
+    let api = rest
+        .merge(streams)
+        .layer(middleware::from_fn(auth::csrf_guard))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::session_middleware,
+        ));
+
+    Router::new()
+        .merge(api)
+        .merge(utoipa_scalar::Scalar::with_url("/api/docs", openapi))
+        .route("/livez", get(routes::health::livez))
+        .route("/readyz", get(routes::health::readyz))
+        .fallback(web::fallback)
+        .layer(CompressionLayer::new().br(true).gzip(true))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+}
