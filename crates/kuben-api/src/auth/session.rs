@@ -21,3 +21,27 @@ pub const COOKIE_NAME_DEV: &str = "kuben_session";
 
 #[must_use]
 pub fn cookie_name(cfg: &Config) -> &'static str {
+    if cfg.security.cookie_secure {
+        COOKIE_NAME_SECURE
+    } else {
+        COOKIE_NAME_DEV
+    }
+}
+
+#[must_use]
+pub fn sha256(bytes: &[u8]) -> Vec<u8> {
+    Sha256::digest(bytes).to_vec()
+}
+
+/// `(raw_id, sha256(raw_id))`.
+#[must_use]
+pub fn new_session_id() -> (String, Vec<u8>) {
+    let bytes: [u8; 32] = rand::random();
+    let raw = URL_SAFE_NO_PAD.encode(bytes);
+    let hash = sha256(raw.as_bytes());
+    (raw, hash)
+}
+
+pub fn build_cookie(cfg: &Config, raw: String) -> Cookie<'static> {
+    let mut b = Cookie::build((cookie_name(cfg), raw))
+        .path("/")
