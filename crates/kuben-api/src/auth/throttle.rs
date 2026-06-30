@@ -94,3 +94,99 @@ impl LoginThrottle {
         for (key, _) in self.buckets(email, ip) {
             if let Err(e) = self.store.throttle_record_failure(&key, now, window_start).await {
                 tracing::error!(error = %e, "failed to record a login failure");
+            }
+        }
+        // Expired windows are dead weight; drop them while we are here.
+        if let Err(e) = self.store.throttle_purge(window_start).await {
+            tracing::warn!(error = %e, "failed to purge expired login windows");
+        }
+    }
+
+    /// A correct password clears only the `(email, ip)` bucket: a success
+    /// must not reset what an attacker accumulated from other places.
+    pub async fn record_success(&self, email: &str, ip: Option<&str>) {
+        let [(pair, _), ..] = self.buckets(email, ip);
+        if let Err(e) = self.store.throttle_clear(&pair).await {
+            tracing::warn!(error = %e, "failed to clear a login window");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg() -> SecurityCfg {
+        SecurityCfg {
+            login_max_failures: 3,
+            login_max_failures_per_ip: 5,
+            login_max_failures_per_account: 8,
+            login_window_secs: 60,
+            ..SecurityCfg::default()
+        }
+    }
+
+    async fn throttle() -> LoginThrottle {
+        LoginThrottle::new(&cfg(), Store::memory().await.expect("store"))
+    }
+
+    #[tokio::test]
+    async fn pair_bucket_locks_and_success_resets_it() {
+        let t = throttle().await;
+        for _ in 0..3 {
+            assert!(t.check("a@x.io", Some("1.1.1.1")).await.is_ok());
+            t.record_failure("a@x.io", Some("1.1.1.1")).await;
+        }
+        let retry = t.check("a@x.io", Some("1.1.1.1")).await.expect_err("locked");
+        assert!((1..=60).contains(&retry), "{retry}");
+        assert!(
+            t.check("a@x.io", Some("2.2.2.2")).await.is_ok(),
+            "other places are unaffected"
+        );
+        t.record_success("a@x.io", Some("1.1.1.1")).await;
+        assert!(t.check("a@x.io", Some("1.1.1.1")).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn ip_bucket_catches_password_spraying() {
+        let t = throttle().await;
+        for i in 0..5 {
+            t.record_failure(&format!("user{i}@x.io"), Some("9.9.9.9")).await;
+        }
+        assert!(t.check("fresh@x.io", Some("9.9.9.9")).await.is_err());
+        assert!(t.check("fresh@x.io", Some("8.8.8.8")).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn account_bucket_slows_distributed_guessing() {
+        let t = throttle().await;
+        for i in 0..8 {
+            t.record_failure("victim@x.io", Some(&format!("10.0.0.{i}")))
+                .await;
+        }
+        assert!(t.check("victim@x.io", Some("10.9.9.9")).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn replicas_share_one_budget() {
+        let store = Store::memory().await.expect("store");
+        let (a, b) = (
+            LoginThrottle::new(&cfg(), store.clone()),
+            LoginThrottle::new(&cfg(), store),
+        );
+        a.record_failure("a@x.io", Some("1.1.1.1")).await;
+        b.record_failure("a@x.io", Some("1.1.1.1")).await;
+        a.record_failure("a@x.io", Some("1.1.1.1")).await;
+        assert!(
+            b.check("a@x.io", Some("1.1.1.1")).await.is_err(),
+            "failures seen by one replica lock the other"
+        );
+    }
+
+    #[test]
+    fn buckets_are_hashed() {
+        let key = bucket("pair:a@x.io|1.1.1.1");
+        assert!(!key.contains('@') && !key.contains("1.1.1.1"));
+        assert_eq!(key, bucket("pair:a@x.io|1.1.1.1"));
+    }
+}
