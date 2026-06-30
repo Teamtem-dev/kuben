@@ -45,3 +45,27 @@ pub fn new_session_id() -> (String, Vec<u8>) {
 pub fn build_cookie(cfg: &Config, raw: String) -> Cookie<'static> {
     let mut b = Cookie::build((cookie_name(cfg), raw))
         .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(time_duration_hours(cfg.security.session_ttl_hours));
+    if cfg.security.cookie_secure {
+        b = b.secure(true);
+    }
+    b.build()
+}
+
+pub fn removal_cookie(cfg: &Config) -> Cookie<'static> {
+    Cookie::build((cookie_name(cfg), "")).path("/").build()
+}
+
+fn time_duration_hours(hours: u64) -> time::Duration {
+    time::Duration::hours(i64::try_from(hours).unwrap_or(i64::MAX))
+}
+
+pub(super) async fn user_from_session(state: &ApiState, raw: &str) -> Option<CurrentUser> {
+    let id_hash = sha256(raw.as_bytes());
+    let user_id = if let Some(id) = state.session_cache.get(&id_hash).await {
+        id
+    } else {
+        let session = state.store.find_session(&id_hash).await.ok().flatten()?;
+        if !session.is_valid_at(now_ms()) {
