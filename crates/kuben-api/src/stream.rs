@@ -25,3 +25,30 @@ use crate::{authz::Authz, error::ApiResult, state::ApiState};
 pub struct Visibility {
     orgs: HashSet<String>,
     seen: HashSet<String>,
+}
+
+impl Visibility {
+    #[must_use]
+    pub fn new(orgs: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            orgs: orgs.into_iter().collect(),
+            seen: HashSet::new(),
+        }
+    }
+
+    fn allowed(&self, org: Option<&str>) -> bool {
+        org.is_some_and(|o| self.orgs.contains(o))
+    }
+
+    fn track(&mut self, key: String, org: Option<&str>) -> bool {
+        if self.allowed(org) {
+            self.seen.insert(key);
+            true
+        } else {
+            self.seen.remove(&key);
+            false
+        }
+    }
+
+    /// Filter a snapshot to the caller's orgs and remember what was sent.
+    pub fn snapshot(&mut self, mut s: Snapshot) -> Snapshot {
