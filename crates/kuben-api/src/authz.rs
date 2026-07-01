@@ -88,3 +88,48 @@ impl FromRequestParts<ApiState> for Authz {
             .extensions
             .get::<CurrentUser>()
             .cloned()
+            .ok_or(ApiError(Error::Unauthorized))?;
+        // Invited users must replace their temporary password (scenario 4)
+        // before any authorized action; `/me` and `/me/password` do not use
+        // this extractor.
+        if current.user.must_change_password {
+            return Err(ApiError(Error::Forbidden));
+        }
+        let mut rows = state.store.bindings_for_user(current.user.id).await?;
+        if let Some(grant) = &current.token {
+            rows.retain(|b| b.org_id == grant.org);
+        }
+        let mut orgs: Vec<OrgId> = rows.iter().map(|b| b.org_id).collect();
+        orgs.sort();
+        orgs.dedup();
+        let mut bindings: Vec<Binding> = rows
+            .into_iter()
+            .filter_map(|b| {
+                let scope = match (b.scope_kind, b.scope_uid.as_deref().and_then(|u| u.parse().ok())) {
+                    (ScopeKind::Org, _) => ScopeRef::Org(b.org_id),
+                    (ScopeKind::Project, Some(uid)) => ScopeRef::Project(uid),
+                    (ScopeKind::Environment, Some(uid)) => ScopeRef::Environment(uid),
+                    (ScopeKind::App, Some(uid)) => ScopeRef::App(uid),
+                    _ => return None,
+                };
+                Some(Binding { scope, role: b.role })
+            })
+            .collect();
+        if let Some(grant) = &current.token {
+            bindings = restrict(bindings, &grant.scope);
+        }
+        Ok(Self {
+            subject: Subject {
+                user: current.user.id,
+                bindings,
+            },
+            current,
+            orgs,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kuben_core::traits::{PolicyEngine, StaticPolicy};
+    use uuid::Uuid;
