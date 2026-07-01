@@ -32,3 +32,37 @@ pub enum EnvType {
     Standard,
     Production,
     Preview,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EnvironmentDto {
+    /// Short name used in URLs, e.g. `prod`.
+    pub name: String,
+    /// Kubernetes object name, e.g. `shop-prod`.
+    pub resource_name: String,
+    pub project: String,
+    /// `standard`, `production` or `preview`.
+    pub env_type: String,
+    pub namespace: String,
+    /// `Pending`, `Ready`, `Terminating` or `Degraded`.
+    pub phase: Option<String>,
+    pub ready: bool,
+    pub message: Option<String>,
+    pub deleting: bool,
+    /// When a soft-deleted environment will be purged.
+    pub deletion_scheduled_at: Option<String>,
+    pub created_at: Option<String>,
+}
+
+impl EnvironmentDto {
+    #[must_use]
+    pub fn from_view(v: &EnvironmentView) -> Self {
+        Self {
+            name: scope::environment_short_name(&v.project, &v.name).to_owned(),
+            resource_name: v.name.clone(),
+            project: v.project.clone(),
+            env_type: v.env_type.to_owned(),
+            namespace: v.namespace.clone(),
+            phase: v.phase.clone(),
+            ready: v.ready,
+            message: v.message.clone(),
