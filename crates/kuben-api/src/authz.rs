@@ -43,3 +43,48 @@ impl Authz {
             .map(|b| b.role)
             .max_by_key(|r| r.rank())
     }
+
+    /// Account management is session-only: a leaked token must not be able to
+    /// mint more tokens, add members or change passwords.
+    pub fn forbid_token(&self) -> Result<(), ApiError> {
+        if self.current.token.is_some() {
+            Err(ApiError(Error::Forbidden))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Effective bindings of an API token: every role is capped at the token's
+/// role; a project/environment scope re-roots the owner's org-level authority
+/// at that node, and bindings below org level are dropped.
+#[must_use]
+pub fn restrict(bindings: Vec<Binding>, scope: &TokenScope) -> Vec<Binding> {
+    let narrowed = scope
+        .environment
+        .map(ScopeRef::Environment)
+        .or_else(|| scope.project.map(ScopeRef::Project));
+    bindings
+        .into_iter()
+        .filter_map(|b| {
+            let role = b.role.weaker(scope.role);
+            match (&narrowed, &b.scope) {
+                (None, _) => Some(Binding { scope: b.scope, role }),
+                (Some(node), ScopeRef::Org(_)) => Some(Binding {
+                    scope: node.clone(),
+                    role,
+                }),
+                (Some(_), _) => None,
+            }
+        })
+        .collect()
+}
+
+impl FromRequestParts<ApiState> for Authz {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &ApiState) -> Result<Self, Self::Rejection> {
+        let current = parts
+            .extensions
+            .get::<CurrentUser>()
+            .cloned()
