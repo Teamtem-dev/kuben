@@ -1,0 +1,25 @@
+//! DNS check of an app's hostnames against the gateway (scenario 9).
+
+use std::{net::IpAddr, time::Duration};
+
+use axum::{
+    Json,
+    extract::{Path, State},
+};
+use kube::{
+    Api,
+    api::{ApiResource, DynamicObject, GroupVersionKind},
+};
+use kuben_core::perm::Perm;
+use kuben_crd::KubenConfig;
+use kuben_platform::controller::{KUBEN_CONFIG_NAME, Platform, resources};
+use serde::Serialize;
+use utoipa::ToSchema;
+
+use crate::{authz::Authz, error::ApiResult, routes::scope, state::ApiState};
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DomainCheck {
+    pub host: String,
+    /// Addresses the host currently resolves to.
+    pub addresses: Vec<String>,
