@@ -22,3 +22,28 @@ use utoipa::ToSchema;
 use super::{scope, validate};
 use crate::{authz::Authz, error::ApiResult, state::ApiState};
 
+/// Upper bound for the sum of all values of one secret.
+const MAX_SECRET_BYTES: usize = 256 * 1024;
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SecretDto {
+    pub name: String,
+    /// Key names only; values are never returned.
+    pub keys: Vec<String>,
+    pub created_at: Option<String>,
+}
+
+impl From<&Secret> for SecretDto {
+    fn from(s: &Secret) -> Self {
+        Self {
+            name: s.name_any(),
+            keys: s
+                .data
+                .as_ref()
+                .map(|d| d.keys().cloned().collect())
+                .unwrap_or_default(),
+            created_at: s.creation_timestamp().map(|t| t.0.to_string()),
+        }
+    }
+}
+
