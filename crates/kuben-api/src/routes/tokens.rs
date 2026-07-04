@@ -28,3 +28,34 @@ const DAY_MS: i64 = 86_400_000;
 fn default_role() -> String {
     "developer".into()
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateToken {
+    #[schema(example = "github-actions")]
+    pub name: String,
+    /// Upper bound on what the token may do: `viewer`, `developer` or `admin`.
+    #[serde(default = "default_role")]
+    #[schema(example = "developer")]
+    pub role: String,
+    /// Restrict the token to one project.
+    #[schema(example = "shop")]
+    pub project: Option<String>,
+    /// Restrict the token to one environment of `project`.
+    #[schema(example = "staging")]
+    pub environment: Option<String>,
+    /// Lifetime in days (1–365, default 90).
+    pub expires_in_days: Option<u32>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TokenDto {
+    pub id: String,
+    pub name: String,
+    /// Non-secret prefix to recognise the token, e.g. `kbn_pat_0192f3a1`.
+    pub prefix: String,
+    pub role: String,
+    pub project: Option<String>,
+    pub environment: Option<String>,
+    pub expires_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+    pub revoked: bool,
