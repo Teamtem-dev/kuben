@@ -36,3 +36,41 @@ fn default_role() -> String {
 pub struct MemberDto {
     pub id: String,
     pub email: String,
+    pub display_name: Option<String>,
+    pub role: String,
+    /// Invited and has not replaced the temporary password yet.
+    pub must_change_password: bool,
+    pub active: bool,
+}
+
+impl From<&Member> for MemberDto {
+    fn from(m: &Member) -> Self {
+        Self {
+            id: m.user.id.to_string(),
+            email: m.user.email.clone(),
+            display_name: m.user.display_name.clone(),
+            role: m.role.to_string(),
+            must_change_password: m.user.must_change_password,
+            active: m.user.is_active,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct InviteMember {
+    #[schema(example = "carol@example.com")]
+    pub email: String,
+    pub display_name: Option<String>,
+    /// `viewer`, `developer`, `admin` or `owner`.
+    #[serde(default = "default_role")]
+    pub role: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvitedMember {
+    pub member: MemberDto,
+    /// Temporary password for a newly created account. Shown once; it must be
+    /// replaced at the first login. `null` when the user already existed.
+    pub temporary_password: Option<String>,
+}
+
