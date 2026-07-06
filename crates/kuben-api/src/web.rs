@@ -6,3 +6,12 @@ use axum::{
     http::{HeaderValue, StatusCode, Uri, header},
     response::{IntoResponse, Response},
 };
+use kuben_core::Error;
+
+use crate::error::ApiError;
+
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
+     font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
+
+pub async fn fallback(uri: Uri) -> Response {
+    let path = uri.path();
