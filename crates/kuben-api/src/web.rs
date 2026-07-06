@@ -15,3 +15,11 @@ const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsa
 
 pub async fn fallback(uri: Uri) -> Response {
     let path = uri.path();
+    if path.starts_with("/api/") {
+        return ApiError(Error::NotFound(format!("no route for {path}"))).into_response();
+    }
+    serve_spa(path)
+}
+
+#[cfg(feature = "embed-ui")]
+fn serve_spa(path: &str) -> Response {
