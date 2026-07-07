@@ -385,3 +385,80 @@ async fn environments_and_apps_read_from_projections() {
     assert_eq!(envs[0]["name"], "prod");
     assert_eq!(envs[0]["resource_name"], "shop-prod");
     assert_eq!(envs[0]["env_type"], "production");
+
+    let (status, apps) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/prod/apps", &cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(apps[0]["name"], "api");
+    assert_eq!(apps[0]["environment"], "prod");
+
+    let (status, detail) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/prod/apps/api", &cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(detail["app"]["url"], "https://api.example.com");
+    assert_eq!(detail["pods"][0]["name"], "api-web-1");
+    assert_eq!(detail["pods"][0]["phase"], "running");
+
+    let (status, _) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/prod/apps/nope", &cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/prod/apps/api/logs", &cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+
+    // Invalid input is rejected before touching the cluster.
+    let bad = r#"{"name":"web","image":"nginx latest"}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, bad),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let good = r#"{"name":"web","image":"nginx:1.27","port":80}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, good),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    let (status, _) = send(
+        &app.router,
+        post(
+            "/api/v1/projects/shop/environments",
+            &cookie,
+            r#"{"name":"staging"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn viewers_can_read_but_not_write() {
+    let app = setup().await;
+    seed(&app);
+    let cookie = login(&app.router, "bob@example.com").await;
+
+    let (status, _) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, problem) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments", &cookie, r#"{"name":"qa"}"#),
+    )
+    .await;
+    assert_eq!(
+        (status, problem["code"].as_str()),
+        (StatusCode::FORBIDDEN, Some("forbidden"))
+    );
