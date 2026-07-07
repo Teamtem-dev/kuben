@@ -462,3 +462,81 @@ async fn viewers_can_read_but_not_write() {
         (status, problem["code"].as_str()),
         (StatusCode::FORBIDDEN, Some("forbidden"))
     );
+    let body = r#"{"name":"web","image":"nginx:1.27"}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(
+        &app.router,
+        post(
+            "/api/v1/projects/shop/environments/prod/apps/api/restart",
+            &cookie,
+            "",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn openapi_docs_are_served() {
+    let app = setup().await;
+    let resp = app
+        .router
+        .oneshot(Request::get("/api/docs").body(Body::empty()).expect("req"))
+        .await
+        .expect("resp");
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// ---------------------------------------------------------------------------
+// Scenarios 1–5 and 8 (docs/KUBEN-MASTER-BLUEPRINT.md §5.9)
+// ---------------------------------------------------------------------------
+
+enum Auth<'a> {
+    Anonymous,
+    Cookie(&'a str),
+    Bearer(&'a str),
+}
+
+async fn call(
+    app: &Router,
+    method: &str,
+    path: &str,
+    auth: Auth<'_>,
+    body: Option<serde_json::Value>,
+    forwarded_for: Option<&str>,
+) -> (StatusCode, axum::http::HeaderMap, serde_json::Value) {
+    let mut b = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::CONTENT_TYPE, "application/json");
+    b = match auth {
+        Auth::Anonymous => b.header(CLIENT_HEADER, "web"),
+        Auth::Cookie(c) => b.header(header::COOKIE, c).header(CLIENT_HEADER, "web"),
+        Auth::Bearer(t) => b.header(header::AUTHORIZATION, format!("Bearer {t}")),
+    };
+    if let Some(xff) = forwarded_for {
+        b = b.header("x-forwarded-for", xff);
+    }
+    let req = b
+        .body(body.map_or_else(Body::empty, |v| Body::from(v.to_string())))
+        .expect("request");
+    let resp = app.clone().oneshot(req).await.expect("response");
+    let status = resp.status();
+    let headers = resp.headers().clone();
+    let bytes = resp.into_body().collect().await.expect("body").to_bytes();
+    let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+    (status, headers, json)
+}
+
+async fn sign_in(app: &Router, email: &str, password: &str) -> (StatusCode, String, serde_json::Value) {
+    let (status, headers, body) = call(
+        app,
+        "POST",
+        "/api/v1/auth/login",
+        Auth::Anonymous,
+        Some(json!({ "email": email, "password": password })),
