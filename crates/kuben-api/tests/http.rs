@@ -307,3 +307,81 @@ async fn wrong_password_is_unauthorized() {
         .header(CLIENT_HEADER, "test")
         .body(Body::from(r#"{"email":"alice@example.com","password":"nope"}"#))
         .expect("req");
+    let (status, _) = send(&app.router, req).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn projects_are_tenant_scoped() {
+    let app = setup().await;
+    seed(&app);
+    let cookie = login(&app.router, "alice@example.com").await;
+
+    let (status, list) = send(&app.router, get("/api/v1/projects", &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    let names: Vec<&str> = list
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter_map(|p| p["name"].as_str())
+        .collect();
+    assert_eq!(names, vec!["shop"], "other tenants' projects are invisible");
+
+    let (status, project) = send(&app.router, get("/api/v1/projects/shop", &cookie)).await;
+    assert_eq!(
+        (status, project["display_name"].as_str()),
+        (StatusCode::OK, Some("Shop"))
+    );
+    let (status, _) = send(&app.router, get("/api/v1/projects/secret-project", &cookie)).await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "404, not 403: existence must not leak"
+    );
+
+    // No cluster: validation runs first, then a clean 503.
+    let (status, _) = send(
+        &app.router,
+        post(
+            "/api/v1/projects",
+            &cookie,
+            r#"{"name":"Bad Name","display_name":"x"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = send(
+        &app.router,
+        post(
+            "/api/v1/projects",
+            &cookie,
+            r#"{"name":"blog","display_name":"Blog"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+
+    // A project with environments cannot be deleted.
+    let req = Request::delete("/api/v1/projects/shop")
+        .header(header::COOKIE, &cookie)
+        .header(CLIENT_HEADER, "test")
+        .body(Body::empty())
+        .expect("req");
+    let (status, problem) = send(&app.router, req).await;
+    assert_eq!(
+        (status, problem["code"].as_str()),
+        (StatusCode::CONFLICT, Some("conflict"))
+    );
+}
+
+#[tokio::test]
+async fn environments_and_apps_read_from_projections() {
+    let app = setup().await;
+    seed(&app);
+    let cookie = login(&app.router, "alice@example.com").await;
+
+    let (status, envs) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(envs[0]["name"], "prod");
+    assert_eq!(envs[0]["resource_name"], "shop-prod");
+    assert_eq!(envs[0]["env_type"], "production");
