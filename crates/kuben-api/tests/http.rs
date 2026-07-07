@@ -694,3 +694,81 @@ async fn scenario3_api_tokens_are_capped_scoped_and_revocable() {
     assert_eq!(status, StatusCode::CREATED, "{created}");
     let token = created["token"].as_str().expect("token").to_owned();
     assert!(token.starts_with("kbn_pat_"));
+    assert!(
+        created["info"]["prefix"]
+            .as_str()
+            .is_some_and(|p| token.starts_with(p))
+    );
+
+    let (status, _, me) = call(&t.router, "GET", "/api/v1/me", Auth::Bearer(&token), None, None).await;
+    assert_eq!((status, me["via"].as_str()), (StatusCode::OK, Some("token")));
+    assert_eq!(
+        call(
+            &t.router,
+            "GET",
+            "/api/v1/projects",
+            Auth::Bearer(&token),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let project = json!({ "name": "blog", "display_name": "Blog" });
+    assert_eq!(
+        call(
+            &t.router,
+            "POST",
+            "/api/v1/projects",
+            Auth::Bearer(&token),
+            Some(project),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "viewer cap"
+    );
+    assert_eq!(
+        call(
+            &t.router,
+            "POST",
+            "/api/v1/tokens",
+            Auth::Bearer(&token),
+            Some(json!({ "name": "x" })),
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "tokens cannot mint tokens"
+    );
+    let mut forged = token.clone();
+    let last = forged.pop().expect("char");
+    forged.push(if last == 'A' { 'B' } else { 'A' });
+    assert_eq!(
+        call(&t.router, "GET", "/api/v1/me", Auth::Bearer(&forged), None, None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+
+    let (_, _, scoped) = call(
+        &t.router,
+        "POST",
+        "/api/v1/tokens",
+        Auth::Cookie(&alice),
+        Some(json!({ "name": "deploy", "role": "developer", "project": "shop" })),
+        None,
+    )
+    .await;
+    let scoped = scoped["token"].as_str().expect("scoped token").to_owned();
+    assert_eq!(
+        call(
+            &t.router,
+            "GET",
+            "/api/v1/projects/shop/environments",
+            Auth::Bearer(&scoped),
+            None,
+            None
