@@ -540,3 +540,80 @@ async fn sign_in(app: &Router, email: &str, password: &str) -> (StatusCode, Stri
         "/api/v1/auth/login",
         Auth::Anonymous,
         Some(json!({ "email": email, "password": password })),
+        None,
+    )
+    .await;
+    let cookie = headers
+        .get(header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .unwrap_or_default()
+        .to_owned();
+    (status, cookie, body)
+}
+
+async fn status_of(
+    app: &Router,
+    method: &str,
+    path: &str,
+    cookie: &str,
+    body: Option<serde_json::Value>,
+) -> StatusCode {
+    call(app, method, path, Auth::Cookie(cookie), body, None).await.0
+}
+
+async fn invite(app: &Router, cookie: &str, email: &str, role: &str) -> (StatusCode, serde_json::Value) {
+    let (status, _, body) = call(
+        app,
+        "POST",
+        "/api/v1/members",
+        Auth::Cookie(cookie),
+        Some(json!({ "email": email, "role": role })),
+        None,
+    )
+    .await;
+    (status, body)
+}
+
+async fn try_login(app: &Router, password: &str, forwarded_for: &str) -> (StatusCode, axum::http::HeaderMap) {
+    let (status, headers, _) = call(
+        app,
+        "POST",
+        "/api/v1/auth/login",
+        Auth::Anonymous,
+        Some(json!({ "email": "alice@example.com", "password": password })),
+        Some(forwarded_for),
+    )
+    .await;
+    (status, headers)
+}
+
+#[tokio::test]
+async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
+    let t = setup_with(|c| {
+        c.security.login_max_failures = 3;
+        c.security.trust_forwarded_for = true;
+    })
+    .await;
+    for _ in 0..3 {
+        assert_eq!(
+            try_login(&t.router, "wrong", "6.6.6.6, 10.0.0.1").await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    // Same proxy-appended hop, forged first hop, correct password: still blocked.
+    let (status, headers) = try_login(&t.router, "hunter22", "1.2.3.4, 10.0.0.1").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    let retry: u64 = headers
+        .get(header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
+        .expect("Retry-After");
+    assert!(retry > 0);
+    assert_eq!(
+        try_login(&t.router, "hunter22", "6.6.6.6, 10.0.0.2").await.0,
+        StatusCode::OK,
+        "another client is unaffected"
+    );
+}
+
