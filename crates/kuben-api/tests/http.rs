@@ -152,3 +152,81 @@ fn seed(app: &TestApp) {
         key: "kb-shop-prod/api-web-1".into(),
         namespace: "kb-shop-prod".into(),
         name: "api-web-1".into(),
+        org,
+        app: Some("api".into()),
+        process: Some("web".into()),
+        phase: PodPhase::Running,
+        ready: true,
+        restarts: 0,
+        reason: None,
+        node: Some("node-1".into()),
+        started_at: None,
+    });
+}
+
+async fn send(app: &Router, req: Request<Body>) -> (StatusCode, serde_json::Value) {
+    let resp = app.clone().oneshot(req).await.expect("response");
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.expect("body").to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+fn get(path: &str, cookie: &str) -> Request<Body> {
+    Request::get(path)
+        .header(header::COOKIE, cookie)
+        .body(Body::empty())
+        .expect("request")
+}
+
+fn post(path: &str, cookie: &str, body: &str) -> Request<Body> {
+    Request::post(path)
+        .header(header::COOKIE, cookie)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(CLIENT_HEADER, "test")
+        .body(Body::from(body.to_owned()))
+        .expect("request")
+}
+
+async fn login(app: &Router, email: &str) -> String {
+    let req = Request::post("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(CLIENT_HEADER, "test")
+        .body(Body::from(format!(
+            r#"{{"email":"{email}","password":"hunter22"}}"#
+        )))
+        .expect("request");
+    let resp = app.clone().oneshot(req).await.expect("response");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let set_cookie = resp.headers()[header::SET_COOKIE]
+        .to_str()
+        .expect("cookie")
+        .to_owned();
+    set_cookie.split(';').next().expect("pair").to_owned()
+}
+
+#[tokio::test]
+async fn health_endpoints() {
+    let app = setup().await;
+    let resp = app
+        .router
+        .clone()
+        .oneshot(Request::get("/livez").body(Body::empty()).expect("req"))
+        .await
+        .expect("resp");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = app
+        .router
+        .oneshot(Request::get("/readyz").body(Body::empty()).expect("req"))
+        .await
+        .expect("resp");
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn unknown_api_route_is_json_404_not_spa() {
+    let app = setup().await;
+    let resp = app
+        .router
