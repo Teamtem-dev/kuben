@@ -617,3 +617,80 @@ async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
     );
 }
 
+#[tokio::test]
+async fn scenario2_every_mutation_is_audited_without_handler_code() {
+    let t = setup().await;
+    seed(&t);
+    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+    let body = json!({ "name": "blog", "display_name": "Blog" });
+    assert_eq!(
+        status_of(&t.router, "POST", "/api/v1/projects", &bob, Some(body.clone())).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status_of(&t.router, "POST", "/api/v1/projects", &alice, Some(body)).await,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "no cluster in tests"
+    );
+
+    let (status, _, page) = call(
+        &t.router,
+        "GET",
+        "/api/v1/audit",
+        Auth::Cookie(&alice),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let events = page["events"].as_array().expect("events");
+    let seen: Vec<(String, String)> = events
+        .iter()
+        .map(|e| {
+            (
+                e["action"].as_str().unwrap_or_default().to_owned(),
+                e["outcome"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    for expected in [
+        ("createProject", "denied"),
+        ("createProject", "error"),
+        ("login", "success"),
+    ] {
+        assert!(
+            seen.contains(&(expected.0.to_owned(), expected.1.to_owned())),
+            "missing {expected:?} in {seen:?}"
+        );
+    }
+    let denied = events.iter().find(|e| e["outcome"] == "denied").expect("denied");
+    assert_eq!(denied["actor"], "bob@example.com");
+    assert_eq!(denied["status"], 403);
+    assert_eq!(
+        call(&t.router, "GET", "/api/v1/audit", Auth::Cookie(&bob), None, None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN,
+        "viewers cannot read the audit log"
+    );
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // one end-to-end story per scenario
+async fn scenario3_api_tokens_are_capped_scoped_and_revocable() {
+    let t = setup().await;
+    seed(&t);
+    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let (status, _, created) = call(
+        &t.router,
+        "POST",
+        "/api/v1/tokens",
+        Auth::Cookie(&alice),
+        Some(json!({ "name": "ci", "role": "viewer" })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let token = created["token"].as_str().expect("token").to_owned();
+    assert!(token.starts_with("kbn_pat_"));
