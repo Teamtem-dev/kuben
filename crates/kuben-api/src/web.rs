@@ -23,3 +23,12 @@ pub async fn fallback(uri: Uri) -> Response {
 
 #[cfg(feature = "embed-ui")]
 fn serve_spa(path: &str) -> Response {
+    #[derive(rust_embed::RustEmbed)]
+    #[folder = "../../apps/web/dist/"]
+    #[exclude = "*.map"]
+    struct Assets;
+
+    let rel = path.trim_start_matches('/');
+    let (rel, is_asset) = match Assets::get(rel) {
+        Some(_) if !rel.is_empty() => (rel.to_owned(), rel.starts_with("assets/")),
+        _ => ("index.html".to_owned(), false),
