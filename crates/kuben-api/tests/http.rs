@@ -75,3 +75,80 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> TestApp {
     );
     TestApp {
         router: kuben_api::router(state),
+        projections,
+        org: org.id,
+        store,
+    }
+}
+
+fn seed(app: &TestApp) {
+    let org = Some(app.org.to_string());
+    app.projections.upsert_project(ProjectView {
+        name: "shop".into(),
+        uid: Some(uuid::Uuid::now_v7().to_string()),
+        display_name: "Shop".into(),
+        description: None,
+        org: org.clone(),
+        environments: 1,
+        ready: true,
+        deleting: false,
+        created_at: None,
+    });
+    app.projections.upsert_project(ProjectView {
+        name: "secret-project".into(),
+        uid: Some(uuid::Uuid::now_v7().to_string()),
+        display_name: "Other tenant".into(),
+        description: None,
+        org: Some(OrgId::new().to_string()),
+        environments: 0,
+        ready: true,
+        deleting: false,
+        created_at: None,
+    });
+    app.projections.upsert_environment(EnvironmentView {
+        name: "shop-prod".into(),
+        uid: Some(uuid::Uuid::now_v7().to_string()),
+        project: "shop".into(),
+        org: org.clone(),
+        env_type: "production",
+        namespace: "kb-shop-prod".into(),
+        phase: Some("Ready".into()),
+        ready: true,
+        message: None,
+        deleting: false,
+        deletion_scheduled_at: None,
+        created_at: None,
+    });
+    app.projections.upsert_app(AppView {
+        key: "kb-shop-prod/api".into(),
+        namespace: "kb-shop-prod".into(),
+        name: "api".into(),
+        uid: Some(uuid::Uuid::now_v7().to_string()),
+        org: org.clone(),
+        project: Some("shop".into()),
+        environment: Some("shop-prod".into()),
+        image: Some("nginx:1.27".into()),
+        git_repo: None,
+        url: Some("https://api.example.com".into()),
+        ready: true,
+        reason: Some("Available".into()),
+        message: None,
+        processes: vec![ProcessView {
+            name: "web".into(),
+            command: vec![],
+            port: Some(80),
+            size: "small".into(),
+            min_replicas: 1,
+            max_replicas: 1,
+            schedule: None,
+            protocol: "http".into(),
+        }],
+        env: vec![],
+        domains: vec!["api.example.com".into()],
+        volumes: vec![],
+        created_at: None,
+    });
+    app.projections.upsert_pod(PodView {
+        key: "kb-shop-prod/api-web-1".into(),
+        namespace: "kb-shop-prod".into(),
+        name: "api-web-1".into(),
