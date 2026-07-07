@@ -230,3 +230,80 @@ async fn unknown_api_route_is_json_404_not_spa() {
     let app = setup().await;
     let resp = app
         .router
+        .oneshot(Request::get("/api/v1/nope").body(Body::empty()).expect("req"))
+        .await
+        .expect("resp");
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.headers()[header::CONTENT_TYPE], "application/problem+json");
+}
+
+#[tokio::test]
+async fn me_requires_auth() {
+    let app = setup().await;
+    let (status, problem) = send(
+        &app.router,
+        Request::get("/api/v1/me").body(Body::empty()).expect("req"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(problem["code"], "unauthorized");
+}
+
+#[tokio::test]
+async fn login_without_csrf_header_is_forbidden() {
+    let app = setup().await;
+    let req = Request::post("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            r#"{"email":"alice@example.com","password":"hunter22"}"#,
+        ))
+        .expect("req");
+    let (status, _) = send(&app.router, req).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn session_lifecycle() {
+    let app = setup().await;
+    let req = Request::post("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(CLIENT_HEADER, "test")
+        .body(Body::from(
+            r#"{"email":"Alice@Example.com","password":"hunter22"}"#,
+        ))
+        .expect("req");
+    let resp = app.router.clone().oneshot(req).await.expect("resp");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let set_cookie = resp.headers()[header::SET_COOKIE]
+        .to_str()
+        .expect("cookie")
+        .to_owned();
+    assert!(set_cookie.starts_with("kuben_session="));
+    assert!(
+        set_cookie.contains("HttpOnly")
+            && set_cookie.contains("SameSite=Lax")
+            && set_cookie.contains("Max-Age")
+    );
+    let cookie = set_cookie.split(';').next().expect("pair").to_owned();
+
+    let (status, me) = send(&app.router, get("/api/v1/me", &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (me["email"].as_str(), me["via"].as_str()),
+        (Some("alice@example.com"), Some("session"))
+    );
+
+    let (status, _) = send(&app.router, post("/api/v1/auth/logout", &cookie, "")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(&app.router, get("/api/v1/me", &cookie)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn wrong_password_is_unauthorized() {
+    let app = setup().await;
+    let req = Request::post("/api/v1/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(CLIENT_HEADER, "test")
+        .body(Body::from(r#"{"email":"alice@example.com","password":"nope"}"#))
+        .expect("req");
