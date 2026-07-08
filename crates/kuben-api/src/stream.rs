@@ -52,3 +52,30 @@ impl Visibility {
 
     /// Filter a snapshot to the caller's orgs and remember what was sent.
     pub fn snapshot(&mut self, mut s: Snapshot) -> Snapshot {
+        s.pods
+            .retain(|p| self.orgs.contains(p.org.as_deref().unwrap_or_default()));
+        s.projects
+            .retain(|p| self.orgs.contains(p.org.as_deref().unwrap_or_default()));
+        s.environments
+            .retain(|e| self.orgs.contains(e.org.as_deref().unwrap_or_default()));
+        s.apps
+            .retain(|a| self.orgs.contains(a.org.as_deref().unwrap_or_default()));
+        self.seen.extend(s.pods.iter().map(|p| format!("pod:{}", p.key)));
+        self.seen
+            .extend(s.projects.iter().map(|p| format!("project:{}", p.name)));
+        self.seen
+            .extend(s.environments.iter().map(|e| format!("environment:{}", e.name)));
+        self.seen.extend(s.apps.iter().map(|a| format!("app:{}", a.key)));
+        s
+    }
+
+    /// Whether this delta may be sent on the connection.
+    pub fn admit(&mut self, delta: &Delta) -> bool {
+        match delta {
+            Delta::PodUpsert { pod, .. } => self.track(format!("pod:{}", pod.key), pod.org.as_deref()),
+            Delta::PodDelete { key, .. } => self.seen.remove(&format!("pod:{key}")),
+            Delta::ProjectUpsert { project, .. } => {
+                self.track(format!("project:{}", project.name), project.org.as_deref())
+            }
+            Delta::ProjectDelete { key, .. } => self.seen.remove(&format!("project:{key}")),
+            Delta::EnvironmentUpsert { environment, .. } => self.track(
