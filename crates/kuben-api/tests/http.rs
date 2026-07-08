@@ -927,3 +927,80 @@ async fn scenario4_team_members_follow_the_role_rules() {
             None
         )
         .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "only owners touch owners"
+    );
+    assert_eq!(
+        invite(&t.router, &dave, "erin@example.com", "developer").await.0,
+        StatusCode::CREATED,
+        "admins can invite"
+    );
+
+    assert_eq!(
+        call(
+            &t.router,
+            "DELETE",
+            &format!("/api/v1/members/{carol_id}"),
+            Auth::Cookie(&alice),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        call(&t.router, "GET", "/api/v1/me", Auth::Cookie(&carol), None, None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED,
+        "removal revokes sessions"
+    );
+    let (_, _, members) = call(
+        &t.router,
+        "GET",
+        "/api/v1/members",
+        Auth::Cookie(&alice),
+        None,
+        None,
+    )
+    .await;
+    let emails: Vec<&str> = members
+        .as_array()
+        .expect("members")
+        .iter()
+        .filter_map(|m| m["email"].as_str())
+        .collect();
+    assert!(
+        emails.contains(&"erin@example.com") && !emails.contains(&"carol@example.com"),
+        "{emails:?}"
+    );
+}
+
+#[tokio::test]
+async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
+    let t = setup().await;
+    seed(&t);
+    for image in ["nginx:1.26", "nginx:1.27"] {
+        t.store
+            .record_release(NewRelease {
+                org_id: Some(t.org),
+                namespace: "kb-shop-prod".into(),
+                app: "api".into(),
+                image: Some(image.into()),
+                spec: json!({
+                    "source": { "image": image },
+                    "runtime": { "processes": { "web": { "port": 80 } } }
+                }),
+                reason: "deploy".into(),
+                actor_id: None,
+                note: None,
+            })
+            .await
+            .expect("release");
+    }
+    let base = "/api/v1/projects/shop/environments/prod/apps/api";
+    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+    let (status, _, list) = call(
