@@ -849,3 +849,81 @@ async fn scenario4_team_members_follow_the_role_rules() {
     );
     assert_eq!(
         call(
+            &t.router,
+            "GET",
+            "/api/v1/projects",
+            Auth::Cookie(&carol),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "the temporary password must be replaced first"
+    );
+    assert_eq!(
+        change_password(&t.router, &carol, &temp, "short").await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        change_password(&t.router, &carol, "wrong", "correct horse battery").await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        change_password(&t.router, &carol, &temp, "correct horse battery").await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        call(
+            &t.router,
+            "GET",
+            "/api/v1/projects",
+            Auth::Cookie(&carol),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+
+    let role_change = |id: &str, role: &str| (format!("/api/v1/members/{id}"), json!({ "role": role }));
+    let (path, body) = role_change(&carol_id, "viewer");
+    assert_eq!(
+        status_of(&t.router, "PATCH", &path, &alice, Some(body)).await,
+        StatusCode::OK
+    );
+    let (path, body) = role_change(&alice_id, "admin");
+    assert_eq!(
+        status_of(&t.router, "PATCH", &path, &alice, Some(body)).await,
+        StatusCode::CONFLICT,
+        "own role"
+    );
+    assert_eq!(
+        invite(&t.router, &carol, "eve@example.com", "viewer").await.0,
+        StatusCode::FORBIDDEN,
+        "viewers cannot invite"
+    );
+
+    let (_, dave) = invite(&t.router, &alice, "dave@example.com", "admin").await;
+    let dave_temp = dave["temporary_password"].as_str().expect("temp").to_owned();
+    let (_, dave, _) = sign_in(&t.router, "dave@example.com", &dave_temp).await;
+    assert_eq!(
+        change_password(&t.router, &dave, &dave_temp, "another long password").await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        invite(&t.router, &dave, "mallory@example.com", "owner").await.0,
+        StatusCode::FORBIDDEN,
+        "no escalation"
+    );
+    assert_eq!(
+        call(
+            &t.router,
+            "DELETE",
+            &format!("/api/v1/members/{alice_id}"),
+            Auth::Cookie(&dave),
+            None,
+            None
+        )
+        .await
