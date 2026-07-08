@@ -133,3 +133,48 @@ impl FromRequestParts<ApiState> for Authz {
 mod tests {
     use kuben_core::traits::{PolicyEngine, StaticPolicy};
     use uuid::Uuid;
+
+    use super::*;
+
+    #[test]
+    fn token_scope_caps_and_re_roots_authority() {
+        let org = OrgId::new();
+        let (project, other) = (Uuid::now_v7(), Uuid::now_v7());
+        let owner = vec![Binding {
+            scope: ScopeRef::Org(org),
+            role: Role::Owner,
+        }];
+        let subject = |bindings| Subject {
+            user: kuben_core::ids::UserId::new(),
+            bindings,
+        };
+
+        let viewer = restrict(
+            owner.clone(),
+            &TokenScope {
+                role: Role::Viewer,
+                project: None,
+                environment: None,
+            },
+        );
+        let s = subject(viewer);
+        assert!(StaticPolicy.allowed(&s, Perm::AppRead, &ScopeChain::project(org, project)));
+        assert!(!StaticPolicy.allowed(&s, Perm::AppDeploy, &ScopeChain::project(org, project)));
+
+        let scoped = restrict(
+            owner,
+            &TokenScope {
+                role: Role::Developer,
+                project: Some(project),
+                environment: None,
+            },
+        );
+        let s = subject(scoped);
+        assert!(StaticPolicy.allowed(&s, Perm::AppDeploy, &ScopeChain::project(org, project)));
+        assert!(!StaticPolicy.allowed(&s, Perm::AppDeploy, &ScopeChain::project(org, other)));
+        assert!(
+            !StaticPolicy.allowed(&s, Perm::OrgRead, &ScopeChain::org(org)),
+            "a project token has no org-wide authority"
+        );
+    }
+}
