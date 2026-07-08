@@ -1004,3 +1004,81 @@ async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
     let (status, _, list) = call(
+        &t.router,
+        "GET",
+        &format!("{base}/releases"),
+        Auth::Cookie(&bob),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let revisions: Vec<i64> = list
+        .as_array()
+        .expect("releases")
+        .iter()
+        .filter_map(|r| r["revision"].as_i64())
+        .collect();
+    assert_eq!(revisions, vec![2, 1]);
+    assert_eq!(list[0]["current"], true);
+    assert_eq!(list[0]["image"], "nginx:1.27");
+
+    let rollback = format!("{base}/rollback");
+    let to = |revision: i64| Some(json!({ "revision": revision }));
+    assert_eq!(
+        status_of(&t.router, "POST", &rollback, &bob, to(1)).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status_of(&t.router, "POST", &rollback, &alice, to(9)).await,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        status_of(&t.router, "POST", &rollback, &alice, to(1)).await,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "no cluster in tests"
+    );
+}
+
+#[tokio::test]
+async fn scenario8_template_catalogue() {
+    let t = setup().await;
+    seed(&t);
+    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+    let (status, _, list) = call(
+        &t.router,
+        "GET",
+        "/api/v1/templates",
+        Auth::Cookie(&bob),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let templates = list.as_array().expect("templates");
+    assert_eq!(templates.len(), 8);
+    let pg = templates
+        .iter()
+        .find(|t| t["id"] == "postgres")
+        .expect("postgres");
+    assert_eq!(pg["protocol"], "tcp");
+    assert!(
+        pg["connection_keys"]
+            .as_array()
+            .expect("keys")
+            .contains(&json!("url"))
+    );
+
+    let deploy = "/api/v1/projects/shop/environments/prod/templates/postgres";
+    let name = || Some(json!({ "name": "db" }));
+    assert_eq!(
+        status_of(&t.router, "POST", deploy, &bob, name()).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status_of(&t.router, "POST", deploy, &alice, name()).await,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "no cluster in tests"
+    );
+}
