@@ -772,3 +772,80 @@ async fn scenario3_api_tokens_are_capped_scoped_and_revocable() {
             Auth::Bearer(&scoped),
             None,
             None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            &t.router,
+            "GET",
+            "/api/v1/members",
+            Auth::Bearer(&scoped),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN,
+        "a project token has no org-wide authority"
+    );
+
+    let id = created["info"]["id"].as_str().expect("id");
+    assert_eq!(
+        call(
+            &t.router,
+            "DELETE",
+            &format!("/api/v1/tokens/{id}"),
+            Auth::Cookie(&alice),
+            None,
+            None
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        call(&t.router, "GET", "/api/v1/me", Auth::Bearer(&token), None, None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+async fn change_password(app: &Router, cookie: &str, current: &str, new: &str) -> StatusCode {
+    call(
+        app,
+        "POST",
+        "/api/v1/me/password",
+        Auth::Cookie(cookie),
+        Some(json!({ "current_password": current, "new_password": new })),
+        None,
+    )
+    .await
+    .0
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // one end-to-end story per scenario
+async fn scenario4_team_members_follow_the_role_rules() {
+    let t = setup().await;
+    seed(&t);
+    let (_, alice, me) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let alice_id = me["id"].as_str().expect("id").to_owned();
+
+    let (status, invited) = invite(&t.router, &alice, "carol@example.com", "developer").await;
+    assert_eq!(status, StatusCode::CREATED, "{invited}");
+    let temp = invited["temporary_password"]
+        .as_str()
+        .expect("temporary password")
+        .to_owned();
+    let carol_id = invited["member"]["id"].as_str().expect("id").to_owned();
+    let (status, carol, me) = sign_in(&t.router, "carol@example.com", &temp).await;
+    assert_eq!(
+        (status, &me["must_change_password"]),
+        (StatusCode::OK, &json!(true))
+    );
+    assert_eq!(
+        call(
