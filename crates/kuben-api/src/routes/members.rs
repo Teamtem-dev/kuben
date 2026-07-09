@@ -74,3 +74,41 @@ pub struct InvitedMember {
     pub temporary_password: Option<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateMember {
+    pub role: String,
+}
+
+fn org_of(authz: &Authz) -> Result<OrgId, ApiError> {
+    authz.org_ids().first().copied().ok_or(ApiError(Error::Forbidden))
+}
+
+async fn find_member(state: &ApiState, org: OrgId, id: &str) -> ApiResult<Member> {
+    let not_found = || ApiError(Error::NotFound(format!("member `{id}`")));
+    let user: UserId = id.parse().map_err(|_| not_found())?;
+    state
+        .store
+        .list_members(org)
+        .await?
+        .into_iter()
+        .find(|m| m.user.id == user)
+        .ok_or_else(not_found)
+}
+
+/// Caller's own org role, required for every change.
+fn caller_role(authz: &Authz, org: OrgId) -> Result<Role, ApiError> {
+    authz.org_role(org).ok_or(ApiError(Error::Forbidden))
+}
+
+/// Members of the caller's organization.
+#[utoipa::path(
+    get,
+    path = "/members", operation_id = "listMembers",
+    tag = "members",
+    responses((status = 200, body = Vec<MemberDto>), (status = 403, body = crate::error::Problem))
+)]
+pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json<Vec<MemberDto>>> {
+    let org = org_of(&authz)?;
+    let _proof = authz.require(&state, Perm::OrgRead, &ScopeChain::org(org))?;
+    let members = state.store.list_members(org).await?;
+    Ok(Json(members.iter().map(MemberDto::from).collect()))
