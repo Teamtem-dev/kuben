@@ -23,3 +23,28 @@ pub struct ReleaseDto {
     pub revision: i64,
     pub image: Option<String>,
     /// `create`, `deploy`, `config`, `rollback`, `promote` or `template`.
+    pub reason: String,
+    pub note: Option<String>,
+    /// Email of whoever made the change.
+    pub actor: Option<String>,
+    pub created_at: i64,
+    /// The newest revision (what should be running).
+    pub current: bool,
+}
+
+/// Release history, newest first (50 revisions).
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/releases", operation_id = "listReleases",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    responses((status = 200, body = Vec<ReleaseDto>), (status = 404, body = crate::error::Problem))
+)]
+pub async fn releases(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
