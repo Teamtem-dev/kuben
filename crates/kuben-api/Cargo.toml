@@ -29,3 +29,34 @@ tokio-util.workspace = true
 tokio-stream.workspace = true
 futures.workspace = true
 async-stream.workspace = true
+http.workspace = true
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+utoipa-scalar.workspace = true
+argon2.workspace = true
+subtle.workspace = true
+sha2.workspace = true
+rand.workspace = true
+base64.workspace = true
+time.workspace = true
+secrecy.workspace = true
+moka.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+metrics.workspace = true
+kube.workspace = true
+k8s-openapi.workspace = true
+rust-embed = { workspace = true, optional = true }
+mime_guess = { workspace = true, optional = true }
+
+[dev-dependencies]
+http-body-util.workspace = true
+tower = { workspace = true, features = ["util"] }
+
+[lints]
+workspace = true
