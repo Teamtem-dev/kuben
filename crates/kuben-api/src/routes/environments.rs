@@ -66,3 +66,38 @@ impl EnvironmentDto {
             phase: v.phase.clone(),
             ready: v.ready,
             message: v.message.clone(),
+            deleting: v.deleting,
+            deletion_scheduled_at: v.deletion_scheduled_at.clone(),
+            created_at: v.created_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct QuotaInput {
+    #[schema(example = "4")]
+    pub cpu: Option<String>,
+    #[schema(example = "8Gi")]
+    pub memory: Option<String>,
+    #[schema(example = 50)]
+    pub pods: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateEnvironment {
+    /// Short name, e.g. `prod` (the object is named `<project>-<name>`).
+    #[schema(example = "prod")]
+    pub name: String,
+    #[serde(default)]
+    pub env_type: EnvType,
+    pub quota: Option<QuotaInput>,
+}
+
+/// List a project's environments.
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments", operation_id = "listEnvironments",
+    tag = "environments",
+    params(("project" = String, Path, description = "Project name")),
+    responses(
+        (status = 200, body = Vec<EnvironmentDto>),
