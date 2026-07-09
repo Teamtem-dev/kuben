@@ -47,3 +47,27 @@ impl From<&Secret> for SecretDto {
     }
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PutSecret {
+    /// Key → UTF-8 value. Replaces the whole secret.
+    pub data: BTreeMap<String, String>,
+}
+
+fn is_managed(s: &Secret) -> bool {
+    s.labels()
+        .get(labels::MANAGED_BY)
+        .is_some_and(|v| v == labels::MANAGER)
+}
+
+/// List the secrets of an environment (names and keys).
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments/{environment}/secrets", operation_id = "listSecrets",
+    tag = "secrets",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+    ),
+    responses((status = 200, body = Vec<SecretDto>), (status = 503, body = crate::error::Problem))
+)]
+pub async fn list(
