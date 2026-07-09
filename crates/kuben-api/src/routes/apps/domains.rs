@@ -23,3 +23,28 @@ pub struct DomainCheck {
     pub host: String,
     /// Addresses the host currently resolves to.
     pub addresses: Vec<String>,
+    /// Addresses of the gateway.
+    pub expected: Vec<String>,
+    /// `ok`, `mismatch`, `unresolved` or `unknown`.
+    pub status: String,
+    pub message: String,
+}
+
+/// Compare what a host resolves to with the gateway's addresses.
+#[must_use]
+pub fn domain_verdict(resolved: &[IpAddr], expected: &[IpAddr]) -> (&'static str, String) {
+    let join = |ips: &[IpAddr]| ips.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+    if resolved.is_empty() {
+        return (
+            "unresolved",
+            "no DNS record: create an A/AAAA record (or CNAME) pointing at the gateway".into(),
+        );
+    }
+    if expected.is_empty() {
+        return (
+            "unknown",
+            format!(
+                "resolves to {}; the gateway reports no address to compare with",
+                join(resolved)
+            ),
+        );
