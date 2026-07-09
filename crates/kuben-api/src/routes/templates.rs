@@ -205,3 +205,72 @@ const TEMPLATES: &[Template] = &[
         description: "Lightweight Git hosting (rootless image). Finish the installer on first visit.",
         category: "development",
         image: "gitea/gitea:1-rootless",
+        port: 3000,
+        protocol: Protocol::Http,
+        command: &[],
+        env: &[],
+        generated: &[],
+        derived: &[],
+        volumes: &[
+            ("data", "/var/lib/gitea", "5Gi"),
+            ("config", "/etc/gitea", "100Mi"),
+        ],
+        health: Some("/api/healthz"),
+        size: "small",
+        fs_group: Some(1000),
+    },
+    Template {
+        id: "whoami",
+        name: "whoami",
+        description: "Tiny HTTP echo service to test domains, TLS and routing.",
+        category: "sample",
+        image: "traefik/whoami:v1.10",
+        port: 8080,
+        protocol: Protocol::Http,
+        command: &["/whoami", "--port", "8080"],
+        env: &[],
+        generated: &[],
+        derived: &[],
+        volumes: &[],
+        health: None,
+        size: "nano",
+        fs_group: None,
+    },
+];
+
+/// Name of the Secret holding a template app's generated credentials.
+#[must_use]
+pub fn credentials_secret(app: &str) -> String {
+    format!("{app}-credentials")
+}
+
+fn random_secret() -> String {
+    rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(SECRET_LEN)
+        .map(char::from)
+        .collect()
+}
+
+struct Rendered {
+    spec: AppSpec,
+    secret: BTreeMap<String, String>,
+}
+
+fn render(t: &Template, app: &str) -> Rendered {
+    let mut secret: BTreeMap<String, String> = t
+        .generated
+        .iter()
+        .map(|k| ((*k).to_owned(), random_secret()))
+        .collect();
+    for (key, pattern) in t.derived {
+        let mut value = pattern.replace("{name}", app);
+        for (k, v) in t
+            .generated
+            .iter()
+            .filter_map(|k| secret.get(*k).map(|v| (*k, v.clone())))
+        {
+            value = value.replace(&format!("{{{k}}}"), &v);
+        }
+        secret.insert((*key).to_owned(), value);
+    }
