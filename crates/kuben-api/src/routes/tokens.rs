@@ -59,3 +59,34 @@ pub struct TokenDto {
     pub expires_at: Option<i64>,
     pub last_used_at: Option<i64>,
     pub revoked: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreatedToken {
+    /// The token itself. Shown exactly once; only its hash is stored.
+    pub token: String,
+    pub info: TokenDto,
+}
+
+fn dto(state: &ApiState, t: &ApiToken) -> TokenDto {
+    let project = t.scope.project.and_then(|uid| {
+        let uid = uid.to_string();
+        state
+            .projections
+            .projects()
+            .into_iter()
+            .find(|p| p.uid.as_deref() == Some(uid.as_str()))
+            .map(|p| p.name.clone())
+    });
+    let environment = t.scope.environment.and_then(|uid| {
+        let uid = uid.to_string();
+        state
+            .projections
+            .environments()
+            .into_iter()
+            .find(|e| e.uid.as_deref() == Some(uid.as_str()))
+            .map(|e| e.name.clone())
+    });
+    TokenDto {
+        id: t.id.to_string(),
