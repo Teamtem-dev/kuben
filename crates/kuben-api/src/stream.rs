@@ -79,3 +79,30 @@ impl Visibility {
             }
             Delta::ProjectDelete { key, .. } => self.seen.remove(&format!("project:{key}")),
             Delta::EnvironmentUpsert { environment, .. } => self.track(
+                format!("environment:{}", environment.name),
+                environment.org.as_deref(),
+            ),
+            Delta::EnvironmentDelete { key, .. } => self.seen.remove(&format!("environment:{key}")),
+            Delta::AppUpsert { app, .. } => self.track(format!("app:{}", app.key), app.org.as_deref()),
+            Delta::AppDelete { key, .. } => self.seen.remove(&format!("app:{key}")),
+            Delta::Resync { .. } => true,
+        }
+    }
+}
+
+/// Cluster event stream for the authenticated user, filtered to their orgs.
+pub async fn handler(
+    State(state): State<ApiState>,
+    authz: Authz,
+    headers: HeaderMap,
+) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    let last_seen: Option<u64> = headers
+        .get("last-event-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok());
+    let mut visibility = Visibility::new(authz.org_ids().iter().map(ToString::to_string));
+    let mut rx = state.projections.subscribe();
+    let snapshot = visibility.snapshot(state.projections.snapshot());
+
+    let stream = async_stream::stream! {
+        // A reconnecting client that is still current only needs deltas.
