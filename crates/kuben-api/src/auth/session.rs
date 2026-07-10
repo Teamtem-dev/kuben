@@ -69,3 +69,27 @@ pub(super) async fn user_from_session(state: &ApiState, raw: &str) -> Option<Cur
     } else {
         let session = state.store.find_session(&id_hash).await.ok().flatten()?;
         if !session.is_valid_at(now_ms()) {
+            return None;
+        }
+        let _ = state.store.touch_session(&id_hash).await;
+        state.session_cache.insert(id_hash, session.user_id).await;
+        session.user_id
+    };
+    let user = state.store.find_user_by_id(user_id).await.ok().flatten()?;
+    user.is_active.then_some(CurrentUser {
+        user,
+        via: "session",
+        token: None,
+    })
+}
+
+pub const TOKEN_PREFIX: &str = "kbn_pat_";
+/// `last_used_at` is written at most this often per token.
+const TOUCH_EVERY_MS: i64 = 60_000;
+
+/// A new token: `(plaintext, id, sha256(secret))`. Only the hash is stored.
+#[must_use]
+pub fn new_api_token() -> (String, TokenId, Vec<u8>) {
+    let id = TokenId::new();
+    let bytes: [u8; 32] = rand::random();
+    let secret = URL_SAFE_NO_PAD.encode(bytes);
