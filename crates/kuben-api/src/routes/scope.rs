@@ -26,3 +26,31 @@ pub fn cluster(state: &ApiState) -> Result<Client, ApiError> {
 
 /// Map a Kubernetes API error to a user-facing problem.
 pub fn kube_error(err: kube::Error, name: &str) -> ApiError {
+    match &err {
+        kube::Error::Api(s) if s.code == 404 => not_found("object", name),
+        kube::Error::Api(s) if s.code == 409 => ApiError(Error::Conflict(format!(
+            "`{name}` already exists or was changed concurrently; retry"
+        ))),
+        kube::Error::Api(s) if s.code == 400 || s.code == 422 => {
+            ApiError(Error::Validation(s.message.clone()))
+        }
+        _ => ApiError(Error::internal(err)),
+    }
+}
+
+#[derive(Debug)]
+pub struct ProjectScope {
+    pub view: Arc<ProjectView>,
+    pub org: OrgId,
+    pub uid: Uuid,
+}
+
+impl ProjectScope {
+    #[must_use]
+    pub fn chain(&self) -> ScopeChain {
+        ScopeChain::project(self.org, self.uid)
+    }
+}
+
+pub fn project(state: &ApiState, authz: &Authz, name: &str) -> Result<ProjectScope, ApiError> {
+    let view = state
