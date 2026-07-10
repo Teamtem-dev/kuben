@@ -102,3 +102,55 @@ pub async fn create(
 #[utoipa::path(
     get,
     path = "/projects/{project}/environments/{environment}/apps/{app}", operation_id = "getApp",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    responses((status = 200, body = AppDetail), (status = 404, body = crate::error::Problem))
+)]
+pub async fn get(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+) -> ApiResult<Json<AppDetail>> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
+    let with_values = authz.require(&state, Perm::SecretRead, &a.chain()).is_ok();
+    let mut dto = app_dto(&a, &a.view);
+    if let Ok(api) = app_api(&state, &a.env)
+        && let Ok(live) = api.get(&a.view.name).await
+    {
+        dto.env = live
+            .spec
+            .env
+            .iter()
+            .map(|e| from_crd_env(e, with_values))
+            .collect();
+    }
+    let pods = state
+        .projections
+        .pods_of_app(&a.view.namespace, &a.view.name)
+        .iter()
+        .map(|p| PodDto::from(&**p))
+        .collect();
+    Ok(Json(AppDetail { app: dto, pods }))
+}
+
+/// Update an app (image changes require `app-deploy`). Every change is a
+/// new release revision.
+#[utoipa::path(
+    patch,
+    path = "/projects/{project}/environments/{environment}/apps/{app}", operation_id = "updateApp",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    request_body = UpdateApp,
+    responses(
+        (status = 200, body = AppDto),
+        (status = 403, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
