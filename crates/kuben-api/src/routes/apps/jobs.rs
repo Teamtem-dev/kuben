@@ -27,3 +27,17 @@ pub struct JobStarted {
     pub job: String,
 }
 
+/// Name for a manual run, within the 63-character limit of Job names.
+#[must_use]
+pub fn manual_job_name(cron: &str, unix_secs: u64) -> String {
+    let suffix = format!("-run-{unix_secs}");
+    let keep = 63_usize.saturating_sub(suffix.len());
+    let base: String = cron.chars().take(keep).collect();
+    format!("{}{suffix}", base.trim_end_matches('-'))
+}
+
+/// Run a scheduled process now (a Job from its CronJob template).
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/run", operation_id = "runApp",
+    tag = "apps",
