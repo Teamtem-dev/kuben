@@ -16,3 +16,22 @@ use crate::{
     info(
         title = "Kuben API",
         version = "0.1.0",
+        description = "Kuben — Kubernetes-native PaaS control plane.",
+        license(name = "Apache-2.0")
+    ),
+    tags(
+        (name = "auth", description = "Sessions, identity and passwords"),
+        (name = "projects", description = "Projects"),
+        (name = "environments", description = "Environments (one namespace each)"),
+        (name = "apps", description = "Apps, rollouts, releases, logs, scheduled runs and promotion"),
+        (name = "secrets", description = "Write-only environment secrets"),
+        (name = "templates", description = "One-click services and databases"),
+        (name = "tokens", description = "Personal API tokens for CI/CD"),
+        (name = "members", description = "Organization members and roles"),
+        (name = "audit", description = "Audit log of every mutation"),
+        (name = "system", description = "Health and diagnostics"),
+    ),
+    components(schemas(crate::error::Problem))
+)]
+pub struct ApiDoc;
+
