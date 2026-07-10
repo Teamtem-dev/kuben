@@ -32,3 +32,11 @@ fn serve_spa(path: &str) -> Response {
     let (rel, is_asset) = match Assets::get(rel) {
         Some(_) if !rel.is_empty() => (rel.to_owned(), rel.starts_with("assets/")),
         _ => ("index.html".to_owned(), false),
+    };
+    let Some(file) = Assets::get(&rel) else {
+        return (StatusCode::NOT_FOUND, "ui not built").into_response();
+    };
+    let mime = mime_guess::from_path(&rel).first_or_octet_stream();
+    let mut resp = Response::new(axum::body::Body::from(file.data.into_owned()));
+    let headers = resp.headers_mut();
+    headers.insert(
