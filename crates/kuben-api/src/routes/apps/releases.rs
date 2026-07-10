@@ -48,3 +48,28 @@ pub async fn releases(
     State(state): State<ApiState>,
     authz: Authz,
     Path((project, environment, app)): Path<(String, String, String)>,
+) -> ApiResult<Json<Vec<ReleaseDto>>> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
+    let rows = state
+        .store
+        .list_releases(&a.view.namespace, &a.view.name, RELEASE_PAGE)
+        .await?;
+    let emails: HashMap<String, String> = state
+        .store
+        .list_users()
+        .await?
+        .into_iter()
+        .map(|u| (u.id.to_string(), u.email))
+        .collect();
+    Ok(Json(
+        rows.into_iter()
+            .enumerate()
+            .map(|(i, r)| ReleaseDto {
+                revision: r.revision,
+                image: r.image,
+                reason: r.reason,
+                note: r.note,
+                actor: r.actor_id.map(|id| emails.get(&id).cloned().unwrap_or(id)),
+                created_at: r.created_at,
+                current: i == 0,
