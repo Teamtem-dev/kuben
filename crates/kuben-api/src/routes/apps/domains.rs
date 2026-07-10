@@ -48,3 +48,28 @@ pub fn domain_verdict(resolved: &[IpAddr], expected: &[IpAddr]) -> (&'static str
                 join(resolved)
             ),
         );
+    }
+    if resolved.iter().any(|ip| expected.contains(ip)) {
+        ("ok", "points at the gateway".into())
+    } else {
+        (
+            "mismatch",
+            format!(
+                "points at {} but the gateway is {}",
+                join(resolved),
+                join(expected)
+            ),
+        )
+    }
+}
+
+async fn resolve(host: &str) -> Vec<IpAddr> {
+    match tokio::time::timeout(Duration::from_secs(3), tokio::net::lookup_host((host, 443))).await {
+        Ok(Ok(addrs)) => {
+            let mut ips: Vec<IpAddr> = addrs.map(|a| a.ip()).collect();
+            ips.sort();
+            ips.dedup();
+            ips
+        }
+        _ => Vec::new(),
+    }
