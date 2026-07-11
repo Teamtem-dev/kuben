@@ -274,3 +274,72 @@ fn render(t: &Template, app: &str) -> Rendered {
         }
         secret.insert((*key).to_owned(), value);
     }
+    let secret_name = credentials_secret(app);
+    let env = t
+        .env
+        .iter()
+        .map(|(name, value)| match value {
+            Lit(v) => EnvVar {
+                name: (*name).to_owned(),
+                value: Some((*v).to_owned()),
+                from_secret: None,
+                from_service: None,
+            },
+            Sec(key) => EnvVar {
+                name: (*name).to_owned(),
+                value: None,
+                from_secret: Some(KeyRef {
+                    name: secret_name.clone(),
+                    key: (*key).to_owned(),
+                }),
+                from_service: None,
+            },
+        })
+        .collect();
+    let spec = AppSpec {
+        source: Source::from_image(t.image),
+        runtime: Runtime {
+            processes: BTreeMap::from([(
+                "web".to_owned(),
+                Process {
+                    command: t.command.iter().map(ToString::to_string).collect(),
+                    port: Some(t.port),
+                    size: t.size.to_owned(),
+                    replicas: Replicas::default(),
+                    idle: None,
+                    schedule: None,
+                    time_zone: None,
+                    protocol: t.protocol,
+                },
+            )]),
+            health_check: t.health.map(|path| HealthCheck {
+                path: path.to_owned(),
+                port: None,
+            }),
+            fs_group: t.fs_group,
+        },
+        env,
+        domains: Vec::new(),
+        volumes: t
+            .volumes
+            .iter()
+            .map(|(name, mount_path, size)| Volume {
+                name: (*name).to_owned(),
+                mount_path: (*mount_path).to_owned(),
+                size: (*size).to_owned(),
+                storage_class: None,
+            })
+            .collect(),
+    };
+    Rendered { spec, secret }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TemplateDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub image: String,
+    pub port: u16,
+    /// `http` (public route) or `tcp` (cluster-internal).
