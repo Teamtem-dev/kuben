@@ -101,3 +101,37 @@ pub struct CreateEnvironment {
     params(("project" = String, Path, description = "Project name")),
     responses(
         (status = 200, body = Vec<EnvironmentDto>),
+        (status = 404, body = crate::error::Problem),
+    )
+)]
+pub async fn list(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(project): Path<String>,
+) -> ApiResult<Json<Vec<EnvironmentDto>>> {
+    let p = scope::project(&state, &authz, &project)?;
+    let _proof = authz.require(&state, Perm::EnvRead, &p.chain())?;
+    let items = state
+        .projections
+        .environments()
+        .iter()
+        .filter(|e| e.project == p.view.name)
+        .map(|e| EnvironmentDto::from_view(e))
+        .collect();
+    Ok(Json(items))
+}
+
+/// One environment.
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments/{environment}", operation_id = "getEnvironment",
+    tag = "environments",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+    ),
+    responses((status = 200, body = EnvironmentDto), (status = 404, body = crate::error::Problem))
+)]
+pub async fn get(
+    State(state): State<ApiState>,
+    authz: Authz,
