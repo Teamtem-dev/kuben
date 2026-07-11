@@ -71,3 +71,28 @@ fn is_managed(s: &Secret) -> bool {
     responses((status = 200, body = Vec<SecretDto>), (status = 503, body = crate::error::Problem))
 )]
 pub async fn list(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment)): Path<(String, String)>,
+) -> ApiResult<Json<Vec<SecretDto>>> {
+    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let _proof = authz.require(&state, Perm::SecretRead, &e.chain())?;
+    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    let list = api
+        .list(&ListParams::default().labels(labels::MANAGED_SELECTOR))
+        .await
+        .map_err(|err| scope::kube_error(err, "secrets"))?;
+    Ok(Json(list.items.iter().map(SecretDto::from).collect()))
+}
+
+/// Create or replace a secret.
+#[utoipa::path(
+    put,
+    path = "/projects/{project}/environments/{environment}/secrets/{secret}", operation_id = "putSecret",
+    tag = "secrets",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("secret" = String, Path, description = "Secret name"),
+    ),
+    request_body = PutSecret,
