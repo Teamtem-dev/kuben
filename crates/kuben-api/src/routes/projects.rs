@@ -49,3 +49,29 @@ impl From<&ProjectView> for ProjectDto {
         }
     }
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateProject {
+    /// DNS label, e.g. `shop` (at most 40 characters).
+    #[schema(example = "shop")]
+    pub name: String,
+    #[schema(example = "Online Shop")]
+    pub display_name: String,
+    pub description: Option<String>,
+}
+
+/// List projects visible to the caller.
+#[utoipa::path(get, path = "/projects", operation_id = "listProjects", tag = "projects", responses((status = 200, body = Vec<ProjectDto>)))]
+pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json<Vec<ProjectDto>>> {
+    let orgs: Vec<String> = authz.org_ids().iter().map(ToString::to_string).collect();
+    let items = state
+        .projections
+        .projects()
+        .iter()
+        .filter(|p| p.org.as_ref().is_some_and(|o| orgs.contains(o)))
+        .map(|p| ProjectDto::from(&**p))
+        .collect();
+    Ok(Json(items))
+}
+
+/// One project.
