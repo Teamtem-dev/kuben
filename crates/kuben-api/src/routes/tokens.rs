@@ -90,3 +90,33 @@ fn dto(state: &ApiState, t: &ApiToken) -> TokenDto {
     });
     TokenDto {
         id: t.id.to_string(),
+        name: t.name.clone(),
+        prefix: t.prefix.clone(),
+        role: t.scope.role.to_string(),
+        project,
+        environment,
+        expires_at: t.expires_at,
+        last_used_at: t.last_used_at,
+        revoked: t.revoked_at.is_some(),
+        created_at: t.created_at,
+    }
+}
+
+/// Create a personal API token.
+#[utoipa::path(
+    post,
+    path = "/tokens", operation_id = "createToken",
+    tag = "tokens",
+    request_body = CreateToken,
+    responses(
+        (status = 201, body = CreatedToken),
+        (status = 403, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
+pub async fn create(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Json(body): Json<CreateToken>,
+) -> ApiResult<(StatusCode, Json<CreatedToken>)> {
+    authz.forbid_token()?;
