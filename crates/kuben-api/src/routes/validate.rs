@@ -55,3 +55,32 @@ pub fn env_var_name(name: &str) -> Result<(), Error> {
     }
 }
 
+/// Container image reference (syntax only; the registry is not contacted).
+pub fn image(image: &str) -> Result<(), Error> {
+    let image = image.trim();
+    let ok = !image.is_empty()
+        && image.len() <= 512
+        && !image.starts_with('-')
+        && image.chars().all(|c| c.is_ascii_graphic());
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(
+            "image must be a container image reference, e.g. nginx:1.27".into(),
+        ))
+    }
+}
+
+/// Key inside a Secret (`[-._a-zA-Z0-9]+`).
+pub fn secret_key(key: &str) -> Result<(), Error> {
+    let ok = !key.is_empty()
+        && key.len() <= 253
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(format!("`{key}` is not a valid secret key")))
+    }
+}
