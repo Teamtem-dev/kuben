@@ -35,3 +35,22 @@ use crate::{
 )]
 pub struct ApiDoc;
 
+/// All `/api/v1` REST routes with their OpenAPI metadata.
+pub fn api_router() -> OpenApiRouter<ApiState> {
+    OpenApiRouter::new()
+        .merge(auth::openapi_router())
+        .routes(routes!(projects::list, projects::create))
+        .routes(routes!(projects::get, projects::delete))
+        .routes(routes!(environments::list, environments::create))
+        .routes(routes!(environments::get, environments::delete))
+        .routes(routes!(apps::crud::list, apps::crud::create))
+        .routes(routes!(apps::crud::get, apps::crud::update, apps::crud::delete))
+        .routes(routes!(apps::crud::restart))
+        .routes(routes!(apps::crud::logs))
+        .routes(routes!(apps::releases::releases))
+        .routes(routes!(apps::releases::rollback))
+        .routes(routes!(apps::jobs::run))
+        .routes(routes!(apps::domains::domains))
+        .routes(routes!(apps::promote::promote))
+        .routes(routes!(secrets::list))
+        .routes(routes!(secrets::put, secrets::delete))
