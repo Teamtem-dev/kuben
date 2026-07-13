@@ -23,3 +23,15 @@ impl Hasher {
 
     #[must_use]
     pub fn with_params(params: Params) -> Self {
+        let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        let salt = SaltString::generate(&mut OsRng);
+        let dummy = argon
+            .hash_password(b"kuben-dummy-password-for-constant-time", &salt)
+            .map(|h| h.to_string())
+            .unwrap_or_default();
+        Self { argon, dummy }
+    }
+
+    /// Fast parameters for tests.
+    #[must_use]
+    pub fn insecure_for_tests() -> Self {

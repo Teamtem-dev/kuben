@@ -93,3 +93,26 @@ pub fn new_api_token() -> (String, TokenId, Vec<u8>) {
     let id = TokenId::new();
     let bytes: [u8; 32] = rand::random();
     let secret = URL_SAFE_NO_PAD.encode(bytes);
+    let plaintext = format!("{TOKEN_PREFIX}{}_{secret}", id.as_uuid().simple());
+    (plaintext, id, sha256(secret.as_bytes()))
+}
+
+/// `kbn_pat_<32 hex>_<secret>` → `(id, secret)`. The id is hex, so the first
+/// `_` after it is the separator even though the secret may contain `_`.
+#[must_use]
+pub fn parse_api_token(token: &str) -> Option<(TokenId, &str)> {
+    let (id, secret) = token.strip_prefix(TOKEN_PREFIX)?.split_once('_')?;
+    if id.len() != 32 || secret.is_empty() {
+        return None;
+    }
+    let uuid = uuid::Uuid::try_parse(id).ok()?;
+    Some((TokenId::from_uuid(uuid), secret))
+}
+
+/// Non-secret display prefix, e.g. `kbn_pat_0192f3a1`.
+#[must_use]
+pub fn token_display_prefix(plaintext: &str) -> String {
+    plaintext.chars().take(TOKEN_PREFIX.len() + 8).collect()
+}
+
+pub(super) async fn user_from_api_token(state: &ApiState, token: &str) -> Option<CurrentUser> {
