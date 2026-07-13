@@ -54,3 +54,31 @@ impl ProjectScope {
 
 pub fn project(state: &ApiState, authz: &Authz, name: &str) -> Result<ProjectScope, ApiError> {
     let view = state
+        .projections
+        .project(name)
+        .ok_or_else(|| not_found("project", name))?;
+    let org = view
+        .org
+        .as_deref()
+        .and_then(|o| o.parse::<OrgId>().ok())
+        .filter(|o| authz.org_ids().contains(o))
+        .ok_or_else(|| not_found("project", name))?;
+    let uid = view
+        .uid
+        .as_deref()
+        .and_then(|u| u.parse::<Uuid>().ok())
+        .ok_or_else(|| not_found("project", name))?;
+    Ok(ProjectScope { view, org, uid })
+}
+
+/// Kubernetes object name of an environment: `<project>-<env>`.
+#[must_use]
+pub fn environment_resource_name(project: &str, env: &str) -> String {
+    format!("{project}-{env}")
+}
+
+/// Short environment name used in URLs and the UI.
+#[must_use]
+pub fn environment_short_name<'a>(project: &str, resource: &'a str) -> &'a str {
+    resource
+        .strip_prefix(project)
