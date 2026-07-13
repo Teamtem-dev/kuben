@@ -154,3 +154,55 @@ pub async fn get(
         (status = 200, body = AppDto),
         (status = 403, body = crate::error::Problem),
         (status = 409, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
+pub async fn update(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+    Json(body): Json<UpdateApp>,
+) -> ApiResult<Json<AppDto>> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let deploys = body.image.is_some();
+    let perm = if deploys { Perm::AppDeploy } else { Perm::AppWrite };
+    let _proof = authz.require(&state, perm, &a.chain())?;
+    let api = app_api(&state, &a.env)?;
+    let mut live = api
+        .get(&a.view.name)
+        .await
+        .map_err(|e| scope::kube_error(e, &app))?;
+    let before = spec_json(&live.spec);
+    apply_update(&mut live.spec, body)?;
+    validate_spec(&live.spec)?;
+    ensure_domains_free(&state, &a.view.namespace, &a.view.name, &live.spec)?;
+    // `replace` carries the resourceVersion we read: a concurrent edit is a 409.
+    let updated = api
+        .replace(&a.view.name, &PostParams::default(), &live)
+        .await
+        .map_err(|e| scope::kube_error(e, &app))?;
+    if spec_json(&updated.spec) != before {
+        let reason = if deploys { "deploy" } else { "config" };
+        record_release(
+            &state,
+            &authz,
+            a.env.project.org,
+            &a.view.namespace,
+            &a.view.name,
+            &updated.spec,
+            reason,
+            None,
+        )
+        .await;
+    }
+    Ok(Json(app_dto(&a, &AppView::from(&updated))))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DeleteAppQuery {
+    /// Also delete the app's persistent volumes. Irreversible.
+    pub delete_volumes: Option<bool>,
+}
+
+/// Delete an app and everything it owns. Volumes are kept unless
