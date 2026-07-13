@@ -39,3 +39,23 @@ pub struct AuditEventDto {
     /// `success`, `denied`, `failure`, `throttled` or `error`.
     pub outcome: String,
     pub status: Option<u16>,
+    pub ip: Option<String>,
+    pub request_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AuditPage {
+    pub events: Vec<AuditEventDto>,
+    /// Pass as `before` to fetch the next (older) page.
+    pub next_before: Option<i64>,
+}
+
+/// Audit log of the caller's organization(s).
+#[utoipa::path(
+    get,
+    path = "/audit", operation_id = "listAudit",
+    tag = "audit",
+    params(AuditQuery),
+    responses((status = 200, body = AuditPage), (status = 403, body = crate::error::Problem))
+)]
+pub async fn list(
