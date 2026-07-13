@@ -73,3 +73,28 @@ async fn resolve(host: &str) -> Vec<IpAddr> {
         }
         _ => Vec::new(),
     }
+}
+
+async fn platform(client: &kube::Client) -> Platform {
+    let config = Api::<KubenConfig>::all(client.clone())
+        .get_opt(KUBEN_CONFIG_NAME)
+        .await
+        .ok()
+        .flatten();
+    Platform::from_spec(config.as_ref().map(|c| &c.spec))
+}
+
+async fn gateway_addresses(client: &kube::Client, platform: &Platform) -> Vec<IpAddr> {
+    let Some(gw) = &platform.gateway else {
+        return Vec::new();
+    };
+    let gvk = GroupVersionKind::gvk("gateway.networking.k8s.io", "v1", "Gateway");
+    let api: Api<DynamicObject> = Api::namespaced_with(
+        client.clone(),
+        &gw.namespace,
+        &ApiResource::from_gvk_with_plural(&gvk, "gateways"),
+    );
+    let Ok(Some(gateway)) = api.get_opt(&gw.name).await else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
