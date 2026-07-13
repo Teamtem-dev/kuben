@@ -106,3 +106,30 @@ pub async fn handler(
 
     let stream = async_stream::stream! {
         // A reconnecting client that is still current only needs deltas.
+        if last_seen != Some(snapshot.seq) {
+            yield Ok(Event::default().event("snapshot").id(snapshot.seq.to_string())
+                .json_data(&snapshot).unwrap_or_else(|_| Event::default().event("error").data("serialize")));
+        }
+        loop {
+            match rx.recv().await {
+                Ok(delta) => {
+                    if !visibility.admit(&delta) {
+                        continue;
+                    }
+                    let name = if matches!(&*delta, Delta::Resync { .. }) { "resync" } else { "delta" };
+                    let ev = Event::default().event(name).id(delta.seq().to_string());
+                    yield Ok(ev.json_data(&*delta).unwrap_or_else(|_| Event::default().event("error").data("serialize")));
+                }
+                Err(RecvError::Lagged(n)) => {
+                    metrics::counter!("kuben_sse_lagged_total").increment(n);
+                    yield Ok(Event::default().event("resync").data(n.to_string()));
+                }
+                Err(RecvError::Closed) => break,
+            }
+        }
+    };
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("ping")))
+}
+
+#[cfg(test)]
