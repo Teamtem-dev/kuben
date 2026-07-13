@@ -112,3 +112,41 @@ pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json
     let _proof = authz.require(&state, Perm::OrgRead, &ScopeChain::org(org))?;
     let members = state.store.list_members(org).await?;
     Ok(Json(members.iter().map(MemberDto::from).collect()))
+}
+
+/// Invite a member. New accounts get a one-time temporary password.
+#[utoipa::path(
+    post,
+    path = "/members", operation_id = "inviteMember",
+    tag = "members",
+    request_body = InviteMember,
+    responses(
+        (status = 201, body = InvitedMember),
+        (status = 403, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
+pub async fn invite(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Json(body): Json<InviteMember>,
+) -> ApiResult<(StatusCode, Json<InvitedMember>)> {
+    authz.forbid_token()?;
+    let org = org_of(&authz)?;
+    let _proof = authz.require(&state, Perm::UserAdmin, &ScopeChain::org(org))?;
+    let role: Role = body.role.parse()?;
+    if role.rank() > caller_role(&authz, org)?.rank() {
+        return Err(Error::Forbidden.into());
+    }
+    let email = body.email.trim().to_ascii_lowercase();
+    validate::email(&email)?;
+
+    let (user, temporary_password) = if let Some(existing) = state.store.find_user_by_email(&email).await? {
+        if state
+            .store
+            .list_members(org)
+            .await?
+            .iter()
+            .any(|m| m.user.id == existing.user.id)
+        {
