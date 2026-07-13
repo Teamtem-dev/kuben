@@ -40,3 +40,12 @@ fn serve_spa(path: &str) -> Response {
     let mut resp = Response::new(axum::body::Body::from(file.data.into_owned()));
     let headers = resp.headers_mut();
     headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(mime.as_ref()).unwrap_or(HeaderValue::from_static("application/octet-stream")),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(if is_asset {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
