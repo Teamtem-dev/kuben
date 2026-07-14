@@ -82,3 +82,31 @@ pub fn environment_resource_name(project: &str, env: &str) -> String {
 pub fn environment_short_name<'a>(project: &str, resource: &'a str) -> &'a str {
     resource
         .strip_prefix(project)
+        .and_then(|r| r.strip_prefix('-'))
+        .filter(|s| !s.is_empty())
+        .unwrap_or(resource)
+}
+
+#[derive(Debug)]
+pub struct EnvScope {
+    pub project: ProjectScope,
+    pub view: Arc<EnvironmentView>,
+    pub uid: Option<Uuid>,
+}
+
+impl EnvScope {
+    #[must_use]
+    pub fn chain(&self) -> ScopeChain {
+        ScopeChain {
+            environment: self.uid,
+            ..self.project.chain()
+        }
+    }
+
+    #[must_use]
+    pub fn short_name(&self) -> &str {
+        environment_short_name(&self.project.view.name, &self.view.name)
+    }
+}
+
+pub fn environment(state: &ApiState, authz: &Authz, project: &str, env: &str) -> Result<EnvScope, ApiError> {
