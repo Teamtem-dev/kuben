@@ -41,3 +41,18 @@ pub fn manual_job_name(cron: &str, unix_secs: u64) -> String {
     post,
     path = "/projects/{project}/environments/{environment}/apps/{app}/run", operation_id = "runApp",
     tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    request_body = RunJob,
+    responses(
+        (status = 202, body = JobStarted),
+        (status = 404, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
+pub async fn run(
+    State(state): State<ApiState>,
+    authz: Authz,
