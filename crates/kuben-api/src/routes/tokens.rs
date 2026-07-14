@@ -120,3 +120,34 @@ pub async fn create(
     Json(body): Json<CreateToken>,
 ) -> ApiResult<(StatusCode, Json<CreatedToken>)> {
     authz.forbid_token()?;
+    let name = body.name.trim();
+    if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control) {
+        return Err(Error::Validation("name must be 1–64 printable characters".into()).into());
+    }
+    let role: Role = body.role.parse()?;
+    if role == Role::Owner {
+        return Err(Error::Validation("tokens are capped at `admin`".into()).into());
+    }
+    let org = *authz.org_ids().first().ok_or(Error::Forbidden)?;
+    let own = authz.org_role(org).ok_or(Error::Forbidden)?;
+    if role.rank() > own.rank() {
+        return Err(Error::Validation(format!("a `{own}` cannot create a `{role}` token")).into());
+    }
+    let (project, environment) = match (&body.project, &body.environment) {
+        (None, None) => (None, None),
+        (None, Some(_)) => return Err(Error::Validation("environment requires project".into()).into()),
+        (Some(p), None) => (Some(scope::project(&state, &authz, p)?.uid), None),
+        (Some(p), Some(e)) => {
+            let env = scope::environment(&state, &authz, p, e)?;
+            let uid = env
+                .uid
+                .ok_or_else(|| Error::NotFound(format!("environment `{e}`")))?;
+            (Some(env.project.uid), Some(uid))
+        }
+    };
+    let days = body.expires_in_days.unwrap_or(DEFAULT_TTL_DAYS);
+    if !(1..=MAX_TTL_DAYS).contains(&days) {
+        return Err(
+            Error::Validation(format!("expires_in_days must be between 1 and {MAX_TTL_DAYS}")).into(),
+        );
+    }
