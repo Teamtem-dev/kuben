@@ -150,3 +150,41 @@ pub async fn invite(
             .iter()
             .any(|m| m.user.id == existing.user.id)
         {
+            return Err(Error::Conflict(format!("`{email}` is already a member")).into());
+        }
+        (existing.user, None)
+    } else {
+        let bytes: [u8; 18] = rand::random();
+        let password = URL_SAFE_NO_PAD.encode(bytes);
+        let hasher = state.hasher.clone();
+        let to_hash = password.clone();
+        let hash = spawn_blocking(move || hasher.hash(&to_hash))
+            .await
+            .map_err(Error::internal)?
+            .map_err(Error::internal)?;
+        let display_name = body
+            .display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty());
+        let user = state
+            .store
+            .create_invited_user(&email, display_name, Some(&hash))
+            .await?;
+        (user, Some(password))
+    };
+    state.store.add_membership(org, user.id).await?;
+    state.store.bind_org_role(org, user.id, role).await?;
+    let member = Member { user, role };
+    Ok((
+        StatusCode::CREATED,
+        Json(InvitedMember {
+            member: MemberDto::from(&member),
+            temporary_password,
+        }),
+    ))
+}
+
+/// Change a member's role.
+#[utoipa::path(
+    patch,
