@@ -84,3 +84,32 @@ pub fn secret_key(key: &str) -> Result<(), Error> {
         Err(invalid(format!("`{key}` is not a valid secret key")))
     }
 }
+
+/// Kubernetes quantity such as `500m`, `2`, `1Gi` (syntax check only).
+pub fn quantity(field: &str, value: &str) -> Result<(), Error> {
+    let ok = !value.is_empty()
+        && value.len() <= 32
+        && value.starts_with(|c: char| c.is_ascii_digit())
+        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '.');
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(format!(
+            "{field} must be a quantity such as 500m, 2 or 4Gi"
+        )))
+    }
+}
+
+/// Plausible email address (syntax only; no delivery is attempted).
+pub fn email(value: &str) -> Result<(), Error> {
+    let ok = value.len() <= 254
+        && !value.chars().any(char::is_whitespace)
+        && value.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty() && domain.contains('.') && !domain.contains('@')
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(format!("`{value}` is not a valid email address")))
+    }
+}
