@@ -343,3 +343,72 @@ pub struct TemplateDto {
     pub image: String,
     pub port: u16,
     /// `http` (public route) or `tcp` (cluster-internal).
+    pub protocol: String,
+    /// `mountPath (size)` of each volume.
+    pub volumes: Vec<String>,
+    /// Keys of the `<app>-credentials` secret, e.g. `url`.
+    pub connection_keys: Vec<String>,
+}
+
+fn template_dto(t: &Template) -> TemplateDto {
+    let mut keys: Vec<String> = t.generated.iter().map(|k| (*k).to_owned()).collect();
+    keys.extend(t.derived.iter().map(|(k, _)| (*k).to_owned()));
+    keys.sort();
+    TemplateDto {
+        id: t.id.into(),
+        name: t.name.into(),
+        description: t.description.into(),
+        category: t.category.into(),
+        image: t.image.into(),
+        port: t.port,
+        protocol: if t.protocol.is_http() { "http" } else { "tcp" }.into(),
+        volumes: t.volumes.iter().map(|(_, p, s)| format!("{p} ({s})")).collect(),
+        connection_keys: keys,
+    }
+}
+
+/// The template catalogue.
+#[utoipa::path(
+    get,
+    path = "/templates", operation_id = "listTemplates",
+    tag = "templates",
+    responses((status = 200, body = Vec<TemplateDto>))
+)]
+pub async fn list(_authz: Authz) -> Json<Vec<TemplateDto>> {
+    Json(TEMPLATES.iter().map(template_dto).collect())
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeployTemplate {
+    /// App name (also the in-cluster hostname of TCP services).
+    #[schema(example = "db")]
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeployedTemplate {
+    pub app: apps::AppDto,
+    /// Secret with the generated credentials, e.g. `db-credentials`.
+    pub credentials_secret: String,
+    /// Reference it from other apps as `KEY=@<secret>/<key>`.
+    pub connection_keys: Vec<String>,
+}
+
+/// Deploy a template into an environment.
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments/{environment}/templates/{template}", operation_id = "deployTemplate",
+    tag = "templates",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("template" = String, Path, description = "Template id"),
+    ),
+    request_body = DeployTemplate,
+    responses(
+        (status = 201, body = DeployedTemplate),
+        (status = 404, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
