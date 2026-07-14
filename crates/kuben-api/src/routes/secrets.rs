@@ -96,3 +96,27 @@ pub async fn list(
         ("secret" = String, Path, description = "Secret name"),
     ),
     request_body = PutSecret,
+    responses(
+        (status = 200, body = SecretDto),
+        (status = 409, description = "A secret with this name exists and is not managed by Kuben", body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
+pub async fn put(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, secret)): Path<(String, String, String)>,
+    Json(body): Json<PutSecret>,
+) -> ApiResult<Json<SecretDto>> {
+    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let _proof = authz.require(&state, Perm::SecretWrite, &e.chain())?;
+    validate::dns_label("secret name", &secret, 63)?;
+    if body.data.is_empty() {
+        return Err(Error::Validation("a secret needs at least one key".into()).into());
+    }
+    let mut total = 0usize;
+    for (k, v) in &body.data {
+        validate::secret_key(k)?;
+        total = total.saturating_add(v.len());
+    }
+    if total > MAX_SECRET_BYTES {
