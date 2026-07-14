@@ -75,3 +75,29 @@ pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json
 }
 
 /// One project.
+#[utoipa::path(
+    get,
+    path = "/projects/{project}", operation_id = "getProject",
+    tag = "projects",
+    params(("project" = String, Path, description = "Project name")),
+    responses((status = 200, body = ProjectDto), (status = 404, body = crate::error::Problem))
+)]
+pub async fn get(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(project): Path<String>,
+) -> ApiResult<Json<ProjectDto>> {
+    let p = scope::project(&state, &authz, &project)?;
+    let _proof = authz.require(&state, Perm::ProjectRead, &p.chain())?;
+    Ok(Json(ProjectDto::from(&*p.view)))
+}
+
+/// Create a project (writes a `Project` CR).
+#[utoipa::path(post, path = "/projects", operation_id = "createProject", tag = "projects", request_body = CreateProject, responses(
+    (status = 201, body = ProjectDto),
+    (status = 403, body = crate::error::Problem),
+    (status = 409, body = crate::error::Problem),
+    (status = 422, body = crate::error::Problem),
+    (status = 503, description = "No cluster configured", body = crate::error::Problem),
+))]
+pub async fn create(
