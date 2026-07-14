@@ -59,3 +59,24 @@ pub struct AuditPage {
     responses((status = 200, body = AuditPage), (status = 403, body = crate::error::Problem))
 )]
 pub async fn list(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Query(q): Query<AuditQuery>,
+) -> ApiResult<Json<AuditPage>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let page = usize::try_from(limit).unwrap_or(50);
+    let orgs: Vec<_> = authz
+        .org_ids()
+        .into_iter()
+        .filter(|o| {
+            authz
+                .require(&state, Perm::AuditRead, &ScopeChain::org(*o))
+                .is_ok()
+        })
+        .collect();
+    if orgs.is_empty() {
+        return Err(Error::Forbidden.into());
+    }
+    let mut events = Vec::new();
+    for org in orgs {
+        events.extend(state.store.list_audit(org, q.before, limit).await?);
