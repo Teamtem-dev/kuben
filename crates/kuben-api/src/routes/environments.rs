@@ -135,3 +135,37 @@ pub async fn list(
 pub async fn get(
     State(state): State<ApiState>,
     authz: Authz,
+    Path((project, environment)): Path<(String, String)>,
+) -> ApiResult<Json<EnvironmentDto>> {
+    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let _proof = authz.require(&state, Perm::EnvRead, &e.chain())?;
+    Ok(Json(EnvironmentDto::from_view(&e.view)))
+}
+
+/// Create an environment (the controller provisions its namespace).
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments", operation_id = "createEnvironment",
+    tag = "environments",
+    params(("project" = String, Path, description = "Project name")),
+    request_body = CreateEnvironment,
+    responses(
+        (status = 201, body = EnvironmentDto),
+        (status = 403, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+        (status = 503, description = "No cluster configured", body = crate::error::Problem),
+    )
+)]
+pub async fn create(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(project): Path<String>,
+    Json(body): Json<CreateEnvironment>,
+) -> ApiResult<(StatusCode, Json<EnvironmentDto>)> {
+    let p = scope::project(&state, &authz, &project)?;
+    let _proof = authz.require(&state, Perm::EnvWrite, &p.chain())?;
+    validate::dns_label("name", &body.name, 20)?;
+    let name = scope::environment_resource_name(&p.view.name, &body.name);
+    if namespace_name(&name).len() > 63 {
+        return Err(Error::Validation("project and environment names are too long together".into()).into());
