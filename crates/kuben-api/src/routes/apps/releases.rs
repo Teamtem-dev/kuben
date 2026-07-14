@@ -73,3 +73,28 @@ pub async fn releases(
                 actor: r.actor_id.map(|id| emails.get(&id).cloned().unwrap_or(id)),
                 created_at: r.created_at,
                 current: i == 0,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct Rollback {
+    /// Revision to restore.
+    pub revision: i64,
+}
+
+/// What a rollback restores: image, processes and env of the revision;
+/// domains and volumes stay as they are now (data layout never moves back).
+#[must_use]
+pub fn rollback_spec(current: &AppSpec, revision: AppSpec) -> AppSpec {
+    AppSpec {
+        source: revision.source,
+        runtime: revision.runtime,
+        env: revision.env,
+        domains: current.domains.clone(),
+        volumes: current.volumes.clone(),
+    }
+}
+
+/// Roll back to an earlier revision (recorded as a new revision).
