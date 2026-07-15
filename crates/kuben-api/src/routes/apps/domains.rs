@@ -98,3 +98,28 @@ async fn gateway_addresses(client: &kube::Client, platform: &Platform) -> Vec<Ip
         return Vec::new();
     };
     let mut out = Vec::new();
+    for address in gateway.data["status"]["addresses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let Some(value) = address["value"].as_str() else {
+            continue;
+        };
+        match value.parse::<IpAddr>() {
+            Ok(ip) => out.push(ip),
+            Err(_) => out.extend(resolve(value).await),
+        }
+    }
+    out
+}
+
+/// Check that every hostname of the app points at the gateway.
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/domains", operation_id = "checkAppDomains",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
