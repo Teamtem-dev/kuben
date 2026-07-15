@@ -49,3 +49,11 @@ fn serve_spa(path: &str) -> Response {
             "public, max-age=31536000, immutable"
         } else {
             "no-cache"
+        }),
+    );
+    apply_security_headers(headers);
+    resp
+}
+
+#[cfg(not(feature = "embed-ui"))]
+fn serve_spa(_path: &str) -> Response {
