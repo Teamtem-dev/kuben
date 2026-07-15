@@ -133,3 +133,30 @@ pub async fn handler(
 }
 
 #[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use kuben_platform::projection::{PodPhase, PodView, ProjectView, Projections};
+
+    use super::*;
+
+    fn project(name: &str, org: &str) -> ProjectView {
+        ProjectView {
+            name: name.into(),
+            uid: None,
+            display_name: name.into(),
+            description: None,
+            org: Some(org.into()),
+            environments: 0,
+            ready: true,
+            deleting: false,
+            created_at: None,
+        }
+    }
+
+    fn pod(name: &str, org: &str) -> PodView {
+        PodView {
+            key: format!("ns/{name}"),
+            namespace: "ns".into(),
+            name: name.into(),
+            org: Some(org.into()),
