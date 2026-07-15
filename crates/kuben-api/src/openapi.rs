@@ -54,3 +54,22 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::promote::promote))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
+        .routes(routes!(templates::list))
+        .routes(routes!(templates::deploy))
+        .routes(routes!(tokens::list, tokens::create))
+        .routes(routes!(tokens::revoke))
+        .routes(routes!(members::list, members::invite))
+        .routes(routes!(members::update, members::remove))
+        .routes(routes!(audit::list))
+        .routes(routes!(health::details))
+}
+
+/// The complete spec (used by the `openapi` binary, the audit middleware and tests).
+#[must_use]
+pub fn spec() -> utoipa::openapi::OpenApi {
+    let (_router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .nest("/api/v1", api_router())
+        .split_for_parts();
+    api
+}
+
