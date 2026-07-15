@@ -35,3 +35,16 @@ impl Hasher {
     /// Fast parameters for tests.
     #[must_use]
     pub fn insecure_for_tests() -> Self {
+        Self::with_params(Params::new(8, 1, 1, None).unwrap_or_else(|_| Params::default()))
+    }
+
+    /// Hash a password into a PHC string.
+    pub fn hash(&self, password: &str) -> Result<String, argon2::password_hash::Error> {
+        let salt = SaltString::generate(&mut OsRng);
+        Ok(self.argon.hash_password(password.as_bytes(), &salt)?.to_string())
+    }
+
+    /// Verify a password against a PHC string. Any parse error is a mismatch.
+    #[must_use]
+    pub fn verify(&self, password: &str, phc: &str) -> bool {
+        PasswordHash::new(phc)

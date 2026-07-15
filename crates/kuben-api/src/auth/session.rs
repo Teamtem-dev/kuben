@@ -116,3 +116,27 @@ pub fn token_display_prefix(plaintext: &str) -> String {
 }
 
 pub(super) async fn user_from_api_token(state: &ApiState, token: &str) -> Option<CurrentUser> {
+    let (id, secret) = parse_api_token(token)?;
+    let record = state.store.find_token(id).await.ok().flatten()?;
+    let presented = sha256(secret.as_bytes());
+    if !bool::from(presented.as_slice().ct_eq(record.secret_hash.as_slice())) {
+        return None;
+    }
+    let now = now_ms();
+    if !record.is_usable_at(now) {
+        return None;
+    }
+    let user = state.store.find_user_by_id(record.owner?).await.ok().flatten()?;
+    if !user.is_active {
+        return None;
+    }
+    if record.last_used_at.is_none_or(|t| now - t > TOUCH_EVERY_MS) {
+        let _ = state.store.touch_token(id).await;
+    }
+    Some(CurrentUser {
+        user,
+        via: "token",
+        token: Some(TokenGrant {
+            id,
+            org: record.org_id,
+            scope: record.scope,
