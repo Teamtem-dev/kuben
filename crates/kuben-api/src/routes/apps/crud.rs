@@ -206,3 +206,55 @@ pub struct DeleteAppQuery {
 }
 
 /// Delete an app and everything it owns. Volumes are kept unless
+/// `delete_volumes=true`.
+#[utoipa::path(
+    delete,
+    path = "/projects/{project}/environments/{environment}/apps/{app}", operation_id = "deleteApp",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+        DeleteAppQuery,
+    ),
+    responses((status = 204, description = "Deleted"), (status = 404, body = crate::error::Problem))
+)]
+pub async fn delete(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+    Query(q): Query<DeleteAppQuery>,
+) -> ApiResult<StatusCode> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppWrite, &a.chain())?;
+    app_api(&state, &a.env)?
+        .delete(&a.view.name, &DeleteParams::background())
+        .await
+        .map_err(|e| scope::kube_error(e, &app))?;
+    if q.delete_volumes == Some(true) {
+        let pvcs = Api::<PersistentVolumeClaim>::namespaced(scope::cluster(&state)?, &a.view.namespace);
+        let selector = format!("{}={}", labels::APP, a.view.name);
+        let claims = pvcs
+            .list(&ListParams::default().labels(&selector))
+            .await
+            .map_err(|e| scope::kube_error(e, &app))?;
+        for pvc in claims
+            .items
+            .iter()
+            .filter(|p| p.annotations().contains_key(RETAIN))
+        {
+            pvcs.delete(&pvc.name_any(), &DeleteParams::background())
+                .await
+                .map_err(|e| scope::kube_error(e, &app))?;
+        }
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Rolling restart of every process (no spec change).
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/restart", operation_id = "restartApp",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
