@@ -110,3 +110,31 @@ impl EnvScope {
 }
 
 pub fn environment(state: &ApiState, authz: &Authz, project: &str, env: &str) -> Result<EnvScope, ApiError> {
+    let project = self::project(state, authz, project)?;
+    let p = project.view.name.clone();
+    let view = state
+        .projections
+        .environment(&environment_resource_name(&p, env))
+        .or_else(|| state.projections.environment(env))
+        .filter(|e| e.project == p)
+        .ok_or_else(|| not_found("environment", env))?;
+    let uid = view.uid.as_deref().and_then(|u| u.parse().ok());
+    Ok(EnvScope { project, view, uid })
+}
+
+#[derive(Debug)]
+pub struct AppScope {
+    pub env: EnvScope,
+    pub view: Arc<AppView>,
+    pub uid: Option<Uuid>,
+}
+
+impl AppScope {
+    #[must_use]
+    pub fn chain(&self) -> ScopeChain {
+        ScopeChain {
+            app: self.uid,
+            ..self.env.chain()
+        }
+    }
+}
