@@ -56,3 +56,17 @@ pub fn manual_job_name(cron: &str, unix_secs: u64) -> String {
 pub async fn run(
     State(state): State<ApiState>,
     authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+    Json(body): Json<RunJob>,
+) -> ApiResult<(StatusCode, Json<JobStarted>)> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
+    let process = match body.process {
+        Some(p) => p,
+        None => a
+            .view
+            .processes
+            .iter()
+            .find(|p| p.schedule.is_some())
+            .map(|p| p.name.clone())
+            .ok_or_else(|| Error::Validation("this app has no scheduled process".into()))?,
