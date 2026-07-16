@@ -151,3 +151,34 @@ pub async fn create(
             Error::Validation(format!("expires_in_days must be between 1 and {MAX_TTL_DAYS}")).into(),
         );
     }
+    let (plaintext, id, secret_hash) = session::new_api_token();
+    let token = state
+        .store
+        .create_token(NewToken {
+            id,
+            org_id: org,
+            owner: authz.current.user.id,
+            name: name.to_owned(),
+            prefix: session::token_display_prefix(&plaintext),
+            secret_hash,
+            scope: TokenScope {
+                role,
+                project,
+                environment,
+            },
+            expires_at: Some(now_ms() + i64::from(days) * DAY_MS),
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(CreatedToken {
+            token: plaintext,
+            info: dto(&state, &token),
+        }),
+    ))
+}
+
+/// The caller's API tokens.
+#[utoipa::path(
+    get,
+    path = "/tokens", operation_id = "listTokens",
