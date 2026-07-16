@@ -80,3 +80,23 @@ pub async fn list(
     let mut events = Vec::new();
     for org in orgs {
         events.extend(state.store.list_audit(org, q.before, limit).await?);
+    }
+    events.sort_by_key(|e| std::cmp::Reverse(e.seq));
+    events.truncate(page);
+    let emails: HashMap<String, String> = state
+        .store
+        .list_users()
+        .await?
+        .into_iter()
+        .map(|u| (u.id.to_string(), u.email))
+        .collect();
+    let next_before = if events.len() == page {
+        events.last().map(|e| e.seq)
+    } else {
+        None
+    };
+    let events = events
+        .into_iter()
+        .map(|e| AuditEventDto {
+            seq: e.seq,
+            id: e.id.to_string(),
