@@ -412,3 +412,72 @@ pub struct DeployedTemplate {
         (status = 422, body = crate::error::Problem),
     )
 )]
+pub async fn deploy(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, template)): Path<(String, String, String)>,
+    Json(body): Json<DeployTemplate>,
+) -> ApiResult<(StatusCode, Json<DeployedTemplate>)> {
+    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let _app = authz.require(&state, Perm::AppWrite, &e.chain())?;
+    let _secret = authz.require(&state, Perm::SecretWrite, &e.chain())?;
+    let t = TEMPLATES
+        .iter()
+        .find(|t| t.id == template)
+        .ok_or_else(|| Error::NotFound(format!("template `{template}`")))?;
+    validate::dns_label("name", &body.name, 40)?;
+    let rendered = render(t, &body.name);
+    apps::validate_spec(&rendered.spec)?;
+
+    let secret_name = credentials_secret(&body.name);
+    let secrets = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    if secrets
+        .get_opt(&secret_name)
+        .await
+        .map_err(|err| scope::kube_error(err, &secret_name))?
+        .is_some()
+    {
+        return Err(Error::Conflict(format!("secret `{secret_name}` already exists")).into());
+    }
+    let object = Secret {
+        metadata: ObjectMeta {
+            name: Some(secret_name.clone()),
+            namespace: Some(e.view.namespace.clone()),
+            labels: Some(BTreeMap::from([
+                (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
+                (labels::ENVIRONMENT.to_owned(), e.view.name.clone()),
+                (labels::APP.to_owned(), body.name.clone()),
+            ])),
+            ..ObjectMeta::default()
+        },
+        type_: Some("Opaque".into()),
+        data: Some(
+            rendered
+                .secret
+                .into_iter()
+                .map(|(k, v)| (k, ByteString(v.into_bytes())))
+                .collect(),
+        ),
+        ..Secret::default()
+    };
+    secrets
+        .create(&PostParams::default(), &object)
+        .await
+        .map_err(|err| scope::kube_error(err, &secret_name))?;
+
+    match apps::create_app(
+        &state,
+        &authz,
+        &e,
+        &body.name,
+        rendered.spec,
+        "template",
+        Some(t.id.to_owned()),
+    )
+    .await
+    {
+        Ok(app) => Ok((
+            StatusCode::CREATED,
+            Json(DeployedTemplate {
+                app,
+                credentials_secret: secret_name,
