@@ -98,3 +98,28 @@ pub fn rollback_spec(current: &AppSpec, revision: AppSpec) -> AppSpec {
 }
 
 /// Roll back to an earlier revision (recorded as a new revision).
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/rollback", operation_id = "rollbackApp",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    request_body = Rollback,
+    responses(
+        (status = 200, body = AppDto),
+        (status = 403, body = crate::error::Problem),
+        (status = 404, body = crate::error::Problem),
+        (status = 422, body = crate::error::Problem),
+    )
+)]
+pub async fn rollback(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+    Json(body): Json<Rollback>,
+) -> ApiResult<Json<AppDto>> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
