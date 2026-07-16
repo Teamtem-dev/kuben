@@ -169,3 +169,38 @@ pub async fn create(
     let name = scope::environment_resource_name(&p.view.name, &body.name);
     if namespace_name(&name).len() > 63 {
         return Err(Error::Validation("project and environment names are too long together".into()).into());
+    }
+    if let Some(q) = &body.quota {
+        if let Some(cpu) = &q.cpu {
+            validate::quantity("quota.cpu", cpu)?;
+        }
+        if let Some(mem) = &q.memory {
+            validate::quantity("quota.memory", mem)?;
+        }
+    }
+    if p.view.deleting {
+        return Err(Error::Conflict(format!("project `{}` is being deleted", p.view.name)).into());
+    }
+    let client = scope::cluster(&state)?;
+
+    let (type_, protection) = match body.env_type {
+        EnvType::Standard => (EnvironmentType::Standard, None),
+        EnvType::Preview => (EnvironmentType::Preview, None),
+        // Deleting production is a soft delete with a 7-day grace period.
+        EnvType::Production => (
+            EnvironmentType::Production,
+            Some(Protection {
+                require_approvals: 0,
+                deletion_grace: PRODUCTION_DELETION_GRACE.into(),
+            }),
+        ),
+    };
+    let env = Environment {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            labels: Some(BTreeMap::from([
+                (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
+                (labels::ORG.to_owned(), p.org.to_string()),
+                (labels::PROJECT.to_owned(), p.view.name.clone()),
+            ])),
+            // Deleting the project deletes its environments (each one still
