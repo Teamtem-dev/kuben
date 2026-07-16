@@ -101,3 +101,29 @@ pub async fn get(
     (status = 503, description = "No cluster configured", body = crate::error::Problem),
 ))]
 pub async fn create(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Json(body): Json<CreateProject>,
+) -> ApiResult<(StatusCode, Json<ProjectDto>)> {
+    validate::dns_label("name", &body.name, 40)?;
+    let display_name = body.display_name.trim();
+    if display_name.is_empty() || display_name.len() > 100 {
+        return Err(Error::Validation("display_name must be 1–100 characters".into()).into());
+    }
+    let org = authz.org_ids().into_iter().next().ok_or(Error::Forbidden)?;
+    let _proof = authz.require(&state, Perm::ProjectWrite, &ScopeChain::org(org))?;
+    let client = scope::cluster(&state)?;
+
+    let project = Project {
+        metadata: ObjectMeta {
+            name: Some(body.name.clone()),
+            labels: Some(BTreeMap::from([
+                (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
+                (labels::ORG.to_owned(), org.to_string()),
+            ])),
+            ..ObjectMeta::default()
+        },
+        spec: ProjectSpec {
+            display_name: display_name.to_owned(),
+            description: body.description.clone().filter(|d| !d.trim().is_empty()),
+            previews: kuben_crd::PreviewPolicy::default(),
