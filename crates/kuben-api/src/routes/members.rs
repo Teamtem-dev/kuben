@@ -188,3 +188,41 @@ pub async fn invite(
 /// Change a member's role.
 #[utoipa::path(
     patch,
+    path = "/members/{member}", operation_id = "updateMember",
+    tag = "members",
+    params(("member" = String, Path, description = "User id")),
+    request_body = UpdateMember,
+    responses(
+        (status = 200, body = MemberDto),
+        (status = 403, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
+    )
+)]
+pub async fn update(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(member): Path<String>,
+    Json(body): Json<UpdateMember>,
+) -> ApiResult<Json<MemberDto>> {
+    authz.forbid_token()?;
+    let org = org_of(&authz)?;
+    let _proof = authz.require(&state, Perm::UserAdmin, &ScopeChain::org(org))?;
+    let role: Role = body.role.parse()?;
+    let target = find_member(&state, org, &member).await?;
+    if target.user.id == authz.current.user.id {
+        return Err(Error::Conflict("you cannot change your own role".into()).into());
+    }
+    let caller = caller_role(&authz, org)?;
+    let touches_owner = target.role == Role::Owner || role == Role::Owner;
+    if (touches_owner && caller != Role::Owner) || role.rank() > caller.rank() {
+        return Err(Error::Forbidden.into());
+    }
+    if target.role == Role::Owner && role != Role::Owner && state.store.count_owners(org).await? <= 1 {
+        return Err(Error::Conflict("the last owner cannot be demoted".into()).into());
+    }
+    state.store.set_org_role(org, target.user.id, role).await?;
+    Ok(Json(MemberDto::from(&Member {
+        user: target.user,
+        role,
+    })))
+}
