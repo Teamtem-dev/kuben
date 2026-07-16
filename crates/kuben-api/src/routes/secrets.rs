@@ -120,3 +120,28 @@ pub async fn put(
         total = total.saturating_add(v.len());
     }
     if total > MAX_SECRET_BYTES {
+        return Err(Error::Validation(format!("secret values exceed {MAX_SECRET_BYTES} bytes")).into());
+    }
+    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    if let Some(existing) = api
+        .get_opt(&secret)
+        .await
+        .map_err(|err| scope::kube_error(err, &secret))?
+        && !is_managed(&existing)
+    {
+        return Err(Error::Conflict(format!("secret `{secret}` exists and is not managed by Kuben")).into());
+    }
+    let object = Secret {
+        metadata: ObjectMeta {
+            name: Some(secret.clone()),
+            namespace: Some(e.view.namespace.clone()),
+            labels: Some(BTreeMap::from([
+                (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
+                (labels::ENVIRONMENT.to_owned(), e.view.name.clone()),
+            ])),
+            ..ObjectMeta::default()
+        },
+        type_: Some("Opaque".into()),
+        // `data` (not `stringData`): server-side apply then owns exactly these
+        // keys, so keys removed from the request are removed from the Secret.
+        data: Some(
