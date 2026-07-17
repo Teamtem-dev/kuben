@@ -123,3 +123,28 @@ pub async fn rollback(
 ) -> ApiResult<Json<AppDto>> {
     let a = scope::app(&state, &authz, &project, &environment, &app)?;
     let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
+    let release = state
+        .store
+        .find_release(&a.view.namespace, &a.view.name, body.revision)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("revision {}", body.revision)))?;
+    let restored: AppSpec = serde_json::from_value(release.spec)
+        .map_err(|e| Error::Validation(format!("revision {} cannot be restored: {e}", body.revision)))?;
+    let api = app_api(&state, &a.env)?;
+    let mut live = api
+        .get(&a.view.name)
+        .await
+        .map_err(|e| scope::kube_error(e, &app))?;
+    live.spec = rollback_spec(&live.spec, restored);
+    validate_spec(&live.spec)?;
+    let updated = api
+        .replace(&a.view.name, &PostParams::default(), &live)
+        .await
+        .map_err(|e| scope::kube_error(e, &app))?;
+    record_release(
+        &state,
+        &authz,
+        a.env.project.org,
+        &a.view.namespace,
+        &a.view.name,
+        &updated.spec,
