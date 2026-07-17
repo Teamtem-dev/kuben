@@ -57,3 +57,12 @@ fn serve_spa(path: &str) -> Response {
 
 #[cfg(not(feature = "embed-ui"))]
 fn serve_spa(_path: &str) -> Response {
+    let mut resp = (
+        StatusCode::OK,
+        "<!doctype html><title>Kuben</title><p>Kuben API is running. The web UI is not embedded in this build \
+         (compile with <code>--features embed-ui</code>) — during development use the Vite dev server.</p>",
+    )
+        .into_response();
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
