@@ -73,3 +73,22 @@ pub fn spec() -> utoipa::openapi::OpenApi {
     api
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn spec_contains_core_paths() {
+        let spec = super::spec();
+        let json = serde_json::to_value(&spec).expect("json");
+        let paths = json["paths"].as_object().expect("paths");
+        let app = "/api/v1/projects/{project}/environments/{environment}/apps/{app}";
+        for p in [
+            "/api/v1/auth/login",
+            "/api/v1/auth/logout",
+            "/api/v1/me",
+            "/api/v1/me/password",
+            "/api/v1/projects",
+            "/api/v1/projects/{project}",
+            "/api/v1/projects/{project}/environments",
+            "/api/v1/projects/{project}/environments/{environment}",
