@@ -70,3 +70,18 @@ pub async fn run(
             .find(|p| p.schedule.is_some())
             .map(|p| p.name.clone())
             .ok_or_else(|| Error::Validation("this app has no scheduled process".into()))?,
+    };
+    let client = scope::cluster(&state)?;
+    let cron_name = resources::workload_name(&a.view.name, &process);
+    let cron = Api::<CronJob>::namespaced(client.clone(), &a.view.namespace)
+        .get(&cron_name)
+        .await
+        .map_err(|e| scope::kube_error(e, &cron_name))?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let name = manual_job_name(&cron_name, now);
+    let job =
+        resources::job_from_cron(&cron, &name).ok_or_else(|| Error::internal("cron job has no template"))?;
+    Api::<Job>::namespaced(client, &a.view.namespace)
+        .create(&PostParams::default(), &job)
