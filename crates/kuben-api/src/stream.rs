@@ -160,3 +160,30 @@ mod tests {
             namespace: "ns".into(),
             name: name.into(),
             org: Some(org.into()),
+            app: None,
+            process: None,
+            phase: PodPhase::Running,
+            ready: true,
+            restarts: 0,
+            reason: None,
+            node: None,
+            started_at: None,
+        }
+    }
+
+    #[test]
+    fn snapshot_and_deltas_are_tenant_filtered() {
+        let p = Projections::new();
+        p.upsert_project(project("mine", "a"));
+        p.upsert_project(project("theirs", "b"));
+        let mut v = Visibility::new(["a".to_owned()]);
+        let snap = v.snapshot(p.snapshot());
+        assert_eq!(
+            snap.projects.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(),
+            vec!["mine"]
+        );
+
+        let other = Delta::PodUpsert {
+            seq: 9,
+            pod: Arc::new(pod("x", "b")),
+        };
