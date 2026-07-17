@@ -258,3 +258,55 @@ pub async fn delete(
     tag = "apps",
     params(
         ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    responses((status = 202, description = "Restart scheduled"), (status = 404, body = crate::error::Problem))
+)]
+pub async fn restart(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+) -> ApiResult<StatusCode> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
+    let now = k8s_openapi::jiff::Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+    let patch = json!({ "metadata": { "annotations": { RESTARTED_AT: now } } });
+    app_api(&state, &a.env)?
+        .patch(&a.view.name, &PatchParams::default(), &Patch::Merge(&patch))
+        .await
+        .map_err(|e| scope::kube_error(e, &app))?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct LogQuery {
+    /// Lines per pod (1–2000, default 200).
+    pub tail: Option<i64>,
+    /// Only pods of this process.
+    pub process: Option<String>,
+    /// Logs of the previous (crashed) container instance.
+    pub previous: Option<bool>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PodLogs {
+    pub pod: String,
+    pub process: Option<String>,
+    pub lines: Vec<String>,
+    /// Why no logs could be read (e.g. the container is still starting).
+    pub error: Option<String>,
+}
+
+/// Recent log lines of the app's pods (at most 10 pods).
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/logs", operation_id = "getAppLogs",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
