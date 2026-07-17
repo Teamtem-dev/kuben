@@ -48,3 +48,15 @@ impl Hasher {
     #[must_use]
     pub fn verify(&self, password: &str, phc: &str) -> bool {
         PasswordHash::new(phc)
+            .is_ok_and(|parsed| self.argon.verify_password(password.as_bytes(), &parsed).is_ok())
+    }
+
+    /// A valid hash of an unknown password, used to equalize timing when the
+    /// account does not exist.
+    #[must_use]
+    pub fn dummy_hash(&self) -> String {
+        self.dummy.clone()
+    }
+}
+
+#[cfg(test)]

@@ -140,3 +140,27 @@ pub(super) async fn user_from_api_token(state: &ApiState, token: &str) -> Option
             id,
             org: record.org_id,
             scope: record.scope,
+        }),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_ids_are_unique_and_hashed() {
+        let (a, ha) = new_session_id();
+        let (b, hb) = new_session_id();
+        assert_ne!(a, b);
+        assert_ne!(ha, hb);
+        assert_eq!(ha.len(), 32);
+        assert_eq!(sha256(a.as_bytes()), ha);
+    }
+
+    #[test]
+    fn api_tokens_roundtrip_and_reject_garbage() {
+        let (plaintext, id, hash) = new_api_token();
+        assert!(plaintext.starts_with(TOKEN_PREFIX));
+        let (parsed, secret) = parse_api_token(&plaintext).expect("parse");
+        assert_eq!(parsed, id);
