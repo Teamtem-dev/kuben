@@ -127,3 +127,29 @@ pub async fn create(
             display_name: display_name.to_owned(),
             description: body.description.clone().filter(|d| !d.trim().is_empty()),
             previews: kuben_crd::PreviewPolicy::default(),
+        },
+        status: None,
+    };
+    let created = Api::<Project>::all(client)
+        .create(&PostParams::default(), &project)
+        .await
+        .map_err(|e| scope::kube_error(e, &body.name))?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ProjectDto::from(&ProjectView::from(&created))),
+    ))
+}
+
+/// Delete an empty project. Projects with environments are refused (`409`):
+/// deleting environments is an explicit, per-environment decision.
+#[utoipa::path(
+    delete,
+    path = "/projects/{project}", operation_id = "deleteProject",
+    tag = "projects",
+    params(("project" = String, Path, description = "Project name")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 404, body = crate::error::Problem),
+        (status = 409, description = "The project still has environments", body = crate::error::Problem),
+    )
+)]
