@@ -113,3 +113,32 @@ pub fn email(value: &str) -> Result<(), Error> {
         Err(invalid(format!("`{value}` is not a valid email address")))
     }
 }
+
+/// IANA time zone name such as `Europe/Berlin` (syntax only).
+pub fn time_zone(value: &str) -> Result<(), Error> {
+    let ok = !value.is_empty()
+        && value.len() <= 64
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '+'));
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid(format!("`{value}` is not a valid time zone")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels() {
+        assert!(dns_label("n", "shop-2", 40).is_ok());
+        for bad in ["", "Shop", "-a", "a-", "a_b", &"a".repeat(41)] {
+            assert!(dns_label("n", bad, 40).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn hostnames() {
