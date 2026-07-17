@@ -123,3 +123,28 @@ async fn gateway_addresses(client: &kube::Client, platform: &Platform) -> Vec<Ip
         ("project" = String, Path, description = "Project name"),
         ("environment" = String, Path, description = "Environment short name"),
         ("app" = String, Path, description = "App name"),
+    ),
+    responses((status = 200, body = Vec<DomainCheck>), (status = 503, body = crate::error::Problem))
+)]
+pub async fn domains(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+) -> ApiResult<Json<Vec<DomainCheck>>> {
+    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
+    let client = scope::cluster(&state)?;
+    let platform = platform(&client).await;
+    let expected = gateway_addresses(&client, &platform).await;
+    let hosts = resources::hostnames_for(
+        &a.view.name,
+        a.view.environment.as_deref(),
+        a.view.domains.iter().map(String::as_str),
+        &platform,
+    );
+    let checks = hosts.iter().map(|host| {
+        let expected = expected.clone();
+        async move {
+            let resolved = resolve(host).await;
+            let (status, message) = domain_verdict(&resolved, &expected);
+            DomainCheck {
