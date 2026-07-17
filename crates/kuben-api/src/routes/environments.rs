@@ -204,3 +204,37 @@ pub async fn create(
                 (labels::PROJECT.to_owned(), p.view.name.clone()),
             ])),
             // Deleting the project deletes its environments (each one still
+            // honours its own deletion policy through the finalizer).
+            owner_references: Some(vec![OwnerReference {
+                api_version: "kuben.dev/v1alpha1".into(),
+                kind: "Project".into(),
+                name: p.view.name.clone(),
+                uid: p.uid.to_string(),
+                ..OwnerReference::default()
+            }]),
+            ..ObjectMeta::default()
+        },
+        spec: EnvironmentSpec {
+            project: p.view.name.clone(),
+            type_,
+            deletion_policy: DeletionPolicy::Delete,
+            protection,
+            quota: body.quota.map(|q| Quota {
+                cpu: q.cpu,
+                memory: q.memory,
+                pods: q.pods,
+            }),
+            ttl: None,
+        },
+        status: None,
+    };
+    let created = Api::<Environment>::all(client)
+        .create(&PostParams::default(), &env)
+        .await
+        .map_err(|e| scope::kube_error(e, &name))?;
+    Ok((
+        StatusCode::CREATED,
+        Json(EnvironmentDto::from_view(&EnvironmentView::from(&created))),
+    ))
+}
+
