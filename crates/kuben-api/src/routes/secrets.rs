@@ -145,3 +145,27 @@ pub async fn put(
         // `data` (not `stringData`): server-side apply then owns exactly these
         // keys, so keys removed from the request are removed from the Secret.
         data: Some(
+            body.data
+                .into_iter()
+                .map(|(k, v)| (k, ByteString(v.into_bytes())))
+                .collect(),
+        ),
+        ..Secret::default()
+    };
+    let saved = api
+        .patch(
+            &secret,
+            &PatchParams::apply(FIELD_MANAGER).force(),
+            &Patch::Apply(&object),
+        )
+        .await
+        .map_err(|err| scope::kube_error(err, &secret))?;
+    Ok(Json(SecretDto::from(&saved)))
+}
+
+/// Delete a secret created through Kuben.
+#[utoipa::path(
+    delete,
+    path = "/projects/{project}/environments/{environment}/secrets/{secret}", operation_id = "deleteSecret",
+    tag = "secrets",
+    params(
