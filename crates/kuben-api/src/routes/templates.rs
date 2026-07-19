@@ -481,3 +481,72 @@ pub async fn deploy(
             Json(DeployedTemplate {
                 app,
                 credentials_secret: secret_name,
+                connection_keys: template_dto(t).connection_keys,
+            }),
+        )),
+        Err(err) => {
+            // Do not leave orphaned credentials behind.
+            let _ = secrets.delete(&secret_name, &DeleteParams::default()).await;
+            Err(err)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kube::Resource;
+    use kuben_crd::App;
+    use kuben_platform::controller::{Platform, resources};
+
+    use super::*;
+
+    #[test]
+    fn every_template_builds_valid_objects() {
+        for t in TEMPLATES {
+            let r = render(t, "svc");
+            apps::validate_spec(&r.spec).unwrap_or_else(|e| panic!("{}: {e:?}", t.id));
+            let mut app = App::new("svc", r.spec);
+            app.metadata.namespace = Some("kb-shop-prod".into());
+            app.metadata.uid = Some("uid".into());
+            let owner = app.controller_owner_ref(&()).expect("owner");
+            let deps = resources::deployments(&app, &Platform::default(), &owner)
+                .unwrap_or_else(|e| panic!("{}: {e}", t.id));
+            assert_eq!(deps.len(), 1, "{}", t.id);
+            assert!(
+                resources::service(&app, &owner).expect("svc").is_some(),
+                "{}",
+                t.id
+            );
+            assert_eq!(
+                resources::persistent_volume_claims(&app).len(),
+                t.volumes.len(),
+                "{}",
+                t.id
+            );
+            let json = serde_json::to_string(&app.spec).expect("json");
+            for value in r.secret.values().filter(|v| v.len() == SECRET_LEN) {
+                assert!(
+                    !json.contains(value.as_str()),
+                    "{}: secret value leaked into the spec",
+                    t.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn credentials_are_random_and_connection_urls_complete() {
+        let pg = TEMPLATES.iter().find(|t| t.id == "postgres").expect("postgres");
+        let a = render(pg, "db");
+        let b = render(pg, "db");
+        assert_eq!(a.secret["password"].len(), SECRET_LEN);
+        assert_ne!(a.secret["password"], b.secret["password"]);
+        assert_eq!(
+            a.secret["url"],
+            format!("postgres://app:{}@db:5432/app", a.secret["password"])
+        );
+        assert_eq!(credentials_secret("db"), "db-credentials");
+        let ids: std::collections::BTreeSet<_> = TEMPLATES.iter().map(|t| t.id).collect();
+        assert_eq!(ids.len(), TEMPLATES.len(), "template ids are unique");
+    }
+}
