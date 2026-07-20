@@ -138,3 +138,32 @@ impl AppScope {
         }
     }
 }
+
+pub fn app(
+    state: &ApiState,
+    authz: &Authz,
+    project: &str,
+    env: &str,
+    app: &str,
+) -> Result<AppScope, ApiError> {
+    let env = environment(state, authz, project, env)?;
+    let view = state
+        .projections
+        .app(&env.view.namespace, app)
+        .ok_or_else(|| not_found("app", app))?;
+    let uid = view.uid.as_deref().and_then(|u| u.parse().ok());
+    Ok(AppScope { env, view, uid })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_names() {
+        assert_eq!(environment_resource_name("shop", "prod"), "shop-prod");
+        assert_eq!(environment_short_name("shop", "shop-prod"), "prod");
+        assert_eq!(environment_short_name("shop", "legacy"), "legacy");
+        assert_eq!(environment_short_name("shop", "shop-"), "shop-");
+    }
+}
