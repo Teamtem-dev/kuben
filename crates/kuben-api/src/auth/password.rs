@@ -60,3 +60,16 @@ impl Hasher {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_and_verify_roundtrip() {
+        let h = Hasher::insecure_for_tests();
+        let phc = h.hash("s3cret").expect("hash");
+        assert!(phc.starts_with("$argon2id$"));
+        assert!(h.verify("s3cret", &phc));
+        assert!(!h.verify("wrong", &phc));
+        assert!(!h.verify("s3cret", "not-a-phc-string"));
+    }
+}

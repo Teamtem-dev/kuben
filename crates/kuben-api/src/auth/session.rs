@@ -164,3 +164,27 @@ mod tests {
         assert!(plaintext.starts_with(TOKEN_PREFIX));
         let (parsed, secret) = parse_api_token(&plaintext).expect("parse");
         assert_eq!(parsed, id);
+        assert_eq!(sha256(secret.as_bytes()), hash);
+        assert!(plaintext.starts_with(&token_display_prefix(&plaintext)));
+        for bad in [
+            "",
+            "kbn_pat_",
+            "kbn_pat_xyz_abc",
+            "Bearer x",
+            &plaintext.replace("kbn_pat_", "kbn_xxx_"),
+        ] {
+            assert!(parse_api_token(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn cookie_flags() {
+        let cfg = Config::default();
+        let c = build_cookie(&cfg, "abc".into());
+        assert_eq!(c.name(), COOKIE_NAME_SECURE);
+        assert_eq!(c.http_only(), Some(true));
+        assert_eq!(c.secure(), Some(true));
+        assert_eq!(c.same_site(), Some(SameSite::Lax));
+        assert_eq!(c.path(), Some("/"));
+    }
+}
