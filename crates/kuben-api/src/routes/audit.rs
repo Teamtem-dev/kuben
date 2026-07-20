@@ -100,3 +100,24 @@ pub async fn list(
         .map(|e| AuditEventDto {
             seq: e.seq,
             id: e.id.to_string(),
+            at: e.created_at,
+            actor_kind: e.actor_kind,
+            actor: e
+                .actor_id
+                .as_ref()
+                .map(|id| emails.get(id).cloned().unwrap_or_else(|| id.clone())),
+            action: e.action,
+            target_kind: e.target_kind,
+            target: e.target_ref,
+            outcome: e.outcome,
+            status: e
+                .data
+                .as_ref()
+                .and_then(|d| d["status"].as_u64())
+                .and_then(|s| u16::try_from(s).ok()),
+            ip: e.ip,
+            request_id: e.request_id,
+        })
+        .collect();
+    Ok(Json(AuditPage { events, next_before }))
+}
