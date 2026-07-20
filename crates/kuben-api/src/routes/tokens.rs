@@ -182,3 +182,34 @@ pub async fn create(
 #[utoipa::path(
     get,
     path = "/tokens", operation_id = "listTokens",
+    tag = "tokens",
+    responses((status = 200, body = Vec<TokenDto>))
+)]
+pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json<Vec<TokenDto>>> {
+    authz.forbid_token()?;
+    let tokens = state.store.list_tokens(authz.current.user.id).await?;
+    Ok(Json(tokens.iter().map(|t| dto(&state, t)).collect()))
+}
+
+/// Revoke one of the caller's tokens (immediately effective).
+#[utoipa::path(
+    delete,
+    path = "/tokens/{token}", operation_id = "revokeToken",
+    tag = "tokens",
+    params(("token" = String, Path, description = "Token id")),
+    responses((status = 204, description = "Revoked"), (status = 404, body = crate::error::Problem))
+)]
+pub async fn revoke(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(token): Path<String>,
+) -> ApiResult<StatusCode> {
+    authz.forbid_token()?;
+    let not_found = || Error::NotFound(format!("token `{token}`"));
+    let id: TokenId = token.parse().map_err(|_| not_found())?;
+    if state.store.revoke_token(id, authz.current.user.id).await? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found().into())
+    }
+}
