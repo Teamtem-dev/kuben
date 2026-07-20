@@ -226,3 +226,42 @@ pub async fn update(
         role,
     })))
 }
+
+/// Remove a member: bindings, sessions and tokens are revoked immediately.
+#[utoipa::path(
+    delete,
+    path = "/members/{member}", operation_id = "removeMember",
+    tag = "members",
+    params(("member" = String, Path, description = "User id")),
+    responses(
+        (status = 204, description = "Removed"),
+        (status = 403, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
+    )
+)]
+pub async fn remove(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(member): Path<String>,
+) -> ApiResult<StatusCode> {
+    authz.forbid_token()?;
+    let org = org_of(&authz)?;
+    let _proof = authz.require(&state, Perm::UserAdmin, &ScopeChain::org(org))?;
+    let target = find_member(&state, org, &member).await?;
+    if target.user.id == authz.current.user.id {
+        return Err(Error::Conflict("you cannot remove yourself".into()).into());
+    }
+    if target.role == Role::Owner {
+        if caller_role(&authz, org)? != Role::Owner {
+            return Err(Error::Forbidden.into());
+        }
+        if state.store.count_owners(org).await? <= 1 {
+            return Err(Error::Conflict("the last owner cannot be removed".into()).into());
+        }
+    }
+    state.store.remove_member(org, target.user.id).await?;
+    state.store.revoke_all_sessions(target.user.id).await?;
+    state.store.revoke_user_tokens(org, target.user.id).await?;
+    state.session_cache.invalidate_all();
+    Ok(StatusCode::NO_CONTENT)
+}
