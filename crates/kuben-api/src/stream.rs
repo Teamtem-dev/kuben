@@ -187,3 +187,31 @@ mod tests {
             seq: 9,
             pod: Arc::new(pod("x", "b")),
         };
+        assert!(!v.admit(&other));
+        assert!(
+            !v.admit(&Delta::PodDelete {
+                seq: 10,
+                key: "ns/x".into()
+            }),
+            "unseen deletes are dropped"
+        );
+
+        assert!(v.admit(&Delta::PodUpsert {
+            seq: 11,
+            pod: Arc::new(pod("y", "a"))
+        }));
+        assert!(v.admit(&Delta::PodDelete {
+            seq: 12,
+            key: "ns/y".into()
+        }));
+        assert!(v.admit(&Delta::ProjectDelete {
+            seq: 13,
+            key: "mine".into()
+        }));
+        assert!(!v.admit(&Delta::ProjectDelete {
+            seq: 14,
+            key: "theirs".into()
+        }));
+        assert!(v.admit(&Delta::Resync { seq: 15 }));
+    }
+}
