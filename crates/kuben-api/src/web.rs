@@ -66,3 +66,11 @@ fn serve_spa(_path: &str) -> Response {
     resp.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    apply_security_headers(resp.headers_mut());
+    resp
+}
+
+fn apply_security_headers(headers: &mut axum::http::HeaderMap) {
+    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
+    headers.insert(
