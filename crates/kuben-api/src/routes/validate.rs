@@ -142,3 +142,32 @@ mod tests {
 
     #[test]
     fn hostnames() {
+        assert!(hostname("api.example.com").is_ok());
+        assert!(hostname("API.Example.com").is_ok());
+        for bad in ["localhost", "a..b", "-a.com", "a.com/x"] {
+            assert!(hostname(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn env_names_images_keys_quantities() {
+        assert!(env_var_name("DATABASE_URL").is_ok());
+        assert!(env_var_name("_X1").is_ok());
+        assert!(env_var_name("1X").is_err() && env_var_name("A-B").is_err());
+        assert!(image("ghcr.io/acme/api@sha256:abc").is_ok());
+        assert!(image("nginx latest").is_err() && image("").is_err() && image("--help").is_err());
+        assert!(secret_key("tls.crt").is_ok() && secret_key("a/b").is_err());
+        assert!(quantity("cpu", "500m").is_ok() && quantity("memory", "4Gi").is_ok());
+        assert!(quantity("cpu", "lots").is_err());
+    }
+
+    #[test]
+    fn emails_and_time_zones() {
+        assert!(email("carol@example.com").is_ok());
+        for bad in ["carol", "@x.io", "a@b", "a b@c.io", "a@b@c.io"] {
+            assert!(email(bad).is_err(), "{bad}");
+        }
+        assert!(time_zone("Europe/Berlin").is_ok() && time_zone("UTC").is_ok());
+        assert!(time_zone("Europe Berlin").is_err() && time_zone("").is_err());
+    }
+}
