@@ -148,3 +148,28 @@ pub async fn rollback(
         &a.view.namespace,
         &a.view.name,
         &updated.spec,
+        "rollback",
+        Some(format!("to revision {}", body.revision)),
+    )
+    .await;
+    Ok(Json(app_dto(&a, &AppView::from(&updated))))
+}
+
+#[cfg(test)]
+mod tests {
+    use kuben_crd::Source;
+
+    use super::{super::sample_spec, *};
+    use crate::routes::apps::spec::to_domains;
+
+    #[test]
+    fn rollback_keeps_domains_and_volumes() {
+        let mut current = sample_spec();
+        current.domains = to_domains(&["api.acme.com".to_owned()]);
+        let mut old = sample_spec();
+        old.source = Source::from_image("nginx:1.25");
+        let restored = rollback_spec(&current, old);
+        assert_eq!(restored.source.image.as_deref(), Some("nginx:1.25"));
+        assert_eq!(restored.domains[0].host, "api.acme.com");
+    }
+}
