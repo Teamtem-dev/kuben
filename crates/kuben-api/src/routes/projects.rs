@@ -153,3 +153,29 @@ pub async fn create(
         (status = 409, description = "The project still has environments", body = crate::error::Problem),
     )
 )]
+pub async fn delete(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path(project): Path<String>,
+) -> ApiResult<StatusCode> {
+    let p = scope::project(&state, &authz, &project)?;
+    let _proof = authz.require(&state, Perm::ProjectWrite, &p.chain())?;
+    let remaining = state
+        .projections
+        .environments()
+        .iter()
+        .filter(|e| e.project == p.view.name)
+        .count();
+    if remaining > 0 {
+        return Err(Error::Conflict(format!(
+            "project `{project}` still has {remaining} environment(s); delete them first"
+        ))
+        .into());
+    }
+    let client = scope::cluster(&state)?;
+    Api::<Project>::all(client)
+        .delete(&p.view.name, &DeleteParams::default())
+        .await
+        .map_err(|e| scope::kube_error(e, &project))?;
+    Ok(StatusCode::NO_CONTENT)
+}
