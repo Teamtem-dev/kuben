@@ -85,3 +85,18 @@ pub async fn run(
         resources::job_from_cron(&cron, &name).ok_or_else(|| Error::internal("cron job has no template"))?;
     Api::<Job>::namespaced(client, &a.view.namespace)
         .create(&PostParams::default(), &job)
+        .await
+        .map_err(|e| scope::kube_error(e, &name))?;
+    Ok((StatusCode::ACCEPTED, Json(JobStarted { job: name })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manual_job_names_fit_the_limit() {
+        let name = manual_job_name(&"x".repeat(80), 1_757_548_800);
+        assert!(name.len() <= 63 && name.ends_with("-run-1757548800"), "{name}");
+    }
+}
