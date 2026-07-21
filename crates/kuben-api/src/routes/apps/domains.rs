@@ -148,3 +148,28 @@ pub async fn domains(
             let resolved = resolve(host).await;
             let (status, message) = domain_verdict(&resolved, &expected);
             DomainCheck {
+                host: host.clone(),
+                addresses: resolved.iter().map(ToString::to_string).collect(),
+                expected: expected.iter().map(ToString::to_string).collect(),
+                status: status.into(),
+                message,
+            }
+        }
+    });
+    Ok(Json(futures::future::join_all(checks).await))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn domain_verdicts() {
+        let gw: IpAddr = "203.0.113.10".parse().expect("ip");
+        let other: IpAddr = "198.51.100.7".parse().expect("ip");
+        assert_eq!(domain_verdict(&[gw], &[gw]).0, "ok");
+        assert_eq!(domain_verdict(&[other], &[gw]).0, "mismatch");
+        assert_eq!(domain_verdict(&[], &[gw]).0, "unresolved");
+        assert_eq!(domain_verdict(&[other], &[]).0, "unknown");
+    }
+}
