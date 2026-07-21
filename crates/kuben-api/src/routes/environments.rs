@@ -238,3 +238,38 @@ pub async fn create(
     ))
 }
 
+/// Delete an environment. Production environments need the
+/// `env-delete-protected` permission and are purged after a grace period.
+#[utoipa::path(
+    delete,
+    path = "/projects/{project}/environments/{environment}", operation_id = "deleteEnvironment",
+    tag = "environments",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+    ),
+    responses(
+        (status = 202, description = "Deletion accepted"),
+        (status = 403, body = crate::error::Problem),
+        (status = 404, body = crate::error::Problem),
+    )
+)]
+pub async fn delete(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let perm = if e.view.env_type == "production" {
+        Perm::EnvDeleteProtected
+    } else {
+        Perm::EnvWrite
+    };
+    let _proof = authz.require(&state, perm, &e.chain())?;
+    let client = scope::cluster(&state)?;
+    Api::<Environment>::all(client)
+        .delete(&e.view.name, &DeleteParams::default())
+        .await
+        .map_err(|err| scope::kube_error(err, &e.view.name))?;
+    Ok(StatusCode::ACCEPTED)
+}
