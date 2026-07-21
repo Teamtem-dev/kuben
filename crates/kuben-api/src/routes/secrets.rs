@@ -169,3 +169,28 @@ pub async fn put(
     path = "/projects/{project}/environments/{environment}/secrets/{secret}", operation_id = "deleteSecret",
     tag = "secrets",
     params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("secret" = String, Path, description = "Secret name"),
+    ),
+    responses((status = 204, description = "Deleted"), (status = 404, body = crate::error::Problem))
+)]
+pub async fn delete(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, secret)): Path<(String, String, String)>,
+) -> ApiResult<StatusCode> {
+    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let _proof = authz.require(&state, Perm::SecretWrite, &e.chain())?;
+    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    let existing = api
+        .get_opt(&secret)
+        .await
+        .map_err(|err| scope::kube_error(err, &secret))?
+        .filter(is_managed)
+        .ok_or_else(|| Error::NotFound(format!("secret `{secret}`")))?;
+    api.delete(&existing.name_any(), &DeleteParams::default())
+        .await
+        .map_err(|err| scope::kube_error(err, &secret))?;
+    Ok(StatusCode::NO_CONTENT)
+}
