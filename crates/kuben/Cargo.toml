@@ -1,0 +1,24 @@
+[package]
+name = "kuben"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kuben — single-binary Kubernetes-native PaaS"
+default-run = "kuben"
+
+[[bin]]
+name = "kuben"
+path = "src/main.rs"
+
+[features]
+default = []
+# Scale-to-zero proxy. Only a placeholder until phase 2, so release builds
+# leave it out rather than advertise a role that does nothing.
+embed-ui = ["kuben-api/embed-ui"]
+activator = ["kuben-platform/activator"]
+full = ["embed-ui", "activator"]
+
+[dependencies]
+kuben-core.workspace = true
