@@ -35,3 +35,21 @@ pub fn build_runtime(rt: &RuntimeCfg) -> anyhow::Result<tokio::runtime::Runtime>
 pub fn block_on<F: Future<Output = anyhow::Result<()>>>(rt: &RuntimeCfg, f: F) -> anyhow::Result<()> {
     build_runtime(rt)?.block_on(f)
 }
+
+pub fn run(mut cfg: Config, opts: &ServeOpts) -> anyhow::Result<()> {
+    if opts.dev && cfg.database.url == kuben_core::config::DatabaseCfg::default().url {
+        cfg.database.url = "sqlite://./.dev/kuben.db".into();
+        std::fs::create_dir_all("./.dev").ok();
+    }
+    // ADR-013: one runtime in phase 0; `runtime.bulkhead` reserves the second.
+    let rt = build_runtime(&cfg.runtime)?;
+    rt.block_on(serve(cfg))
+}
+
+async fn serve(cfg: Config) -> anyhow::Result<()> {
+    let shutdown = CancellationToken::new();
+    tokio::spawn(signals(shutdown.clone()));
+    crate::telemetry::install_metrics(&cfg);
+
+    // ---- shared state ----
+    let health = Health::new();
