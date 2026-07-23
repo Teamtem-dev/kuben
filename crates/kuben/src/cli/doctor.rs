@@ -20,3 +20,10 @@ impl Report {
     fn line(&mut self, level: Level, name: &str, detail: impl std::fmt::Display) {
         let tag = match level {
             Level::Ok => "OK  ",
+            Level::Warn => "WARN",
+            Level::Fail => {
+                self.failed = true;
+                "FAIL"
+            }
+        };
+        println!("[{tag}] {name}: {}", redact_credentials(&detail.to_string()));
