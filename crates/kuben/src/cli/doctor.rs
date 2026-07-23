@@ -5,3 +5,10 @@
 use kuben_core::config::Config;
 use kuben_platform::registry::{ClusterRegistry, redact_credentials};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Level {
+    Ok,
+    Warn,
+    Fail,
+}
+
