@@ -12,3 +12,11 @@ enum Level {
     Fail,
 }
 
+struct Report {
+    failed: bool,
+}
+
+impl Report {
+    fn line(&mut self, level: Level, name: &str, detail: impl std::fmt::Display) {
+        let tag = match level {
+            Level::Ok => "OK  ",
