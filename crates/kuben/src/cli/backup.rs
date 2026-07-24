@@ -31,3 +31,20 @@ async fn cluster(cfg: &Config) -> anyhow::Result<kube::Client> {
 }
 
 pub async fn run(cfg: Config, opts: BackupOpts) -> anyhow::Result<()> {
+    std::fs::create_dir_all(&opts.out)?;
+    let client = cluster(&cfg).await?;
+    let projects = export::<Project>(&client, &opts.out, PROJECTS).await?;
+    let environments = export::<Environment>(&client, &opts.out, ENVIRONMENTS).await?;
+    let apps = export::<App>(&client, &opts.out, APPS).await?;
+    let manifest = serde_json::json!({
+        "kuben": crate::cli::VERSION,
+        "created_at": kuben_core::time::now_ms(),
+        "files": [PROJECTS, ENVIRONMENTS, APPS],
+        "counts": { "projects": projects, "environments": environments, "apps": apps },
+    });
+    std::fs::write(
+        opts.out.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest)?,
+    )?;
+    println!(
+        "backup written to {} ({projects} projects, {environments} environments, {apps} apps)",
