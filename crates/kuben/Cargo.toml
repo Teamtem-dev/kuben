@@ -22,3 +22,28 @@ full = ["embed-ui", "activator"]
 
 [dependencies]
 kuben-core.workspace = true
+kuben-crd.workspace = true
+kuben-store.workspace = true
+kuben-platform.workspace = true
+kuben-api.workspace = true
+tokio.workspace = true
+kube.workspace = true
+k8s-openapi.workspace = true
+figment.workspace = true
+serde.workspace = true
+tokio-util.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+mimalloc.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+rand.workspace = true
+base64.workspace = true
+axum.workspace = true
+
+[lints]
+workspace = true
