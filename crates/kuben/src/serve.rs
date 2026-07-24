@@ -53,3 +53,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     // ---- shared state ----
     let health = Health::new();
+    tokio::spawn(watchdog(health.clone(), shutdown.child_token()));
+
+    let store = kuben_store::Store::connect(&cfg.database).await?;
+    tracing::info!(backend = store.backend(), "database ready");
+    let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
+    let election = election(&cfg)?;
+
+    let hasher = Arc::new(kuben_api::auth::password::Hasher::from_config(&cfg.security));
+    if let Some(password) = crate::bootstrap::ensure_admin(&cfg, &store, &hasher).await? {
+        crate::bootstrap::hand_over_password(&cfg, cluster.as_ref(), &password).await;
+    }
+
+    let projections = Arc::new(Projections::new());
+    let mut tasks = Vec::new();
+
+    match &cluster {
+        Some(registry) => {
+            health.ok("cluster");
+            let (r, p, h, t) = (
