@@ -27,3 +27,11 @@ impl Report {
             }
         };
         println!("[{tag}] {name}: {}", redact_credentials(&detail.to_string()));
+    }
+}
+
+pub async fn run(cfg: Config) -> anyhow::Result<()> {
+    let mut r = Report { failed: false };
+    println!("{}", crate::cli::version_string());
+
+    // Database
