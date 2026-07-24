@@ -35,3 +35,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     println!("{}", crate::cli::version_string());
 
     // Database
+    match kuben_store::Store::connect(&cfg.database).await {
+        Ok(store) => {
+            r.line(
+                Level::Ok,
+                "database",
+                format!("{} reachable, migrations applied", store.backend()),
+            );
