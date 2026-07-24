@@ -72,3 +72,21 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         Some(registry) => {
             health.ok("cluster");
             let (r, p, h, t) = (
+                registry.clone(),
+                projections.clone(),
+                health.clone(),
+                shutdown.child_token(),
+            );
+            tasks.push(tokio::spawn(supervise("informers", t, h, move |tok| {
+                kuben_platform::projection::informer::run(r.clone(), p.clone(), tok)
+            })));
+
+            // Readiness waits for every informer's first LIST: until then the
+            // projections are incomplete and lookups would answer 404 for
+            // objects that exist.
+            let (p, h, t) = (projections.clone(), health.clone(), shutdown.child_token());
+            tokio::spawn(async move {
+                tokio::select! {
+                    () = p.wait_synced() => {
+                        tracing::info!("informers synced; ready");
+                        h.set_ready(true);
