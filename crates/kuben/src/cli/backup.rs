@@ -48,3 +48,20 @@ pub async fn run(cfg: Config, opts: BackupOpts) -> anyhow::Result<()> {
     )?;
     println!(
         "backup written to {} ({projects} projects, {environments} environments, {apps} apps)",
+        opts.out.display()
+    );
+    Ok(())
+}
+
+/// Write every object of kind `K` (all namespaces) as multi-document YAML.
+async fn export<K>(client: &kube::Client, dir: &Path, file: &str) -> anyhow::Result<usize>
+where
+    K: Resource + Clone + std::fmt::Debug + Serialize + DeserializeOwned,
+    K::DynamicType: Default,
+{
+    let list = Api::<K>::all(client.clone()).list(&ListParams::default()).await?;
+    let mut out = String::new();
+    let count = list.items.len();
+    for mut item in list.items {
+        strip_runtime_metadata(item.meta_mut());
+        out.push_str("---\n");
