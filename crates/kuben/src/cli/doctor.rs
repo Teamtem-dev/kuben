@@ -42,3 +42,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
                 "database",
                 format!("{} reachable, migrations applied", store.backend()),
             );
+            let _ = store.checkpoint_and_close().await;
+        }
+        Err(e) => r.line(Level::Fail, "database", e),
+    }
+
+    // Cluster
+    match ClusterRegistry::connect(&cfg.kube).await {
