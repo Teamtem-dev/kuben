@@ -65,3 +65,20 @@ where
     for mut item in list.items {
         strip_runtime_metadata(item.meta_mut());
         out.push_str("---\n");
+        out.push_str(&serde_yaml_ng::to_string(&item)?);
+    }
+    std::fs::write(dir.join(file), out)?;
+    Ok(count)
+}
+
+fn strip_runtime_metadata(meta: &mut ObjectMeta) {
+    meta.managed_fields = None;
+    meta.resource_version = None;
+    meta.uid = None;
+    meta.creation_timestamp = None;
+    meta.generation = None;
+    meta.deletion_timestamp = None;
+    meta.deletion_grace_period_seconds = None;
+}
+
+fn read_docs<K: DeserializeOwned>(path: &Path) -> anyhow::Result<Vec<K>> {
