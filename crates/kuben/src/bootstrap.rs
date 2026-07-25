@@ -26,3 +26,18 @@ pub async fn ensure_admin(cfg: &Config, store: &Store, hasher: &Hasher) -> anyho
     if store.count_users().await? > 0 {
         return Ok(None);
     }
+    let slug = &cfg.bootstrap.org_slug;
+    let org = match store.find_org_by_slug(slug).await? {
+        Some(o) => o,
+        None => match store.create_org(slug, &cfg.bootstrap.org_name).await {
+            Ok(o) => o,
+            Err(e) => store.find_org_by_slug(slug).await?.ok_or(e)?,
+        },
+    };
+    let (password, generated) = match &cfg.bootstrap.admin_password {
+        Some(p) if !p.is_empty() => (p.clone(), None),
+        _ => {
+            let p = random_password();
+            (p.clone(), Some(p))
+        }
+    };
