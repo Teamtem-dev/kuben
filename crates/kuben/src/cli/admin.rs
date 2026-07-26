@@ -10,3 +10,6 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
     let hasher = Hasher::from_config(&cfg.security);
     let password = opts
         .password
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(crate::bootstrap::random_password);
+    let hash = hasher.hash(&password).map_err(|e| anyhow::anyhow!("hash: {e}"))?;
