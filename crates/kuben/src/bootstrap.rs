@@ -41,3 +41,17 @@ pub async fn ensure_admin(cfg: &Config, store: &Store, hasher: &Hasher) -> anyho
             (p.clone(), Some(p))
         }
     };
+    let hash =
+        tokio::task::block_in_place(|| hasher.hash(&password)).map_err(|e| anyhow::anyhow!("hash: {e}"))?;
+    let user = match store
+        .create_user(&cfg.bootstrap.admin_email, Some("Administrator"), Some(&hash))
+        .await
+    {
+        Ok(user) => user,
+        Err(e) => {
+            if store.count_users().await? > 0 {
+                tracing::info!("another replica bootstrapped the admin user");
+                return Ok(None);
+            }
+            return Err(e.into());
+        }
