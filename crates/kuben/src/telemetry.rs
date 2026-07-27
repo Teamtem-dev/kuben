@@ -13,3 +13,6 @@ pub fn init(cfg: &Config) -> anyhow::Result<()> {
             .try_init()?;
     } else {
         registry
+            .with(fmt::layer().json().flatten_event(true).with_current_span(true))
+            .try_init()?;
+    }
