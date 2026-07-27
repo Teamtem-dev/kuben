@@ -57,3 +57,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
             }
             check_api_group(
                 &mut r,
+                &client,
+                "gateway.networking.k8s.io",
+                "gateway-api",
+                "install Gateway API CRDs",
+            )
+            .await;
+            check_api_group(
