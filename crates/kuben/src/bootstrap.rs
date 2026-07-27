@@ -55,3 +55,17 @@ pub async fn ensure_admin(cfg: &Config, store: &Store, hasher: &Hasher) -> anyho
             }
             return Err(e.into());
         }
+    };
+    store.add_membership(org.id, user.id).await?;
+    store.bind_org_role(org.id, user.id, Role::Owner).await?;
+    tracing::info!(email = %user.email, org = %org.slug, "bootstrapped admin user");
+    Ok(generated)
+}
+
+/// Deliver a generated admin password. In a pod it goes into the
+/// [`INITIAL_ADMIN_SECRET`] Secret, because pod logs are shipped to log
+/// stores and kept there; only a binary running outside the cluster prints
+/// it, to its own terminal.
+pub async fn hand_over_password(cfg: &Config, cluster: Option<&ClusterRegistry>, password: &str) {
+    let email = &cfg.bootstrap.admin_email;
+    let (Some(registry), Some(namespace)) = (cluster, own_namespace(cfg.kube.namespace.as_deref())) else {
