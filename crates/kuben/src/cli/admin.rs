@@ -13,3 +13,7 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
         .filter(|p| !p.is_empty())
         .unwrap_or_else(crate::bootstrap::random_password);
     let hash = hasher.hash(&password).map_err(|e| anyhow::anyhow!("hash: {e}"))?;
+
+    let email = cfg.bootstrap.admin_email.clone();
+    let user = if let Some(c) = store.find_user_by_email(&email).await? {
+        store.set_password_hash(c.user.id, &hash).await?;
