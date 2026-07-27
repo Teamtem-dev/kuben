@@ -99,3 +99,20 @@ pub async fn restore(cfg: Config, opts: RestoreOpts) -> anyhow::Result<()> {
         manifest.display()
     );
     let client = cluster(&cfg).await?;
+    crd_apply::ensure(client.clone()).await?;
+    let pp = PatchParams::apply(FIELD_MANAGER).force();
+
+    // Projects first; remember their *new* uids to re-link environments.
+    let mut project_uids = BTreeMap::new();
+    let projects = Api::<Project>::all(client.clone());
+    for mut p in read_docs::<Project>(&opts.from.join(PROJECTS))? {
+        strip_runtime_metadata(p.meta_mut());
+        p.metadata.owner_references = None;
+        p.status = None;
+        let applied = projects.patch(&p.name_any(), &pp, &Patch::Apply(&p)).await?;
+        if let Some(uid) = applied.uid() {
+            project_uids.insert(applied.name_any(), uid);
+        }
+    }
+
+    // Environments: owner references point at the restored projects (a stale
