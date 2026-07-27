@@ -49,3 +49,11 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
 
     // Cluster
     match ClusterRegistry::connect(&cfg.kube).await {
+        Ok(registry) => {
+            let client = registry.primary();
+            match client.apiserver_version().await {
+                Ok(v) => r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version)),
+                Err(e) => r.line(Level::Fail, "kubernetes", e),
+            }
+            check_api_group(
+                &mut r,
