@@ -109,3 +109,21 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
                         match election {
                             // Several replicas: reconcile only while holding the Lease.
                             Some(election) => {
+                                let client = r.primary();
+                                leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
+                                    kuben_platform::controller::run_all(r, p, h, tok)
+                                })
+                                .await
+                            }
+                            None => kuben_platform::controller::run_all(r, p, h, tok).await,
+                        }
+                    }
+                })));
+            }
+
+            #[cfg(feature = "activator")]
+            if cfg.has_role(Role::Activator) {
+                let (r, p, h, t) = (
+                    registry.clone(),
+                    projections.clone(),
+                    health.clone(),
