@@ -10,3 +10,6 @@ pub fn init(cfg: &Config) -> anyhow::Result<()> {
     if cfg.telemetry.log_format == "pretty" {
         registry
             .with(fmt::layer().with_target(true).compact())
+            .try_init()?;
+    } else {
+        registry
