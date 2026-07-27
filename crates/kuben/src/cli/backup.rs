@@ -82,3 +82,20 @@ fn strip_runtime_metadata(meta: &mut ObjectMeta) {
 }
 
 fn read_docs<K: DeserializeOwned>(path: &Path) -> anyhow::Result<Vec<K>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = std::fs::read_to_string(path)?;
+    serde_yaml_ng::Deserializer::from_str(&text)
+        .map(|doc| K::deserialize(doc).map_err(|e| anyhow::anyhow!("{}: {e}", path.display())))
+        .collect()
+}
+
+pub async fn restore(cfg: Config, opts: RestoreOpts) -> anyhow::Result<()> {
+    let manifest = opts.from.join("manifest.json");
+    anyhow::ensure!(
+        manifest.exists(),
+        "not a kuben backup: {} missing",
+        manifest.display()
+    );
+    let client = cluster(&cfg).await?;
