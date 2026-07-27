@@ -90,3 +90,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
                     () = p.wait_synced() => {
                         tracing::info!("informers synced; ready");
                         h.set_ready(true);
+                    }
+                    () = t.cancelled() => {}
+                }
+            });
+
+            if cfg.has_role(Role::Controller) {
+                let (r, p, h, t) = (
+                    registry.clone(),
+                    projections.clone(),
+                    health.clone(),
+                    shutdown.child_token(),
+                );
+                let election = election.clone();
+                tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
+                    let (r, p, h, election) = (r.clone(), p.clone(), h.clone(), election.clone());
+                    async move {
+                        match election {
+                            // Several replicas: reconcile only while holding the Lease.
+                            Some(election) => {
