@@ -69,3 +69,18 @@ pub async fn ensure_admin(cfg: &Config, store: &Store, hasher: &Hasher) -> anyho
 pub async fn hand_over_password(cfg: &Config, cluster: Option<&ClusterRegistry>, password: &str) {
     let email = &cfg.bootstrap.admin_email;
     let (Some(registry), Some(namespace)) = (cluster, own_namespace(cfg.kube.namespace.as_deref())) else {
+        tracing::warn!(%email, %password, "generated initial admin password");
+        return;
+    };
+    match store_password(registry, &namespace, email, password).await {
+        Ok(()) => tracing::warn!(
+            %email,
+            read_with = %format!(
+                "kubectl -n {namespace} get secret {INITIAL_ADMIN_SECRET} -o jsonpath='{{.data.password}}' | base64 -d"
+            ),
+            "generated initial admin password (stored in a Secret, not logged)"
+        ),
+        Err(e) => tracing::error!(
+            error = %e,
+            %email,
+            "generated an initial admin password but could not store it in a Secret; set a new one with `kuben reset-admin`"
