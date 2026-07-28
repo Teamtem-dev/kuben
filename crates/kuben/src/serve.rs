@@ -127,3 +127,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
                     registry.clone(),
                     projections.clone(),
                     health.clone(),
+                    shutdown.child_token(),
+                );
+                let bind = cfg.server.activator_bind.clone();
+                tasks.push(tokio::spawn(supervise("activator", t, h.clone(), move |tok| {
+                    kuben_platform::activator::run(r.clone(), p.clone(), h.clone(), tok, bind.clone())
+                })));
+            }
+        }
+        None => {
+            health.degraded("cluster", "no kubernetes cluster configured");
+            // Nothing to sync: serve setup and diagnostics right away.
+            health.set_ready(true);
+        }
+    }
+
+    #[cfg(not(feature = "activator"))]
+    if cfg.server.roles.contains(&Role::Activator) {
+        tracing::warn!(
+            "the activator role is not part of this build (scale-to-zero lands in phase 2); ignoring it"
