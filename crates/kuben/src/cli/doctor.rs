@@ -64,3 +64,11 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
             )
             .await;
             check_api_group(
+                &mut r,
+                &client,
+                "cert-manager.io",
+                "cert-manager",
+                "install cert-manager for TLS",
+            )
+            .await;
+            check_api_group(
