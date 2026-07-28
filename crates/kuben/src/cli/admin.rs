@@ -17,3 +17,6 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
     let email = cfg.bootstrap.admin_email.clone();
     let user = if let Some(c) = store.find_user_by_email(&email).await? {
         store.set_password_hash(c.user.id, &hash).await?;
+        c.user
+    } else {
+        let mut cfg = cfg.clone();
