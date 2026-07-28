@@ -20,3 +20,6 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
         c.user
     } else {
         let mut cfg = cfg.clone();
+        cfg.bootstrap.admin_password = Some(password.clone());
+        crate::bootstrap::ensure_admin(&cfg, &store, &hasher).await?;
+        store
