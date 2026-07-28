@@ -116,3 +116,20 @@ pub async fn restore(cfg: Config, opts: RestoreOpts) -> anyhow::Result<()> {
     }
 
     // Environments: owner references point at the restored projects (a stale
+    // uid would make the garbage collector delete them), and the namespace is
+    // created right away with the controller's own builder so apps can land.
+    let environments = Api::<Environment>::all(client.clone());
+    let namespaces = Api::<Namespace>::all(client.clone());
+    let mut restored_envs = 0usize;
+    for mut e in read_docs::<Environment>(&opts.from.join(ENVIRONMENTS))? {
+        strip_runtime_metadata(e.meta_mut());
+        e.status = None;
+        e.metadata.owner_references = project_uids.get(&e.spec.project).map(|uid| {
+            vec![OwnerReference {
+                api_version: "kuben.dev/v1alpha1".into(),
+                kind: "Project".into(),
+                name: e.spec.project.clone(),
+                uid: uid.clone(),
+                ..OwnerReference::default()
+            }]
+        });
