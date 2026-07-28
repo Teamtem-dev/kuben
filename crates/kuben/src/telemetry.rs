@@ -16,3 +16,6 @@ pub fn init(cfg: &Config) -> anyhow::Result<()> {
             .with(fmt::layer().json().flatten_event(true).with_current_span(true))
             .try_init()?;
     }
+    Ok(())
+}
+
