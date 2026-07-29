@@ -133,3 +133,20 @@ pub async fn restore(cfg: Config, opts: RestoreOpts) -> anyhow::Result<()> {
                 ..OwnerReference::default()
             }]
         });
+        let name = e.name_any();
+        environments.patch(&name, &pp, &Patch::Apply(&e)).await?;
+        namespaces
+            .patch(
+                &resources::namespace_name(&name),
+                &pp,
+                &Patch::Apply(resources::namespace(&e)),
+            )
+            .await?;
+        restored_envs += 1;
+    }
+
+    let mut restored_apps = 0usize;
+    for mut a in read_docs::<App>(&opts.from.join(APPS))? {
+        strip_runtime_metadata(a.meta_mut());
+        a.metadata.owner_references = None;
+        a.status = None;
