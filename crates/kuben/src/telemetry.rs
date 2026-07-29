@@ -19,3 +19,6 @@ pub fn init(cfg: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Install the Prometheus exporter on `metrics_bind`. Must be called inside a
+/// Tokio runtime. Failing to bind is logged, not fatal.
+pub fn install_metrics(cfg: &Config) {
