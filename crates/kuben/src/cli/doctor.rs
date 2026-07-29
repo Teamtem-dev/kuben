@@ -72,3 +72,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
             )
             .await;
             check_api_group(
+                &mut r,
+                &client,
+                "metrics.k8s.io",
+                "metrics-server",
+                "install metrics-server for autoscaling",
+            )
+            .await;
