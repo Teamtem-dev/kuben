@@ -146,3 +146,21 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     if cfg.server.roles.contains(&Role::Activator) {
         tracing::warn!(
             "the activator role is not part of this build (scale-to-zero lands in phase 2); ignoring it"
+        );
+    }
+
+    if cfg.has_role(Role::Api) {
+        let state = kuben_api::ApiState::new(
+            cfg.clone(),
+            store.clone(),
+            cluster.clone(),
+            projections.clone(),
+            health.clone(),
+            Arc::new(StaticPolicy),
+        );
+        let app = kuben_api::router(state);
+        let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
+            .await
+            .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
+        tracing::info!(bind = %cfg.server.bind, roles = ?cfg.server.roles, version = crate::cli::VERSION, "kuben listening");
+        let t = shutdown.clone();
