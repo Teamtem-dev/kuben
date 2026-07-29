@@ -84,3 +84,17 @@ pub async fn hand_over_password(cfg: &Config, cluster: Option<&ClusterRegistry>,
             error = %e,
             %email,
             "generated an initial admin password but could not store it in a Secret; set a new one with `kuben reset-admin`"
+        ),
+    }
+}
+
+async fn store_password(
+    registry: &ClusterRegistry,
+    namespace: &str,
+    email: &str,
+    password: &str,
+) -> Result<(), kube::Error> {
+    let secret = Secret {
+        metadata: ObjectMeta {
+            name: Some(INITIAL_ADMIN_SECRET.into()),
+            namespace: Some(namespace.into()),
