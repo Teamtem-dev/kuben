@@ -98,3 +98,17 @@ async fn store_password(
         metadata: ObjectMeta {
             name: Some(INITIAL_ADMIN_SECRET.into()),
             namespace: Some(namespace.into()),
+            labels: Some(BTreeMap::from([(
+                "app.kubernetes.io/part-of".to_owned(),
+                "kuben".to_owned(),
+            )])),
+            ..ObjectMeta::default()
+        },
+        type_: Some("Opaque".into()),
+        data: Some(BTreeMap::from([
+            ("email".to_owned(), ByteString(email.as_bytes().to_vec())),
+            ("password".to_owned(), ByteString(password.as_bytes().to_vec())),
+        ])),
+        ..Secret::default()
+    };
+    Api::<Secret>::namespaced(registry.primary(), namespace)
