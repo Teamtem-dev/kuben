@@ -23,3 +23,6 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
         cfg.bootstrap.admin_password = Some(password.clone());
         crate::bootstrap::ensure_admin(&cfg, &store, &hasher).await?;
         store
+            .find_user_by_email(&email)
+            .await?
+            .map(|c| c.user)
