@@ -22,3 +22,6 @@ pub fn init(cfg: &Config) -> anyhow::Result<()> {
 /// Install the Prometheus exporter on `metrics_bind`. Must be called inside a
 /// Tokio runtime. Failing to bind is logged, not fatal.
 pub fn install_metrics(cfg: &Config) {
+    let Ok(addr) = cfg.server.metrics_bind.parse::<std::net::SocketAddr>() else {
+        tracing::warn!(bind = %cfg.server.metrics_bind, "invalid metrics bind address; metrics disabled");
+        return;
