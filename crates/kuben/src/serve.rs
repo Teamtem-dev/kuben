@@ -164,3 +164,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
         tracing::info!(bind = %cfg.server.bind, roles = ?cfg.server.roles, version = crate::cli::VERSION, "kuben listening");
         let t = shutdown.clone();
+        axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+            .with_graceful_shutdown(async move { t.cancelled().await })
+            .await?;
+    } else {
+        shutdown.cancelled().await;
+    }
+
+    // ---- ordered shutdown ----
+    tracing::info!("shutting down");
+    health.set_ready(false);
+    tokio::time::sleep(Duration::from_secs(1)).await; // let load balancers observe readyz=503
+    shutdown.cancel();
+    for t in tasks {
+        let _ = tokio::time::timeout(Duration::from_secs(10), t).await;
+    }
+    store.checkpoint_and_close().await?;
+    tracing::info!("bye");
+    Ok(())
+}
