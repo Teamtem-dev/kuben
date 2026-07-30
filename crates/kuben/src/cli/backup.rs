@@ -150,3 +150,20 @@ pub async fn restore(cfg: Config, opts: RestoreOpts) -> anyhow::Result<()> {
         strip_runtime_metadata(a.meta_mut());
         a.metadata.owner_references = None;
         a.status = None;
+        let ns = a
+            .namespace()
+            .ok_or_else(|| anyhow::anyhow!("app `{}` has no namespace", a.name_any()))?;
+        Api::<App>::namespaced(client.clone(), &ns)
+            .patch(&a.name_any(), &pp, &Patch::Apply(&a))
+            .await?;
+        restored_apps += 1;
+    }
+
+    println!(
+        "restored {} projects, {restored_envs} environments, {restored_apps} apps; secrets are not part of backups",
+        project_uids.len()
+    );
+    Ok(())
+}
+
+#[cfg(test)]
