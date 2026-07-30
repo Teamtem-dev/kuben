@@ -79,3 +79,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
                 "install metrics-server for autoscaling",
             )
             .await;
+        }
+        Err(e) if !cfg.kube.required => {
+            r.line(
+                Level::Warn,
+                "kubernetes",
+                format!("no usable cluster (setup mode): {e}"),
+            );
