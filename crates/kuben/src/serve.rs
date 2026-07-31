@@ -183,3 +183,21 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     tracing::info!("bye");
     Ok(())
 }
+
+/// Leader-election settings, or `None` when `kube.leader_election` is off.
+fn election(cfg: &Config) -> anyhow::Result<Option<Election>> {
+    if !cfg.kube.leader_election {
+        return Ok(None);
+    }
+    let namespace = own_namespace(cfg.kube.namespace.as_deref()).context(
+        "kube.leader_election needs a namespace for its Lease: set KUBEN_KUBE__NAMESPACE (automatic inside a pod)",
+    )?;
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "kuben".into());
+    let suffix: u32 = rand::random();
+    Ok(Some(Election {
+        namespace,
+        identity: format!("{host}_{suffix:08x}"),
+    }))
