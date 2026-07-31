@@ -112,3 +112,18 @@ async fn store_password(
         ..Secret::default()
     };
     Api::<Secret>::namespaced(registry.primary(), namespace)
+        .patch(
+            INITIAL_ADMIN_SECRET,
+            &PatchParams::apply(kuben_crd::FIELD_MANAGER).force(),
+            &Patch::Apply(&secret),
+        )
+        .await
+        .map(|_| ())
+}
+
+/// 128 bits of entropy, URL-safe.
+#[must_use]
+pub fn random_password() -> String {
+    let bytes: [u8; 16] = rand::random();
+    URL_SAFE_NO_PAD.encode(bytes)
+}
