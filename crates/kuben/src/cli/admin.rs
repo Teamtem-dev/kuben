@@ -26,3 +26,6 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
             .find_user_by_email(&email)
             .await?
             .map(|c| c.user)
+            .ok_or_else(|| anyhow::anyhow!("admin not created"))?
+    };
+    let revoked = store.revoke_all_sessions(user.id).await?;
