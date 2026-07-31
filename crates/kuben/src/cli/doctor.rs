@@ -86,3 +86,11 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
                 "kubernetes",
                 format!("no usable cluster (setup mode): {e}"),
             );
+        }
+        Err(e) => r.line(Level::Fail, "kubernetes", e),
+    }
+
+    if cfg.security.cookie_secure {
+        r.line(Level::Ok, "cookies", "Secure + HttpOnly (__Host- prefix)");
+    } else {
+        r.line(Level::Warn, "cookies", "Secure flag disabled — development only");
