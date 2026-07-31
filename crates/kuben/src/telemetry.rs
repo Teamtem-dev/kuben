@@ -25,3 +25,6 @@ pub fn install_metrics(cfg: &Config) {
     let Ok(addr) = cfg.server.metrics_bind.parse::<std::net::SocketAddr>() else {
         tracing::warn!(bind = %cfg.server.metrics_bind, "invalid metrics bind address; metrics disabled");
         return;
+    };
+    match metrics_exporter_prometheus::PrometheusBuilder::new()
+        .with_http_listener(addr)
