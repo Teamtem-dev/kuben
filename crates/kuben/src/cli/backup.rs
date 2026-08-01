@@ -167,3 +167,20 @@ pub async fn restore(cfg: Config, opts: RestoreOpts) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multi_document_yaml_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("kuben-backup-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let spec: kuben_crd::ProjectSpec =
+            serde_json::from_value(serde_json::json!({ "displayName": "Shop" })).expect("spec");
+        let mut a = Project::new("shop", spec.clone());
+        a.metadata.uid = Some("old-uid".into());
+        let b = Project::new("blog", spec);
+        let mut out = String::new();
+        for mut p in [a, b] {
+            strip_runtime_metadata(p.meta_mut());
+            out.push_str("---\n");
+            out.push_str(&serde_yaml_ng::to_string(&p).expect("yaml"));
