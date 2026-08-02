@@ -201,3 +201,22 @@ fn election(cfg: &Config) -> anyhow::Result<Option<Election>> {
         namespace,
         identity: format!("{host}_{suffix:08x}"),
     }))
+}
+
+/// Heartbeat for `/livez`: if the runtime is wedged this stops ticking.
+async fn watchdog(health: Health, token: CancellationToken) {
+    let mut tick = tokio::time::interval(Duration::from_secs(1));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => health.heartbeat(),
+            () = token.cancelled() => return,
+        }
+    }
+}
+
+async fn signals(token: CancellationToken) {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut term = match signal(SignalKind::terminate()) {
+            Ok(s) => s,
