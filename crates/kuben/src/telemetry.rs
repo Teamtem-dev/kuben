@@ -28,3 +28,6 @@ pub fn install_metrics(cfg: &Config) {
     };
     match metrics_exporter_prometheus::PrometheusBuilder::new()
         .with_http_listener(addr)
+        .install()
+    {
+        Ok(()) => tracing::info!(%addr, "prometheus metrics listening"),
