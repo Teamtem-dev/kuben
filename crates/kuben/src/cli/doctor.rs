@@ -94,3 +94,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
         r.line(Level::Ok, "cookies", "Secure + HttpOnly (__Host- prefix)");
     } else {
         r.line(Level::Warn, "cookies", "Secure flag disabled — development only");
+    }
+
+    if r.failed {
+        anyhow::bail!("doctor found failures");
+    }
+    Ok(())
+}
