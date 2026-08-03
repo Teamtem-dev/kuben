@@ -141,3 +141,18 @@ mod tests {
             ensure_admin(&cfg, &store, &hasher),
             ensure_admin(&cfg, &store, &hasher)
         );
+        let generated = [a.expect("first"), b.expect("second")];
+        assert_eq!(
+            generated.iter().filter(|p| p.is_some()).count(),
+            1,
+            "exactly one replica generates the password"
+        );
+        assert_eq!(store.count_users().await.expect("count"), 1);
+        assert!(
+            ensure_admin(&cfg, &store, &hasher)
+                .await
+                .expect("again")
+                .is_none()
+        );
+    }
+}
