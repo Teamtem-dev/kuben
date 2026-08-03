@@ -31,3 +31,6 @@ pub fn install_metrics(cfg: &Config) {
         .install()
     {
         Ok(()) => tracing::info!(%addr, "prometheus metrics listening"),
+        Err(e) => tracing::warn!(error = %e, "failed to install metrics exporter"),
+    }
+}
