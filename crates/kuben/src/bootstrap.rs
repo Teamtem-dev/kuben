@@ -127,3 +127,17 @@ pub fn random_password() -> String {
     let bytes: [u8; 16] = rand::random();
     URL_SAFE_NO_PAD.encode(bytes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bootstrap_runs_once_even_when_replicas_race() {
+        let store = Store::memory().await.expect("store");
+        let hasher = Hasher::insecure_for_tests();
+        let cfg = Config::default();
+        let (a, b) = tokio::join!(
+            ensure_admin(&cfg, &store, &hasher),
+            ensure_admin(&cfg, &store, &hasher)
+        );
