@@ -184,3 +184,20 @@ mod tests {
             strip_runtime_metadata(p.meta_mut());
             out.push_str("---\n");
             out.push_str(&serde_yaml_ng::to_string(&p).expect("yaml"));
+        }
+        let path = dir.join(PROJECTS);
+        std::fs::write(&path, out).expect("write");
+        let docs: Vec<Project> = read_docs(&path).expect("read");
+        assert_eq!(
+            docs.iter().map(ResourceExt::name_any).collect::<Vec<_>>(),
+            vec!["shop", "blog"]
+        );
+        assert!(docs[0].metadata.uid.is_none(), "runtime metadata is stripped");
+        assert!(
+            read_docs::<Project>(&dir.join("missing.yaml"))
+                .expect("missing ok")
+                .is_empty()
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
