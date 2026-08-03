@@ -32,3 +32,7 @@ pub async fn reset(cfg: Config, opts: ResetAdminOpts) -> anyhow::Result<()> {
     store.checkpoint_and_close().await?;
     println!(
         "admin: {}\npassword: {password}\nsessions revoked: {revoked}",
+        user.email
+    );
+    Ok(())
+}
