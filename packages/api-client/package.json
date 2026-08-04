@@ -1,0 +1,20 @@
+{
+  "name": "@kuben/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ./openapi.json -o ./src/schema.d.ts --export-type",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openapi-fetch": "catalog:"
+  },
+  "devDependencies": {
+    "openapi-typescript": "catalog:",
+    "typescript": "catalog:"
+  }
+}
