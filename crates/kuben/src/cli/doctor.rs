@@ -101,3 +101,11 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+async fn check_api_group(r: &mut Report, client: &kube::Client, group: &str, name: &str, hint: &str) {
+    match client.list_api_groups().await {
+        Ok(groups) if groups.groups.iter().any(|g| g.name == group) => r.line(Level::Ok, name, "present"),
+        Ok(_) => r.line(Level::Warn, name, format!("not found — {hint}")),
+        Err(e) => r.line(Level::Fail, name, e),
+    }
+}
