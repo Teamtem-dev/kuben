@@ -33,3 +33,21 @@ const control =
 
 interface FieldProps {
   label: string
+  hint?: ReactNode
+}
+
+export function TextField({ label, hint, ...props }: FieldProps & InputHTMLAttributes<HTMLInputElement>) {
+  const id = useId()
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="font-medium text-sm">
+        {label}
+      </label>
+      <input id={id} className={control} {...props} />
+      {hint && <p className="text-slate-500 text-xs">{hint}</p>}
+    </div>
+  )
+}
+
+export function TextArea({
+  label,
