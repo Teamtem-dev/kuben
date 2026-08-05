@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  /* Vazirmatn (if installed) keeps Persian text legible; logical utilities
+     (ms-/me-/ps-/pe-) keep layouts correct under dir="rtl". */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Vazirmatn, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
