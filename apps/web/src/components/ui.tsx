@@ -15,3 +15,21 @@ const buttonVariants = {
   danger: 'bg-red-500/90 text-white hover:bg-red-500',
   ghost: 'text-slate-400 hover:bg-white/5 hover:text-slate-100',
 } as const
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof buttonVariants }
+
+export function Button({ variant = 'primary', className = '', ...props }: ButtonProps) {
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${buttonVariants[variant]} ${className}`}
+    />
+  )
+}
+
+const control =
+  'w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm outline-none transition placeholder:text-slate-600 focus:border-sky-400 focus:ring-2 focus:ring-sky-400/30'
+
+interface FieldProps {
+  label: string
