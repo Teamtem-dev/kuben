@@ -51,3 +51,20 @@ export function TextField({ label, hint, ...props }: FieldProps & InputHTMLAttri
 
 export function TextArea({
   label,
+  hint,
+  ...props
+}: FieldProps & TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const id = useId()
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="font-medium text-sm">
+        {label}
+      </label>
+      <textarea id={id} className={`${control} min-h-24 font-mono`} spellCheck={false} {...props} />
+      {hint && <p className="text-slate-500 text-xs">{hint}</p>}
+    </div>
+  )
+}
+
+export function Select({
+  label,
