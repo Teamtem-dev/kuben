@@ -68,3 +68,21 @@ export function TextArea({
 
 export function Select({
   label,
+  hint,
+  children,
+  ...props
+}: FieldProps & SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
+  const id = useId()
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="font-medium text-sm">
+        {label}
+      </label>
+      <select id={id} className={control} {...props}>
+        {children}
+      </select>
+      {hint && <p className="text-slate-500 text-xs">{hint}</p>}
+    </div>
+  )
+}
+
