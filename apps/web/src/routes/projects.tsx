@@ -9,3 +9,14 @@ export function ProjectsPage() {
   const [creating, setCreating] = useState(false)
 
   return (
+    <section className="space-y-6">
+      <PageHeader
+        title="Projects"
+        subtitle={projects.length === 1 ? '1 project' : `${projects.length} projects`}
+        actions={
+          <Button variant={creating ? 'secondary' : 'primary'} onClick={() => setCreating((v) => !v)}>
+            {creating ? 'Cancel' : 'New project'}
+          </Button>
+        }
+      />
+
