@@ -40,3 +40,45 @@ export function EnvironmentPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const remove = useMutation({
+    mutationFn: () => deleteEnvironment(project, environment),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['environments', project] })
+      await navigate({ to: '/projects/$project', params: { project } })
+    },
+  })
+
+  return (
+    <section className="space-y-6">
+      <PageHeader
+        crumbs={
+          <>
+            <Link to="/" className="hover:text-slate-200">
+              Projects
+            </Link>
+            <span>/</span>
+            <Link to="/projects/$project" params={{ project }} className="hover:text-slate-200">
+              {p.display_name}
+            </Link>
+          </>
+        }
+        title={
+          <span className="flex items-center gap-3">
+            {env.name} <Badge>{env.env_type}</Badge>
+          </span>
+        }
+        subtitle={<span className="font-mono">{env.namespace}</span>}
+        actions={
+          <Button
+            variant={deploying ? 'secondary' : 'primary'}
+            onClick={() => setDeploying((v) => !v)}
+            disabled={env.deleting}
+          >
+            {deploying ? 'Cancel' : 'Deploy app'}
+          </Button>
+        }
+      />
+
+      {env.deleting && (
+        <p role="status" className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">
+          This environment is being deleted
+          {env.deletion_scheduled_at
