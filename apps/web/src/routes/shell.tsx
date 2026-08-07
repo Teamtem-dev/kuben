@@ -5,3 +5,10 @@ import { useLiveUpdates } from '../lib/live'
 
 const route = getRouteApi('/_authed')
 
+export function AppShell() {
+  const { me } = route.useRouteContext()
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  useLiveUpdates()
+
+  const signOut = useMutation({
