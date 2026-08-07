@@ -87,3 +87,47 @@ export function AppPage() {
         }
         subtitle={
           a.url ? (
+            <a href={a.url} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
+              {a.url}
+            </a>
+          ) : (
+            'Not exposed'
+          )
+        }
+        actions={
+          <>
+            {scheduled && (
+              <Button variant="secondary" disabled={run.isPending} onClick={() => run.mutate()}>
+                {run.isPending ? 'Starting…' : 'Run now'}
+              </Button>
+            )}
+            <Button variant="secondary" disabled={restart.isPending} onClick={() => restart.mutate()}>
+              {restart.isPending ? 'Restarting…' : 'Restart'}
+            </Button>
+          </>
+        }
+      />
+      {scheduled && (
+        <p className="text-slate-400 text-sm">
+          Scheduled job: <code className="font-mono">{scheduled.schedule}</code>
+          {run.data && <span className="text-emerald-300"> · started {run.data.job}</span>}
+        </p>
+      )}
+      <ErrorNote error={run.error} />
+      {!a.ready && a.message && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">{a.message}</p>
+      )}
+      <ErrorNote error={restart.error} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <DeployCard
+          image={a.image ?? ''}
+          pending={update.isPending}
+          error={update.error}
+          onDeploy={(image) => update.mutate({ image })}
+        />
+        <ScaleCard
+          min={web?.min_replicas ?? 1}
+          max={web?.max_replicas ?? 1}
+          size={web?.size ?? 'small'}
+          pending={update.isPending}
