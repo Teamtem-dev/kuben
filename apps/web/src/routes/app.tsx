@@ -42,3 +42,48 @@ export function AppPage() {
   const navigate = useNavigate()
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] })
 
+  const update = useMutation({
+    mutationFn: (body: UpdateApp) => updateApp(project, environment, app, body),
+    onSuccess: refresh,
+  })
+  const restart = useMutation({ mutationFn: () => restartApp(project, environment, app), onSuccess: refresh })
+  const run = useMutation({ mutationFn: () => runApp(project, environment, app) })
+  const [deleteVolumes, setDeleteVolumes] = useState(false)
+  const scheduled = a.processes.find((p) => p.schedule)
+  const remove = useMutation({
+    mutationFn: () => deleteApp(project, environment, app, deleteVolumes),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['apps', project, environment] })
+      await navigate({ to: '/projects/$project/$environment', params: { project, environment } })
+    },
+  })
+
+  return (
+    <section className="space-y-6">
+      <PageHeader
+        crumbs={
+          <>
+            <Link to="/" className="hover:text-slate-200">
+              Projects
+            </Link>
+            <span>/</span>
+            <Link to="/projects/$project" params={{ project }} className="hover:text-slate-200">
+              {project}
+            </Link>
+            <span>/</span>
+            <Link
+              to="/projects/$project/$environment"
+              params={{ project, environment }}
+              className="hover:text-slate-200"
+            >
+              {environment}
+            </Link>
+          </>
+        }
+        title={
+          <span className="flex items-center gap-3">
+            {a.name} <Status ready={a.ready} label={a.reason} />
+          </span>
+        }
+        subtitle={
+          a.url ? (
