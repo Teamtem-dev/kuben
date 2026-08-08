@@ -176,3 +176,47 @@ export function AppPage() {
         pending={update.isPending}
         error={update.error}
         onSave={(env) => update.mutate({ env })}
+      />
+
+      <Logs project={project} environment={environment} app={app} />
+
+      <DomainsCard
+        project={project}
+        environment={environment}
+        app={app}
+        domains={a.domains}
+        pending={update.isPending}
+        onSave={(domains) => update.mutate({ domains })}
+      />
+
+      {a.volumes.length > 0 && <VolumesCard volumes={a.volumes} />}
+
+      {a.volumes.length > 0 && (
+        <label className="flex items-center gap-2 text-slate-400 text-sm">
+          <input
+            type="checkbox"
+            checked={deleteVolumes}
+            onChange={(e) => setDeleteVolumes(e.target.checked)}
+          />
+          Also delete the app's volumes when deleting it (irreversible). Otherwise they are kept.
+        </label>
+      )}
+      <ConfirmDelete
+        name={a.name}
+        what="app"
+        pending={remove.isPending}
+        error={remove.error}
+        onConfirm={() => remove.mutate()}
+      />
+    </section>
+  )
+}
+
+function DeployCard({
+  image,
+  pending,
+  error,
+  onDeploy,
+}: {
+  image: string
+  pending: boolean
