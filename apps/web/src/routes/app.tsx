@@ -131,3 +131,48 @@ export function AppPage() {
           max={web?.max_replicas ?? 1}
           size={web?.size ?? 'small'}
           pending={update.isPending}
+          onSave={(body) => update.mutate(body)}
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReleasesCard project={project} environment={environment} app={app} />
+        <PromoteCard project={project} environment={environment} app={app} />
+      </div>
+
+      <Card title={`Pods (${data.pods.length})`}>
+        {data.pods.length === 0 ? (
+          <p className="text-slate-500 text-sm">No pods yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-slate-500 text-xs">
+                <tr>
+                  <th className="pb-2 font-medium">Pod</th>
+                  <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium">Restarts</th>
+                  <th className="pb-2 font-medium">Node</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {data.pods.map((pod) => (
+                  <tr key={pod.name}>
+                    <td className="py-2 pe-4 font-mono text-xs">{pod.name}</td>
+                    <td className="py-2 pe-4">
+                      <Status ready={pod.ready} label={pod.reason ?? pod.phase} />
+                    </td>
+                    <td className="py-2 pe-4">{pod.restarts}</td>
+                    <td className="py-2 font-mono text-slate-500 text-xs">{pod.node ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <EnvCard
+        text={formatEnvLines(a.env)}
+        pending={update.isPending}
+        error={update.error}
+        onSave={(env) => update.mutate({ env })}
