@@ -220,3 +220,48 @@ function DeployCard({
 }: {
   image: string
   pending: boolean
+  error: unknown
+  onDeploy: (image: string) => void
+}) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const next = String(new FormData(event.currentTarget).get('image') ?? '').trim()
+    if (next) onDeploy(next)
+  }
+  return (
+    <Card title="Image">
+      <form onSubmit={onSubmit} className="space-y-3">
+        <TextField key={image} label="Deploy image" name="image" defaultValue={image} required />
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={pending}>
+            Deploy
+          </Button>
+          <ErrorNote error={error} />
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+function ScaleCard({
+  min,
+  max,
+  size,
+  pending,
+  onSave,
+}: {
+  min: number
+  max: number
+  size: string
+  pending: boolean
+  onSave: (body: UpdateApp) => void
+}) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const replicas = Number(form.get('replicas'))
+    const maxReplicas = Number(form.get('max_replicas'))
+    onSave({ replicas, max_replicas: Math.max(replicas, maxReplicas) })
+  }
+  return (
+    <Card title={`Scale · ${size}`}>
