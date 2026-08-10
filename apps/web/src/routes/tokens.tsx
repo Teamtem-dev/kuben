@@ -12,3 +12,17 @@ export function TokensPage() {
   const [created, setCreated] = useState<string | null>(null)
 
   const create = useMutation({
+    mutationFn: createToken,
+    onSuccess: async (result) => {
+      setCreated(result.token)
+      await refresh()
+    },
+  })
+  const revoke = useMutation({ mutationFn: revokeToken, onSettled: refresh })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
+    const text = (key: string) => String(form.get(key) ?? '').trim()
+    create.mutate(
