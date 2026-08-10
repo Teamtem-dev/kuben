@@ -10,3 +10,15 @@ const ROLES = ['viewer', 'developer', 'admin', 'owner'] as const
 export function TeamPage() {
   const { me } = route.useRouteContext()
   const { data: members } = useSuspenseQuery(membersQuery)
+  const queryClient = useQueryClient()
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['members'] })
+  const [invited, setInvited] = useState<{ email: string; password: string } | null>(null)
+
+  const invite = useMutation({
+    mutationFn: ({ email, role }: { email: string; role: string }) => inviteMember(email, role),
+    onSuccess: async (result) => {
+      if (result.temporary_password) {
+        setInvited({ email: result.member.email, password: result.temporary_password })
+      }
+      await refresh()
+    },
