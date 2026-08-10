@@ -82,3 +82,45 @@ export function EnvironmentPage() {
         <p role="status" className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">
           This environment is being deleted
           {env.deletion_scheduled_at
+            ? ` — its namespace is purged at ${new Date(env.deletion_scheduled_at).toLocaleString()}`
+            : ''}
+          .
+        </p>
+      )}
+
+      {deploying && (
+        <DeployForm project={project} environment={environment} onDone={() => setDeploying(false)} />
+      )}
+
+      {apps.length === 0 ? (
+        <Empty>
+          No apps yet. Deploy any container image; Kuben creates the Deployment, Service and route.
+        </Empty>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {apps.map((a) => (
+            <li key={a.name}>
+              <Link
+                to="/projects/$project/$environment/$app"
+                params={{ project, environment, app: a.name }}
+                className="block rounded-xl border border-white/10 bg-slate-900/50 p-4 transition hover:border-sky-400/40"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate font-medium">{a.name}</span>
+                  <Status ready={a.ready} label={a.reason} />
+                </div>
+                <p className="mt-1 truncate font-mono text-slate-500 text-xs">{a.image ?? a.git_repo}</p>
+                {a.url && <p className="mt-1 truncate text-sky-300 text-xs">{a.url}</p>}
+                {!a.ready && a.message && <p className="mt-2 text-amber-300/80 text-xs">{a.message}</p>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Templates project={project} environment={environment} />
+
+      <Secrets project={project} environment={environment} />
+
+      <div className="border-white/10 border-t pt-6">
+        <ConfirmDelete
