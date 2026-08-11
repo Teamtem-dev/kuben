@@ -8,3 +8,14 @@ const route = getRouteApi('/_authed')
 const MIN_LENGTH = 12
 
 export function AccountPage() {
+  const { me } = route.useRouteContext()
+  const queryClient = useQueryClient()
+  const router = useRouter()
+  const [mismatch, setMismatch] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const save = useMutation({
+    mutationFn: ({ current, next }: { current: string; next: string }) => changePassword(current, next),
+    onSuccess: async () => {
+      setDone(true)
+      // `ensureQueryData` in the route guard would keep serving the cached
