@@ -86,3 +86,21 @@ export function Select({
   )
 }
 
+export function Card({
+  title,
+  actions,
+  children,
+}: {
+  title?: ReactNode
+  actions?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="rounded-xl border border-white/10 bg-slate-900/50">
+      {(title || actions) && (
+        <header className="flex items-center justify-between gap-3 border-white/10 border-b px-4 py-3">
+          <h2 className="font-medium text-sm">{title}</h2>
+          {actions}
+        </header>
+      )}
+      <div className="p-4">{children}</div>
