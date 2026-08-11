@@ -22,3 +22,16 @@ export function TeamPage() {
       }
       await refresh()
     },
+  })
+  const change = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: string }) => updateMember(id, role),
+    onSettled: refresh,
+  })
+  const remove = useMutation({ mutationFn: removeMember, onSettled: refresh })
+
+  function onInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
+    invite.mutate(
+      { email: String(form.get('email') ?? '').trim(), role: String(form.get('role') ?? 'developer') },
