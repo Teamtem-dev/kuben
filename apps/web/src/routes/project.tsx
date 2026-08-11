@@ -28,3 +28,19 @@ export function ProjectPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['projects'] })
       await navigate({ to: '/' })
+    },
+  })
+
+  return (
+    <section className="space-y-6">
+      <PageHeader
+        crumbs={
+          <Link to="/" className="hover:text-slate-200">
+            Projects
+          </Link>
+        }
+        title={p.display_name}
+        subtitle={p.description ?? p.name}
+        actions={
+          <Button variant={creating ? 'secondary' : 'primary'} onClick={() => setCreating((v) => !v)}>
+            {creating ? 'Cancel' : 'New environment'}
