@@ -26,3 +26,17 @@ export function TokensPage() {
     const form = new FormData(formElement)
     const text = (key: string) => String(form.get(key) ?? '').trim()
     create.mutate(
+      {
+        name: text('name'),
+        role: text('role') || 'developer',
+        project: text('project') || null,
+        environment: text('environment') || null,
+        expires_in_days: Number(text('days') || '90'),
+      },
+      { onSuccess: () => formElement.reset() },
+    )
+  }
+
+  return (
+    <section className="space-y-6">
+      <PageHeader
