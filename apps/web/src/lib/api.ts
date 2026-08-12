@@ -38,3 +38,44 @@ interface Outcome<T> {
 
 /** Resolve an openapi-fetch call to its data, or throw an `ApiError`. */
 async function unwrap<T>(request: Promise<Outcome<T>>): Promise<T> {
+  const { data, error, response } = await request
+  if (!response.ok || data === undefined) throw toApiError(error, response.status)
+  return data
+}
+
+/** For endpoints without a body (202/204). */
+async function ok(request: Promise<Outcome<unknown>>): Promise<void> {
+  const { error, response } = await request
+  if (!response.ok) throw toApiError(error, response.status)
+}
+
+const appPath = (project: string, environment: string, app: string) => ({
+  params: { path: { project, environment, app } },
+})
+
+// ---- session ----
+
+/** The signed-in user, or `null` when there is no valid session. */
+export const meQuery = queryOptions({
+  queryKey: ['me'],
+  queryFn: async (): Promise<User | null> => {
+    const { data, error, response } = await api.GET('/api/v1/me')
+    if (response.status === 401) return null
+    if (!data) throw toApiError(error, response.status)
+    return data
+  },
+  staleTime: 60_000,
+})
+
+export const login = (email: string, password: string) =>
+  unwrap(api.POST('/api/v1/auth/login', { body: { email, password } }))
+
+export const logout = () => ok(api.POST('/api/v1/auth/logout'))
+
+export const changePassword = (current_password: string, new_password: string) =>
+  ok(api.POST('/api/v1/me/password', { body: { current_password, new_password } }))
+
+// ---- projects ----
+
+export const projectsQuery = queryOptions({
+  queryKey: ['projects'],
