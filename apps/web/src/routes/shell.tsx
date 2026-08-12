@@ -12,3 +12,10 @@ export function AppShell() {
   useLiveUpdates()
 
   const signOut = useMutation({
+    mutationFn: logout,
+    onSettled: async () => {
+      queryClient.clear()
+      await router.navigate({ to: '/login', search: {} })
+    },
+  })
+
