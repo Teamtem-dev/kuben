@@ -44,3 +44,18 @@ export function ProjectPage() {
         actions={
           <Button variant={creating ? 'secondary' : 'primary'} onClick={() => setCreating((v) => !v)}>
             {creating ? 'Cancel' : 'New environment'}
+          </Button>
+        }
+      />
+
+      {creating && <CreateEnvironmentForm project={project} onDone={() => setCreating(false)} />}
+
+      {environments.length === 0 ? (
+        <Empty>No environments yet. Each environment gets its own isolated namespace.</Empty>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {environments.map((e) => (
+            <li key={e.resource_name}>
+              <Link
+                to="/projects/$project/$environment"
+                params={{ project, environment: e.name }}
