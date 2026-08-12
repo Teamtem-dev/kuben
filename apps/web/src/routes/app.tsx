@@ -265,3 +265,47 @@ function ScaleCard({
   }
   return (
     <Card title={`Scale · ${size}`}>
+      <form onSubmit={onSubmit} key={`${min}-${max}`} className="grid grid-cols-2 gap-3">
+        <TextField label="Replicas" name="replicas" type="number" min={0} max={50} defaultValue={min} />
+        <TextField
+          label="Autoscale up to"
+          name="max_replicas"
+          type="number"
+          min={0}
+          max={50}
+          defaultValue={max}
+          hint="Equal to replicas disables autoscaling."
+        />
+        <div className="col-span-2">
+          <Button type="submit" variant="secondary" disabled={pending}>
+            Save
+          </Button>
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+function EnvCard({
+  text,
+  pending,
+  error,
+  onSave,
+}: {
+  text: string
+  pending: boolean
+  error: unknown
+  onSave: (env: ReturnType<typeof parseEnvLines>['vars']) => void
+}) {
+  const [parseError, setParseError] = useState<string | null>(null)
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const { vars, errors } = parseEnvLines(String(new FormData(event.currentTarget).get('env') ?? ''))
+    setParseError(errors.length ? errors.join('; ') : null)
+    if (!errors.length) onSave(vars)
+  }
+  return (
+    <Card title="Environment variables">
+      <form onSubmit={onSubmit} className="space-y-3">
+        <TextArea
+          key={text}
