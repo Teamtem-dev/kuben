@@ -35,3 +35,15 @@ export function TeamPage() {
     const form = new FormData(formElement)
     invite.mutate(
       { email: String(form.get('email') ?? '').trim(), role: String(form.get('role') ?? 'developer') },
+      { onSuccess: () => formElement.reset() },
+    )
+  }
+
+  return (
+    <section className="space-y-6">
+      <PageHeader
+        title="Team"
+        subtitle="Roles are hierarchical: viewer < developer < admin < owner. Nobody can grant a role above their own."
+      />
+
+      <Card title="Invite a member">
