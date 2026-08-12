@@ -124,3 +124,45 @@ export function EnvironmentPage() {
 
       <div className="border-white/10 border-t pt-6">
         <ConfirmDelete
+          name={env.name}
+          what="environment"
+          pending={remove.isPending}
+          error={remove.error}
+          onConfirm={() => remove.mutate()}
+        />
+      </div>
+    </section>
+  )
+}
+
+function DeployForm({
+  project,
+  environment,
+  onDone,
+}: {
+  project: string
+  environment: string
+  onDone: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [envError, setEnvError] = useState<string | null>(null)
+  const mutation = useMutation({
+    mutationFn: (body: Parameters<typeof createApp>[2]) => createApp(project, environment, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['apps', project, environment] })
+      onDone()
+    },
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const text = (key: string) => String(form.get(key) ?? '').trim()
+    const { vars, errors } = parseEnvLines(text('env'))
+    setEnvError(errors.length ? errors.join('; ') : null)
+    if (errors.length) return
+    const port = text('port')
+    const max = text('max_replicas')
+    const [mountPath, size] = text('volume').split(':')
+    const schedule = text('schedule')
+    mutation.mutate({
