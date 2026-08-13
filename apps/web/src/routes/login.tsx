@@ -20,3 +20,14 @@ export function LoginPage() {
     mutationFn: (creds: { email: string; password: string }) => login(creds.email, creds.password),
     onSuccess: (user) => {
       queryClient.setQueryData(meQuery.queryKey, user)
+      router.history.push(redirect ?? '/')
+    },
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    mutation.mutate({ email: String(form.get('email') ?? ''), password: String(form.get('password') ?? '') })
+  }
+
+  return (
