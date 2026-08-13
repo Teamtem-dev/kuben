@@ -40,3 +40,17 @@ export function TokensPage() {
   return (
     <section className="space-y-6">
       <PageHeader
+        title="API tokens"
+        subtitle="For CI/CD and scripts. A token never has more rights than you, and can be limited to one project or environment."
+      />
+
+      <Card title="Create a token">
+        <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-3">
+          <TextField label="Name" name="name" required placeholder="github-actions" maxLength={64} />
+          <Select label="Role" name="role" defaultValue="developer">
+            <option value="viewer">viewer — read only</option>
+            <option value="developer">developer — deploy</option>
+            <option value="admin">admin</option>
+          </Select>
+          <TextField
+            label="Expires in (days)"
