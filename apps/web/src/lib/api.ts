@@ -79,3 +79,44 @@ export const changePassword = (current_password: string, new_password: string) =
 
 export const projectsQuery = queryOptions({
   queryKey: ['projects'],
+  queryFn: () => unwrap(api.GET('/api/v1/projects')),
+})
+
+export const projectQuery = (project: string) =>
+  queryOptions({
+    queryKey: ['projects', project],
+    queryFn: () => unwrap(api.GET('/api/v1/projects/{project}', { params: { path: { project } } })),
+  })
+
+export const createProject = (body: Schemas['CreateProject']) =>
+  unwrap(api.POST('/api/v1/projects', { body }))
+
+export const deleteProject = (project: string) =>
+  ok(api.DELETE('/api/v1/projects/{project}', { params: { path: { project } } }))
+
+// ---- environments ----
+
+export const environmentsQuery = (project: string) =>
+  queryOptions({
+    queryKey: ['environments', project],
+    queryFn: () =>
+      unwrap(api.GET('/api/v1/projects/{project}/environments', { params: { path: { project } } })),
+  })
+
+export const environmentQuery = (project: string, environment: string) =>
+  queryOptions({
+    queryKey: ['environments', project, environment],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}', {
+          params: { path: { project, environment } },
+        }),
+      ),
+  })
+
+export const createEnvironment = (project: string, body: Schemas['CreateEnvironment']) =>
+  unwrap(api.POST('/api/v1/projects/{project}/environments', { params: { path: { project } }, body }))
+
+export const deleteEnvironment = (project: string, environment: string) =>
+  ok(
+    api.DELETE('/api/v1/projects/{project}/environments/{environment}', {
