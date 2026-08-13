@@ -19,3 +19,14 @@ export function AccountPage() {
     onSuccess: async () => {
       setDone(true)
       // `ensureQueryData` in the route guard would keep serving the cached
+      // user, so clear the flag in the cache before re-running the guards.
+      queryClient.setQueryData(meQuery.queryKey, (m) => (m ? { ...m, must_change_password: false } : m))
+      await router.invalidate()
+    },
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
+    const next = String(form.get('next') ?? '')
