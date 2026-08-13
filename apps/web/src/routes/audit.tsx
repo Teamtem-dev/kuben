@@ -18,3 +18,13 @@ function Row({ e }: { e: AuditEvent }) {
       <td className="py-2 pe-4 font-mono text-xs">{e.action}</td>
       <td className="py-2 pe-4 font-mono text-slate-400 text-xs">{e.target ?? '—'}</td>
       <td className={`py-2 pe-4 ${outcomeStyle[e.outcome] ?? ''}`}>
+        {e.outcome}
+        {e.status ? ` (${e.status})` : ''}
+      </td>
+      <td className="py-2 font-mono text-slate-500 text-xs">{e.ip ?? '—'}</td>
+    </tr>
+  )
+}
+
+export function AuditPage() {
+  const log = useInfiniteQuery({
