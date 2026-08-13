@@ -166,3 +166,45 @@ function DeployForm({
     const [mountPath, size] = text('volume').split(':')
     const schedule = text('schedule')
     mutation.mutate({
+      name: text('name'),
+      image: text('image'),
+      port: port ? Number(port) : null,
+      replicas: Number(text('replicas') || '1'),
+      max_replicas: max ? Number(max) : null,
+      size: text('size') || 'small',
+      env: vars,
+      domains: text('domains')
+        .split(/[\s,]+/)
+        .filter(Boolean),
+      health_check_path: text('health') || null,
+      schedule: schedule || null,
+      protocol: text('protocol') === 'tcp' ? 'tcp' : 'http',
+      volumes: mountPath ? [{ name: 'data', mount_path: mountPath.trim(), size: size?.trim() || '1Gi' }] : [],
+    })
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-3"
+    >
+      <TextField
+        label="Name"
+        name="name"
+        required
+        pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+        maxLength={40}
+        placeholder="api"
+      />
+      <div className="sm:col-span-2">
+        <TextField label="Image" name="image" required placeholder="ghcr.io/acme/api:1.4.2" />
+      </div>
+      <TextField
+        label="Port"
+        name="port"
+        type="number"
+        min={1}
+        max={65535}
+        placeholder="8080 (empty for workers)"
+      />
+      <TextField label="Replicas" name="replicas" type="number" min={0} max={50} defaultValue={1} />
