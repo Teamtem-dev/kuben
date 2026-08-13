@@ -104,3 +104,20 @@ export function Card({
         </header>
       )}
       <div className="p-4">{children}</div>
+    </section>
+  )
+}
+
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  crumbs,
+}: {
+  title: ReactNode
+  subtitle?: ReactNode
+  actions?: ReactNode
+  crumbs?: ReactNode
+}) {
+  return (
+    <header className="space-y-2">
