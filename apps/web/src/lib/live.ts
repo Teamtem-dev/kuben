@@ -11,3 +11,9 @@ export function keysFor(kind: string): readonly string[] {
 }
 
 const EVERYTHING = ['projects', 'environments', 'apps', 'app'] as const
+
+function kindOf(data: string): string {
+  try {
+    const value: unknown = JSON.parse(data)
+    return typeof value === 'object' && value !== null && 'kind' in value && typeof value.kind === 'string'
+      ? value.kind
