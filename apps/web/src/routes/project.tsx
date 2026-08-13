@@ -59,3 +59,19 @@ export function ProjectPage() {
               <Link
                 to="/projects/$project/$environment"
                 params={{ project, environment: e.name }}
+                className="block rounded-xl border border-white/10 bg-slate-900/50 p-4 transition hover:border-sky-400/40"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate font-medium">{e.name}</span>
+                  <Status ready={e.ready} label={e.deleting ? 'Terminating' : (e.phase ?? undefined)} />
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge>{e.env_type}</Badge>
+                  <span className="truncate font-mono text-slate-500 text-xs">{e.namespace}</span>
+                </div>
+                {e.message && <p className="mt-2 text-amber-300/80 text-xs">{e.message}</p>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
