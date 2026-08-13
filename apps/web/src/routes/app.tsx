@@ -309,3 +309,48 @@ function EnvCard({
       <form onSubmit={onSubmit} className="space-y-3">
         <TextArea
           key={text}
+          label="Variables"
+          name="env"
+          defaultValue={text}
+          hint="Saving rolls out new pods. KEY=@secret/key references a secret."
+        />
+        <div className="flex items-center gap-3">
+          <Button type="submit" variant="secondary" disabled={pending}>
+            Save and roll out
+          </Button>
+          {parseError && <ErrorNote error={new Error(parseError)} />}
+          <ErrorNote error={error} />
+        </div>
+      </form>
+    </Card>
+  )
+}
+
+function Logs({ project, environment, app }: { project: string; environment: string; app: string }) {
+  const [tail, setTail] = useState(200)
+  const logs = useQuery({ ...logsQuery(project, environment, app, tail), retry: false })
+  return (
+    <Card
+      title="Logs"
+      actions={
+        <label className="flex items-center gap-2 text-slate-400 text-xs">
+          Lines
+          <select
+            value={tail}
+            onChange={(e) => setTail(Number(e.target.value))}
+            className="rounded-md border border-white/10 bg-slate-950 px-2 py-1"
+          >
+            {[100, 200, 500, 1000].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      }
+    >
+      {logs.isError ? (
+        <ErrorNote error={logs.error} />
+      ) : !logs.data?.length ? (
+        <p className="text-slate-500 text-sm">{logs.isLoading ? 'Loading…' : 'No pods to read logs from.'}</p>
+      ) : (
