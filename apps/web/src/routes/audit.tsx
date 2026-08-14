@@ -28,3 +28,13 @@ function Row({ e }: { e: AuditEvent }) {
 
 export function AuditPage() {
   const log = useInfiniteQuery({
+    queryKey: ['audit'],
+    queryFn: ({ pageParam }) => auditPage(pageParam),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => last.next_before ?? undefined,
+    retry: false,
+  })
+  const events = log.data?.pages.flatMap((p) => p.events) ?? []
+
+  return (
+    <section className="space-y-6">
