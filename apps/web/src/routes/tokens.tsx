@@ -54,3 +54,17 @@ export function TokensPage() {
           </Select>
           <TextField
             label="Expires in (days)"
+            name="days"
+            type="number"
+            min={1}
+            max={365}
+            defaultValue={90}
+          />
+          <TextField label="Project (optional)" name="project" placeholder="shop" />
+          <TextField label="Environment (optional)" name="environment" placeholder="staging" />
+          <div className="flex items-end">
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? 'Creating…' : 'Create token'}
+            </Button>
+          </div>
+        </form>
