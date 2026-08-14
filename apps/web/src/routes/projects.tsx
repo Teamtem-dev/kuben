@@ -42,3 +42,14 @@ export function ProjectsPage() {
                 </p>
                 {p.description && <p className="mt-2 line-clamp-2 text-slate-400 text-sm">{p.description}</p>}
               </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function CreateProjectForm({ onDone }: { onDone: () => void }) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
