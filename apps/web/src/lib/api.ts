@@ -120,3 +120,44 @@ export const createEnvironment = (project: string, body: Schemas['CreateEnvironm
 export const deleteEnvironment = (project: string, environment: string) =>
   ok(
     api.DELETE('/api/v1/projects/{project}/environments/{environment}', {
+      params: { path: { project, environment } },
+    }),
+  )
+
+// ---- apps ----
+
+export const appsQuery = (project: string, environment: string) =>
+  queryOptions({
+    queryKey: ['apps', project, environment],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/apps', {
+          params: { path: { project, environment } },
+        }),
+      ),
+  })
+
+export const appQuery = (project: string, environment: string, app: string) =>
+  queryOptions({
+    queryKey: ['app', project, environment, app],
+    queryFn: () =>
+      unwrap(
+        api.GET(
+          '/api/v1/projects/{project}/environments/{environment}/apps/{app}',
+          appPath(project, environment, app),
+        ),
+      ),
+  })
+
+export const logsQuery = (project: string, environment: string, app: string, tail: number) =>
+  queryOptions({
+    queryKey: ['logs', project, environment, app, tail],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs', {
+          params: { path: { project, environment, app }, query: { tail } },
+        }),
+      ),
+    refetchInterval: 5_000,
+  })
+
