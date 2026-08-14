@@ -121,3 +121,21 @@ export function PageHeader({
 }) {
   return (
     <header className="space-y-2">
+      {crumbs && <nav className="flex flex-wrap items-center gap-1.5 text-slate-500 text-sm">{crumbs}</nav>}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="truncate font-semibold text-xl">{title}</h1>
+          {subtitle && <p className="text-slate-400 text-sm">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      </div>
+    </header>
+  )
+}
+
+export function Status({ ready, label }: { ready: boolean; label?: string | null }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-xs ${ready ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}
+    >
+      <span className={`size-1.5 rounded-full ${ready ? 'bg-emerald-400' : 'bg-amber-400'}`} />
