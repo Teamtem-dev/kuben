@@ -30,3 +30,14 @@ export function AccountPage() {
     const formElement = event.currentTarget
     const form = new FormData(formElement)
     const next = String(form.get('next') ?? '')
+    const repeat = String(form.get('repeat') ?? '')
+    setMismatch(next !== repeat)
+    if (next !== repeat) return
+    save.mutate(
+      { current: String(form.get('current') ?? ''), next },
+      { onSuccess: () => formElement.reset() },
+    )
+  }
+
+  return (
+    <section className="max-w-xl space-y-6">
