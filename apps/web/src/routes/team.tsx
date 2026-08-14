@@ -47,3 +47,16 @@ export function TeamPage() {
       />
 
       <Card title="Invite a member">
+        <form onSubmit={onInvite} className="grid gap-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
+          <TextField label="Email" name="email" type="email" required placeholder="carol@example.com" />
+          <Select label="Role" name="role" defaultValue="developer">
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" disabled={invite.isPending}>
+            {invite.isPending ? 'Inviting…' : 'Invite'}
+          </Button>
+        </form>
