@@ -31,3 +31,14 @@ export function LoginPage() {
   }
 
   return (
+    <main className="grid min-h-dvh place-items-center p-6">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl shadow-black/40"
+      >
+        <header className="space-y-1">
+          <h1 className="font-semibold text-2xl tracking-tight">Sign in to Kuben</h1>
+          <p className="text-slate-400 text-sm">Use the admin credentials printed on first boot.</p>
+        </header>
+
+        <div className="space-y-1.5">
