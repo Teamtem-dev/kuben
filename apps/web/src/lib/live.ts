@@ -17,3 +17,10 @@ function kindOf(data: string): string {
     const value: unknown = JSON.parse(data)
     return typeof value === 'object' && value !== null && 'kind' in value && typeof value.kind === 'string'
       ? value.kind
+      : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
