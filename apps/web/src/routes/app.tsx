@@ -354,3 +354,47 @@ function Logs({ project, environment, app }: { project: string; environment: str
       ) : !logs.data?.length ? (
         <p className="text-slate-500 text-sm">{logs.isLoading ? 'Loading…' : 'No pods to read logs from.'}</p>
       ) : (
+        <div className="space-y-4">
+          {logs.data.map((pod) => (
+            <div key={pod.pod} className="space-y-1">
+              <p className="font-mono text-slate-400 text-xs">{pod.pod}</p>
+              {pod.error ? (
+                <p className="text-amber-300 text-xs">{pod.error}</p>
+              ) : (
+                <pre className="max-h-96 overflow-auto rounded-lg bg-black/40 p-3 font-mono text-slate-300 text-xs leading-relaxed">
+                  {pod.lines.join('\n') || '(no output yet)'}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function ReleasesCard({ project, environment, app }: { project: string; environment: string; app: string }) {
+  const queryClient = useQueryClient()
+  const releases = useQuery({ ...releasesQuery(project, environment, app), retry: false })
+  const rollback = useMutation({
+    mutationFn: (revision: number) => rollbackApp(project, environment, app, revision),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] }),
+  })
+  return (
+    <Card title="Releases">
+      {releases.isError ? (
+        <ErrorNote error={releases.error} />
+      ) : !releases.data?.length ? (
+        <p className="text-slate-500 text-sm">No releases recorded yet.</p>
+      ) : (
+        <ul className="max-h-80 divide-y divide-white/5 overflow-y-auto">
+          {releases.data.map((r) => (
+            <li key={r.revision} className="flex items-center justify-between gap-3 py-2 text-sm">
+              <div className="min-w-0">
+                <p className="truncate">
+                  <span className="font-mono">#{r.revision}</span> <Badge>{r.reason}</Badge>{' '}
+                  <span className="font-mono text-slate-400 text-xs">{r.image ?? '—'}</span>
+                </p>
+                <p className="truncate text-slate-500 text-xs">
+                  {new Date(r.created_at).toLocaleString()}
+                  {r.actor ? ` · ${r.actor}` : ''}
