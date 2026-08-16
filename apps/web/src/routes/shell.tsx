@@ -26,3 +26,10 @@ export function AppShell() {
           <Link to="/" className="font-semibold tracking-tight">
             kuben
           </Link>
+          <nav className="flex gap-4 text-slate-400 text-sm">
+            <Link to="/" activeProps={{ className: 'text-slate-100' }} activeOptions={{ exact: true }}>
+              Projects
+            </Link>
+            <Link to="/team" activeProps={{ className: 'text-slate-100' }}>
+              Team
+            </Link>
