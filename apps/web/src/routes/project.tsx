@@ -75,3 +75,18 @@ export function ProjectPage() {
           ))}
         </ul>
       )}
+
+      <div className="border-white/10 border-t pt-6">
+        {environments.length > 0 ? (
+          <p className="text-slate-500 text-sm">Delete all environments before deleting the project.</p>
+        ) : (
+          <ConfirmDelete
+            name={project}
+            what="project"
+            pending={remove.isPending}
+            error={remove.error}
+            onConfirm={() => remove.mutate()}
+          />
+        )}
+      </div>
+    </section>
