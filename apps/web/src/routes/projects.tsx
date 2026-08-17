@@ -53,3 +53,14 @@ export function ProjectsPage() {
 function CreateProjectForm({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const mutation = useMutation({
+    mutationFn: createProject,
+    onSuccess: async (project) => {
+      // Seed the detail query: the projection may lag the create by a few ms.
+      queryClient.setQueryData(projectQuery(project.name).queryKey, project)
+      await queryClient.invalidateQueries({ queryKey: ['projects'], exact: true })
+      onDone()
+      await navigate({ to: '/projects/$project', params: { project: project.name } })
+    },
+  })
+
