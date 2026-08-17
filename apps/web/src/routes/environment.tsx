@@ -208,3 +208,45 @@ function DeployForm({
         placeholder="8080 (empty for workers)"
       />
       <TextField label="Replicas" name="replicas" type="number" min={0} max={50} defaultValue={1} />
+      <TextField
+        label="Autoscale up to"
+        name="max_replicas"
+        type="number"
+        min={1}
+        max={50}
+        placeholder="optional"
+      />
+      <Select label="Size" name="size" defaultValue="small">
+        <option value="nano">nano — 50m / 128Mi</option>
+        <option value="small">small — 100m / 256Mi</option>
+        <option value="medium">medium — 250m / 1Gi</option>
+        <option value="large">large — 1 CPU / 4Gi</option>
+      </Select>
+      <TextField label="Health check path" name="health" placeholder="/healthz" />
+      <TextField label="Domains" name="domains" placeholder="api.example.com" />
+      <Select label="Protocol" name="protocol" defaultValue="http">
+        <option value="http">http — public route</option>
+        <option value="tcp">tcp — internal only (databases)</option>
+      </Select>
+      <TextField label="Schedule (cron)" name="schedule" placeholder="0 3 * * * (runs as a job; no port)" />
+      <TextField
+        label="Volume"
+        name="volume"
+        placeholder="/data:5Gi (single replica)"
+        pattern="/[^:]+(:[0-9]+(Ki|Mi|Gi|Ti))?"
+      />
+      <div className="sm:col-span-3">
+        <TextArea
+          label="Environment variables"
+          name="env"
+          placeholder={'LOG_LEVEL=info\nDATABASE_URL=@db/url'}
+          hint="One KEY=value per line; KEY=@secret/key references a secret."
+        />
+      </div>
+      <div className="flex items-center gap-3 sm:col-span-3">
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Deploying…' : 'Deploy'}
+        </Button>
+        {envError && <ErrorNote error={new Error(envError)} />}
+        <ErrorNote error={mutation.error} />
+      </div>
