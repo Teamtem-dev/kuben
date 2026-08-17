@@ -60,3 +60,15 @@ export function TeamPage() {
             {invite.isPending ? 'Inviting…' : 'Invite'}
           </Button>
         </form>
+        <div className="mt-3 space-y-3">
+          <ErrorNote error={invite.error} />
+          {invited && (
+            <div
+              role="status"
+              className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm"
+            >
+              <p>
+                Temporary password for <strong>{invited.email}</strong> — shown once. They must replace it at
+                first sign-in.
+              </p>
+              <code className="mt-2 block select-all rounded bg-black/40 px-2 py-1 font-mono">
