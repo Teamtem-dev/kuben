@@ -38,3 +38,13 @@ export function AuditPage() {
 
   return (
     <section className="space-y-6">
+      <PageHeader
+        title="Audit log"
+        subtitle="Every change made through Kuben — who, what, when, from where, and whether it was allowed."
+      />
+      <Card>
+        {log.isError ? (
+          <ErrorNote error={log.error} />
+        ) : events.length === 0 ? (
+          <Empty>{log.isLoading ? 'Loading…' : 'No events yet.'}</Empty>
+        ) : (
