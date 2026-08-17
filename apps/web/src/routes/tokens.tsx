@@ -68,3 +68,17 @@ export function TokensPage() {
             </Button>
           </div>
         </form>
+        <div className="mt-3 space-y-3">
+          <ErrorNote error={create.error} />
+          {created && (
+            <div
+              role="status"
+              className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm"
+            >
+              <p>Copy the token now — it is shown only once.</p>
+              <code className="block select-all break-all rounded bg-black/40 px-2 py-1 font-mono">
+                {created}
+              </code>
+              <p className="text-slate-400 text-xs">GitHub Actions (store it as the secret KUBEN_TOKEN):</p>
+              <pre className="overflow-x-auto rounded bg-black/40 p-2 font-mono text-slate-300 text-xs">{`curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api" \\
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \\
