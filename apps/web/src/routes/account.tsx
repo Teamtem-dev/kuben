@@ -41,3 +41,14 @@ export function AccountPage() {
 
   return (
     <section className="max-w-xl space-y-6">
+      <PageHeader title="Account" subtitle={me.email} />
+      {me.must_change_password && (
+        <p role="alert" className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">
+          You signed in with a temporary password. Choose your own password to continue.
+        </p>
+      )}
+      <Card title="Change password">
+        <form onSubmit={onSubmit} className="space-y-3">
+          <TextField
+            label="Current password"
+            name="current"
