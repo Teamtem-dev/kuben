@@ -161,3 +161,44 @@ export const logsQuery = (project: string, environment: string, app: string, tai
     refetchInterval: 5_000,
   })
 
+export const createApp = (project: string, environment: string, body: CreateApp) =>
+  unwrap(
+    api.POST('/api/v1/projects/{project}/environments/{environment}/apps', {
+      params: { path: { project, environment } },
+      body,
+    }),
+  )
+
+export const updateApp = (project: string, environment: string, app: string, body: UpdateApp) =>
+  unwrap(
+    api.PATCH('/api/v1/projects/{project}/environments/{environment}/apps/{app}', {
+      ...appPath(project, environment, app),
+      body,
+    }),
+  )
+
+export const deleteApp = (project: string, environment: string, app: string, deleteVolumes = false) =>
+  ok(
+    api.DELETE('/api/v1/projects/{project}/environments/{environment}/apps/{app}', {
+      params: { path: { project, environment, app }, query: { delete_volumes: deleteVolumes } },
+    }),
+  )
+
+export const restartApp = (project: string, environment: string, app: string) =>
+  ok(
+    api.POST(
+      '/api/v1/projects/{project}/environments/{environment}/apps/{app}/restart',
+      appPath(project, environment, app),
+    ),
+  )
+
+// ---- releases, runs, domains, promotion ----
+
+export const releasesQuery = (project: string, environment: string, app: string) =>
+  queryOptions({
+    queryKey: ['app', project, environment, app, 'releases'],
+    queryFn: () =>
+      unwrap(
+        api.GET(
+          '/api/v1/projects/{project}/environments/{environment}/apps/{app}/releases',
+          appPath(project, environment, app),
