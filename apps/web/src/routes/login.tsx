@@ -42,3 +42,14 @@ export function LoginPage() {
         </header>
 
         <div className="space-y-1.5">
+          <label htmlFor={emailId} className="font-medium text-sm">
+            Email
+          </label>
+          <input
+            id={emailId}
+            name="email"
+            type="email"
+            autoComplete="username"
+            required
+            className={inputClass}
+          />
