@@ -24,3 +24,9 @@ function kindOf(data: string): string {
 }
 
 /**
+ * One SSE connection per tab (ADR-014). Deltas invalidate the affected
+ * queries, batched so a rollout touching 50 pods causes one refetch.
+ */
+export function useLiveUpdates() {
+  const queryClient = useQueryClient()
+  useEffect(() => {
