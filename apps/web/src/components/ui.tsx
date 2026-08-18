@@ -139,3 +139,21 @@ export function Status({ ready, label }: { ready: boolean; label?: string | null
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-xs ${ready ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}
     >
       <span className={`size-1.5 rounded-full ${ready ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+      {label ?? (ready ? 'Ready' : 'Not ready')}
+    </span>
+  )
+}
+
+export function Badge({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-slate-300 text-xs">{children}</span>
+  )
+}
+
+export function Empty({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/15 border-dashed p-10 text-center text-slate-400 text-sm">
+      {children}
+    </div>
+  )
+}
