@@ -33,3 +33,10 @@ export function AppShell() {
             <Link to="/team" activeProps={{ className: 'text-slate-100' }}>
               Team
             </Link>
+            <Link to="/tokens" activeProps={{ className: 'text-slate-100' }}>
+              API tokens
+            </Link>
+            <Link to="/audit" activeProps={{ className: 'text-slate-100' }}>
+              Audit
+            </Link>
+          </nav>
