@@ -90,3 +90,18 @@ export function ProjectPage() {
         )}
       </div>
     </section>
+  )
+}
+
+function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: () => void }) {
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: (body: Parameters<typeof createEnvironment>[1]) => createEnvironment(project, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['environments', project] })
+      onDone()
+    },
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
