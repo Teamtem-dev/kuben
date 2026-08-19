@@ -82,3 +82,17 @@ export function TokensPage() {
               <p className="text-slate-400 text-xs">GitHub Actions (store it as the secret KUBEN_TOKEN):</p>
               <pre className="overflow-x-auto rounded bg-black/40 p-2 font-mono text-slate-300 text-xs">{`curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api" \\
   -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \\
+  -d "{\\"image\\": \\"ghcr.io/acme/api:$GITHUB_SHA\\"}"`}</pre>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card title="Your tokens">
+        <ErrorNote error={revoke.error} />
+        {tokens.length === 0 ? (
+          <Empty>No tokens yet.</Empty>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-slate-500 text-xs">
