@@ -48,3 +48,13 @@ export function AuditPage() {
         ) : events.length === 0 ? (
           <Empty>{log.isLoading ? 'Loading…' : 'No events yet.'}</Empty>
         ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-slate-500 text-xs">
+                <tr>
+                  <th className="pb-2 font-medium">When</th>
+                  <th className="pb-2 font-medium">Who</th>
+                  <th className="pb-2 font-medium">Action</th>
+                  <th className="pb-2 font-medium">Target</th>
+                  <th className="pb-2 font-medium">Outcome</th>
+                  <th className="pb-2 font-medium">IP</th>
