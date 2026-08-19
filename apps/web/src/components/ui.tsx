@@ -157,3 +157,20 @@ export function Empty({ children }: { children: ReactNode }) {
     </div>
   )
 }
+
+export function ErrorNote({ error }: { error: unknown }) {
+  if (!error) return null
+  return (
+    <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-red-300 text-sm">
+      {problemMessage(error)}
+    </p>
+  )
+}
+
+/** Destructive action guarded by typing the resource name (GitHub-style). */
+export function ConfirmDelete({
+  name,
+  what,
+  pending,
+  error,
+  onConfirm,
