@@ -52,3 +52,14 @@ export function AccountPage() {
           <TextField
             label="Current password"
             name="current"
+            type="password"
+            autoComplete="current-password"
+            required
+          />
+          <TextField
+            label="New password"
+            name="next"
+            type="password"
+            autoComplete="new-password"
+            minLength={MIN_LENGTH}
+            required
