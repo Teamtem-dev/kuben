@@ -250,3 +250,45 @@ function DeployForm({
         {envError && <ErrorNote error={new Error(envError)} />}
         <ErrorNote error={mutation.error} />
       </div>
+    </form>
+  )
+}
+
+function Secrets({ project, environment }: { project: string; environment: string }) {
+  const queryClient = useQueryClient()
+  const secrets = useQuery({ ...secretsQuery(project, environment), retry: false })
+  const [formError, setFormError] = useState<string | null>(null)
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['secrets', project, environment] })
+  const save = useMutation({
+    mutationFn: ({ name, data }: { name: string; data: Record<string, string> }) =>
+      putSecret(project, environment, name, data),
+    onSuccess: refresh,
+  })
+  const remove = useMutation({
+    mutationFn: (name: string) => deleteSecret(project, environment, name),
+    onSuccess: refresh,
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
+    const { vars, errors } = parseEnvLines(String(form.get('data') ?? ''))
+    const data = Object.fromEntries(vars.map((v) => [v.name, v.value ?? '']))
+    if (errors.length || vars.length === 0) {
+      setFormError(errors.length ? errors.join('; ') : 'Add at least one KEY=value line.')
+      return
+    }
+    setFormError(null)
+    save.mutate(
+      { name: String(form.get('name') ?? '').trim(), data },
+      { onSuccess: () => formElement.reset() },
+    )
+  }
+
+  return (
+    <Card title="Secrets">
+      <div className="space-y-4">
+        {secrets.isError ? (
+          <ErrorNote error={secrets.error} />
+        ) : secrets.data?.length ? (
