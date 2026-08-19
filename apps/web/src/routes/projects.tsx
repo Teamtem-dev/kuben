@@ -64,3 +64,14 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
     },
   })
 
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const description = String(form.get('description') ?? '').trim()
+    mutation.mutate({
+      name: String(form.get('name') ?? '').trim(),
+      display_name: String(form.get('display_name') ?? '').trim(),
+      description: description || null,
+    })
+  }
+
