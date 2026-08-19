@@ -72,3 +72,15 @@ export function TeamPage() {
                 first sign-in.
               </p>
               <code className="mt-2 block select-all rounded bg-black/40 px-2 py-1 font-mono">
+                {invited.password}
+              </code>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card title={`Members (${members.length})`}>
+        <ErrorNote error={change.error ?? remove.error} />
+        <ul className="divide-y divide-white/5">
+          {members.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
