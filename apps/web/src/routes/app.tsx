@@ -398,3 +398,48 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
                 <p className="truncate text-slate-500 text-xs">
                   {new Date(r.created_at).toLocaleString()}
                   {r.actor ? ` · ${r.actor}` : ''}
+                  {r.note ? ` · ${r.note}` : ''}
+                </p>
+              </div>
+              {r.current ? (
+                <span className="text-emerald-300 text-xs">current</span>
+              ) : (
+                <Button
+                  variant="secondary"
+                  disabled={rollback.isPending}
+                  onClick={() => rollback.mutate(r.revision)}
+                >
+                  Roll back
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <ErrorNote error={rollback.error} />
+    </Card>
+  )
+}
+
+function PromoteCard({ project, environment, app }: { project: string; environment: string; app: string }) {
+  const environments = useQuery(environmentsQuery(project))
+  const targets = (environments.data ?? []).filter((e) => e.name !== environment)
+  const [target, setTarget] = useState('')
+  const [result, setResult] = useState<PromoteResult | null>(null)
+  const promote = useMutation({
+    mutationFn: (dryRun: boolean) => promoteApp(project, environment, app, target, dryRun),
+    onSuccess: setResult,
+  })
+  if (targets.length === 0) return null
+  const previewed = result?.dry_run === true
+  return (
+    <Card title="Promote">
+      <div className="flex flex-wrap items-end gap-3">
+        <Select
+          label="Target environment"
+          value={target}
+          onChange={(e) => {
+            setTarget(e.target.value)
+            setResult(null)
+          }}
+        >
