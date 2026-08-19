@@ -202,3 +202,44 @@ export const releasesQuery = (project: string, environment: string, app: string)
         api.GET(
           '/api/v1/projects/{project}/environments/{environment}/apps/{app}/releases',
           appPath(project, environment, app),
+        ),
+      ),
+  })
+
+export const rollbackApp = (project: string, environment: string, app: string, revision: number) =>
+  unwrap(
+    api.POST('/api/v1/projects/{project}/environments/{environment}/apps/{app}/rollback', {
+      ...appPath(project, environment, app),
+      body: { revision },
+    }),
+  )
+
+export const runApp = (project: string, environment: string, app: string) =>
+  unwrap(
+    api.POST('/api/v1/projects/{project}/environments/{environment}/apps/{app}/run', {
+      ...appPath(project, environment, app),
+      body: {},
+    }),
+  )
+
+export const checkDomains = (project: string, environment: string, app: string) =>
+  unwrap(
+    api.GET(
+      '/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains',
+      appPath(project, environment, app),
+    ),
+  )
+
+export const promoteApp = (
+  project: string,
+  environment: string,
+  app: string,
+  toEnvironment: string,
+  dryRun: boolean,
+) =>
+  unwrap(
+    api.POST('/api/v1/projects/{project}/environments/{environment}/apps/{app}/promote', {
+      ...appPath(project, environment, app),
+      body: { to_environment: toEnvironment, dry_run: dryRun },
+    }),
+  )
