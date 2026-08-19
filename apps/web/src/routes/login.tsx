@@ -53,3 +53,14 @@ export function LoginPage() {
             required
             className={inputClass}
           />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor={passwordId} className="font-medium text-sm">
+            Password
+          </label>
+          <input
+            id={passwordId}
+            name="password"
+            type="password"
+            autoComplete="current-password"
