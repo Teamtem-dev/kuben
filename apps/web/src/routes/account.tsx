@@ -63,3 +63,14 @@ export function AccountPage() {
             autoComplete="new-password"
             minLength={MIN_LENGTH}
             required
+            hint={`At least ${MIN_LENGTH} characters. Other sessions are signed out.`}
+          />
+          <TextField
+            label="Repeat new password"
+            name="repeat"
+            type="password"
+            autoComplete="new-password"
+            required
+          />
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={save.isPending}>
