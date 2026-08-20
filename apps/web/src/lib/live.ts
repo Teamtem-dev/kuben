@@ -30,3 +30,10 @@ function kindOf(data: string): string {
 export function useLiveUpdates() {
   const queryClient = useQueryClient()
   useEffect(() => {
+    const pending = new Set<string>()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const flush = () => {
+      timer = undefined
+      for (const key of pending) void queryClient.invalidateQueries({ queryKey: [key] })
+      pending.clear()
+    }
