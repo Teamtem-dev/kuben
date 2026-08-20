@@ -443,3 +443,47 @@ function PromoteCard({ project, environment, app }: { project: string; environme
             setResult(null)
           }}
         >
+          <option value="">Choose…</option>
+          {targets.map((e) => (
+            <option key={e.name} value={e.name}>
+              {e.name} ({e.env_type})
+            </option>
+          ))}
+        </Select>
+        <Button
+          variant="secondary"
+          disabled={!target || promote.isPending}
+          onClick={() => promote.mutate(true)}
+        >
+          Preview changes
+        </Button>
+        <Button disabled={!previewed || promote.isPending} onClick={() => promote.mutate(false)}>
+          Promote
+        </Button>
+      </div>
+      <p className="mt-2 text-slate-500 text-xs">
+        Copies image, processes and variables. The target keeps its domains, scaling and volumes.
+      </p>
+      {result && (
+        <div className="mt-3 space-y-2 text-sm">
+          {result.dry_run ? (
+            <p className="text-slate-300">
+              {result.changes.length ? `Changes in ${target}:` : `${target} is already up to date.`}
+            </p>
+          ) : (
+            <p className="text-emerald-300">
+              Promoted to {target}
+              {result.created ? ' (app created)' : ''}.
+            </p>
+          )}
+          <ul className="list-disc space-y-0.5 ps-5 font-mono text-xs">
+            {result.changes.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+          {result.warnings.map((w) => (
+            <p key={w} className="text-amber-300 text-xs">
+              {w}
+            </p>
+          ))}
+        </div>
