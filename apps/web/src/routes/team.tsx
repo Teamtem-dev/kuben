@@ -84,3 +84,16 @@ export function TeamPage() {
         <ul className="divide-y divide-white/5">
           {members.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-sm">
+                  {m.display_name ?? m.email} {m.id === me.id && <Badge>you</Badge>}
+                </p>
+                <p className="truncate text-slate-500 text-xs">
+                  {m.email}
+                  {m.must_change_password && ' · invitation pending'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label={`Role of ${m.email}`}
+                  value={m.role}
