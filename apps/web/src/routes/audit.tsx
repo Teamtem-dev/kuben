@@ -58,3 +58,13 @@ export function AuditPage() {
                   <th className="pb-2 font-medium">Target</th>
                   <th className="pb-2 font-medium">Outcome</th>
                   <th className="pb-2 font-medium">IP</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {events.map((e) => (
+                  <Row key={e.id} e={e} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
