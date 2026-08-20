@@ -96,3 +96,17 @@ export function TokensPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="text-slate-500 text-xs">
+                <tr>
+                  <th className="pb-2 font-medium">Name</th>
+                  <th className="pb-2 font-medium">Scope</th>
+                  <th className="pb-2 font-medium">Last used</th>
+                  <th className="pb-2 font-medium">Expires</th>
+                  <th className="pb-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {tokens.map((t) => (
+                  <tr key={t.id} className={t.revoked ? 'opacity-50' : ''}>
+                    <td className="py-2 pe-4">
+                      <span className="font-medium">{t.name}</span>{' '}
+                      <span className="font-mono text-slate-500 text-xs">{t.prefix}…</span>
