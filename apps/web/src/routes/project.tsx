@@ -105,3 +105,19 @@ function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: (
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const text = (key: string) => String(form.get(key) ?? '').trim() || null
+    const pods = text('pods')
+    const quota = { cpu: text('cpu'), memory: text('memory'), pods: pods ? Number(pods) : null }
+    mutation.mutate({
+      name: String(form.get('name') ?? '').trim(),
+      env_type: String(form.get('env_type')) as EnvType,
+      quota: quota.cpu || quota.memory || quota.pods ? quota : null,
+    })
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-3"
+    >
