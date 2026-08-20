@@ -292,3 +292,45 @@ function Secrets({ project, environment }: { project: string; environment: strin
         {secrets.isError ? (
           <ErrorNote error={secrets.error} />
         ) : secrets.data?.length ? (
+          <ul className="divide-y divide-white/5">
+            {secrets.data.map((s) => (
+              <li key={s.name} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <span className="font-mono text-sm">{s.name}</span>
+                  <p className="truncate text-slate-500 text-xs">{s.keys.join(', ')}</p>
+                </div>
+                <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(s.name)}>
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-slate-500 text-sm">
+            No secrets. Values are write-only: they can be replaced, never read back.
+          </p>
+        )}
+        <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-3">
+          <TextField
+            label="Secret name"
+            name="name"
+            required
+            pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+            placeholder="db"
+          />
+          <div className="sm:col-span-2">
+            <TextArea
+              label="Keys"
+              name="data"
+              placeholder="url=postgres://…"
+              hint="One key=value per line. Saving replaces the whole secret."
+            />
+          </div>
+          <div className="flex items-center gap-3 sm:col-span-3">
+            <Button type="submit" variant="secondary" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save secret'}
+            </Button>
+            {formError && <ErrorNote error={new Error(formError)} />}
+            <ErrorNote error={save.error ?? remove.error} />
+          </div>
+        </form>
