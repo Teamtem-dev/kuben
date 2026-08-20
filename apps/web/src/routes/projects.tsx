@@ -75,3 +75,14 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
     })
   }
 
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-2"
+    >
+      <TextField
+        label="Name"
+        name="name"
+        required
+        pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+        maxLength={40}
