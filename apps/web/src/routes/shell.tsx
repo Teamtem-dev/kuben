@@ -40,3 +40,10 @@ export function AppShell() {
               Audit
             </Link>
           </nav>
+          <div className="ms-auto flex items-center gap-3 text-sm">
+            <Link to="/account" className="text-slate-400 hover:text-slate-100">
+              {me.display_name ?? me.email}
+            </Link>
+            <button
+              type="button"
+              onClick={() => signOut.mutate()}
