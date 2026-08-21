@@ -334,3 +334,45 @@ function Secrets({ project, environment }: { project: string; environment: strin
             <ErrorNote error={save.error ?? remove.error} />
           </div>
         </form>
+      </div>
+    </Card>
+  )
+}
+
+function Templates({ project, environment }: { project: string; environment: string }) {
+  const queryClient = useQueryClient()
+  const templates = useQuery(templatesQuery)
+  const [chosen, setChosen] = useState<string | null>(null)
+  const [deployed, setDeployed] = useState<DeployedTemplate | null>(null)
+  const deploy = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      deployTemplate(project, environment, id, name),
+    onSuccess: async (result) => {
+      setDeployed(result)
+      setChosen(null)
+      await queryClient.invalidateQueries({ queryKey: ['apps', project, environment] })
+      await queryClient.invalidateQueries({ queryKey: ['secrets', project, environment] })
+    },
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault()
+    deploy.mutate({ id, name: String(new FormData(event.currentTarget).get('name') ?? '').trim() })
+  }
+
+  return (
+    <Card title="One-click templates">
+      {deployed && (
+        <div
+          role="status"
+          className="mb-4 rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm"
+        >
+          Deployed <strong>{deployed.app.name}</strong>. Credentials are in the secret{' '}
+          <code className="font-mono">{deployed.credentials_secret}</code>
+          {deployed.connection_keys.includes('url') && (
+            <>
+              {' '}
+              — connect another app with{' '}
+              <code className="font-mono">DATABASE_URL=@{deployed.credentials_secret}/url</code>
+            </>
+          )}
