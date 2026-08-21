@@ -37,3 +37,9 @@ export function useLiveUpdates() {
       for (const key of pending) void queryClient.invalidateQueries({ queryKey: [key] })
       pending.clear()
     }
+    const schedule = (keys: readonly string[]) => {
+      for (const key of keys) pending.add(key)
+      if (pending.size > 0) timer ??= setTimeout(flush, 300)
+    }
+    const source = new EventSource('/api/v1/stream')
+    source.addEventListener('delta', (event: MessageEvent<string>) => schedule(keysFor(kindOf(event.data))))
