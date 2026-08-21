@@ -97,3 +97,15 @@ export function TeamPage() {
                 <select
                   aria-label={`Role of ${m.email}`}
                   value={m.role}
+                  disabled={m.id === me.id || change.isPending}
+                  onChange={(e) => change.mutate({ id: m.id, role: e.target.value })}
+                  className="rounded-md border border-white/10 bg-slate-950 px-2 py-1 text-sm"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="ghost"
