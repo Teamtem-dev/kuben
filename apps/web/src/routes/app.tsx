@@ -487,3 +487,48 @@ function PromoteCard({ project, environment, app }: { project: string; environme
             </p>
           ))}
         </div>
+      )}
+      <ErrorNote error={promote.error} />
+    </Card>
+  )
+}
+
+const dnsColor: Record<string, string> = {
+  ok: 'text-emerald-300',
+  mismatch: 'text-red-300',
+  unresolved: 'text-amber-300',
+  unknown: 'text-slate-400',
+}
+
+function DomainsCard({
+  project,
+  environment,
+  app,
+  domains,
+  pending,
+  onSave,
+}: {
+  project: string
+  environment: string
+  app: string
+  domains: readonly string[]
+  pending: boolean
+  onSave: (domains: string[]) => void
+}) {
+  const check = useMutation({ mutationFn: () => checkDomains(project, environment, app) })
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const text = String(new FormData(event.currentTarget).get('domains') ?? '')
+    onSave(text.split(/[\s,]+/).filter(Boolean))
+  }
+  return (
+    <Card
+      title="Domains"
+      actions={
+        <Button variant="secondary" disabled={check.isPending} onClick={() => check.mutate()}>
+          {check.isPending ? 'Checking…' : 'Check DNS'}
+        </Button>
+      }
+    >
+      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
+        <div className="min-w-64 flex-1">
