@@ -174,3 +174,21 @@ export function ConfirmDelete({
   pending,
   error,
   onConfirm,
+}: {
+  name: string
+  what: string
+  pending: boolean
+  error?: unknown
+  onConfirm: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [typed, setTyped] = useState('')
+  if (!open) {
+    return (
+      <Button variant="ghost" onClick={() => setOpen(true)}>
+        Delete {what}
+      </Button>
+    )
+  }
+  return (
+    <div className="w-full space-y-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4">
