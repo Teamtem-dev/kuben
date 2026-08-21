@@ -47,3 +47,10 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => signOut.mutate()}
+              disabled={signOut.isPending}
+              className="rounded-md border border-white/10 px-2.5 py-1 transition hover:bg-white/5"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
