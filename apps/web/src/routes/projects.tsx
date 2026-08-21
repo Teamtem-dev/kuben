@@ -86,3 +86,14 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
         required
         pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
         maxLength={40}
+        placeholder="shop"
+        hint="Lowercase letters, digits and dashes."
+      />
+      <TextField
+        label="Display name"
+        name="display_name"
+        required
+        maxLength={100}
+        placeholder="Online Shop"
+      />
+      <div className="sm:col-span-2">
