@@ -121,3 +121,18 @@ function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: (
       onSubmit={onSubmit}
       className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-3"
     >
+      <TextField
+        label="Name"
+        name="name"
+        required
+        pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+        maxLength={20}
+        placeholder="staging"
+      />
+      <Select
+        label="Type"
+        name="env_type"
+        defaultValue="standard"
+        hint="Deleting production has a 7-day grace period."
+      >
+        <option value="standard">Standard</option>
