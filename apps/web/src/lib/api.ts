@@ -243,3 +243,44 @@ export const promoteApp = (
       body: { to_environment: toEnvironment, dry_run: dryRun },
     }),
   )
+
+// ---- templates ----
+
+export const templatesQuery = queryOptions({
+  queryKey: ['templates'],
+  queryFn: () => unwrap(api.GET('/api/v1/templates')),
+  staleTime: Number.POSITIVE_INFINITY,
+})
+
+export const deployTemplate = (project: string, environment: string, template: string, name: string) =>
+  unwrap(
+    api.POST('/api/v1/projects/{project}/environments/{environment}/templates/{template}', {
+      params: { path: { project, environment, template } },
+      body: { name },
+    }),
+  )
+
+// ---- secrets ----
+
+export const secretsQuery = (project: string, environment: string) =>
+  queryOptions({
+    queryKey: ['secrets', project, environment],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/secrets', {
+          params: { path: { project, environment } },
+        }),
+      ),
+  })
+
+export const putSecret = (
+  project: string,
+  environment: string,
+  secret: string,
+  data: Record<string, string>,
+) =>
+  unwrap(
+    api.PUT('/api/v1/projects/{project}/environments/{environment}/secrets/{secret}', {
+      params: { path: { project, environment, secret } },
+      body: { data },
+    }),
