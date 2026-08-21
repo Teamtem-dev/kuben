@@ -64,3 +64,14 @@ export function LoginPage() {
             name="password"
             type="password"
             autoComplete="current-password"
+            required
+            className={inputClass}
+          />
+        </div>
+
+        {mutation.isError && (
+          <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-red-300 text-sm">
+            {problemMessage(mutation.error)}
+          </p>
+        )}
+
