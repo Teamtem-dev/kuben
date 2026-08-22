@@ -110,3 +110,17 @@ export function TokensPage() {
                     <td className="py-2 pe-4">
                       <span className="font-medium">{t.name}</span>{' '}
                       <span className="font-mono text-slate-500 text-xs">{t.prefix}…</span>
+                    </td>
+                    <td className="py-2 pe-4">
+                      <Badge>{t.role}</Badge> {t.environment ?? t.project ?? 'organization'}
+                    </td>
+                    <td className="py-2 pe-4 text-slate-400">{when(t.last_used_at)}</td>
+                    <td className="py-2 pe-4 text-slate-400">{when(t.expires_at)}</td>
+                    <td className="py-2 text-end">
+                      {t.revoked ? (
+                        <span className="text-slate-500 text-xs">revoked</span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          disabled={revoke.isPending}
+                          onClick={() => revoke.mutate(t.id)}
