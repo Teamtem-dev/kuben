@@ -68,3 +68,14 @@ export function AuditPage() {
             </table>
           </div>
         )}
+        {log.hasNextPage && (
+          <div className="mt-4">
+            <Button variant="secondary" disabled={log.isFetchingNextPage} onClick={() => log.fetchNextPage()}>
+              {log.isFetchingNextPage ? 'Loading…' : 'Load older events'}
+            </Button>
+          </div>
+        )}
+      </Card>
+    </section>
+  )
+}
