@@ -74,3 +74,14 @@ export function AccountPage() {
           />
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Change password'}
+            </Button>
+            {mismatch && <ErrorNote error={new Error('The new passwords do not match.')} />}
+            <ErrorNote error={save.error} />
+            {done && !save.isPending && <span className="text-emerald-300 text-sm">Password changed.</span>}
+          </div>
+        </form>
+      </Card>
+    </section>
+  )
+}
