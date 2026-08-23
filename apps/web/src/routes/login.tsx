@@ -75,3 +75,14 @@ export function LoginPage() {
           </p>
         )}
 
+        <button
+          type="submit"
+          disabled={mutation.isPending}
+          className="w-full rounded-lg bg-sky-500 px-3 py-2 font-medium text-sm text-slate-950 transition hover:bg-sky-400 disabled:opacity-60"
+        >
+          {mutation.isPending ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+    </main>
+  )
+}
