@@ -284,3 +284,44 @@ export const putSecret = (
       params: { path: { project, environment, secret } },
       body: { data },
     }),
+  )
+
+export const deleteSecret = (project: string, environment: string, secret: string) =>
+  ok(
+    api.DELETE('/api/v1/projects/{project}/environments/{environment}/secrets/{secret}', {
+      params: { path: { project, environment, secret } },
+    }),
+  )
+
+// ---- tokens ----
+
+export const tokensQuery = queryOptions({
+  queryKey: ['tokens'],
+  queryFn: () => unwrap(api.GET('/api/v1/tokens')),
+})
+
+export const createToken = (body: CreateToken) => unwrap(api.POST('/api/v1/tokens', { body }))
+
+export const revokeToken = (token: string) =>
+  ok(api.DELETE('/api/v1/tokens/{token}', { params: { path: { token } } }))
+
+// ---- members ----
+
+export const membersQuery = queryOptions({
+  queryKey: ['members'],
+  queryFn: () => unwrap(api.GET('/api/v1/members')),
+})
+
+export const inviteMember = (email: string, role: string) =>
+  unwrap(api.POST('/api/v1/members', { body: { email, role } }))
+
+export const updateMember = (member: string, role: string) =>
+  unwrap(api.PATCH('/api/v1/members/{member}', { params: { path: { member } }, body: { role } }))
+
+export const removeMember = (member: string) =>
+  ok(api.DELETE('/api/v1/members/{member}', { params: { path: { member } } }))
+
+// ---- audit ----
+
+export const auditPage = (before?: number) =>
+  unwrap(api.GET('/api/v1/audit', { params: { query: { limit: 50, before } } }))
