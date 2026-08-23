@@ -192,3 +192,21 @@ export function ConfirmDelete({
   }
   return (
     <div className="w-full space-y-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+      <TextField
+        label={`Type "${name}" to delete this ${what}`}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        autoComplete="off"
+      />
+      <ErrorNote error={error} />
+      <div className="flex gap-2">
+        <Button variant="danger" disabled={typed !== name || pending} onClick={onConfirm}>
+          {pending ? 'Deleting…' : `Delete ${what}`}
+        </Button>
+        <Button variant="secondary" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
