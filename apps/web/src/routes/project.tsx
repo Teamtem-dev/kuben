@@ -136,3 +136,19 @@ function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: (
         hint="Deleting production has a 7-day grace period."
       >
         <option value="standard">Standard</option>
+        <option value="production">Production</option>
+        <option value="preview">Preview</option>
+      </Select>
+      <div />
+      <TextField label="CPU quota" name="cpu" placeholder="e.g. 4" />
+      <TextField label="Memory quota" name="memory" placeholder="e.g. 8Gi" />
+      <TextField label="Max pods" name="pods" type="number" min={1} placeholder="e.g. 50" />
+      <div className="flex items-center gap-3 sm:col-span-3">
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Creating…' : 'Create environment'}
+        </Button>
+        <ErrorNote error={mutation.error} />
+      </div>
+    </form>
+  )
+}
