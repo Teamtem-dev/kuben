@@ -97,3 +97,14 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
         placeholder="Online Shop"
       />
       <div className="sm:col-span-2">
+        <TextField label="Description" name="description" placeholder="Optional" />
+      </div>
+      <div className="flex items-center gap-3 sm:col-span-2">
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Creating…' : 'Create project'}
+        </Button>
+        <ErrorNote error={mutation.error} />
+      </div>
+    </form>
+  )
+}
