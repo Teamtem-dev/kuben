@@ -1,0 +1,11 @@
+apiVersion: v2
+name: kuben
+description: Kuben — a Kubernetes-native PaaS in a single binary
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+home: https://github.com/Teamtem-dev/kuben
+sources:
+  - https://github.com/Teamtem-dev/kuben
+keywords: [paas, platform, kubernetes, deployment]

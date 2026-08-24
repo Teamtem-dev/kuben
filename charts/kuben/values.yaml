@@ -1,0 +1,9 @@
+image:
+  repository: ghcr.io/teamtem-dev/kuben
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# SQLite supports exactly one replica. With PostgreSQL (`database.url`) every
+# replica serves the API, only the holder of the `kuben-controller` Lease runs
