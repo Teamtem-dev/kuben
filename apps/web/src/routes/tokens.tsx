@@ -124,3 +124,18 @@ export function TokensPage() {
                           variant="ghost"
                           disabled={revoke.isPending}
                           onClick={() => revoke.mutate(t.id)}
+                        >
+                          Revoke
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </section>
+  )
+}
