@@ -532,3 +532,48 @@ function DomainsCard({
     >
       <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
         <div className="min-w-64 flex-1">
+          <TextField
+            key={domains.join(' ')}
+            label="Custom domains"
+            name="domains"
+            defaultValue={domains.join(' ')}
+            placeholder="api.example.com www.example.com"
+            hint="HTTPS certificates are issued automatically once the DNS record points at the gateway."
+          />
+        </div>
+        <Button type="submit" variant="secondary" disabled={pending}>
+          Save
+        </Button>
+      </form>
+      {check.data && (
+        <ul className="mt-3 space-y-1 text-sm">
+          {check.data.map((d) => (
+            <li key={d.host} className="flex flex-wrap items-center gap-2">
+              <span className="font-mono">{d.host}</span>
+              <span className={dnsColor[d.status] ?? ''}>{d.status}</span>
+              <span className="text-slate-500 text-xs">{d.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <ErrorNote error={check.error} />
+    </Card>
+  )
+}
+
+function VolumesCard({ volumes }: { volumes: readonly Volume[] }) {
+  return (
+    <Card title="Volumes">
+      <ul className="space-y-1 text-sm">
+        {volumes.map((v) => (
+          <li key={v.name}>
+            <span className="font-mono">{v.mount_path}</span> <Badge>{v.size}</Badge>{' '}
+            <span className="text-slate-500 text-xs">
+              {v.name} · kept when the app is deleted unless you choose otherwise
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
