@@ -1,0 +1,21 @@
+{{- $postgres := or .Values.database.url .Values.database.existingSecret }}
+{{- if and (gt (int .Values.replicaCount) 1) (not $postgres) }}
+{{- fail "replicaCount > 1 requires PostgreSQL (database.url or database.existingSecret): SQLite supports one replica" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kuben.fullname" . }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    {{- if $postgres }}
+    # PostgreSQL: roll pods one at a time with no downtime. The controllers
+    # follow the `kuben-controller` Lease, so two pods never reconcile at once.
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    {{- else }}
