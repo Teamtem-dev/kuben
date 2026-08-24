@@ -109,3 +109,16 @@ export function TeamPage() {
                 </select>
                 <Button
                   variant="ghost"
+                  disabled={m.id === me.id || remove.isPending}
+                  onClick={() => remove.mutate(m.id)}
+                >
+                  Remove
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </section>
+  )
+}
