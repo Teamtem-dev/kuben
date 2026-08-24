@@ -43,3 +43,10 @@ export function useLiveUpdates() {
     }
     const source = new EventSource('/api/v1/stream')
     source.addEventListener('delta', (event: MessageEvent<string>) => schedule(keysFor(kindOf(event.data))))
+    source.addEventListener('resync', () => schedule(EVERYTHING))
+    return () => {
+      source.close()
+      if (timer) clearTimeout(timer)
+    }
+  }, [queryClient])
+}
