@@ -376,3 +376,46 @@ function Templates({ project, environment }: { project: string; environment: str
               <code className="font-mono">DATABASE_URL=@{deployed.credentials_secret}/url</code>
             </>
           )}
+          .
+        </div>
+      )}
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {templates.data?.map((t) => (
+          <li key={t.id} className="flex flex-col gap-2 rounded-lg border border-white/10 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-sm">{t.name}</span>
+              <Badge>{t.protocol}</Badge>
+            </div>
+            <p className="flex-1 text-slate-400 text-xs">{t.description}</p>
+            <p className="truncate font-mono text-slate-500 text-xs">{t.image}</p>
+            {chosen === t.id ? (
+              <form onSubmit={(e) => onSubmit(e, t.id)} className="space-y-2">
+                <TextField
+                  label="App name"
+                  name="name"
+                  required
+                  defaultValue={t.category === 'database' ? 'db' : t.id}
+                  pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+                  maxLength={40}
+                />
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={deploy.isPending}>
+                    {deploy.isPending ? 'Deploying…' : 'Deploy'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setChosen(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <Button variant="secondary" onClick={() => setChosen(t.id)}>
+                Use template
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <ErrorNote error={deploy.error ?? templates.error} />
+    </Card>
+  )
+}
