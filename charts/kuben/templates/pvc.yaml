@@ -1,0 +1,21 @@
+{{- /* The volume holds the SQLite database; PostgreSQL installs need none. */}}
+{{- if and .Values.persistence.enabled (not (or .Values.database.url .Values.database.existingSecret)) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kuben.fullname" . }}-data
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+  annotations:
+    # `helm uninstall` must never delete the user and audit database.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  {{- with .Values.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

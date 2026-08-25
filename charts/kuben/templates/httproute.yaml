@@ -1,0 +1,27 @@
+{{- if .Values.route.enabled }}
+{{- if not (and .Values.route.hostname .Values.route.gateway.name) }}
+{{- fail "route.enabled requires route.hostname and route.gateway.name" }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "kuben.fullname" . }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.route.gateway.name }}
+      {{- with .Values.route.gateway.namespace }}
+      namespace: {{ . }}
+      {{- end }}
+  hostnames:
+    - {{ .Values.route.hostname | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "kuben.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}
