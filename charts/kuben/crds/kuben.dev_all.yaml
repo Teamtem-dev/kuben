@@ -1,0 +1,1165 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kubenconfigs.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: KubenConfig
+    plural: kubenconfigs
+    shortNames:
+    - kcfg
+    singular: kubenconfig
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.baseDomain
+      name: BaseDomain
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for KubenConfigSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              baseDomain:
+                description: Base domain for generated app hostnames, e.g. `apps.example.com`.
+                nullable: true
+                type: string
+              clusterIssuer:
+                description: cert-manager ClusterIssuer name.
+                nullable: true
+                type: string
+              gateway:
+                description: Gateway API `Gateway` used for HTTPRoutes (`namespace/name`).
+                nullable: true
+                type: string
+              registry:
+                description: Container registry used for build outputs.
+                nullable: true
+                properties:
+                  credentialsSecret:
+                    description: Secret (in `kuben-system`) holding a `.dockerconfigjson`.
+                    nullable: true
+                    type: string
+                  prefix:
+                    description: e.g. `ghcr.io/acme`.
+                    type: string
+                required:
+                - prefix
+                type: object
+              sizes:
+                default:
+                - cpuLimit: null
+                  cpuRequest: 50m
+                  memoryLimit: 128Mi
+                  memoryRequest: 64Mi
+                  name: nano
+                - cpuLimit: null
+                  cpuRequest: 100m
+                  memoryLimit: 256Mi
+                  memoryRequest: 128Mi
+                  name: small
+                - cpuLimit: null
+                  cpuRequest: 250m
+                  memoryLimit: 1Gi
+                  memoryRequest: 512Mi
+                  name: medium
+                - cpuLimit: null
+                  cpuRequest: '1'
+                  memoryLimit: 4Gi
+                  memoryRequest: 2Gi
+                  name: large
+                description: Compute size presets.
+                items:
+                  description: Compute size preset (resolved from `KubenConfig.spec.sizes`).
+                  properties:
+                    cpuLimit:
+                      nullable: true
+                      type: string
+                    cpuRequest:
+                      type: string
+                    memoryLimit:
+                      type: string
+                    memoryRequest:
+                      type: string
+                    name:
+                      type: string
+                  required:
+                  - cpuRequest
+                  - memoryLimit
+                  - memoryRequest
+                  - name
+                  type: object
+                type: array
+              wildcardTlsSecret:
+                description: |-
+                  Secret in the Gateway's namespace holding a certificate for
+                  `*.<baseDomain>` (DNS-01). When set, generated hostnames share one
+                  wildcard HTTPS listener instead of one listener per host.
+                nullable: true
+                type: string
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+            type: object
+        required:
+        - spec
+        title: KubenConfig
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: projects.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: Project
+    plural: projects
+    shortNames:
+    - kproj
+    singular: project
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.displayName
+      name: Display
+      type: string
+    - jsonPath: .status.environments
+      name: Environments
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ProjectSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              description:
+                nullable: true
+                type: string
+              displayName:
+                description: Human readable name.
+                type: string
+              previews:
+                default:
+                  max: 10
+                description: Preview environment policy.
+                properties:
+                  max:
+                    default: 10
+                    description: Maximum concurrent preview environments.
+                    format: uint32
+                    minimum: 0.0
+                    type: integer
+                  template:
+                    description: Environment used as template for previews.
+                    nullable: true
+                    type: string
+                type: object
+            required:
+            - displayName
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              environments:
+                default: 0
+                format: uint32
+                minimum: 0.0
+                type: integer
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+            type: object
+        required:
+        - spec
+        title: Project
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: environments.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: Environment
+    plural: environments
+    shortNames:
+    - kenv
+    singular: environment
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.project
+      name: Project
+      type: string
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .status.namespace
+      name: Namespace
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for EnvironmentSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              deletionPolicy:
+                default: Retain
+                description: What happens to the namespace when this resource is deleted.
+                enum:
+                - Retain
+                - Delete
+                type: string
+              project:
+                description: Name of the owning `Project`.
+                type: string
+              protection:
+                description: Production protection rules (approvals, windows).
+                nullable: true
+                properties:
+                  deletionGrace:
+                    default: 168h
+                    description: Grace period before a soft-deleted environment is purged, e.g. `168h`.
+                    type: string
+                  requireApprovals:
+                    default: 0
+                    description: Distinct approvers required to promote a release here.
+                    format: uint32
+                    minimum: 0.0
+                    type: integer
+                type: object
+              quota:
+                description: Resource quota applied to the namespace.
+                nullable: true
+                properties:
+                  cpu:
+                    nullable: true
+                    type: string
+                  memory:
+                    nullable: true
+                    type: string
+                  pods:
+                    format: uint32
+                    minimum: 0.0
+                    nullable: true
+                    type: integer
+                type: object
+              ttl:
+                description: 'Preview-only: time-to-live settings.'
+                nullable: true
+                properties:
+                  idle:
+                    description: Delete after this much time without traffic, e.g. `48h`.
+                    nullable: true
+                    type: string
+                  max:
+                    description: Hard maximum lifetime, e.g. `14d`.
+                    nullable: true
+                    type: string
+                type: object
+              type:
+                default: standard
+                enum:
+                - standard
+                - production
+                - preview
+                type: string
+            required:
+            - project
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              deletionScheduledAt:
+                nullable: true
+                type: string
+              namespace:
+                nullable: true
+                type: string
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+              phase:
+                description: '`Pending | Ready | Terminating | Degraded`.'
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: Environment
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: apps.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: App
+    plural: apps
+    shortNames:
+    - kapp
+    singular: app
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.currentRelease
+      name: Release
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for AppSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              domains:
+                items:
+                  properties:
+                    host:
+                      type: string
+                    tls:
+                      default: auto
+                      description: '`auto` (cert-manager), `none`, or a Secret name.'
+                      type: string
+                  required:
+                  - host
+                  type: object
+                type: array
+              env:
+                items:
+                  description: Environment variable. Exactly one of `value`, `fromSecret`, `fromService`.
+                  properties:
+                    fromSecret:
+                      description: Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+                      nullable: true
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                    fromService:
+                      description: Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+                      nullable: true
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                    name:
+                      type: string
+                    value:
+                      nullable: true
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              runtime:
+                properties:
+                  fsGroup:
+                    description: |-
+                      Group id that owns the volumes (`fsGroup`), for images running as a
+                      non-root user, e.g. `1000`.
+                    format: int64
+                    nullable: true
+                    type: integer
+                  healthCheck:
+                    nullable: true
+                    properties:
+                      path:
+                        type: string
+                      port:
+                        format: uint16
+                        maximum: 65535.0
+                        minimum: 0.0
+                        nullable: true
+                        type: integer
+                    required:
+                    - path
+                    type: object
+                  processes:
+                    additionalProperties:
+                      properties:
+                        command:
+                          items:
+                            type: string
+                          type: array
+                        idle:
+                          description: Scale-to-zero / throttling configuration (Master Blueprint §3.3).
+                          nullable: true
+                          properties:
+                            after:
+                              default: 15m
+                              description: Inactivity before sleeping, e.g. `15m`.
+                              type: string
+                            mode:
+                              default: off
+                              enum:
+                              - off
+                              - zero
+                              - throttle
+                              type: string
+                          type: object
+                        port:
+                          format: uint16
+                          maximum: 65535.0
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        protocol:
+                          description: How a process's port is exposed.
+                          enum:
+                          - http
+                          - tcp
+                          type: string
+                        replicas:
+                          default:
+                            max: 1
+                            min: 1
+                          properties:
+                            max:
+                              default: 1
+                              format: uint32
+                              minimum: 0.0
+                              type: integer
+                            min:
+                              default: 1
+                              format: uint32
+                              minimum: 0.0
+                              type: integer
+                          type: object
+                        schedule:
+                          description: |-
+                            Cron expression (scenario 7). A scheduled process runs as a CronJob
+                            instead of a Deployment and may not expose a port.
+                          nullable: true
+                          type: string
+                        size:
+                          default: small
+                          description: Size preset name from `KubenConfig.spec.sizes`.
+                          type: string
+                        timeZone:
+                          description: IANA time zone for `schedule`, e.g. `Europe/Berlin` (default UTC).
+                          nullable: true
+                          type: string
+                      type: object
+                    description: Named processes (`web`, `worker`, ...). Exactly one may expose a port.
+                    type: object
+                required:
+                - processes
+                type: object
+              source:
+                description: |-
+                  Where the image comes from. Set exactly one of `image` or `git`
+                  (Kubernetes one-of style: structural CRD schemas cannot express tagged enums).
+                properties:
+                  git:
+                    description: Build from a git repository.
+                    nullable: true
+                    properties:
+                      branch:
+                        default: main
+                        type: string
+                      build:
+                        default:
+                          strategy: auto
+                        properties:
+                          dockerfile:
+                            description: Dockerfile path relative to `path` (strategy `dockerfile`).
+                            nullable: true
+                            type: string
+                          strategy:
+                            default: auto
+                            enum:
+                            - dockerfile
+                            - railpack
+                            - auto
+                            type: string
+                        type: object
+                      path:
+                        type: string
+                      repo:
+                        type: string
+                    required:
+                    - repo
+                    type: object
+                  image:
+                    description: Prebuilt image, e.g. `ghcr.io/acme/api:1.2.3`. Pinned to a digest at `Release` time.
+                    nullable: true
+                    type: string
+                type: object
+              volumes:
+                description: |-
+                  Persistent volumes (scenario 6). An app with volumes runs a single
+                  process with at most one replica (ReadWriteOnce).
+                items:
+                  description: |-
+                    A persistent volume mounted into the app's process. Backed by a PVC named
+                    `<app>-<name>` that is **retained** when the app is deleted.
+                  properties:
+                    mountPath:
+                      description: Absolute path inside the container, e.g. `/data`.
+                      type: string
+                    name:
+                      type: string
+                    size:
+                      default: 1Gi
+                      description: Requested capacity, e.g. `5Gi`. Can grow, never shrink.
+                      type: string
+                    storageClass:
+                      description: StorageClass; the cluster default when omitted.
+                      nullable: true
+                      type: string
+                  required:
+                  - mountPath
+                  - name
+                  type: object
+                type: array
+            required:
+            - runtime
+            - source
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              currentRelease:
+                nullable: true
+                type: string
+              observedGeneration:
+                format: int64
+                nullable: true
+                type: integer
+              url:
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: App
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: releases.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: Release
+    plural: releases
+    shortNames:
+    - krel
+    singular: release
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.app
+      name: App
+      type: string
+    - jsonPath: .spec.imageDigest
+      name: Digest
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ReleaseSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              app:
+                description: Name of the App this release belongs to.
+                type: string
+              appSpec:
+                description: Snapshot of the App spec at release time.
+                properties:
+                  domains:
+                    items:
+                      properties:
+                        host:
+                          type: string
+                        tls:
+                          default: auto
+                          description: '`auto` (cert-manager), `none`, or a Secret name.'
+                          type: string
+                      required:
+                      - host
+                      type: object
+                    type: array
+                  env:
+                    items:
+                      description: Environment variable. Exactly one of `value`, `fromSecret`, `fromService`.
+                      properties:
+                        fromSecret:
+                          description: Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+                          nullable: true
+                          properties:
+                            key:
+                              type: string
+                            name:
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                        fromService:
+                          description: Reference to a key inside a Secret/ConfigMap/Service in the same namespace.
+                          nullable: true
+                          properties:
+                            key:
+                              type: string
+                            name:
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                        name:
+                          type: string
+                        value:
+                          nullable: true
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  runtime:
+                    properties:
+                      fsGroup:
+                        description: |-
+                          Group id that owns the volumes (`fsGroup`), for images running as a
+                          non-root user, e.g. `1000`.
+                        format: int64
+                        nullable: true
+                        type: integer
+                      healthCheck:
+                        nullable: true
+                        properties:
+                          path:
+                            type: string
+                          port:
+                            format: uint16
+                            maximum: 65535.0
+                            minimum: 0.0
+                            nullable: true
+                            type: integer
+                        required:
+                        - path
+                        type: object
+                      processes:
+                        additionalProperties:
+                          properties:
+                            command:
+                              items:
+                                type: string
+                              type: array
+                            idle:
+                              description: Scale-to-zero / throttling configuration (Master Blueprint §3.3).
+                              nullable: true
+                              properties:
+                                after:
+                                  default: 15m
+                                  description: Inactivity before sleeping, e.g. `15m`.
+                                  type: string
+                                mode:
+                                  default: off
+                                  enum:
+                                  - off
+                                  - zero
+                                  - throttle
+                                  type: string
+                              type: object
+                            port:
+                              format: uint16
+                              maximum: 65535.0
+                              minimum: 0.0
+                              nullable: true
+                              type: integer
+                            protocol:
+                              description: How a process's port is exposed.
+                              enum:
+                              - http
+                              - tcp
+                              type: string
+                            replicas:
+                              default:
+                                max: 1
+                                min: 1
+                              properties:
+                                max:
+                                  default: 1
+                                  format: uint32
+                                  minimum: 0.0
+                                  type: integer
+                                min:
+                                  default: 1
+                                  format: uint32
+                                  minimum: 0.0
+                                  type: integer
+                              type: object
+                            schedule:
+                              description: |-
+                                Cron expression (scenario 7). A scheduled process runs as a CronJob
+                                instead of a Deployment and may not expose a port.
+                              nullable: true
+                              type: string
+                            size:
+                              default: small
+                              description: Size preset name from `KubenConfig.spec.sizes`.
+                              type: string
+                            timeZone:
+                              description: IANA time zone for `schedule`, e.g. `Europe/Berlin` (default UTC).
+                              nullable: true
+                              type: string
+                          type: object
+                        description: Named processes (`web`, `worker`, ...). Exactly one may expose a port.
+                        type: object
+                    required:
+                    - processes
+                    type: object
+                  source:
+                    description: |-
+                      Where the image comes from. Set exactly one of `image` or `git`
+                      (Kubernetes one-of style: structural CRD schemas cannot express tagged enums).
+                    properties:
+                      git:
+                        description: Build from a git repository.
+                        nullable: true
+                        properties:
+                          branch:
+                            default: main
+                            type: string
+                          build:
+                            default:
+                              strategy: auto
+                            properties:
+                              dockerfile:
+                                description: Dockerfile path relative to `path` (strategy `dockerfile`).
+                                nullable: true
+                                type: string
+                              strategy:
+                                default: auto
+                                enum:
+                                - dockerfile
+                                - railpack
+                                - auto
+                                type: string
+                            type: object
+                          path:
+                            type: string
+                          repo:
+                            type: string
+                        required:
+                        - repo
+                        type: object
+                      image:
+                        description: Prebuilt image, e.g. `ghcr.io/acme/api:1.2.3`. Pinned to a digest at `Release` time.
+                        nullable: true
+                        type: string
+                    type: object
+                  volumes:
+                    description: |-
+                      Persistent volumes (scenario 6). An app with volumes runs a single
+                      process with at most one replica (ReadWriteOnce).
+                    items:
+                      description: |-
+                        A persistent volume mounted into the app's process. Backed by a PVC named
+                        `<app>-<name>` that is **retained** when the app is deleted.
+                      properties:
+                        mountPath:
+                          description: Absolute path inside the container, e.g. `/data`.
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          default: 1Gi
+                          description: Requested capacity, e.g. `5Gi`. Can grow, never shrink.
+                          type: string
+                        storageClass:
+                          description: StorageClass; the cluster default when omitted.
+                          nullable: true
+                          type: string
+                      required:
+                      - mountPath
+                      - name
+                      type: object
+                    type: array
+                required:
+                - runtime
+                - source
+                type: object
+              createdBy:
+                description: Who/what created this release (user id or `webhook:github`).
+                nullable: true
+                type: string
+              gitSha:
+                description: Git commit that produced the image, if built by Kuben.
+                nullable: true
+                type: string
+              imageDigest:
+                description: Fully qualified image reference pinned by digest (`repo@sha256:...`).
+                type: string
+              secretRefs:
+                description: Secret names + resourceVersions in effect at release time.
+                items:
+                  properties:
+                    name:
+                      type: string
+                    resourceVersion:
+                      type: string
+                  required:
+                  - name
+                  - resourceVersion
+                  type: object
+                type: array
+            required:
+            - app
+            - appSpec
+            - imageDigest
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              phase:
+                description: '`Pending | AwaitingApproval | RollingOut | Active | Superseded | Failed`.'
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: Release
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: buildruns.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: BuildRun
+    plural: buildruns
+    shortNames:
+    - kbr
+    singular: buildrun
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.app
+      name: App
+      type: string
+    - jsonPath: .spec.gitRef
+      name: Ref
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for BuildRunSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              app:
+                description: '`namespace/name` of the App being built.'
+                type: string
+              gitRef:
+                description: Commit SHA (preferred) or ref.
+                type: string
+              image:
+                description: Target image (tag form); the resulting digest lands in status.
+                type: string
+              path:
+                type: string
+              repo:
+                type: string
+              strategy:
+                default: auto
+                enum:
+                - dockerfile
+                - railpack
+                - auto
+                type: string
+            required:
+            - app
+            - gitRef
+            - image
+            - repo
+            type: object
+          status:
+            nullable: true
+            properties:
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              finishedAt:
+                nullable: true
+                type: string
+              imageDigest:
+                nullable: true
+                type: string
+              jobName:
+                nullable: true
+                type: string
+              phase:
+                description: '`Queued | Running | Succeeded | Failed | Cancelled`.'
+                nullable: true
+                type: string
+              startedAt:
+                nullable: true
+                type: string
+            type: object
+        required:
+        - spec
+        title: BuildRun
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
