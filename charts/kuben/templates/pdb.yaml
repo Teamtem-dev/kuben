@@ -1,0 +1,15 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+# Node drains evict one pod at a time, so the API stays up; the controllers
+# move to another pod through the Lease.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kuben.fullname" . }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "kuben.selectorLabels" . | nindent 6 }}
+{{- end }}
