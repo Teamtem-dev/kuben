@@ -1,0 +1,26 @@
+Kuben {{ .Chart.AppVersion }} is starting in namespace {{ .Release.Namespace }}.
+
+1. Open the UI:
+{{- if .Values.route.enabled }}
+   https://{{ .Values.route.hostname }}
+{{- else }}
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kuben.fullname" . }} 8080:{{ .Values.service.port }}
+   then browse to http://localhost:8080
+{{- end }}
+
+2. Sign in as {{ .Values.admin.email }}.
+{{- if .Values.admin.existingSecret }}
+   The password is in the Secret {{ .Values.admin.existingSecret }} (key: password).
+{{- else }}
+   A password was generated on first start and stored in a Secret (it is never logged):
+   kubectl -n {{ .Release.Namespace }} get secret kuben-initial-admin -o jsonpath='{.data.password}' | base64 -d
+   Delete that Secret once you have signed in and changed the password.
+{{- end }}
+
+3. Check the platform prerequisites:
+   kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "kuben.fullname" . }} -- /kuben doctor
+{{- if not .Values.platform.gateway }}
+
+Apps are not exposed publicly until a Gateway is configured:
+   --set platform.gateway=<namespace>/<gateway> --set platform.baseDomain=apps.example.com
+{{- end }}
