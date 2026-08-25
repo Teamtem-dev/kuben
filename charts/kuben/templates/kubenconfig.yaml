@@ -1,0 +1,23 @@
+{{- if .Values.platform.create }}
+{{- with .Values.platform.gateway }}
+{{- if not (regexMatch "^[a-z0-9-]+/[a-z0-9-]+$" .) }}
+{{- fail "platform.gateway must be `namespace/name`" }}
+{{- end }}
+{{- end }}
+apiVersion: kuben.dev/v1alpha1
+kind: KubenConfig
+metadata:
+  name: kuben
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.platform.baseDomain }}
+  baseDomain: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.platform.gateway }}
+  gateway: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.platform.clusterIssuer }}
+  clusterIssuer: {{ . | quote }}
+  {{- end }}
+{{- end }}
