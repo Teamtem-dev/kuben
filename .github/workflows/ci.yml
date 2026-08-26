@@ -30,3 +30,35 @@ jobs:
   # (scripts/ci-changes.sh). Pushes to main, the merge queue and manual runs
   # always run everything.
   changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
+      deps: ${{ steps.detect.outputs.deps }}
+      web: ${{ steps.detect.outputs.web }}
+      codegen: ${{ steps.detect.outputs.codegen }}
+      scripts: ${{ steps.detect.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The PR merge commit and its first parent (the base branch).
+          fetch-depth: 2
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ $EVENT == pull_request ]] && git rev-parse -q --verify HEAD^1 >/dev/null; then
+            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            scripts/ci-changes.sh < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+          else
+            : > "$RUNNER_TEMP/changed.txt"
+            scripts/ci-changes.sh --all | tee -a "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "### Selected job groups"
+            echo '```'
+            grep -E '^(rust|deps|web|codegen|scripts)=' "$GITHUB_OUTPUT"
+            echo '```'
+            echo "$(wc -l < "$RUNNER_TEMP/changed.txt") changed file(s)"
