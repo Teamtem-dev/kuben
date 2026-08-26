@@ -24,3 +24,29 @@ REPO="Teamtem-dev/kuben"
 BIN="kuben"
 
 if [ -t 2 ]; then BOLD=$(printf '\033[1m'); RED=$(printf '\033[31m'); RESET=$(printf '\033[0m'); else BOLD=""; RED=""; RESET=""; fi
+
+say() { printf '%skuben:%s %s\n' "$BOLD" "$RESET" "$*" >&2; }
+err() {
+  printf '%skuben: error:%s %s\n' "$RED" "$RESET" "$*" >&2
+  exit 1
+}
+has() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  sed -n '2,12p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' ||
+    echo "usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo]"
+}
+
+detect_target() {
+  os=$(uname -s)
+  arch=$(uname -m)
+  case "$os" in
+  Linux) os_part="unknown-linux-musl" ;;
+  Darwin)
+    os_part="apple-darwin"
+    # An x86_64 shell under Rosetta 2 on Apple Silicon still gets the native binary.
+    if [ "$arch" = "x86_64" ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = "1" ]; then
+      arch="arm64"
+    fi
+    ;;
+  MINGW* | MSYS* | CYGWIN*)
