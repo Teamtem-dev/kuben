@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  RUSTUP_MAX_RETRIES: "10"
+  RUST_BACKTRACE: short
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Pull requests run only the job groups their files touch
+  # (scripts/ci-changes.sh). Pushes to main, the merge queue and manual runs
+  # always run everything.
+  changes:
