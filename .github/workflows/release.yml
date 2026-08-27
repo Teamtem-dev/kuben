@@ -29,3 +29,34 @@ env:
 
 defaults:
   run:
+    shell: bash
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - id: meta
+        name: Validate tag against Cargo.toml
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::tag '$TAG' is not vMAJOR.MINOR.PATCH[-PRERELEASE]"; exit 1
+          fi
+          version="${TAG#v}"
+          crate=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "kuben") | .version')
+          if [[ "$version" != "$crate" ]]; then
+            echo "::error::tag $TAG does not match the kuben crate version $crate"; exit 1
+          fi
+          prerelease=false
+          if [[ "$version" == *-* ]]; then prerelease=true; fi
