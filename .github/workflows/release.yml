@@ -123,3 +123,35 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
+      - name: Build
+        run: |
+          build=build
+          if [[ "$USE_ZIG" == "true" ]]; then build=zigbuild; fi
+          cargo "$build" -p kuben --release --locked --features embed-ui --target "$TARGET"
+      - name: Size budget
+        if: contains(matrix.target, 'linux')
+        run: scripts/check-budgets.sh binary "target/$TARGET/release/kuben"
+      - name: Smoke test
+        if: matrix.smoke
+        run: target/$TARGET/release/kuben --version
+      - name: Package
+        run: |
+          name="kuben-${TARGET}"
+          stage=$(mktemp -d)
+          mkdir -p dist
+          if [[ "$TARGET" == *windows* ]]; then
+            cp "target/${TARGET}/release/kuben.exe" LICENSE README.md "$stage/"
+            (cd "$stage" && 7z a -tzip -bso0 "${GITHUB_WORKSPACE}/dist/${name}.zip" kuben.exe LICENSE README.md)
+          else
+            cp "target/${TARGET}/release/kuben" LICENSE README.md "$stage/"
+            tar -C "$stage" -czf "dist/${name}.tar.gz" kuben LICENSE README.md
+          fi
+          ls -l dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bin-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
