@@ -92,3 +92,34 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04, zig: true, smoke: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, zig: true, smoke: true }
+          - { target: aarch64-apple-darwin, os: macos-15, smoke: true }
+          - { target: x86_64-apple-darwin, os: macos-15 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2025, smoke: true }
+    env:
+      TARGET: ${{ matrix.target }}
+      USE_ZIG: ${{ matrix.zig || false }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      # No build cache in release jobs: releases are built from scratch so a
+      # poisoned cache can never reach a published artifact.
+      - if: matrix.zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+      - if: matrix.zig
+        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: cargo-zigbuild
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: apps/web/dist
