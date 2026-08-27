@@ -126,3 +126,35 @@ jobs:
         with:
           key: ${{ matrix.name }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run --workspace --locked --profile ci
+      # nextest does not run doctests; they are platform-independent.
+      - name: Doctests
+        if: matrix.name == 'linux-x64'
+        run: cargo test --workspace --doc --locked
+
+  postgres:
+    name: Store matrix (PostgreSQL 17)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: kuben
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
