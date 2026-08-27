@@ -1,0 +1,31 @@
+name: Release
+
+# Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) that matches the version in
+# Cargo.toml. Produces static binaries for 5 targets, checksums, build
+# provenance, a GitHub Release and a multi-arch image on GHCR.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  RUSTUP_MAX_RETRIES: "10"
+  IMAGE: ghcr.io/teamtem-dev/kuben
+
+defaults:
+  run:
