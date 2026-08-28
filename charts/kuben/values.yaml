@@ -7,3 +7,13 @@ imagePullSecrets: []
 
 # SQLite supports exactly one replica. With PostgreSQL (`database.url`) every
 # replica serves the API, only the holder of the `kuben-controller` Lease runs
+# the controllers, and upgrades roll without downtime.
+replicaCount: 1
+
+admin:
+  email: admin@kuben.local
+  # Secret with a `password` key. Empty: a random password is generated on the
+  # first start and stored in the Secret `kuben-initial-admin` (never logged).
+  existingSecret: ""
+
+database:
