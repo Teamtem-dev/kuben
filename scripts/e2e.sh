@@ -30,3 +30,36 @@ for c in kubectl curl jq; do need "$c"; done
 
 work=$(mktemp -d)
 cleanup() {
+  status=$?
+  if [[ -n ${pid:-} ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
+  if ((status != 0)); then
+    echo "---- kuben log (last 80 lines) ----"
+    tail -n 80 "$work/kuben.log" || true
+    kubectl get projects,environments,apps -A 2>/dev/null || true
+    kubectl -n "$NS" get all,resourcequota,networkpolicy,pvc,cronjobs,jobs 2>/dev/null || true
+  fi
+  kubectl delete environment "${P}-dev" "${P}-live" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  kubectl delete project "$P" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  kubectl -n "$LEASE_NS" delete lease kuben-controller --ignore-not-found >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# eventually <seconds> <description> <command...>
+eventually() {
+  local timeout=$1 what=$2
+  shift 2
+  for ((i = 0; i < timeout; i++)); do
+    if "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 1
+  done
+  fail "timed out after ${timeout}s waiting for: $what"
+}
+
+# request <cookie jar | bearer:TOKEN | none> <method> <path> [json] → HTTP status
+request() {
+  local auth=$1 method=$2 path=$3 body=${4:-}
+  local args=(-sS -o "$work/body" -w '%{http_code}' -X "$method" -H 'content-type: application/json')
