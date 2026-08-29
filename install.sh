@@ -50,3 +50,30 @@ detect_target() {
     fi
     ;;
   MINGW* | MSYS* | CYGWIN*)
+    err "on Windows download kuben-x86_64-pc-windows-msvc.zip from https://github.com/${REPO}/releases"
+    ;;
+  *) err "unsupported operating system: $os" ;;
+  esac
+  case "$arch" in
+  x86_64 | amd64) arch_part="x86_64" ;;
+  aarch64 | arm64) arch_part="aarch64" ;;
+  *) err "unsupported CPU architecture: $arch" ;;
+  esac
+  echo "${arch_part}-${os_part}"
+}
+
+download() { # <url> <dest>
+  if has curl; then
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+      --retry 3 --retry-connrefused --output "$2" "$1"
+  elif has wget; then
+    wget --https-only --quiet --tries=3 --output-document="$2" "$1"
+  else
+    err "curl or wget is required"
+  fi
+}
+
+latest_tag() {
+  if has curl; then
+    # Follow the /releases/latest redirect: no API rate limit, no JSON parsing.
+    url=$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
