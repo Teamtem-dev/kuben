@@ -7,3 +7,12 @@
 
 FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /src
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/web/package.json apps/web/
+COPY packages/api-client/package.json packages/api-client/
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+COPY tsconfig.base.json ./
+COPY packages/api-client packages/api-client
+COPY apps/web apps/web
+RUN pnpm -F @kuben/web build
