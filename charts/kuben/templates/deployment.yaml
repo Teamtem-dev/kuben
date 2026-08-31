@@ -40,3 +40,25 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: kuben
+          image: {{ include "kuben.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve", "--roles=all"]
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+          env:
+            - name: KUBEN_KUBE__REQUIRED
+              value: "true"
+            # Home of the controller Lease and the initial admin Secret.
+            - name: KUBEN_KUBE__NAMESPACE

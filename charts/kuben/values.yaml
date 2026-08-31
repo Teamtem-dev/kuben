@@ -17,3 +17,12 @@ admin:
   existingSecret: ""
 
 database:
+  # Empty: SQLite on the persistent volume (`sqlite:///data/kuben.db`).
+  url: ""
+  # Secret with a `url` key (PostgreSQL credentials); wins over `url`.
+  existingSecret: ""
+
+# Volume for the SQLite database (not created with PostgreSQL).
+persistence:
+  enabled: true
+  size: 1Gi
