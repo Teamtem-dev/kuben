@@ -63,3 +63,36 @@ eventually() {
 request() {
   local auth=$1 method=$2 path=$3 body=${4:-}
   local args=(-sS -o "$work/body" -w '%{http_code}' -X "$method" -H 'content-type: application/json')
+  case "$auth" in
+  bearer:*) args+=(-H "authorization: Bearer ${auth#bearer:}") ;;
+  none) args+=(-H 'x-kuben-client: e2e') ;;
+  *) args+=(-b "$work/$auth" -c "$work/$auth" -H 'x-kuben-client: e2e') ;;
+  esac
+  [[ -n $body ]] && args+=(--data "$body")
+  curl "${args[@]}" "$BASE$path"
+}
+
+api() { request cookies "$@"; }
+
+expect() { # <status> <method> <path> [json]
+  local want=$1
+  shift
+  local got
+  got=$(api "$@")
+  [[ $got == "$want" ]] || fail "$1 $2 → HTTP $got (want $want): $(cat "$work/body")"
+}
+
+expect_as() { # <status> <auth> <method> <path> [json]
+  local want=$1 auth=$2
+  shift 2
+  local got
+  got=$(request "$auth" "$@")
+  [[ $got == "$want" ]] || fail "[$auth] $1 $2 → HTTP $got (want $want): $(cat "$work/body")"
+}
+
+step "start kuben"
+KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
+  KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
+  KUBEN_DATABASE__URL="sqlite://${work}/kuben.db" \
+  KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
+  KUBEN_SECURITY__COOKIE_SECURE=false \
