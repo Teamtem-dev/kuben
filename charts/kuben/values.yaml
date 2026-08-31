@@ -26,3 +26,13 @@ database:
 persistence:
   enabled: true
   size: 1Gi
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+
+# Public URL of the UI, e.g. https://kuben.example.com
+publicUrl: ""
+
+security:
+  # Keep true in production: the session cookie is then `__Host-` + `Secure`.
+  cookieSecure: true
+

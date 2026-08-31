@@ -62,3 +62,24 @@ spec:
               value: "true"
             # Home of the controller Lease and the initial admin Secret.
             - name: KUBEN_KUBE__NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Only the Lease holder reconciles: safe with several replicas and
+            # during rolling updates.
+            - name: KUBEN_KUBE__LEADER_ELECTION
+              value: "true"
+            - name: KUBEN_TELEMETRY__LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: KUBEN_SERVER__METRICS_BIND
+              value: "0.0.0.0:{{ .Values.metrics.port }}"
+            - name: KUBEN_SECURITY__COOKIE_SECURE
+              value: {{ .Values.security.cookieSecure | quote }}
+            # Behind the Gateway: the last X-Forwarded-For hop is the real client.
+            - name: KUBEN_SECURITY__TRUST_FORWARDED_FOR
+              value: "true"
+            - name: KUBEN_BOOTSTRAP__ADMIN_EMAIL
+              value: {{ .Values.admin.email | quote }}
+            {{- with .Values.admin.existingSecret }}
+            - name: KUBEN_BOOTSTRAP__ADMIN_PASSWORD
+              valueFrom:
