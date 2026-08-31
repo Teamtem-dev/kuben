@@ -9,3 +9,9 @@ set -euo pipefail
 
 mib() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1048576 }'; }
 
+report() { # <label> <bytes> <limit MiB>
+  local label=$1 bytes=$2 limit_mib=$3
+  local verdict=ok
+  if ((bytes > limit_mib * 1048576)); then verdict=FAIL; fi
+  local line="${label}: $(mib "$bytes") MiB (budget ${limit_mib} MiB) — ${verdict}"
+  echo "$line"
