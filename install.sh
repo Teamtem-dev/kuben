@@ -77,3 +77,29 @@ latest_tag() {
   if has curl; then
     # Follow the /releases/latest redirect: no API rate limit, no JSON parsing.
     url=$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+      --head --output /dev/null --write-out '%{url_effective}' \
+      "https://github.com/${REPO}/releases/latest") || err "could not reach github.com"
+    tag=${url##*/}
+  else
+    download "https://api.github.com/repos/${REPO}/releases/latest" "$tmp/latest.json"
+    tag=$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/latest.json" | head -n 1)
+  fi
+  case "$tag" in
+  v[0-9]*) echo "$tag" ;;
+  *) err "could not determine the latest release of ${REPO} (is there a published release yet?)" ;;
+  esac
+}
+
+sha256_of() {
+  if has sha256sum; then
+    sha256sum "$1" | cut -d ' ' -f 1
+  elif has shasum; then
+    shasum -a 256 "$1" | cut -d ' ' -f 1
+  elif has openssl; then
+    openssl dgst -sha256 -r "$1" | cut -d ' ' -f 1
+  else
+    err "no SHA-256 tool found (need sha256sum, shasum or openssl)"
+  fi
+}
+
+install_binary() { # <src> <dir>
