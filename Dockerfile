@@ -16,3 +16,13 @@ COPY tsconfig.base.json ./
 COPY packages/api-client packages/api-client
 COPY apps/web apps/web
 RUN pnpm -F @kuben/web build
+
+FROM --platform=$BUILDPLATFORM rust:1-bookworm AS chef
+WORKDIR /src
+# The toolchain file decides the toolchain, so add targets after copying it.
+COPY rust-toolchain.toml ./
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3-pip \
+ && rm -rf /var/lib/apt/lists/* \
+ && pip3 install --no-cache-dir --break-system-packages ziglang \
+ && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
