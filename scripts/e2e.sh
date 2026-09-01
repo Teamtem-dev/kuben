@@ -96,3 +96,36 @@ KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
   KUBEN_DATABASE__URL="sqlite://${work}/kuben.db" \
   KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
   KUBEN_SECURITY__COOKIE_SECURE=false \
+  KUBEN_KUBE__REQUIRED=true \
+  KUBEN_KUBE__LEADER_ELECTION=true \
+  KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
+  KUBEN_TELEMETRY__LOG_FORMAT=pretty \
+  "$BIN" serve --roles=all >"$work/kuben.log" 2>&1 &
+pid=$!
+eventually 60 "CRDs applied" kubectl get crd apps.kuben.dev
+eventually 30 "controller lease held" bash -c \
+  "kubectl -n $LEASE_NS get lease kuben-controller -o jsonpath='{.spec.holderIdentity}' | grep -q ."
+# Ready only once every informer has listed (projections complete).
+eventually 90 "readyz" curl -fsS "http://127.0.0.1:${PORT}/readyz"
+
+step "login"
+expect 200 POST /auth/login "{\"email\":\"admin@kuben.local\",\"password\":\"${PASSWORD}\"}"
+expect 200 GET /me
+[[ $(jq -r .email "$work/body") == admin@kuben.local ]] || fail "unexpected /me"
+
+step "project"
+expect 201 POST /projects "{\"name\":\"${P}\",\"display_name\":\"E2E\"}"
+eventually 30 "project visible" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}"
+eventually 30 "project ready" bash -c "kubectl get project ${P} -o jsonpath='{.status.conditions[0].status}' | grep -qx True"
+
+step "environment → namespace with guard rails"
+expect 201 POST "/projects/${P}/environments" '{"name":"dev","quota":{"cpu":"4","memory":"4Gi","pods":30}}'
+eventually 60 "namespace ${NS}" kubectl get namespace "$NS"
+eventually 60 "environment ready" bash -c "kubectl get environment ${P}-dev -o jsonpath='{.status.phase}' | grep -qx Ready"
+kubectl get namespace "$NS" -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}' | grep -qx baseline || fail "PSA label"
+kubectl -n "$NS" get resourcequota kuben-quota -o jsonpath='{.spec.hard.services\.loadbalancers}' | grep -qx 0 || fail "quota"
+kubectl -n "$NS" get limitrange kuben-defaults >/dev/null || fail "limit range"
+kubectl -n "$NS" get networkpolicy kuben-isolation >/dev/null || fail "network policy"
+eventually 30 "environment visible" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments/dev"
+
+step "app deploy"
