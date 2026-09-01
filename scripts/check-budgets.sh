@@ -15,3 +15,8 @@ report() { # <label> <bytes> <limit MiB>
   if ((bytes > limit_mib * 1048576)); then verdict=FAIL; fi
   local line="${label}: $(mib "$bytes") MiB (budget ${limit_mib} MiB) — ${verdict}"
   echo "$line"
+  if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then echo "- ${line}" >>"$GITHUB_STEP_SUMMARY"; fi
+  if [[ $verdict == FAIL ]]; then
+    if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::error title=Size budget exceeded::${line}"; fi
+    exit 1
+  fi
