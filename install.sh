@@ -103,3 +103,30 @@ sha256_of() {
 }
 
 install_binary() { # <src> <dir>
+  sudo=""
+  if [ -d "$2" ]; then
+    [ -w "$2" ] || sudo="sudo"
+  elif ! mkdir -p "$2" 2>/dev/null; then
+    sudo="sudo"
+  fi
+  if [ -n "$sudo" ]; then
+    [ "$no_sudo" = "1" ] && err "$2 is not writable; re-run with --dir \"\$HOME/.local/bin\""
+    has sudo || err "$2 is not writable and sudo is not available; use --dir <writable dir>"
+    say "$2 is not writable, using sudo"
+  fi
+  $sudo mkdir -p "$2"
+  $sudo install -m 0755 "$1" "$2/$BIN"
+}
+
+main() {
+  version=${KUBEN_VERSION:-}
+  dir=${KUBEN_INSTALL_DIR:-/usr/local/bin}
+  no_sudo=${KUBEN_NO_SUDO:-0}
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --version)
+      [ $# -ge 2 ] || err "--version needs a value"
+      version=$2
+      shift 2
+      ;;
