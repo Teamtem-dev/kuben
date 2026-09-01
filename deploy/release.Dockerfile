@@ -4,3 +4,5 @@
 # build takes seconds and ships exactly the bytes that were checksummed.
 FROM gcr.io/distroless/static:nonroot
 ARG TARGETOS
+ARG TARGETARCH
+COPY --chmod=0755 image/${TARGETOS}-${TARGETARCH}/kuben /kuben

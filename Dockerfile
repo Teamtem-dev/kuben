@@ -26,3 +26,12 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && pip3 install --no-cache-dir --break-system-packages ziglang \
  && rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+ && cargo install --locked cargo-chef cargo-zigbuild
+
+FROM chef AS plan
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS build
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
