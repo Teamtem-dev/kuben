@@ -83,3 +83,25 @@ spec:
             {{- with .Values.admin.existingSecret }}
             - name: KUBEN_BOOTSTRAP__ADMIN_PASSWORD
               valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: password
+            {{- end }}
+            {{- if .Values.database.existingSecret }}
+            - name: KUBEN_DATABASE__URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: url
+            {{- else if .Values.database.url }}
+            - name: KUBEN_DATABASE__URL
+              value: {{ .Values.database.url | quote }}
+            {{- end }}
+            {{- with .Values.publicUrl }}
+            - name: KUBEN_SERVER__PUBLIC_URL
+              value: {{ . | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http

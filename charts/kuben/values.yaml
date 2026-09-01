@@ -36,3 +36,12 @@ security:
   # Keep true in production: the session cookie is then `__Host-` + `Secure`.
   cookieSecure: true
 
+# Cluster-wide platform settings (the `KubenConfig` singleton).
+platform:
+  create: true
+  # Apps get `<app>-<environment>.<baseDomain>` hostnames.
+  baseDomain: ""
+  # Gateway API Gateway for app routes, as `namespace/name`.
+  gateway: ""
+  # cert-manager ClusterIssuer; enables https URLs.
+  clusterIssuer: ""
