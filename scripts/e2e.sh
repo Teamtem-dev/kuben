@@ -129,3 +129,35 @@ kubectl -n "$NS" get networkpolicy kuben-isolation >/dev/null || fail "network p
 eventually 30 "environment visible" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments/dev"
 
 step "app deploy"
+expect 201 POST "$APP" \
+  "{\"name\":\"web\",\"image\":\"${IMAGE}\",\"port\":8080,\"env\":[{\"name\":\"GREETING\",\"value\":\"hello\"}],\"health_check_path\":\"/\"}"
+eventually 30 "deployment created" kubectl -n "$NS" get deployment web-web
+kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
+kubectl -n "$NS" get service web -o jsonpath='{.spec.ports[0].port}' | grep -qx 80 || fail "service"
+kubectl -n "$NS" get deployment web-web -o jsonpath='{.spec.template.spec.containers[0].startupProbe.failureThreshold}' | grep -qx 60 || fail "startup probe"
+eventually 60 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.ready and (.pods | length == 1)'"
+expect 200 GET "$APP/web"
+[[ $(jq -r '.app.env[] | select(.name == "GREETING") | .value' "$work/body") == hello ]] || fail "env value"
+
+step "logs"
+expect 200 GET "$APP/web/logs?tail=20"
+jq -e 'length == 1 and .[0].error == null' "$work/body" >/dev/null || fail "logs: $(cat "$work/body")"
+
+step "scale to 2"
+expect 200 PATCH "$APP/web" '{"replicas":2}'
+eventually 120 "2 ready replicas" bash -c "kubectl -n $NS get deployment web-web -o jsonpath='{.status.readyReplicas}' | grep -qx 2"
+
+step "restart"
+before=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.generation}')
+expect 202 POST "$APP/web/restart"
+eventually 60 "rollout triggered" bash -c "[[ \$(kubectl -n $NS get deployment web-web -o jsonpath='{.metadata.generation}') -gt $before ]]"
+kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
+
+step "scenario 5: release history and rollback"
+expect 200 GET "$APP/web/releases"
+jq -e 'length >= 2 and .[0].current and (map(.reason) | index("create") != null)' "$work/body" >/dev/null ||
+  fail "releases: $(cat "$work/body")"
+expect 200 POST "$APP/web/rollback" '{"revision":1}'
+eventually 120 "rolled back to 1 replica" bash -c "kubectl -n $NS get deployment web-web -o jsonpath='{.spec.replicas}' | grep -qx 1"
+expect 200 GET "$APP/web/releases"
+[[ $(jq -r '.[0].reason' "$work/body") == rollback ]] || fail "rollback not recorded"
