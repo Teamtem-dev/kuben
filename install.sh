@@ -130,3 +130,29 @@ main() {
       version=$2
       shift 2
       ;;
+    --dir)
+      [ $# -ge 2 ] || err "--dir needs a value"
+      dir=$2
+      shift 2
+      ;;
+    --no-sudo)
+      no_sudo=1
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *) err "unknown option: $1 (see --help)" ;;
+    esac
+  done
+
+  for cmd in uname tar mktemp install awk; do has "$cmd" || err "required command not found: $cmd"; done
+  umask 022
+
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/kuben.XXXXXX")
+  trap 'rm -rf "$tmp"' EXIT
+  trap 'exit 130' INT TERM
+
+  target=$(detect_target)
+  [ -n "$version" ] || version=$(latest_tag)
