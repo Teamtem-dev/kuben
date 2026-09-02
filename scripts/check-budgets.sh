@@ -20,3 +20,9 @@ report() { # <label> <bytes> <limit MiB>
     if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::error title=Size budget exceeded::${line}"; fi
     exit 1
   fi
+}
+
+kind=${1:-}
+target=${2:-}
+case "$kind" in
+binary)
