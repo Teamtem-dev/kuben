@@ -35,3 +35,12 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS build
 ARG TARGETARCH
 RUN case "$TARGETARCH" in \
+      amd64) echo x86_64-unknown-linux-musl ;; \
+      arm64) echo aarch64-unknown-linux-musl ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac >/target
+COPY --from=plan /src/recipe.json .
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    cargo chef cook --release --zigbuild --target "$(cat /target)" --recipe-path recipe.json
+COPY . .
+COPY --from=web /src/apps/web/dist apps/web/dist
