@@ -318,3 +318,36 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile && pnpm build
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: musl-release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: cargo-zigbuild
+      - run: cargo zigbuild -p kuben --release --locked --features embed-ui --target "$TARGET"
+      - run: scripts/check-budgets.sh binary "target/$TARGET/release/kuben"
+      - name: Smoke test
+        run: target/$TARGET/release/kuben --version
+
+  # Single required check for branch protection. Jobs skipped by change
+  # detection count as passed; everything else must succeed.
+  ci-success:
+    name: CI success
+    if: always()
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: All selected jobs passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          jq -e '.changes.result == "success"
+                 and ([.[].result] | all(. == "success" or . == "skipped"))' <<<"$NEEDS" >/dev/null
