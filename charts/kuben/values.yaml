@@ -45,3 +45,13 @@ platform:
   gateway: ""
   # cert-manager ClusterIssuer; enables https URLs.
   clusterIssuer: ""
+
+# Expose the Kuben UI itself through a Gateway API HTTPRoute.
+route:
+  enabled: false
+  hostname: ""
+  gateway:
+    name: ""
+    namespace: ""
+
+service:
