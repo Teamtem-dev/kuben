@@ -161,3 +161,36 @@ expect 200 POST "$APP/web/rollback" '{"revision":1}'
 eventually 120 "rolled back to 1 replica" bash -c "kubectl -n $NS get deployment web-web -o jsonpath='{.spec.replicas}' | grep -qx 1"
 expect 200 GET "$APP/web/releases"
 [[ $(jq -r '.[0].reason' "$work/body") == rollback ]] || fail "rollback not recorded"
+
+step "scenario 3: CI deploy with an API token"
+expect 201 POST /tokens "{\"name\":\"ci\",\"role\":\"developer\",\"project\":\"${P}\"}"
+token=$(jq -r .token "$work/body")
+token_id=$(jq -r .info.id "$work/body")
+expect_as 200 "bearer:$token" PATCH "$APP/web" '{"env":[{"name":"GREETING","value":"from-ci"}]}'
+expect_as 403 "bearer:$token" POST /tokens '{"name":"escalate"}'
+expect 204 DELETE "/tokens/${token_id}"
+expect_as 401 "bearer:$token" GET /me
+
+step "scenario 2: audit log"
+expect 200 GET "/audit?limit=200"
+jq -e '.events | map(.action) | (index("createApp") != null) and (index("rollbackApp") != null) and (index("revokeToken") != null)' \
+  "$work/body" >/dev/null || fail "audit: $(jq -c '[.events[].action]' "$work/body")"
+
+step "scenario 9: domain check"
+expect 200 PATCH "$APP/web" '{"domains":["web.e2e.invalid"]}'
+# The duplicate check reads the projection, which follows the cluster asynchronously.
+eventually 30 "domain in projection" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.domains | index(\"web.e2e.invalid\") != null'"
+expect 409 POST "$APP" "{\"name\":\"clash\",\"image\":\"${IMAGE}\",\"port\":8080,\"domains\":[\"web.e2e.invalid\"]}"
+expect 200 GET "$APP/web/domains"
+jq -e '.[0].host == "web.e2e.invalid" and .[0].status == "unresolved"' "$work/body" >/dev/null || fail "domains: $(cat "$work/body")"
+
+step "scenario 7: cron job and run now"
+expect 201 POST "$APP" \
+  "{\"name\":\"tick\",\"image\":\"${JOB_IMAGE}\",\"command\":[\"sh\",\"-c\",\"echo tick\"],\"schedule\":\"*/30 * * * *\",\"size\":\"nano\"}"
+eventually 60 "cronjob created" kubectl -n "$NS" get cronjob tick-job
+expect 202 POST "$APP/tick/run" '{}'
+job=$(jq -r .job "$work/body")
+kubectl -n "$NS" wait --for=condition=complete "job/${job}" --timeout=180s
+eventually 60 "app reported as scheduled" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/tick | jq -e '.app.reason == \"Scheduled\"'"
+
+step "scenario 6: volume survives app deletion"
