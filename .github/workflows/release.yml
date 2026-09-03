@@ -280,3 +280,35 @@ jobs:
           ref: ${{ needs.plan.outputs.tag }}
           persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: Package and push to oci://ghcr.io/teamtem-dev/charts
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          helm lint --strict charts/kuben
+          helm package charts/kuben --version "$VERSION" --app-version "$VERSION" --destination dist
+          printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          helm push "dist/kuben-${VERSION}.tgz" oci://ghcr.io/teamtem-dev/charts
+
+  verify-install:
+    name: install.sh on ${{ matrix.os }}
+    needs: [plan, publish]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+          persist-credentials: false
+      - name: Install the published release and run it
+        env:
+          KUBEN_VERSION: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          bash install.sh --dir "$RUNNER_TEMP/bin" --no-sudo
+          "$RUNNER_TEMP/bin/kuben" --version | tee /dev/stderr | grep -F "$VERSION"
