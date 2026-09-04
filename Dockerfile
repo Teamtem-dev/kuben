@@ -44,3 +44,13 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     cargo chef cook --release --zigbuild --target "$(cat /target)" --recipe-path recipe.json
 COPY . .
 COPY --from=web /src/apps/web/dist apps/web/dist
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    cargo zigbuild -p kuben --release --locked --features embed-ui --target "$(cat /target)" \
+ && cp "target/$(cat /target)/release/kuben" /kuben
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=build /kuben /kuben
+USER 65532:65532
+EXPOSE 8080 9090
+ENTRYPOINT ["/kuben"]
+CMD ["serve", "--roles=all"]

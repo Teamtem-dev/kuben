@@ -8,3 +8,6 @@ ARG TARGETARCH
 COPY --chmod=0755 image/${TARGETOS}-${TARGETARCH}/kuben /kuben
 # Numeric UID so Kubernetes `runAsNonRoot: true` can verify it.
 USER 65532:65532
+EXPOSE 8080 9090
+ENTRYPOINT ["/kuben"]
+CMD ["serve", "--roles=all"]
