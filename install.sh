@@ -156,3 +156,30 @@ main() {
 
   target=$(detect_target)
   [ -n "$version" ] || version=$(latest_tag)
+  case "$version" in v*) ;; *) version="v${version}" ;; esac
+
+  archive="${BIN}-${target}.tar.gz"
+  base="https://github.com/${REPO}/releases/download/${version}"
+
+  say "installing ${BIN} ${version} for ${target}"
+  download "${base}/${archive}" "${tmp}/${archive}" || err "download failed: ${base}/${archive}"
+  download "${base}/checksums.txt" "${tmp}/checksums.txt" || err "download failed: ${base}/checksums.txt"
+
+  expected=$(awk -v f="$archive" '{ n = $2; sub(/^\*/, "", n) } n == f { print $1; exit }' "${tmp}/checksums.txt")
+  [ -n "$expected" ] || err "${archive} is not listed in checksums.txt"
+  actual=$(sha256_of "${tmp}/${archive}")
+  [ "$expected" = "$actual" ] || err "checksum mismatch for ${archive}: expected ${expected}, got ${actual}"
+  say "sha256 verified: ${actual}"
+
+  tar -xzf "${tmp}/${archive}" -C "$tmp" "$BIN" || err "archive does not contain '${BIN}'"
+  install_binary "${tmp}/${BIN}" "$dir"
+
+  say "installed $("${dir}/${BIN}" --version 2>/dev/null || echo "$BIN") to ${dir}/${BIN}"
+  case ":${PATH}:" in
+  *":${dir}:"*) ;;
+  *) say "note: ${dir} is not on your PATH" ;;
+  esac
+  say "next: ${BIN} doctor   (preflight checks against your cluster)"
+}
+
+main "$@"
