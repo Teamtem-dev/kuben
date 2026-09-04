@@ -55,3 +55,12 @@ route:
     namespace: ""
 
 service:
+  type: ClusterIP
+  port: 80
+
+metrics:
+  port: 9090
+
+logLevel: info
+
+resources:

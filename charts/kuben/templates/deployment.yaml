@@ -126,3 +126,25 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: data
+          {{- if and .Values.persistence.enabled (not $postgres) }}
+          persistentVolumeClaim:
+            claimName: {{ include "kuben.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
