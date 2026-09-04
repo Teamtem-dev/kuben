@@ -26,3 +26,9 @@ kind=${1:-}
 target=${2:-}
 case "$kind" in
 binary)
+  [[ -f $target ]] || { echo "no such binary: $target" >&2; exit 2; }
+  report "binary $(basename "$target")" "$(wc -c <"$target" | tr -d ' ')" "${3:-${KUBEN_BUDGET_BINARY_MB:-25}}"
+  ;;
+image)
+  bytes=$(docker image inspect --format '{{.Size}}' "$target")
+  report "image ${target}" "$bytes" "${3:-${KUBEN_BUDGET_IMAGE_MB:-30}}"
