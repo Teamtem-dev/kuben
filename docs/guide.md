@@ -32,3 +32,37 @@ Tune the limits with `KUBEN_SECURITY__LOGIN_MAX_FAILURES`, `…_PER_IP`, `…_PE
 Every create, update, delete, restart, rollback, promotion, invitation and token change is recorded automatically. So is every denied or failed attempt, and every login. Each record holds:
 
 - the actor (user or token)
+- the action (the OpenAPI operation id, e.g. `createApp`)
+- the target (`shop/prod/api`)
+- the outcome (`success`, `denied`, `failure`, `throttled`, `error`) and HTTP status
+- the client IP and request id
+
+Request bodies, and therefore secret values, are never recorded.
+
+- **UI:** *Audit* in the top bar (owners and admins).
+- **API:**
+
+```bash
+curl -fsS "$KUBEN_URL/api/v1/audit?limit=100" -H "Authorization: Bearer $KUBEN_TOKEN"
+# older pages: …/audit?before=<next_before of the previous page>
+```
+
+## 3. Deploy from CI with an API token
+
+1. Open *API tokens* and create a token:
+   - **Role:** `developer` (it can deploy but not administer)
+   - **Project:** `shop`
+   - **Environment:** `staging`
+   - **Lifetime:** 90 days by default, 365 at most
+2. Copy it (it is shown once) and store it as the repository secret `KUBEN_TOKEN`.
+
+A token never has more rights than its owner. It cannot create tokens, manage members or change passwords, even if it leaks.
+
+**GitHub Actions** — build, push, then roll out the new image:
+
+```yaml
+name: deploy
+on: { push: { branches: [main] } }
+permissions: { contents: read, packages: write }
+jobs:
+  deploy:
