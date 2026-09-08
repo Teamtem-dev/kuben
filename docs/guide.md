@@ -100,3 +100,37 @@ Roles form a strict ladder, each including everything below it:
   - nobody grants a role above their own
   - only owners change or remove owners
   - the last owner can be neither demoted nor removed
+- **Removing a member** revokes their sessions and API tokens immediately.
+- **Changing your own password** (*Account*) signs out your other sessions.
+
+## 5. Roll back a bad release
+
+Every change to an app is recorded as a numbered revision. That covers deploys, configuration changes, rollbacks, promotions and template deploys.
+
+- **UI:** the *Releases* card on the app page. Press *Roll back* next to any earlier revision.
+- **API:**
+
+```bash
+APP="$KUBEN_URL/api/v1/projects/shop/environments/production/apps/api"
+curl -fsS "$APP/releases" -H "Authorization: Bearer $KUBEN_TOKEN"
+curl -fsS -X POST "$APP/rollback" -H "Authorization: Bearer $KUBEN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"revision": 41}'
+```
+
+**What a rollback restores and keeps.** It restores the image, processes and environment variables of that revision. It keeps today's domains and volumes, because data never moves backwards. The rollback itself becomes a new revision.
+
+**Safe rollouts:**
+- New pods must pass their readiness check before old ones stop.
+- Slow starters get up to 5 minutes (startup probe).
+- A rollout that makes no progress for 10 minutes is reported as `RolloutFailed`.
+
+## 6. Keep data on a volume
+
+Add a volume when deploying: *Volume* `/data:5Gi`, or in the API:
+
+```json
+{ "name": "wiki", "image": "…", "port": 3000,
+  "volumes": [{ "name": "data", "mount_path": "/data", "size": "5Gi" }] }
+```
+
+- **One pod.** A volume is `ReadWriteOnce`, so the app runs a single pod, and deploys stop the old pod before starting the new one (a few seconds of downtime).
