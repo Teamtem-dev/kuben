@@ -74,3 +74,12 @@ fn serve_spa(_path: &str) -> Response {
 fn apply_security_headers(headers: &mut axum::http::HeaderMap) {
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
     headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+}
