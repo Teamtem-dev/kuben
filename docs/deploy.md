@@ -87,3 +87,48 @@ Precedence, lowest to highest:
 
 | Variable | Default |
 |---|---|
+| `KUBEN_SERVER__BIND` | `0.0.0.0:8080` |
+| `KUBEN_SERVER__METRICS_BIND` | `0.0.0.0:9090` (Prometheus) |
+| `KUBEN_DATABASE__URL` | `sqlite:///data/kuben.db` |
+| `KUBEN_KUBE__REQUIRED` | `false` (`true` in the chart) |
+| `KUBEN_KUBE__NAMESPACE` | the pod's namespace. Home of the controller Lease and of `kuben-initial-admin` |
+| `KUBEN_KUBE__LEADER_ELECTION` | `false` (`true` in the chart). Run the controllers only on the Lease holder; required when several processes have the controller role |
+| `KUBEN_SECURITY__SESSION_TTL_HOURS` | `12` |
+| `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` | `5`. Upper bound for a revoked session to stay valid on another replica |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES` | `5` per email + client IP |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_IP` | `30` |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_ACCOUNT` | `100` |
+| `KUBEN_SECURITY__LOGIN_WINDOW_SECS` | `900` |
+| `KUBEN_SECURITY__TRUST_FORWARDED_FOR` | `false` (`true` in the chart). Only enable behind a proxy that appends `X-Forwarded-For` |
+| `KUBEN_SECURITY__PASSWORD_MIN_LENGTH` | `12` |
+| `KUBEN_TELEMETRY__LOG_FORMAT` | `json` |
+| `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` | generated (see §3) |
+
+## 5. Exposing apps and automatic HTTPS
+
+**Routes.** For every app with an HTTP port, the App controller creates an `HTTPRoute`. Its hostnames are the app's custom domains plus `<app>-<env>.<baseDomain>`. Processes with `protocol: tcp` (databases) get a cluster-internal Service only.
+
+**Listeners.** When `clusterIssuer` is set, Kuben **owns the listeners** of the Gateway named in `KubenConfig.spec.gateway`, so that Gateway must be dedicated to Kuben. Kuben maintains:
+
+- `http` (port 80): only the platform's redirect route and cert-manager's challenge routes may attach. Every other request is redirected to HTTPS.
+- one HTTPS listener per hostname, named `h-<hash>`, with the certificate Secret `kuben-tls-<hash>`. A hostname admits routes only from the namespace that claimed it first.
+- optionally one wildcard listener `https` for `*.<baseDomain>`, when `wildcardTlsSecret` is set (a DNS-01 certificate). All generated hostnames then share it.
+
+**Certificates.** The Gateway gets the annotation `cert-manager.io/cluster-issuer`, and cert-manager's gateway-shim issues a certificate for every listener.
+
+A minimal Gateway; Kuben fills in the listeners:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: kuben
+  namespace: kuben-system
+spec:
+  gatewayClassName: traefik          # or eg / cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+```
+
