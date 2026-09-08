@@ -25,3 +25,13 @@ fn main() -> anyhow::Result<()> {
             store.checkpoint_and_close().await?;
             Ok(())
         }),
+        cli::Command::Doctor => serve::block_on(&runtime, cli::doctor::run(cfg)),
+        cli::Command::ResetAdmin(opts) => serve::block_on(&runtime, cli::admin::reset(cfg, opts)),
+        cli::Command::Backup(opts) => serve::block_on(&runtime, cli::backup::run(cfg, opts)),
+        cli::Command::Restore(opts) => serve::block_on(&runtime, cli::backup::restore(cfg, opts)),
+        cli::Command::Version => {
+            println!("{}", cli::version_string());
+            Ok(())
+        }
+    }
+}
