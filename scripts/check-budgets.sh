@@ -32,3 +32,9 @@ binary)
 image)
   bytes=$(docker image inspect --format '{{.Size}}' "$target")
   report "image ${target}" "$bytes" "${3:-${KUBEN_BUDGET_IMAGE_MB:-30}}"
+  ;;
+*)
+  sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+  ;;
+esac

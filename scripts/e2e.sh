@@ -194,3 +194,36 @@ kubectl -n "$NS" wait --for=condition=complete "job/${job}" --timeout=180s
 eventually 60 "app reported as scheduled" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/tick | jq -e '.app.reason == \"Scheduled\"'"
 
 step "scenario 6: volume survives app deletion"
+expect 201 POST "$APP" \
+  "{\"name\":\"store\",\"image\":\"${IMAGE}\",\"port\":8080,\"volumes\":[{\"name\":\"data\",\"mount_path\":\"/data\",\"size\":\"100Mi\"}]}"
+eventually 60 "pvc created" kubectl -n "$NS" get pvc store-data
+kubectl -n "$NS" get deployment store-web -o jsonpath='{.spec.strategy.type}' | grep -qx Recreate || fail "strategy"
+kubectl -n "$NS" rollout status deployment/store-web --timeout=180s
+expect 422 PATCH "$APP/store" '{"replicas":3}'
+expect 204 DELETE "$APP/store"
+eventually 90 "store deployment gone" bash -c "! kubectl -n $NS get deployment store-web"
+kubectl -n "$NS" get pvc store-data >/dev/null || fail "volume was deleted with the app"
+
+step "scenario 8: redis from a template"
+expect 201 POST "/projects/${P}/environments/dev/templates/redis" '{"name":"cache"}'
+[[ $(jq -r .credentials_secret "$work/body") == cache-credentials ]] || fail "credentials secret name"
+kubectl -n "$NS" get secret cache-credentials -o jsonpath='{.data.url}' | base64 -d | grep -q '^redis://:' || fail "url key"
+kubectl -n "$NS" get service cache -o jsonpath='{.spec.ports[0].port}' | grep -qx 6379 || fail "tcp service port"
+eventually 60 "redis deployment" kubectl -n "$NS" get deployment cache-web
+kubectl -n "$NS" rollout status deployment/cache-web --timeout=180s
+
+step "scenario 10: promote dev → live"
+expect 201 POST "/projects/${P}/environments" '{"name":"live"}'
+eventually 60 "namespace ${NS_LIVE}" kubectl get namespace "$NS_LIVE"
+eventually 60 "live ready" bash -c "kubectl get environment ${P}-live -o jsonpath='{.status.phase}' | grep -qx Ready"
+eventually 30 "live visible" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments/live"
+expect 200 POST "$APP/web/promote" '{"to_environment":"live","dry_run":true}'
+jq -e '.dry_run and .created and (.changes | length == 1)' "$work/body" >/dev/null || fail "dry run: $(cat "$work/body")"
+kubectl -n "$NS_LIVE" get app web >/dev/null 2>&1 && fail "dry run must not write"
+expect 200 POST "$APP/web/promote" '{"to_environment":"live"}'
+eventually 60 "promoted deployment" kubectl -n "$NS_LIVE" get deployment web-web
+[[ $(kubectl -n "$NS_LIVE" get app web -o jsonpath='{.spec.domains}') == "" ]] || fail "domains must not be promoted"
+
+step "scenario 4: team invitation"
+expect 201 POST /members '{"email":"dev@e2e.test","role":"developer"}'
+temp=$(jq -r .temporary_password "$work/body")
