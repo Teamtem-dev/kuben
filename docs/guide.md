@@ -66,3 +66,37 @@ on: { push: { branches: [main] } }
 permissions: { contents: read, packages: write }
 jobs:
   deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: docker/build-push-action@v6
+        with: { push: true, tags: "ghcr.io/${{ github.repository }}:${{ github.sha }}" }
+      - name: Roll out on Kuben
+        run: |
+          curl -fsS -X PATCH "${{ vars.KUBEN_URL }}/api/v1/projects/shop/environments/staging/apps/api" \
+            -H "Authorization: Bearer ${{ secrets.KUBEN_TOKEN }}" \
+            -H 'Content-Type: application/json' \
+            -d '{"image": "ghcr.io/${{ github.repository }}:${{ github.sha }}"}'
+```
+
+Revoke a token at any time from the same page (`DELETE /api/v1/tokens/{id}`); it stops working immediately.
+
+## 4. Work as a team
+
+Roles form a strict ladder, each including everything below it:
+
+| Role | Can |
+|---|---|
+| viewer | read projects, apps and logs |
+| developer | + deploy, change apps, open terminals, read secrets |
+| admin | + create projects/environments, write secrets, promote, read the audit log, invite members |
+| owner | + manage owners and delete protected environments |
+
+- **Invite.** On *Team*, enter an email and a role. A new account gets a **temporary password shown once**. Share it over a secure channel.
+- **First sign-in.** The invitee must replace the temporary password first. The API answers `403` to everything else until they do.
+- **The rules:**
+  - nobody grants a role above their own
+  - only owners change or remove owners
+  - the last owner can be neither demoted nor removed
