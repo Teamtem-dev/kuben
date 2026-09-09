@@ -28,3 +28,18 @@
   - opaque `HttpOnly` sessions (no JWT in the browser)
   - a CSRF guard and a strict CSP
   - per-org authorization on every call
+  - a free, always-on audit log of every change
+  - a live event stream filtered per tenant
+
+See the [user guide](docs/guide.md) for ten everyday scenarios, from deploying out of GitHub Actions to promoting a release.
+
+## Install
+
+**Binary** (Linux or macOS; x86_64 or arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+```
+
+The script checks every download against the release's `checksums.txt` (SHA-256) before installing. Options: `--version v0.1.0`, `--dir ~/.local/bin`, `--no-sudo`.
+
