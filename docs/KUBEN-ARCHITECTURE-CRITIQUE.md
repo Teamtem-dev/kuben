@@ -218,3 +218,223 @@ kuben-builds namespace  (PSA: baseline، نه restricted — صریح و مست�
 **اصلاح:**
 - تشخیص خودکار: اگر `metrics.k8s.io` موجود است → Poll هر ۱۵ ثانیه (یک List برای کل Cluster با Label Selector).
 - اگر نیست: Installer آن را نصب می‌کند (Helm Chart کوچک، Zero-config)؛ روی Managed Clusterها فقط راهنمای یک‌خطی.
+- Fallback **بدون هیچ وابستگی:** `GET /api/v1/nodes/<node>/proxy/stats/summary` (kubelet Summary API از طریق API Server Proxy). نیازمند RBAC `nodes/proxy` است و کمی سنگین‌تر، ولی همه‌جا کار می‌کند. در فاز ۲.
+- UI هرگز Crash یا Placeholder خالی نشان نمی‌دهد؛ «Metrics unavailable — Install metrics-server» با دکمه.
+
+### ۲.۱۰ Release و Secretها
+
+**مشکل:** «Release = Digest + Snapshot پیکربندی» اگر لفظاً پیاده شود، مقادیر Env (که شامل Secret‌اند) وارد یک CR می‌شوند که با `get releases` خوانده می‌شود.
+
+**اصلاح:** Release شامل: Digest، Spec غیرحساس App (Processes، Scaling، Domains)، و برای هر Secret فقط `{name, resourceVersion}`. Rollback = بازگرداندن Spec + بررسی اینکه Secretها هنوز وجود دارند (اگر تغییر کرده‌اند، UI هشدار «Secrets changed since this release» می‌دهد). Secretهای App خودشان Immutable-versioned می‌شوند: `app-<name>-env-<hash>` با `immutable: true` و GC برای نسخه‌های بدون ارجاع. این هم Rollback دقیق می‌دهد و هم Rolling Update خودکار هنگام تغییر Env (چون نام Secret در Pod Template عوض می‌شود).
+
+### ۲.۱۱ Terminal — دو جزئیات فراموش‌شده
+
+1. **کانال کنترل هنگام Pause:** در کد نمونه، وقتی `paused` است `stdout.read` اجرا نمی‌شود، ولی Message Resize/Control همچنان از Browser می‌رسد و Handle می‌شود — درست. اما **`exit` پروسه هنگام Pause** تشخیص داده نمی‌شود تا Resume شود. اصلاح: `proc.join()` را به‌عنوان یک شاخه‌ی `select!` جدا اضافه کنید.
+2. **Ephemeral Debug Container:** بعد از ساخته شدن **قابل حذف نیست** تا Pod Restart شود، و Process Namespace اشتراکی فقط با `shareProcessNamespace` یا `targetContainerName` کار می‌کند. UI باید این را بگوید («Debug container stays until pod restart») و Audit ثبت کند. نیازمند RBAC `pods/ephemeralcontainers`.
+
+### ۲.۱۲ mimalloc و بودجه‌ی RSS
+
+**مشکل:** mimalloc حافظه‌ی آزادشده را با تأخیر به OS برمی‌گرداند (Purge Delay) و Segmentهای ۴MiB رزرو می‌کند؛ RSS Idle ممکن است ۵ تا ۱۰MiB بالاتر از Allocator سیستمی باشد — دقیقاً چیزی که با بودجه‌ی ۲۵MiB می‌جنگد.
+
+**اصلاح:** Benchmark سه گزینه در CI فاز ۰ (musl default، mimalloc با `MIMALLOC_PURGE_DELAY=0`/`mi_option_purge_delay`، jemalloc با `background_thread` و `dirty_decay_ms` کم) و **انتخاب با عدد**. حدس اولیه: mimalloc با Purge کوتاه.
+
+### ۲.۱۳ Frontend — ریزه‌کاری‌های عملی
+
+- **401 سراسری:** یک `QueryClient` Interceptor که 401 را به «Session expired» Modal تبدیل و بعد از Login مجدد Queryها را Resume کند، نه Redirect خام. (در Kubero بعد از Expire شدن JWT، UI بی‌صدا خالی می‌شود.)
+- **Optimistic Concurrency:** فرم App باید `resourceVersion` را با `If-Match` بفرستد؛ Conflict → Diff نشان بده، نه Overwrite.
+- **RTL و i18n در فاز ۰:** Logical Properties از اول (`ms-`، `pe-`، `start`/`end`) چون بعداً Retrofit کردن ۳۰۰ کامپوننت عذاب است؛ ولی **ترجمه‌ی واقعی** (فارسی، آلمانی، …) فاز ۲ — فقط زیرساخت `paraglide` در فاز ۰.
+- **بودجه‌ی Bundle:** xterm + WebGL addon + uPlot + CodeMirror با هم حدود ۱۵۰ تا ۲۰۰KB Brotli هستند؛ بودجه‌ی «۲۰۰KB برای Shell اولیه» فقط با Lazy Route برای Terminal، Logs و Editor نگه داشته می‌شود. این باید در `size-limit` به تفکیک Route اعمال شود، نه کل.
+
+---
+
+## ۳. ریسک‌هایی که v1.0 ندید یا دست‌کم گرفت
+
+### ۳.۱ Bootstrap خود Kuben (Chicken-and-egg)
+
+Kuben برای دریافت Webhook از GitHub به URL عمومی نیاز دارد؛ URL عمومی به Gateway + DNS + TLS نیاز دارد؛ Gateway را خود Kuben باید نصب کند. در v1.0 هیچ بخشی این ترتیب را تعریف نکرده بود.
+
+**اصلاح — ترتیب Bootstrap رسمی:**
+1. `install.sh`: (k3s در صورت نیاز) → Gateway Implementation (Traefik یا Envoy Gateway) → cert-manager → Kuben (Helm/Manifest).
+2. Kuben در اولین Boot: CRDها را Apply می‌کند، Admin را می‌سازد (Password یک‌بارمصرف در Log و در یک Secret)، و **بدون دامنه** قابل استفاده است: `kubectl port-forward` یا NodePort، یا دامنه‌ی خودکار `<ip>.sslip.io` با گواهی ACME HTTP-01 (که با IP عمومی کار می‌کند).
+3. Wizard اولیه: Base Domain (یا ادامه با sslip.io)، Registry، Git Provider. هر مرحله Test دارد.
+4. Webhookها تا وقتی دامنه‌ی عمومی نیست، به **Polling Fallback** (هر ۶۰ ثانیه `ls-remote`) می‌افتند — بدون اینکه کاربر بفهمد. این همان Catch-up مکانیزم بخش ۵.۵ v1.0 است، فقط دائمی.
+5. `kuben doctor`: CLI و صفحه‌ی UI که تمام Preflightها را چک می‌کند (DNS، Hairpin، Registry، PSA، StorageClass RWO، metrics-server، Gateway Class).
+
+### ۳.۲ Lifecycle خود CRDها
+
+- Helm پوشه‌ی `crds/` را فقط در Install می‌گذارد و در Upgrade دست نمی‌زند. **Kuben باید در Boot، CRDهای Embedded خودش را با Server-Side Apply اعمال کند** (نیازمند RBAC روی `customresourcedefinitions`؛ در حالت HA فقط Leader). اگر RBAC نبود: Log خطای واضح + Helm Hook Job به‌عنوان جایگزین.
+- **CRD Validation Ratcheting** (K8s ≥1.30): اضافه کردن CEL Rule جدید نباید Objectهای موجود را Invalid کند برای Updateهایی که آن فیلد را عوض نمی‌کنند. Ratcheting پیش‌فرض فعال است ولی باید تست شود.
+- **Storage Version Migration:** وقتی `v1beta1` اضافه می‌شود، همه‌ی Objectهای ذخیره‌شده با `v1alpha1` باید Rewrite شوند (`kube-storage-version-migrator` یا یک Job داخلی که همه را Touch می‌کند). این را در ADR-CRD صریح کنید.
+- **Downgrade:** Kuben نسخه‌ی N-1 با CRD نسخه‌ی N: باید فیلدهای ناشناخته را حفظ کند (`x-kubernetes-preserve-unknown-fields` روی Spec سطح بالا، و `#[serde(flatten)] extra: BTreeMap`).
+
+### ۳.۳ RBAC خود Kuben = Cluster-admin-lite
+
+Kuben Namespace می‌سازد، در همه‌ی Namespaceها Secret و RoleBinding و NetworkPolicy می‌نویسد، Pod Exec می‌کند و CRD Apply می‌کند. **هر RCE در Kuben = تصاحب کامل Cluster.** v1.0 نوشت «Least Privilege» که در این جایگاه شعار است.
+
+**اصلاح صادقانه:**
+- در مستندات: «Kuben admin عملاً cluster-admin است. Kuben را در Namespace اختصاصی با NetworkPolicy سخت نصب کنید.»
+- **در حالت HA:** Role `api` فقط RBAC خواندن + نوشتن CRهای Kuben + `pods/log` + `pods/exec` را دارد؛ Role `controller` RBAC گسترده. یک RCE در API فقط CR می‌نویسد (که Controller Validate می‌کند)، نه Secret و RoleBinding.
+- **در حالت `all`:** این جداسازی وجود ندارد — صریحاً مستند شود.
+- Impersonation (Enterprise): API با `Impersonate-User` کار می‌کند تا Audit خود K8s کاربر واقعی را ببیند و RBAC K8s لایه‌ی دوم دفاع باشد.
+
+### ۳.۴ Blast Radius حذف Environment
+
+حذف Environment = حذف Namespace = حذف همه‌ی Podها، PVCها و Secretها. یک کلیک اشتباه یا یک باگ در Finalizer، داده‌ی Production را نابود می‌کند.
+
+**اصلاح:**
+- `Environment` با `spec.deletionPolicy: Retain | Delete` (پیش‌فرض `Retain` برای `production` و `Delete` برای `preview`).
+- **Soft-delete:** UI حذف را به `status.phase: Terminating` + `deletionScheduledAt = now + 7d` تبدیل می‌کند؛ Workloadها به ۰ Scale می‌شوند (Cost صفر)، PVCها می‌مانند؛ Restore با یک کلیک تا ۷ روز. Reconciler بعد از مهلت، حذف واقعی را انجام می‌دهد.
+- Annotation `kuben.dev/protected: "true"` روی Environment و App → حذف فقط با تایپ نام + Permission `env:delete-protected`.
+- **هرگز** Namespace را که Kuben نساخته (Adopted از Kubero) حذف نکن مگر با Flag صریح.
+
+### ۳.۵ مسیر Solo → HA
+
+کاربری که با SQLite شروع کرده و رشد کرده، باید بتواند به Postgres برود بدون اینکه از نو نصب کند. v1.0 هیچ ابزاری برای این نداشت.
+
+**اصلاح:** `kuben db migrate --from sqlite:///data/kuben.db --to postgres://...` (Copy جدول به جدول با Transaction، Verify با Row Count و Checksum، و Cutover با تغییر `DATABASE_URL`). فاز ۲.
+
+### ۳.۶ رمزنگاری etcd
+
+Secretها در etcd به‌صورت پیش‌فرض رمزنگاری نمی‌شوند. Installer k3s باید `--secrets-encryption` را فعال کند؛ `kuben doctor` روی Clusterهای دیگر هشدار بدهد.
+
+### ۳.۷ Threat Model حداقلی (که v1.0 نداشت)
+
+| تهدید | مهاجم | کنترل |
+|---|---|---|
+| Tenant A لاگ/ترمینال Tenant B را می‌بیند | کاربر احراز هویت‌شده | Authorization در هر Subscription (Invariant ۲)؛ تست E2E منفی الزامی |
+| کد Build کاربر به Cluster حمله می‌کند | Developer بدخواه یا Dependency آلوده | Namespace ایزوله، بدون SA Token، NetworkPolicy Egress محدود، Node Pool جدا در Enterprise |
+| App کاربر به API Server یا Kuben می‌رسد | Container Compromised | `automountServiceAccountToken: false`، NetworkPolicy Default-deny به `kube-system` و Namespace Kuben |
+| سرقت Session مرورگر | XSS، Malicious Extension | Cookie HttpOnly، CSP سخت، TTL کوتاه Cache، Re-auth برای عملیات حساس |
+| Webhook جعلی Deploy می‌کند | مهاجم شبکه | HMAC + Delivery-ID Dedupe + فقط Branchهای پیکربندی‌شده |
+| Supply Chain (Image کمکی آلوده) | Upstream | همه‌ی Imageها Digest-pinned، Renovate با Review، cosign Verify برای Imageهای Kuben |
+| RCE در Kuben | هر کس | بخش ۳.۳؛ Kuben در Namespace خودش با PSA `restricted` و ReadOnlyRootFilesystem |
+| Admin بدخواه | Insider | Audit Append-only + Export خارجی؛ 4-eyes برای Production (Enterprise) |
+
+---
+
+## ۴. ساختار Monorepo: نقد و اصلاح
+
+### ۴.۱ ۱۳ Crate زیاد است
+
+Over-splitting زودهنگام: هر مرز Crate یعنی `pub` کردن Typeها، Feature Flagهای عبوری، و Compile Unitهایی که به‌هرحال با هم Rebuild می‌شوند. Split وقتی ارزش دارد که (الف) Compile Time یک Crate بزرگ آزاردهنده شود، (ب) یک Crate مستقلاً منتشر شود (`kuben-crd` برای Toolهای شخص ثالث، `kuben-client` برای CLI)، یا (ج) مرز Team باشد.
+
+**ساختار v1.1 برای فاز ۰:**
+```
+crates/
+├── kuben-crd/        # CRD types + crdgen  (منتشرشدنی؛ بدون tokio/axum)
+├── kuben-core/       # domain، errors، config، ids، policy trait، store trait  (بدون IO)
+├── kuben-store/      # sqlx + sea-query + migrations
+├── kuben-platform/   # k8s (registry، informers، projections، loghub، exec) + controllers + build
+├── kuben-api/        # axum + openapi + sse/ws + web assets embed + bin: openapi
+└── kuben/            # bin: server (roles، supervisor، signals) + cli subcommands
+```
+- `kuben-auth` داخل `kuben-core` (Traits) و `kuben-api` (پیاده‌سازی HTTP) می‌رود.
+- `kuben-controller`، `kuben-k8s`، `kuben-build` با هم در `kuben-platform`؛ وقتی به ۱۵ هزار خط رسید Split شود.
+- `kuben-telemetry` یک Module در `kuben`.
+- `kuben-cli` جدا **فقط وقتی** CLI مستقل منتشر می‌شود (فاز ۲) — آن موقع `kuben-client` (تولیدشده از OpenAPI با `progenitor` یا دستی) هم اضافه می‌شود.
+- `kuben-testkit` → `dev-dependencies` مشترک در `kuben-core` با Feature `test-util`.
+
+### ۴.۲ Template Catalog
+
+Repo جدا از روز اول (`kuben-templates`)، با لایسنس مستقل، CI اعتبارسنجی Schema، و Kuben آن را به‌عنوان OCI Artifact یا Tarball نسخه‌دار می‌کشد (Air-gap: Bundle داخل Image یا Mirror). Kubero Templateها را در Repo اصلی دارد که Release و License را گره می‌زند.
+
+### ۴.۳ `apps/docs` با Astro
+
+نه در فاز ۰. یک `README` خوب + `docs/` Markdown کافی است تا Beta. Astro Starlight در فاز ۲ همراه با CLI.
+
+### ۴.۴ Generated Files در Git
+
+`packages/api-client/schema.d.ts` و `charts/kuben/crds/*.yaml` Commit می‌شوند (تا Frontend بدون Rust Toolchain Build شود) و CI با `git diff --exit-code` Drift را می‌گیرد — درست بود. اضافه: یک `CODEOWNERS` که تغییر این فایل‌ها بدون تغییر Source را Block کند (Review Rule).
+
+---
+
+## ۵. پلن نهایی اصلاح‌شده (v1.1)
+
+### ۵.۱ MVP واقعی ۱۲ هفته‌ای («یک Developer با آن زندگی کند»)
+
+Scope بسته — هر چیزی خارج از این لیست تا پایان MVP **نه**:
+
+| حوزه | داخل MVP | بیرون MVP |
+|---|---|---|
+| Auth | Local User + Password (Argon2id)، Cookie Session، یک Org، Roleهای `admin`/`developer`/`viewer` | OIDC، Passkeys، TOTP، Multi-org، Scoped Bindings |
+| مدل | Project، Environment (یک Namespace)، App، Release، BuildRun | Domain CRD (دامنه به‌عنوان فیلد App)، Service/Addon، Backup |
+| Deploy | از Image (Registry خارجی) + از Git با Dockerfile/Railpack روی buildkitd؛ Rollback به Release قبلی | CNB، Review Apps، Promotion، Cron |
+| Networking | HTTPRoute روی Gateway نصب‌شده توسط Installer + TLS با cert-manager؛ دامنه‌ی `*.sslip.io` پیش‌فرض | Custom Domain Verification، Basic Auth |
+| Realtime | SSE برای هر تب (Status + Logs)، Terminal WS | Metrics (فقط Replicas/Status)، Events K8s در UI |
+| Git | GitHub Webhook + Polling Fallback | GitLab، Gitea، Bitbucket |
+| Ops | `install.sh` برای k3s، `kuben doctor`، `backup`/`restore` SQLite + CRD Export | HA، Multi-cluster، Notifications |
+| UI | Login، Projects، App Detail (Overview، Deploys، Logs، Terminal، Settings)، Command Palette | Dark/Light Toggle (فقط Dark)، i18n (فقط EN، ولی RTL-ready) |
+
+**Exit MVP:** یک نفر یک Repo Node/Go/Python را در ۵ دقیقه از صفر (VPS خالی) به URL با TLS می‌رساند، لاگ می‌بیند، Shell می‌زند، Push بعدی Auto-deploy می‌شود، Rollback می‌کند، و بعد از Restart کردن Kuben هیچ‌چیز خراب نمی‌شود. RSS Idle < ۳۰MiB؛ Image < ۳۰MB. Soak Test ۱ ساعته لاگ بدون رشد حافظه.
+
+### ۵.۲ اولویت‌بندی D1 اصلاح‌شده
+
+**D1-Structural (فاز ۰، غیرقابل مذاکره):** مرز داده (۲.۲)، Cookie Session + Token Opaque، Projection، LogHub Bounded، Terminal Backpressure، SSA + Idempotent Reconcile، BuildRun/Release به‌عنوان CRD، OpenAPI Pipeline، Bootstrap Order، CRD Self-apply، Soft-delete Environment، Structured Logging + Request ID، Health `/livez`/`/readyz`، Graceful Shutdown، Budgetها در CI.
+
+**D1-Stub (Trait در فاز ۰، پیاده‌سازی بعداً):** `IdentityProvider` (Local اکنون، OIDC بعد)، `LeaderElector` (Noop اکنون)، `PolicyEngine` (Static اکنون، Cedar بعد)، `MetricsSource` (metrics-server اکنون، kubelet بعد)، `NotificationSink` (Log اکنون)، `BlobStore` (فایل اکنون، S3 بعد)، `ClusterRegistry` (یک Cluster اکنون).
+
+**D2:** بقیه‌ی بخش ۸ سند v1.0.
+
+### ۵.۳ Roadmap بازنگری‌شده
+
+| فاز | مدت (۳ نفر) | خروجی | Exit |
+|---|---|---|---|
+| **۰ — Skeleton** | ۶ هفته | ۶ Crate، Auth Local، Store دو-DB، CRD + Self-apply، OpenAPI → TS، UI Shell، CI با Budget، `install.sh` اولیه | `kuben serve` روی kind + Login + لیست Apps (خالی) + Budgetها سبز |
+| **۱ — MVP** | ۶ هفته (جمعاً ۱۲) | جدول ۵.۱ | Exit MVP بالا؛ **۵ کاربر خارجی Alpha** |
+| **۲ — Kubero Parity** | ۱۶ تا ۲۰ هفته | Git Providerها، Data Services (CNPG، Valkey، MariaDB)، Review Apps، Promotion، Notifications، Cron، Trivy، Custom Domains، Template Catalog + Importer Kubero، CLI، Helm، Zot اختیاری، `db migrate`، Docs (Astro)، i18n | مهاجرت یک نصب واقعی Kubero؛ Public Beta |
+| **۳ — Enterprise** | ۱۲ تا ۱۶ هفته | OIDC/Passkeys/Scoped RBAC، HA (Postgres + Leader + N API)، Multi-cluster، Quota/NetPol/PSA کامل، Air-gap، OTel، Session Recording، Merkle Audit Anchor، CNB Integration، Self-upgrade | Chaos Suite سبز؛ Restore آزمایش‌شده؛ ۱.۰ |
+| **۴ — Differentiators** | ادامه‌دار | Compose Import، MCP، Terraform، GitHub Action، GitOps دوطرفه، Scale-to-zero، Cedar | — |
+
+**جمع تا ۱.۰: حدود ۴۵ تا ۵۵ هفته.** این عدد را در README ننویسید؛ Milestoneها را بنویسید.
+
+### ۵.۴ سه Spike قبل از فاز ۰ (هر کدام ۲ تا ۳ روز)
+
+این‌ها فرضیات پرریسک‌اند؛ اگر یکی شکست بخورد، پلن عوض می‌شود:
+
+1. **Spike-A (RSS):** یک Binary با kube + axum + sqlx + rustls که ۶ Kind را با Projection Watch کند روی kind با ۲۰۰ Pod → RSS Idle را با سه Allocator اندازه بگیرید. اگر > ۴۰MiB، بودجه بازنگری شود.
+2. **Spike-B (BuildKit Rootless):** buildkitd Rootless روی k3s پیش‌فرض + یک Managed Cluster (مثلاً GKE Autopilot که سخت‌گیر است). اگر روی Managed کار نکرد، Remote Build Fallback به فاز ۱ می‌آید.
+3. **Spike-C (Terminal Backpressure):** `yes` داخل Container با Browser Throttled → مصرف حافظه‌ی Server ثابت بماند و Ctrl-C در کمتر از ۵۰۰ms اثر کند.
+
+---
+
+## ۶. ADRهای اضافه‌شده
+
+| ADR | عنوان | تصمیم |
+|---|---|---|
+| 013 | یک Runtime در فاز ۰؛ Bulkhead پشت Config | جایگزین ADR-003 |
+| 014 | یک SSE برای هر تب با Scope در URL + WS فقط Terminal | Transport Rule |
+| 015 | مالکیت داده: SQL ↔ CRD با `uid` و BindingGC | جایگزین ADR-001 |
+| 016 | buildkitd پایدار + Job سبک `buildctl`؛ Registry خارجی در MVP | جایگزین ADR-009 |
+| 017 | CRD Self-apply در Boot + Ratcheting + Storage Migration | Lifecycle CRD |
+| 018 | Soft-delete Environment با Grace Period و `deletionPolicy` | ایمنی حذف |
+| 019 | Bootstrap Order و Polling Fallback برای Webhook | Zero-Ops واقعی |
+| 020 | Audit Append-only در هسته؛ Merkle Anchor در Enterprise | جایگزین Hash-chain |
+| 021 | ۶ Crate در فاز ۰؛ معیار Split | ساختار |
+| 022 | Threat Model و RBAC دو-Role در HA | امنیت |
+
+---
+
+## ۷. Definition of Done معماری قبل از اولین خط کد
+
+- [ ] ADRهای 001 تا 022 نوشته و Review شده‌اند (هر کدام حداکثر یک صفحه: Context، Decision، Consequences).
+- [ ] سه Spike بخش ۵.۴ اجرا و نتیجه‌شان در ADR مربوطه ثبت شده است.
+- [ ] Threat Model (بخش ۳.۷) در `docs/security/threat-model.md` است و هر کنترل به یک Test E2E منفی نگاشت شده است.
+- [ ] Bootstrap Order (بخش ۳.۱) به‌صورت یک Runbook نوشته و روی VPS خالی دستی اجرا شده است.
+- [ ] Schema اولیه‌ی OpenAPI برای MVP (فقط Endpointها، بدون پیاده‌سازی) نوشته شده و Frontend می‌تواند با MSW Mock شروع کند.
+- [ ] CRD `v1alpha1` با CEL و `kubectl explain` معنادار تولید شده و یک `kubectl apply` نمونه روی kind کار می‌کند.
+- [ ] Budgetهای بخش ۱۳ سند v1.0 به‌عنوان GitHub Action Gate پیاده شده‌اند (حتی اگر Binary هنوز Hello World است).
+- [ ] یک `CONTRIBUTING.md` با Invariantهای ۶گانه (بخش ۱.۴ سند v1.0) به‌عنوان Review Checklist.
+
+---
+
+## ۸. جمع‌بندی
+
+v1.0 معماری درستی را توصیف می‌کرد اما «معماری یک تیم ۱۰ نفره با ۱۸ ماه بودجه» بود. v1.1 همان جهت را با این تغییرات قابل‌اجرا می‌کند:
+
+1. **ساده‌تر:** یک Runtime، یک SSE برای هر تب، ۶ Crate، Audit بدون Chain.
+2. **صادق‌تر:** Registry خارجی در MVP، Kuben = Cluster-admin-lite، Bootstrap با sslip.io، زمان‌بندی ۱۲ تا ۱۸ ماه تا ۱.۰.
+3. **ایمن‌تر:** Soft-delete Environment، Secret Reference در Release، Session Cache ۵ ثانیه‌ای، Threat Model صریح.
+4. **سریع‌تر برای کاربر:** buildkitd با Cache پایدار — تنها تغییری که کاربر مهاجرت‌کرده از Coolify فوراً حس می‌کند.
+5. **قابل‌سنجش:** سه Spike قبل از تعهد، MVP ۱۲ هفته‌ای با Exit صریح، و DoD معماری.
+
+اگر فقط یک توصیه از این سند اجرا شود: **MVP بخش ۵.۱ را با Scope بسته بسازید و ۵ کاربر واقعی بگیرید قبل از اینکه یک خط از فاز ۲ نوشته شود.** بهترین معماری دنیا هم اگر ۱۸ ماه بدون کاربر بماند، به سرنوشت Rewriteهای ناتمام دچار می‌شود.
