@@ -177,3 +177,48 @@ kuben restore --from ./kuben-backup
 
 - **Backup** exports all Projects, Environments and Apps as YAML.
 - **Restore** applies the CRDs first, then re-points old `ownerReference`s at the new Project uids (otherwise the garbage collector would delete the restored objects), then creates the namespaces immediately.
+- **Secret values are deliberately not exported.** Back up the database PVC with a VolumeSnapshot, and secrets with Vault, SOPS or a cluster backup tool such as Velero.
+- **App volumes are not included either.** They are ordinary PVCs (kept when an app is deleted); back them up with VolumeSnapshots or Velero.
+
+## 7. Upgrading
+
+```bash
+helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values
+```
+
+Helm does not update the `crds/` folder on upgrade, so the binary server-side-applies its CRDs on every start (ADR-017). Database migrations also run at boot.
+
+## 8. Security model and its limits
+
+- **Cluster access.**
+  - Kuben's service account can manage namespaces, secrets, deployments, cron jobs, PVCs and similar objects cluster-wide, and can patch its Gateway (exact list in `templates/rbac.yaml`).
+  - It needs this because it creates one namespace per environment. Treat it like any infrastructure controller.
+  - Be clear about what that means: whoever controls Kuben's service account can read every Secret in the cluster, so protect it like cluster-admin (ADR-022). The only namespaced right is the controller Lease.
+- **Tenant namespace isolation.**
+  - Pod Security Admission: `baseline` is enforced, `restricted` is warned.
+  - LoadBalancer and NodePort services are forbidden.
+  - Ingress between environments is closed by NetworkPolicy.
+- **Authorization.**
+  - Every request is checked against the caller's role (owner/admin/developer/viewer).
+  - Other orgs' objects return 404, not 403.
+  - Deleting a production environment requires the separate `env-delete-protected` permission.
+  - Env values are hidden from users without `secret-read`.
+- **Sign-in.** Logins are throttled (see §4) against a budget shared by all replicas; the stored buckets are hashes, not emails or addresses. Invited users must replace their temporary password before anything else. A generated admin password goes into a Secret, never into the log.
+- **API tokens.**
+  - Only a SHA-256 hash is stored, and it is compared in constant time.
+  - A token is capped at a role and optionally scoped to a project or environment.
+  - Tokens cannot manage tokens, members or passwords.
+- **Audit.** Every mutation, denial and login is recorded (never request bodies) and shown under *Audit*. The log is append-only through the API.
+- **Secrets.** The API only writes them; it never returns their values, and it touches only Secrets it created itself.
+
+## 9. Troubleshooting
+
+| Tool | Use |
+|---|---|
+| `kuben doctor` | prerequisites: database, cluster, Gateway API, cert-manager, metrics-server |
+| `GET /api/v1/healthz/details` | per-subsystem status (sign-in required) |
+| `/livez`, `/readyz` | Kubernetes probes. `/readyz` stays `503` until the informers have synced |
+| `kubectl -n kuben-system get lease kuben-controller` | which pod runs the controllers (`holderIdentity`); the others report `controllers: standby` |
+| `:9090/metrics` | Prometheus metrics, e.g. `kuben_reconcile_errors_total`, `kuben_audit_write_errors_total`, `kuben_leader` |
+| `kubectl get apps,environments -A` | conditions (`Ready`, `Exposed`) with `reason` and `message` |
+| Kuben logs: `gateway listener limit reached` / `hostname requested by two namespaces` | listener cap or domain conflict (scenario 9) |

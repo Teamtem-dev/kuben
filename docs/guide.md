@@ -168,3 +168,37 @@ Databases also get a ready-made `url` key. Connect another app with:
 DATABASE_URL=@db-credentials/url
 ```
 
+Database templates use `protocol: tcp`: they are reachable only inside the environment, never from the internet.
+
+## 9. Serve custom domains over HTTPS
+
+1. **Point DNS at the gateway.** Add the domain to the app (*Domains* card), then create an `A`/`AAAA` record (or a `CNAME`) pointing at the gateway.
+2. **Check it.** *Check DNS* (`GET …/domains`) reports `ok`, `mismatch`, `unresolved` or `unknown` for every hostname.
+3. **Certificates.** Once `clusterIssuer` is set in `KubenConfig`, Kuben manages the listeners of its Gateway:
+   - one HTTPS listener per hostname, and cert-manager issues its certificate automatically;
+   - plain HTTP answers every request with a redirect to HTTPS.
+
+**A domain belongs to one app.** Kuben refuses the same domain on a second app (`409`). At the gateway, each hostname only accepts routes from the namespace that claimed it first, so one tenant cannot take over another tenant's domain.
+
+**Limits and requirements:**
+- A Gateway holds at most 64 listeners. Kuben uses at most 60.
+- For many generated hostnames, provide a wildcard certificate for `*.<baseDomain>` (DNS-01) as `wildcardTlsSecret`; all generated hosts then share one listener.
+- cert-manager must run with Gateway API support enabled (`config.enableGatewayAPI=true`).
+
+## 10. Promote staging to production
+
+On the app page, choose the target environment in *Promote*, press *Preview changes*, review the diff, then *Promote*.
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api/promote" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"to_environment": "production", "dry_run": true}'
+```
+
+**What is copied, what is kept:**
+- **Copied:** image, commands, ports, health check and environment variables.
+- **Kept on the target:** its domains, its scaling (replicas and size), and its volumes.
+
+**Before you promote:**
+- **Secrets.** Secrets are never copied. The preview warns about every referenced secret that does not exist in the target, so you can create it first.
+- **Permissions.** Promotion needs `release-promote` on the target (admins and owners). Developers deploy to staging; admins promote to production.
