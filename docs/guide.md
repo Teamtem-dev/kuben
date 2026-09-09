@@ -134,3 +134,37 @@ Add a volume when deploying: *Volume* `/data:5Gi`, or in the API:
 ```
 
 - **One pod.** A volume is `ReadWriteOnce`, so the app runs a single pod, and deploys stop the old pod before starting the new one (a few seconds of downtime).
+- **Growing.** A volume can grow if the StorageClass allows expansion. It can never shrink.
+- **Non-root images.** For images that run as a non-root user, set `fs_group` (e.g. `1000`) so the volume is writable.
+- **Deleting.** Deleting an app **keeps** its volumes. Tick *Also delete the app's volumes* (`DELETE …/apps/api?delete_volumes=true`) to remove them too.
+
+## 7. Run scheduled jobs
+
+Deploy with a *Schedule* such as `0 3 * * *` (or `@hourly`, `@daily`, …) and, optionally, a `time_zone`. A scheduled app has no port.
+
+- **Overlaps.** Runs never overlap. A run that could not start within 5 minutes is skipped. The last three successful and three failed runs are kept for a day.
+- **Run now.** *Run now* (`POST …/run`) starts a run immediately from the same template.
+
+## 8. Start a database or service in one click
+
+The environment page lists the template catalogue:
+
+| Template | Image | Exposed |
+|---|---|---|
+| PostgreSQL 17 | `postgres:17-alpine` | internal TCP 5432, 5 GiB volume |
+| Redis 7 | `redis:7-alpine` | internal TCP 6379, 1 GiB volume, password |
+| MariaDB 11 | `mariadb:11` | internal TCP 3306, 5 GiB volume |
+| n8n | `n8nio/n8n:stable` | HTTP, generated encryption key |
+| Uptime Kuma | `louislam/uptime-kuma:1` | HTTP |
+| Vaultwarden | `vaultwarden/server:latest` | HTTP, sign-ups closed, generated admin token |
+| Gitea (rootless) | `gitea/gitea:1-rootless` | HTTP |
+| whoami | `traefik/whoami:v1.10` | HTTP (test routing and TLS) |
+
+**Credentials.** Passwords are generated (32 random characters) into the secret `<name>-credentials`. The app only references that secret, so no password appears in the app spec, the release history or the audit log.
+
+Databases also get a ready-made `url` key. Connect another app with:
+
+```
+DATABASE_URL=@db-credentials/url
+```
+
