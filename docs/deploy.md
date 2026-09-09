@@ -132,3 +132,48 @@ spec:
       port: 80
 ```
 
+A ClusterIssuer that solves HTTP-01 through that Gateway:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    privateKeySecretRef: { name: letsencrypt-account }
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - { kind: Gateway, name: kuben, namespace: kuben-system, sectionName: http }
+```
+
+**Wildcard certificate.** If you use one, issue it with a DNS-01 Certificate whose **name equals the Secret name** in `wildcardTlsSecret`. cert-manager then leaves it alone instead of trying HTTP-01 on the wildcard listener.
+
+**Honest limits:**
+- A Gateway holds at most 64 listeners, and Kuben uses at most 60. Beyond that, use the wildcard listener for generated hosts. ListenerSet support (experimental in Gateway API) is on the roadmap.
+- TLS termination happens at your Gateway controller. Kuben only configures it.
+
+**Status.** Each app reports its status in the `Exposed` condition:
+- `RouteApplied`
+- `NoGateway`
+- `NoHostname`
+- `GatewayAPIMissing`
+
+The *Check DNS* button (`GET …/apps/{app}/domains`) tells you whether each hostname already points at the Gateway.
+
+## 6. Backup and restore
+
+```bash
+kuben backup --out ./kuben-backup
+```
+
+```bash
+kuben restore --from ./kuben-backup
+```
+
+- **Backup** exports all Projects, Environments and Apps as YAML.
+- **Restore** applies the CRDs first, then re-points old `ownerReference`s at the new Project uids (otherwise the garbage collector would delete the restored objects), then creates the namespaces immediately.
