@@ -43,3 +43,18 @@ curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh |
 
 The script checks every download against the release's `checksums.txt` (SHA-256) before installing. Options: `--version v0.1.0`, `--dir ~/.local/bin`, `--no-sudo`.
 
+**Kubernetes** (Helm, Kubernetes ≥ 1.29):
+
+```bash
+helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace
+```
+
+**Container image:** `ghcr.io/teamtem-dev/kuben` (linux/amd64 and linux/arm64, distroless, non-root).
+
+Every release artifact carries a build provenance attestation:
+
+```bash
+gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
+```
+
+See [docs/deploy.md](docs/deploy.md) for configuration, exposing apps through a Gateway, backups and upgrades.
