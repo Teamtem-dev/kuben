@@ -111,3 +111,22 @@ mod tests {
             "/api/v1/members/{member}",
             "/api/v1/audit",
             "/api/v1/healthz/details",
+        ] {
+            assert!(paths.contains_key(p), "missing path {p}");
+        }
+        assert_eq!(json["openapi"], "3.1.0");
+    }
+
+    #[test]
+    fn operation_ids_are_unique() {
+        let json = serde_json::to_value(super::spec()).expect("json");
+        let mut seen = BTreeSet::new();
+        for item in json["paths"].as_object().expect("paths").values() {
+            for op in item.as_object().expect("item").values() {
+                if let Some(id) = op["operationId"].as_str() {
+                    assert!(seen.insert(id.to_owned()), "duplicate operationId {id}");
+                }
+            }
+        }
+    }
+}
