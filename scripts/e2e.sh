@@ -227,3 +227,36 @@ eventually 60 "promoted deployment" kubectl -n "$NS_LIVE" get deployment web-web
 step "scenario 4: team invitation"
 expect 201 POST /members '{"email":"dev@e2e.test","role":"developer"}'
 temp=$(jq -r .temporary_password "$work/body")
+expect_as 200 member POST /auth/login "{\"email\":\"dev@e2e.test\",\"password\":\"${temp}\"}"
+expect_as 403 member GET /projects
+expect_as 204 member POST /me/password "{\"current_password\":\"${temp}\",\"new_password\":\"a-much-longer-password\"}"
+expect_as 200 member GET /projects
+
+step "scenario 1: login throttling"
+for _ in 1 2 3 4 5; do
+  expect_as 401 none POST /auth/login '{"email":"nobody@e2e.test","password":"wrong"}'
+done
+expect_as 429 none POST /auth/login '{"email":"nobody@e2e.test","password":"wrong"}'
+
+step "authorization and validation"
+expect 422 POST "$APP" '{"name":"Bad_Name","image":"nginx"}'
+expect 409 DELETE "/projects/${P}"
+
+step "delete apps → children are garbage-collected"
+for a in web tick cache; do expect 204 DELETE "$APP/${a}?delete_volumes=true"; done
+eventually 90 "deployment gone" bash -c "! kubectl -n $NS get deployment web-web"
+eventually 90 "cronjob gone" bash -c "! kubectl -n $NS get cronjob tick-job"
+eventually 90 "template volume deleted on request" bash -c "! kubectl -n $NS get pvc cache-data"
+
+step "delete environments → namespaces deleted"
+expect 202 DELETE "/projects/${P}/environments/dev"
+expect 202 DELETE "/projects/${P}/environments/live"
+eventually 180 "namespace gone" bash -c "! kubectl get namespace $NS"
+eventually 180 "live namespace gone" bash -c "! kubectl get namespace $NS_LIVE"
+eventually 60 "environments gone" bash -c "! kubectl get environment ${P}-dev ${P}-live"
+
+step "delete project"
+eventually 30 "project has no environments" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments | jq -e 'length == 0'"
+expect 204 DELETE "/projects/${P}"
+
+printf '\n\033[32mE2E PASSED\033[0m\n'
