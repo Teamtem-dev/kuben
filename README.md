@@ -58,3 +58,18 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 ```
 
 See [docs/deploy.md](docs/deploy.md) for configuration, exposing apps through a Gateway, backups and upgrades.
+
+## Development
+
+You need Rust (stable, MSRV 1.94), Node ≥ 22.12 with corepack, and [just](https://github.com/casey/just). The e2e suite also needs `kind`.
+
+```bash
+just setup    # toolchain + JS dependencies
+just dev      # API on :8080 + Vite on :5173
+just ci       # everything CI gates on: fmt, clippy, tests, drift, web build and size
+just e2e      # full end-to-end run against a kind cluster
+just gen      # regenerate openapi.json, the TS client and the CRD manifests
+```
+
+| Path | What it is |
+|---|---|
