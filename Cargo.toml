@@ -64,7 +64,7 @@ moka = { version = "0.12", features = ["future"] }
 argon2 = { version = "0.5", features = ["std"] }
 subtle = "2"
 sha2 = "0.10"
-rand = "0.9"
+rand = "0.10"
 secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
 base64 = "0.22"
