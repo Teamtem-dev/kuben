@@ -17,3 +17,20 @@ allow = [
   "BSL-1.0",
   "CDLA-Permissive-2.0",
 ]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+deny = [
+  { crate = "openssl-sys", reason = "rustls only" },
+  { crate = "serde_yaml", reason = "unmaintained; use serde_yaml_ng" },
+]
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

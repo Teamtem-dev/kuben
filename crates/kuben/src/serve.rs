@@ -66,81 +66,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     let projections = Arc::new(Projections::new());
-    let mut tasks = Vec::new();
-
-    match &cluster {
-        Some(registry) => {
-            health.ok("cluster");
-            let (r, p, h, t) = (
-                registry.clone(),
-                projections.clone(),
-                health.clone(),
-                shutdown.child_token(),
-            );
-            tasks.push(tokio::spawn(supervise("informers", t, h, move |tok| {
-                kuben_platform::projection::informer::run(r.clone(), p.clone(), tok)
-            })));
-
-            // Readiness waits for every informer's first LIST: until then the
-            // projections are incomplete and lookups would answer 404 for
-            // objects that exist.
-            let (p, h, t) = (projections.clone(), health.clone(), shutdown.child_token());
-            tokio::spawn(async move {
-                tokio::select! {
-                    () = p.wait_synced() => {
-                        tracing::info!("informers synced; ready");
-                        h.set_ready(true);
-                    }
-                    () = t.cancelled() => {}
-                }
-            });
-
-            if cfg.has_role(Role::Controller) {
-                let (r, p, h, t) = (
-                    registry.clone(),
-                    projections.clone(),
-                    health.clone(),
-                    shutdown.child_token(),
-                );
-                let election = election.clone();
-                tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
-                    let (r, p, h, election) = (r.clone(), p.clone(), h.clone(), election.clone());
-                    async move {
-                        match election {
-                            // Several replicas: reconcile only while holding the Lease.
-                            Some(election) => {
-                                let client = r.primary();
-                                leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
-                                    kuben_platform::controller::run_all(r, p, h, tok)
-                                })
-                                .await
-                            }
-                            None => kuben_platform::controller::run_all(r, p, h, tok).await,
-                        }
-                    }
-                })));
-            }
-
-            #[cfg(feature = "activator")]
-            if cfg.has_role(Role::Activator) {
-                let (r, p, h, t) = (
-                    registry.clone(),
-                    projections.clone(),
-                    health.clone(),
-                    shutdown.child_token(),
-                );
-                let bind = cfg.server.activator_bind.clone();
-                tasks.push(tokio::spawn(supervise("activator", t, h.clone(), move |tok| {
-                    kuben_platform::activator::run(r.clone(), p.clone(), h.clone(), tok, bind.clone())
-                })));
-            }
-        }
-        None => {
-            health.degraded("cluster", "no kubernetes cluster configured");
-            // Nothing to sync: serve setup and diagnostics right away.
-            health.set_ready(true);
-        }
-    }
+    let tasks = if let Some(registry) = &cluster {
+        health.ok("cluster");
+        spawn_cluster_tasks(
+            &cfg,
+            registry,
+            &projections,
+            &health,
+            election.as_ref(),
+            &shutdown,
+        )
+    } else {
+        health.degraded("cluster", "no kubernetes cluster configured");
+        // Nothing to sync: serve setup and diagnostics right away.
+        health.set_ready(true);
+        Vec::new()
+    };
 
     #[cfg(not(feature = "activator"))]
     if cfg.server.roles.contains(&Role::Activator) {
@@ -182,6 +123,84 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     store.checkpoint_and_close().await?;
     tracing::info!("bye");
     Ok(())
+}
+
+/// Cluster-backed subsystems: informers, the readiness gate on their first
+/// sync, controllers (behind leader election when enabled) and, with the
+/// `activator` feature, the activator.
+fn spawn_cluster_tasks(
+    cfg: &Config,
+    registry: &ClusterRegistry,
+    projections: &Arc<Projections>,
+    health: &Health,
+    election: Option<&Election>,
+    shutdown: &CancellationToken,
+) -> Vec<tokio::task::JoinHandle<()>> {
+    let mut tasks = Vec::new();
+    let (r, p, h, t) = (
+        registry.clone(),
+        projections.clone(),
+        health.clone(),
+        shutdown.child_token(),
+    );
+    tasks.push(tokio::spawn(supervise("informers", t, h, move |tok| {
+        kuben_platform::projection::informer::run(r.clone(), p.clone(), tok)
+    })));
+
+    // Readiness waits for every informer's first LIST: until then the
+    // projections are incomplete and lookups would answer 404 for
+    // objects that exist.
+    let (p, h, t) = (projections.clone(), health.clone(), shutdown.child_token());
+    tokio::spawn(async move {
+        tokio::select! {
+            () = p.wait_synced() => {
+                tracing::info!("informers synced; ready");
+                h.set_ready(true);
+            }
+            () = t.cancelled() => {}
+        }
+    });
+
+    if cfg.has_role(Role::Controller) {
+        let (r, p, h, t) = (
+            registry.clone(),
+            projections.clone(),
+            health.clone(),
+            shutdown.child_token(),
+        );
+        let election = election.cloned();
+        tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
+            let (r, p, h, election) = (r.clone(), p.clone(), h.clone(), election.clone());
+            async move {
+                match election {
+                    // Several replicas: reconcile only while holding the Lease.
+                    Some(election) => {
+                        let client = r.primary();
+                        leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
+                            kuben_platform::controller::run_all(r, p, h, tok)
+                        })
+                        .await
+                    }
+                    None => kuben_platform::controller::run_all(r, p, h, tok).await,
+                }
+            }
+        })));
+    }
+
+    #[cfg(feature = "activator")]
+    if cfg.has_role(Role::Activator) {
+        let (r, p, h, t) = (
+            registry.clone(),
+            projections.clone(),
+            health.clone(),
+            shutdown.child_token(),
+        );
+        let bind = cfg.server.activator_bind.clone();
+        tasks.push(tokio::spawn(supervise("activator", t, h.clone(), move |tok| {
+            kuben_platform::activator::run(r.clone(), p.clone(), h.clone(), tok, bind.clone())
+        })));
+    }
+    tasks
 }
 
 /// Leader-election settings, or `None` when `kube.leader_election` is off.

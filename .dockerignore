@@ -3,3 +3,8 @@ node_modules
 apps/web/dist
 .dev
 .cache
+.cargo-home
+.git
+*.db
+*.db-*
+dist

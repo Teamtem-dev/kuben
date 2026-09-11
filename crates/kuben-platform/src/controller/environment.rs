@@ -30,17 +30,24 @@ use crate::duration;
 
 pub async fn run(ctx: Arc<Ctx>, token: CancellationToken) -> anyhow::Result<()> {
     let client = ctx.client.clone();
-    Controller::new(Api::<Environment>::all(client.clone()), watcher::Config::default())
-        // Repair drift: a deleted or relabelled namespace re-triggers its environment.
-        .watches(
-            Api::<Namespace>::all(client),
-            watcher::Config::default().labels(labels::MANAGED_SELECTOR),
-            |ns| ns.labels().get(labels::ENVIRONMENT).map(|e| ObjectRef::<Environment>::new(e)),
-        )
-        .graceful_shutdown_on(token.cancelled_owned())
-        .run(reconcile, error_policy, ctx)
-        .for_each(|_| std::future::ready(()))
-        .await;
+    Controller::new(
+        Api::<Environment>::all(client.clone()),
+        watcher::Config::default(),
+    )
+    // Repair drift: a deleted or relabelled namespace re-triggers its environment.
+    .watches(
+        Api::<Namespace>::all(client),
+        watcher::Config::default().labels(labels::MANAGED_SELECTOR),
+        |ns| {
+            ns.labels()
+                .get(labels::ENVIRONMENT)
+                .map(|e| ObjectRef::<Environment>::new(e))
+        },
+    )
+    .graceful_shutdown_on(token.cancelled_owned())
+    .run(reconcile, error_policy, ctx)
+    .for_each(|_| std::future::ready(()))
+    .await;
     Ok(())
 }
 
