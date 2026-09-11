@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Teamtem-dev/kuben/security/advisories/new
+    about: Report privately. Never open a public issue for a vulnerability.
+  - name: Deployment and configuration help
+    url: https://github.com/Teamtem-dev/kuben/blob/main/docs/deploy.md
+    about: Configuration, exposing apps through a Gateway, backups and upgrades.
+  - name: Everyday usage
+    url: https://github.com/Teamtem-dev/kuben/blob/main/docs/guide.md
+    about: Ten worked scenarios, from deploying out of CI to promoting a release.

@@ -15,7 +15,6 @@ use crate::{
 #[openapi(
     info(
         title = "Kuben API",
-        version = "0.1.0",
         description = "Kuben — Kubernetes-native PaaS control plane.",
         license(name = "Apache-2.0")
     ),

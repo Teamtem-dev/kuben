@@ -5,8 +5,8 @@ ADR-001 to ADR-012 were proposed in
 [KUBEN-GOLDEN-ARCHITECTURE.md §16.2](../KUBEN-GOLDEN-ARCHITECTURE.md), and
 ADR-013 to ADR-022 in the review
 [KUBEN-ARCHITECTURE-CRITIQUE.md §6](../KUBEN-ARCHITECTURE-CRITIQUE.md), which
-also records the reasoning. Both documents are in Persian. New decisions get
-their own file here, in English (template: Context, Decision, Consequences).
+also records the reasoning. New decisions get their own file here
+(template: Context, Decision, Consequences).
 
 | ADR | Decision | Status | Where it shows in the code |
 |---|---|---|---|
