@@ -29,7 +29,12 @@ deny = [
 
 [advisories]
 yanked = "deny"
-ignore = []
+ignore = [
+  # `paste` is archived and unmaintained, with no safe upgrade. It reaches us
+  # only through utoipa-axum, as a compile-time macro helper: it contributes no
+  # runtime code and takes no untrusted input. Revisit when utoipa-axum drops it.
+  { id = "RUSTSEC-2024-0436", reason = "unmaintained build-time macro dep of utoipa-axum; no fixed version exists" },
+]
 
 [sources]
 unknown-registry = "deny"

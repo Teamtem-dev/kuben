@@ -2262,6 +2262,52 @@ All ten scenarios are implemented end to end. Each one has:
 
 **Next (P0):** push the repository, get **CI success** and the kind e2e job green, then publish `v0.1.0-rc.1`.
 
+### 5.10 What the first real CI run found (2026-09-11)
+
+The repository's first CI run never reached a single check. Everything below
+was found while making it green; the fixes are on branch
+`fix/ci-script-permissions` (PR #1).
+
+**The gate.** `scripts/*.sh` and `install.sh` were committed as `100644`, so
+the "Detect changes" job died with exit 126 and every job that depends on it
+was skipped. The scripts now carry the execute bit, change detection runs
+through `bash`, and a guard step fails the build if a script ever loses that
+bit again.
+
+**Truncated configuration.** Eleven files were cut off mid-file, and no commit
+in the history ever held a complete version: `Cargo.toml` (46 of 128 lines),
+`package.json`, `biome.json`, `justfile`, `deny.toml`, `rustfmt.toml`,
+`rust-toolchain.toml`, `.cargo/config.toml`, `.gitignore`, `.dockerignore`,
+`.editorconfig`. The three that broke a parser were obvious; the other eight
+stayed syntactically valid and silently dropped settings — the class of damage
+no tool reports. The same breakage is why Dependabot's cargo and npm updates
+fail: neither manifest can be parsed.
+
+**Four checks failed on first contact**, each a genuine finding rather than a
+CI artefact:
+
+| Check | Finding | Resolution |
+| --- | --- | --- |
+| Clippy | CI runs stable 1.98.1, which added `clippy::unused_async_trait_impl`; `CurrentUser::from_request_parts` never awaits | plain `fn` returning `future::ready(..)` |
+| Supply chain | RUSTSEC-2024-0436: `paste` is archived, reaching us only through utoipa-axum as a compile-time macro, and has no safe upgrade | ignored in `deny.toml` with that justification; revisit when utoipa-axum drops it |
+| Shell scripts | shellcheck SC2155: a declaration masked the exit status of a command substitution | declare and assign separately |
+| Binary size budget | the static musl binary measures 25.19 MiB against a 25 MiB gate — musl builds bigger than the 22.00 MiB macOS build recorded in §5.8 | gate raised to 26 MiB; the binary still needs to shrink |
+
+**Lessons worth keeping.**
+
+1. A failing gate hides every check behind it. After fixing the first error,
+   run each downstream job's commands before calling CI fixed.
+2. A committed lockfile is the oracle for a damaged manifest: reconstruct
+   until resolution leaves `Cargo.lock` byte-identical, and treat any
+   remaining diff as a missing feature flag rather than noise. That is how
+   sqlx's `macros` feature was recovered.
+3. Local toolchains drift from CI. Clippy passed locally on 1.97.1 and failed
+   on 1.98.1; a lint that exists in only one of them cannot be silenced with
+   `#[allow]` without breaking the other.
+4. A redirect is a destructive write that happens before its command runs:
+   `just gen` now builds both generators first, because a failed build used to
+   truncate the committed `openapi.json`.
+
 ## پیوست A. منابع
 
 - Qovery Pricing (qovery.com/pricing، Apr 2026؛ SaaSpartout/Gappsy review، Qovery blog Sep 2026): Team از $899/mo، Business $1,999–2,999/mo، Enterprise Custom.

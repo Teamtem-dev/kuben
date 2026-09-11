@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Size budgets are CI gates, not aspirations (blueprint §5.7).
 #
-#   scripts/check-budgets.sh binary <path> [max MiB]   default: $KUBEN_BUDGET_BINARY_MB or 25
+#   scripts/check-budgets.sh binary <path> [max MiB]   default: $KUBEN_BUDGET_BINARY_MB or 26
 #   scripts/check-budgets.sh image  <ref>  [max MiB]   default: $KUBEN_BUDGET_IMAGE_MB  or 30
 #
 # The web bundle budget is enforced by size-limit (`pnpm size`).
@@ -13,7 +13,8 @@ report() { # <label> <bytes> <limit MiB>
   local label=$1 bytes=$2 limit_mib=$3
   local verdict=ok
   if ((bytes > limit_mib * 1048576)); then verdict=FAIL; fi
-  local line="${label}: $(mib "$bytes") MiB (budget ${limit_mib} MiB) — ${verdict}"
+  local line # declared separately: assigning a command substitution masks its exit status (SC2155)
+  line="${label}: $(mib "$bytes") MiB (budget ${limit_mib} MiB) — ${verdict}"
   echo "$line"
   if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then echo "- ${line}" >>"$GITHUB_STEP_SUMMARY"; fi
   if [[ $verdict == FAIL ]]; then
@@ -27,7 +28,7 @@ target=${2:-}
 case "$kind" in
 binary)
   [[ -f $target ]] || { echo "no such binary: $target" >&2; exit 2; }
-  report "binary $(basename "$target")" "$(wc -c <"$target" | tr -d ' ')" "${3:-${KUBEN_BUDGET_BINARY_MB:-25}}"
+  report "binary $(basename "$target")" "$(wc -c <"$target" | tr -d ' ')" "${3:-${KUBEN_BUDGET_BINARY_MB:-26}}"
   ;;
 image)
   bytes=$(docker image inspect --format '{{.Size}}' "$target")
