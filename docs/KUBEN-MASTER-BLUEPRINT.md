@@ -1,150 +1,150 @@
-# 🧭 Kuben — سند جامع معماری، تمایز رقابتی و پلن اجرایی (Master Blueprint)
+# 🧭 Kuben — Comprehensive architecture, competitive differentiation and execution plan (Master Blueprint)
 
-> PaaS نسل بعدی، Kubernetes-Native، تک‌باینری Rust، با هدف برتری فنی بر Coolify، Dokploy، Kubero، Devtron، KubeVela و رقبای تجاری Qovery، Northflank و Porter.
+> A next-generation, Kubernetes-native PaaS, a single Rust binary, aiming to technically outclass Coolify, Dokploy, the incumbent PaaS, Devtron, KubeVela and the commercial contenders Qovery, Northflank and Porter.
 
 | | |
 |---|---|
-| **نسخه** | 1.0 |
-| **تاریخ** | 2026-09-10 |
-| **پیش‌نیاز مطالعه** | [KUBEN-GOLDEN-ARCHITECTURE.md](./KUBEN-GOLDEN-ARCHITECTURE.md) (مبانی) و [KUBEN-ARCHITECTURE-CRITIQUE.md](./KUBEN-ARCHITECTURE-CRITIQUE.md) (اصلاحات v1.1). در تعارض، **این سند** مقدم است |
-| **مبنای شواهد** | خوانش مستقیم `kubero-main/` + تحقیق وب (قیمت‌ها و وضعیت اکوسیستم تا سپتامبر ۲۰۲۶؛ منابع در پانوشت هر بخش) |
-| **مقصد کد** | `kuben-monorepo/` |
+| **Version** | 1.0 |
+| **Date** | 2026-09-10 |
+| **Required reading** | [KUBEN-GOLDEN-ARCHITECTURE.md](./KUBEN-GOLDEN-ARCHITECTURE.md) (fundamentals) and [KUBEN-ARCHITECTURE-CRITIQUE.md](./KUBEN-ARCHITECTURE-CRITIQUE.md) (v1.1 corrections). Where they conflict, **this document** takes precedence |
+| **Evidence base** | A direct reading of the incumbent's source tree + web research (prices and ecosystem status as of September 2026; sources footnoted per section) |
+| **Code destination** | `kuben-monorepo/` |
 
 ---
 
-## فهرست
+## Contents
 
-- [۰. خلاصه اجرایی](#۰-خلاصه-اجرایی)
-- [۱. تحلیل رقابتی و ماتریس برتری فنی](#۱-تحلیل-رقابتی-و-ماتریس-برتری-فنی)
-- [۲. کالبدشکافی kubero-main](#۲-کالبدشکافی-kubero-main)
-- [۳. بسته فیچرهای Hi-Tech و تمایزبخش](#۳-بسته-فیچرهای-hi-tech-و-تمایزبخش)
-- [۴. مشخصات نهایی پشته فنی و ساختار Monorepo](#۴-مشخصات-نهایی-پشته-فنی-و-ساختار-monorepo)
-- [۵. پلن اجرایی فازبندی‌شده و فاز ۰ با تمام جزئیات](#۵-پلن-اجرایی-فازبندیشده-و-فاز-۰-با-تمام-جزئیات)
-- [پیوست A. منابع](#پیوست-a-منابع)
-
----
-
-## ۰. خلاصه اجرایی
-
-**Kuben** یک Control Plane تک‌باینری (Rust) است که روی هر Kubernetes (k3s تا EKS) نصب می‌شود، Desired State را در CRD نگه می‌دارد، Identity و Audit را در SQLite/Postgres، و یک SPA مدرن (React 19) را داخل خود Embed می‌کند. هدف: **RSS زیر ۳۰ مگابایت در Idle، یک Pod، بدون Redis/Queue/Operator جداگانه**، و مجموعه‌ای از قابلیت‌ها که امروز فقط در پلتفرم‌های ۹۰۰ تا ۳۰۰۰ دلاری در ماه پیدا می‌شوند.
-
-**سه ادعای قابل‌دفاع (نه شعار):**
-
-1. **سبک‌ترین Control Plane روی Kubernetes:** Coolify چهار Container (Laravel + Postgres + Redis + Soketi) با گزارش کاربری ۱.۳GB Idle دارد؛ Devtron برای CI/CD حداقل ۲ CPU و ۶GB می‌خواهد؛ Kuben یک Process با بودجه‌ی ۳۰MB. (سربار خود k3s جداست و در بخش ۱.۴ صادقانه گفته شده.)
-2. **فیچرهای Enterprise به‌صورت Open Source:** Preview Environment با DB Branching، Scale-to-zero، AI Post-mortem، Service Map با eBPF، FinOps Meter و 4-Eyes Approval — همان چیزهایی که Qovery در پلن Business (از ~۲۰۰۰ دلار/ماه) می‌فروشد.
-3. **بدون Vendor Lock-in:** همه‌چیز CRD و استاندارد (Gateway API، OCI، OIDC، OpenAPI، OTel). `kubectl` همیشه کار می‌کند؛ اگر Kuben حذف شود، Appها زنده می‌مانند.
+- [0. Executive summary](#0-executive-summary)
+- [1. Competitive analysis and technical advantage matrix](#1-competitive-analysis-and-technical-advantage-matrix)
+- [2. Dissecting the incumbent PaaS](#2-dissecting-the-incumbent-paas)
+- [3. The hi-tech, differentiating feature pack](#3-the-hi-tech-differentiating-feature-pack)
+- [4. Final technology stack and monorepo structure](#4-final-technology-stack-and-monorepo-structure)
+- [5. Phased execution plan, with phase 0 in full detail](#5-phased-execution-plan-with-phase-0-in-full-detail)
+- [Appendix A. Sources](#appendix-a-sources)
 
 ---
 
-## ۱. تحلیل رقابتی و ماتریس برتری فنی
+## 0. Executive summary
 
-### ۱.۱ ماتریس مقایسه‌ی فنی
+**Kuben** is a single-binary control plane (Rust) that installs on any Kubernetes (from k3s to EKS), keeps desired state in CRDs, identity and audit in SQLite/Postgres, and embeds a modern SPA (React 19) inside itself. The goal: **under 30 MB RSS at idle, one Pod, no separate Redis/queue/operator**, plus a set of capabilities that today are only found in platforms costing $900 to $3,000 per month.
 
-> «RAM کنترل‌پلین» = فقط اجزای مدیریتی، بدون Workloadهای کاربر و بدون خود Kubernetes. اعداد رقبا از مستندات رسمی یا گزارش‌های کاربری‌اند (منبع در پیوست).
+**Three defensible claims (not slogans):**
 
-| پارامتر | **Kuben (هدف)** | Kubero (مبدأ) | Coolify | Dokploy | Devtron | KubeVela | Qovery | Northflank | Porter |
+1. **The lightest control plane on Kubernetes:** Coolify runs four containers (Laravel + Postgres + Redis + Soketi) with user reports of 1.3GB at idle; Devtron wants at least 2 CPUs and 6GB for CI/CD; Kuben is one process with a 30MB budget. (k3s's own overhead is separate and is stated honestly in section 1.4.)
+2. **Enterprise features as open source:** preview environments with DB branching, scale-to-zero, AI post-mortems, an eBPF service map, a FinOps meter and four-eyes approval — exactly what Qovery sells in its Business plan (from ~$2,000/month).
+3. **No vendor lock-in:** everything is CRDs and standards (Gateway API, OCI, OIDC, OpenAPI, OTel). `kubectl` always works; if Kuben is removed, the apps keep running.
+
+---
+
+## 1. Competitive analysis and technical advantage matrix
+
+### 1.1 Technical comparison matrix
+
+> "Control-plane RAM" = management components only, without user workloads and without Kubernetes itself. Competitor numbers come from official documentation or user reports (sources in the appendix).
+
+| Parameter | **Kuben (target)** | The incumbent (the system Kuben replaces) | Coolify | Dokploy | Devtron | KubeVela | Qovery | Northflank | Porter |
 |---|---|---|---|---|---|---|---|---|---|
-| **مدل اجرا** | K8s-native، تک‌باینری Rust | K8s؛ NestJS UI + Operator (Go/Helm) | Docker + SSH؛ PHP/Laravel + PG + Redis + Soketi | Docker Swarm؛ Node + PG + Traefik | K8s؛ ده‌ها Microservice (Go) | K8s؛ Controller Go + CUE | SaaS Control Plane + Agent در Cluster شما | SaaS Control Plane (+BYOC) | SaaS Control Plane روی EKS/GKE/AKS شما |
-| **RAM کنترل‌پلین Idle** | **≤ ۳۰MB** (CI Gate) | چند صد MB (Node.js + node_modules + Operator) | حداقل رسمی ۲GB سرور؛ گزارش کاربری ~۱.۳GB Idle | حداقل رسمی ۲GB سرور | ۶GB (با CI/CD) تا ۱۳GB (>۵ App) | Request 20Mi، توصیه‌ی Small: 1Gi | ناشناخته (SaaS) + Agent | ناشناخته (SaaS) | ناشناخته (SaaS) + Node مانیتورینگ اختصاصی (~$49/mo) |
-| **معماری باینری / Microservice** | ۱ Binary، Roleها | ۲ Container | ۴ Container پایه + Proxy + Sentinel | ۳ Container | ده‌ها Deployment | ۱ Controller + Addonها | Managed | Managed | Managed |
-| **زمان پاسخ API (Reads)** | p99 < ۵ms سمت Server (Projection در حافظه) | هر List → K8s API | DB Query (PHP) | DB Query (Node) | متوسط | K8s API | شبکه‌ی SaaS | شبکه‌ی SaaS | شبکه‌ی SaaS |
-| **HPA / Autoscale** | HPA + KEDA اختیاری + Scale-to-zero داخلی | HPA ساده | ❌ (Scale دستی، Multi-server) | ❌ (Swarm replicas) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **ایزولاسیون Build** | Namespace جدا، بدون SA Token، NetPol، buildkitd Rootless | Build Pod با SA Token و `kubectl` (🔴) | Build روی همان Docker Host تولید | Build روی Host | Job جدا | — (بدون Build داخلی) | Managed Builders | Managed Builders | Managed |
-| **امنیت Web Shell** | Authz در Upgrade، Session per-tab، Audit، Recording (Ent) | Room قابل‌حدس، بدون Authz در join (🔴) | WS از طریق Soketi | WS | ✅ RBAC | ❌ (بدون UI Shell) | ✅ | ✅ | ✅ |
-| **Preview Env per PR** | ✅ + TTL + DB Branch | ✅ Review Apps (بدون TTL/DB) | ✅ (Preview Deployments) | ✅ | ❌ (Pipeline-محور) | ❌ | ✅ (Ephemeral) | ✅ | ✅ |
-| **مدیریت هزینه (FinOps)** | ✅ Meter زنده (OpenCost-spec) | ❌ | ❌ | ❌ | ⚠️ محدود | ❌ | ✅ (Add-on) | ✅ (Billing) | ✅ (Metered) |
-| **مالکیت داده** | ۱۰۰٪ در Cluster شما (etcd + SQLite/PG) | ✅ در Cluster | ✅ روی Server شما | ✅ | ✅ | ✅ | ⚠️ Metadata در SaaS Qovery | ⚠️ در SaaS | ⚠️ در SaaS |
-| **Networking** | Gateway API (آینده‌دار) | Ingress (ingress-nginx بازنشسته) | Traefik/Caddy | Traefik | Ingress | Ingress/Trait | Managed | Managed | Managed |
-| **لایسنس / قیمت** | Open Source (پیشنهاد: Apache-2.0) | GPLv3 | Apache-2.0 + Cloud | Apache-2.0 + Cloud | هسته OSS + Enterprise | Apache-2.0 | از **$899/mo** (Team) تا **$1,999–2,999/mo** (Business) | Usage-based؛ BYOC: $0.01389/vCPU-hr + $0.00139/GB-hr | $13/vCPU-mo + $6/GB-mo |
+| **Execution model** | K8s-native, single Rust binary | K8s; NestJS UI + operator (Go/Helm) | Docker + SSH; PHP/Laravel + PG + Redis + Soketi | Docker Swarm; Node + PG + Traefik | K8s; dozens of microservices (Go) | K8s; Go controller + CUE | SaaS control plane + agent in your cluster | SaaS control plane (+BYOC) | SaaS control plane on your EKS/GKE/AKS |
+| **Control-plane RAM at idle** | **≤ 30MB** (CI gate) | a few hundred MB (Node.js + node_modules + operator) | official minimum 2GB server; user reports ~1.3GB idle | official minimum 2GB server | 6GB (with CI/CD) up to 13GB (>5 apps) | request 20Mi, recommended Small: 1Gi | unknown (SaaS) + agent | unknown (SaaS) | unknown (SaaS) + dedicated monitoring node (~$49/mo) |
+| **Binary / microservice architecture** | 1 binary, roles | 2 containers | 4 base containers + proxy + sentinel | 3 containers | dozens of Deployments | 1 controller + addons | Managed | Managed | Managed |
+| **API response time (reads)** | p99 < 5ms server-side (in-memory projection) | every list → K8s API | DB query (PHP) | DB query (Node) | medium | K8s API | SaaS network | SaaS network | SaaS network |
+| **HPA / autoscale** | HPA + optional KEDA + built-in scale-to-zero | basic HPA | ❌ (manual scaling, multi-server) | ❌ (Swarm replicas) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Build isolation** | separate namespace, no SA token, NetPol, rootless buildkitd | build Pod with an SA token and `kubectl` (🔴) | builds on the same production Docker host | builds on the host | separate Job | — (no built-in build) | Managed builders | Managed builders | Managed |
+| **Web shell security** | authz at upgrade, per-tab session, audit, recording (Ent) | guessable room, no authz on join (🔴) | WS via Soketi | WS | ✅ RBAC | ❌ (no shell UI) | ✅ | ✅ | ✅ |
+| **Preview env per PR** | ✅ + TTL + DB branch | ✅ review apps (no TTL/DB) | ✅ (preview deployments) | ✅ | ❌ (pipeline-driven) | ❌ | ✅ (ephemeral) | ✅ | ✅ |
+| **Cost management (FinOps)** | ✅ live meter (OpenCost spec) | ❌ | ❌ | ❌ | ⚠️ limited | ❌ | ✅ (add-on) | ✅ (billing) | ✅ (metered) |
+| **Data ownership** | 100% in your cluster (etcd + SQLite/PG) | ✅ in-cluster | ✅ on your server | ✅ | ✅ | ✅ | ⚠️ metadata in Qovery's SaaS | ⚠️ in SaaS | ⚠️ in SaaS |
+| **Networking** | Gateway API (future-proof) | Ingress (ingress-nginx retired) | Traefik/Caddy | Traefik | Ingress | Ingress/Trait | Managed | Managed | Managed |
+| **License / price** | open source (proposed: Apache-2.0) | GPLv3 | Apache-2.0 + Cloud | Apache-2.0 + Cloud | OSS core + Enterprise | Apache-2.0 | from **$899/mo** (Team) to **$1,999–2,999/mo** (Business) | usage-based; BYOC: $0.01389/vCPU-hr + $0.00139/GB-hr | $13/vCPU-mo + $6/GB-mo |
 
-### ۱.۲ رقبای پولی دقیقاً بابت چه چیزی پول می‌گیرند؟
+### 1.2 What exactly do the paid competitors charge for?
 
-| قابلیتی که پولش را می‌گیرند | Qovery (Team $899 / Business ~$2K) | Northflank | Porter | **Kuben (Open Source)** |
+| The capability they charge for | Qovery (Team $899 / Business ~$2K) | Northflank | Porter | **Kuben (open source)** |
 |---|---|---|---|---|
-| **Ephemeral / Preview Environments** | ✅ (سقف ۱۰۰ تا ۲۵۰ Env) | ✅ | ✅ | بخش ۳.۱ — نامحدود، با TTL و Cost Guard |
-| **Deployment Minutes** (۵۰۰۰ تا ۱۰٬۰۰۰ دقیقه) | ✅ Metered | Metered | — | Build روی buildkitd خودتان؛ بدون شمارنده |
-| **RBAC + Audit Logs** (۷ تا ۳۰ روز) | ✅ | ✅ | ✅ | RBAC کامل + Audit نامحدود (Retention تنظیمی) |
-| **SSO (SAML/OIDC)** | فقط Business | ✅ | Enterprise | OIDC در هسته (فاز ۲)، SAML از طریق IdP Bridge |
-| **Policy as Code، SLA 99.9%** | Business | Enterprise | Enterprise | Protection Rules + 4-Eyes (بخش ۳.۷)؛ SLA مسئولیت شما |
-| **Observability / Monitoring** | Add-on پولی | ✅ | ✅ (Node مانیتورینگ ~$49/mo) | Metrics Lite + eBPF Service Map (بخش ۳.۵) |
-| **Cost Optimization** | Add-on | Billing UI | Metered | FinOps Meter (بخش ۳.۶) |
-| **AI Skill + MCP Server** | ✅ (AI seats $10/mo) | — | — | AI SRE (بخش ۳.۴) + MCP Server، BYO-LLM یا Ollama محلی |
-| **Self-hosted / Air-gapped Control Plane** | فقط Enterprise (Custom) | Enterprise | — | پیش‌فرض |
-| **Management Fee روی BYOC** | Flat | برای ۴۰ vCPU/۸۰GB ≈ $486/mo | برای ۴۰ vCPU/۸۰GB ≈ $1,000/mo | صفر |
+| **Ephemeral / preview environments** | ✅ (capped at 100 to 250 envs) | ✅ | ✅ | Section 3.1 — unlimited, with TTL and a cost guard |
+| **Deployment minutes** (5,000 to 10,000 minutes) | ✅ metered | Metered | — | Builds on your own buildkitd; no meter |
+| **RBAC + audit logs** (7 to 30 days) | ✅ | ✅ | ✅ | Full RBAC + unlimited audit (configurable retention) |
+| **SSO (SAML/OIDC)** | Business only | ✅ | Enterprise | OIDC in the core (phase 2), SAML via an IdP bridge |
+| **Policy as code, 99.9% SLA** | Business | Enterprise | Enterprise | Protection rules + four-eyes (section 3.7); the SLA is your responsibility |
+| **Observability / monitoring** | paid add-on | ✅ | ✅ (monitoring node ~$49/mo) | Metrics Lite + eBPF service map (section 3.5) |
+| **Cost optimization** | Add-on | Billing UI | Metered | FinOps meter (section 3.6) |
+| **AI skill + MCP server** | ✅ (AI seats $10/mo) | — | — | AI SRE (section 3.4) + MCP server, BYO-LLM or local Ollama |
+| **Self-hosted / air-gapped control plane** | Enterprise only (custom) | Enterprise | — | Default |
+| **Management fee on BYOC** | Flat | for 40 vCPU/80GB ≈ $486/mo | for 40 vCPU/80GB ≈ $1,000/mo | Zero |
 
-**نتیجه:** یک تیم ۱۰ نفره با ۴۰ vCPU روی Cloud خودش، سالانه ۱۰ تا ۳۰ هزار دلار «Management Fee» می‌پردازد تا Preview Env، RBAC، Audit و SSO داشته باشد. Kuben همه‌ی این‌ها را به‌صورت Open Source و **داخل Cluster خود کاربر** ارائه می‌دهد؛ مدل درآمدی احتمالی Kuben (در صورت نیاز) فقط Support و Enterprise Add-onها (Session Recording، SAML، Merkle Audit) است، نه قفل کردن فیچرهای پایه.
+**Conclusion:** a ten-person team running 40 vCPU on its own cloud pays $10,000 to $30,000 a year in "management fees" just to get preview environments, RBAC, audit and SSO. Kuben delivers all of it as open source and **inside the user's own cluster**; Kuben's possible revenue model (if it needs one) is support and enterprise add-ons only (session recording, SAML, Merkle audit) — not locking up the basic features.
 
-### ۱.۳ چرا رقبای Open Source فعلی این جایگاه را پر نکرده‌اند؟
+### 1.3 Why today's open-source competitors have not filled this gap
 
-| رقیب | نقطه‌ی قوت | چرا Kuben از آن جلو می‌زند |
+| Competitor | Strength | Why Kuben gets ahead of it |
 |---|---|---|
-| **Coolify** | UX عالی، Onboarding یک‌خطی، ۸ DB Engine | Docker + SSH: بدون HA واقعی، بدون Scheduler، Build روی همان Host تولید (Contention)، Control Plane چهار-Container با ~۱.۳GB |
-| **Dokploy** | ساده، Swarm | Swarm در عمل مرده؛ بدون Ecosystem Operatorها؛ بدون Gateway API/CNPG/KEDA |
-| **Kubero** | ایده‌ی Pipeline/Review Apps، ۱۶۰ Template | حفره‌های امنیتی بخش ۲، Operator مبتنی بر Helm، Source of Truth دوپاره |
-| **Devtron** | Enterprise-grade، GitOps عمیق | ۶ تا ۱۳GB RAM، پیچیدگی نصب، برای تیم کوچک Overkill |
-| **KubeVela** | مدل OAM قدرتمند | Framework است نه محصول؛ بدون Build، بدون UI کامل، منحنی یادگیری CUE |
+| **Coolify** | Excellent UX, one-line onboarding, 8 DB engines | Docker + SSH: no real HA, no scheduler, builds on the same production host (contention), a four-container control plane at ~1.3GB |
+| **Dokploy** | Simple, Swarm | Swarm is dead in practice; no operator ecosystem; no Gateway API/CNPG/KEDA |
+| **The incumbent** | The pipeline/review-apps idea, 160 templates | The security holes in section 2, a Helm-based operator, a split source of truth |
+| **Devtron** | Enterprise-grade, deep GitOps | 6 to 13GB of RAM, installation complexity, overkill for a small team |
+| **KubeVela** | A powerful OAM model | It is a framework, not a product; no build, no complete UI, a CUE learning curve |
 
-### ۱.۴ حقیقت صادقانه‌ی Footprint
+### 1.4 The honest truth about footprint
 
-Kubernetes (حتی k3s) چند صد مگابایت پایه دارد. روی VPS یک‌گیگابایتی، Coolify و Dokploy سبک‌تر می‌مانند. **حداقل سخت‌افزار رسمی Kuben: ۲ vCPU و ۲GB RAM** (همان عددی که Coolify و Dokploy اعلام می‌کنند) — با این تفاوت که همان نصب، تا صدها Node بدون مهاجرت رشد می‌کند. پیام محصول: *«از یک VPS تا صد Node، بدون بازنویسی.»*
+Kubernetes (even k3s) has a base cost of a few hundred megabytes. On a one-gigabyte VPS, Coolify and Dokploy stay lighter. **Kuben's official hardware minimum: 2 vCPU and 2GB of RAM** (the same number Coolify and Dokploy publish) — with the difference that the very same installation grows to hundreds of nodes without a migration. The product message: *"From one VPS to a hundred nodes, without a rewrite."*
 
 ---
 
-## ۲. کالبدشکافی kubero-main
+## 2. Dissecting the incumbent PaaS
 
-> مسیرها نسبت به `kubero-main/`. جزئیات کامل در سند Golden (بخش ۱)؛ اینجا خلاصه‌ی عملیاتی + «چه چیزی را نگه می‌داریم».
+> Locations below refer to components of the incumbent's own tree. Full detail is in the Golden document (section 1); here you get the operational summary plus "what we keep".
 
-### ۲.۱ نقاط قوت قابل‌استخراج
+### 2.1 Strengths worth carrying over
 
-| مفهوم | کجا | چطور در Kuben بازتولید می‌شود |
+| Concept | Where | How Kuben reproduces it |
 |---|---|---|
-| **Pipeline → Phase → App** (review/test/stage/prod) | `server/src/pipelines/`، `apps/app/app.ts` | `Project → Environment → App` + Promotion Order در `Environment.spec.promotion` |
-| **Review Apps** روی PR | `repo/` Webhookها | `Environment.type=preview` + TTL + DB Branch (بخش ۳.۱) |
-| **Buildpack/Nixpacks/Dockerfile Strategy** | `deployments/templates/*.yaml.ts`، `config/buildpack/` | `App.spec.source.build.strategy = auto|dockerfile|railpack|image` روی BuildKit Frontendها |
-| **Template Catalog (+۱۶۰ سرویس)** با Annotationهای Metadata | `services/*/app.yaml` | Repo جدا `kuben-templates`، Schema اعتبارسنجی‌شده، Secretهای تولیدشده (لایسنس GPL بررسی شود) |
-| **Addon Plugins** (Postgres، Redis، MySQL، Mongo، Minio، …) | `addons/plugins/*.ts` | `ServiceClass` CRD (داده، نه کد) + CNPG/Valkey/MariaDB Operatorها |
-| **Podsize، Runpack، SecurityContext** پیکربندی‌پذیر | `prisma/schema.prisma` | `KubenConfig.spec.sizes[]`، Runpack → Build Strategy |
-| **Multi-Git-Provider** (GitHub، GitLab، Gitea، Gogs، Bitbucket) | `repo/git/*.ts` | Trait `GitProvider` با پیاده‌سازی‌های جدا؛ Webhook + Polling Fallback |
-| **Notifications** (Slack/Discord/Webhook) | `notifications/` | Outbox Pattern + Telegram/Email اضافه |
-| **Vulnerability Scan (Trivy)، Cron Jobs، Basic Auth** | `kubernetes.service.ts`، CRD Spec | حفظ می‌شوند (فاز ۲) |
-| **i18n (en/de/ja/zh/pt)** | `client/src/locale/` | paraglide + RTL |
+| **Pipeline → Phase → App** (review/test/stage/prod) | the incumbent's pipelines module and app model | `Project → Environment → App` + promotion order in `Environment.spec.promotion` |
+| **Review apps** on a PR | the incumbent's repo webhook handlers | `Environment.type=preview` + TTL + DB branch (section 3.1) |
+| **Buildpack/Nixpacks/Dockerfile strategy** | the incumbent's deployment templates and buildpack config | `App.spec.source.build.strategy = auto|dockerfile|railpack|image` on top of BuildKit frontends |
+| **Template catalog (160+ services)** with metadata annotations | the incumbent's per-service template manifests | A separate `kuben-templates` repo, a validated schema, generated secrets (the GPL license needs review) |
+| **Addon plugins** (Postgres, Redis, MySQL, Mongo, Minio, …) | the incumbent's addon plugins | A `ServiceClass` CRD (data, not code) + the CNPG/Valkey/MariaDB operators |
+| Configurable **podsize, runpack, securityContext** | the incumbent's Prisma schema | `KubenConfig.spec.sizes[]`, runpack → build strategy |
+| **Multi-git-provider** (GitHub, GitLab, Gitea, Gogs, Bitbucket) | the incumbent's git provider adapters | A `GitProvider` trait with separate implementations; webhook + polling fallback |
+| **Notifications** (Slack/Discord/webhook) | the incumbent's notifications module | Outbox pattern + Telegram/email added |
+| **Vulnerability scan (Trivy), cron jobs, basic auth** | the incumbent's Kubernetes service and CRD spec | Kept (phase 2) |
+| **i18n (en/de/ja/zh/pt)** | the incumbent's client locale files | paraglide + RTL |
 
-### ۲.۲ حفره‌های امنیتی و معماری → Invariantهای غیرقابل‌نقض Kuben
+### 2.2 Security and architecture gaps → Kuben's non-negotiable invariants
 
-| # | حفره | شاهد | Invariant در Kuben (چطور **ساختاراً** غیرممکن می‌شود) |
+| # | Gap | Evidence | Invariant in Kuben (how it becomes **structurally** impossible) |
 |---|---|---|---|
-| S1 🔴 | **شنود و Hijack ترمینال/لاگ بین کاربران:** `join` بدون Authz، `handleTerminal` ورودی را به هر Room می‌نویسد؛ نام Room قابل‌حدس | `server/src/events/events.gateway.ts:29-36, :57-65`؛ `apps/apps.service.ts:746` | **I-1:** هر Subscription (SSE/WS) = `authz.require(perm, resource)` در همان Handler + Session ID تصادفی ۱۲۸ بیتی متصل به `user_id`. Type System: `LogStream::subscribe(&AuthzProof, ..)` بدون `AuthzProof` Compile نمی‌شود |
-| S2 🔴 | **Secret پیش‌فرض JWT در کد** | `auth/auth.service.ts:156-158`، `auth/strategies/jwt.strategy.ts:13-15` | **I-2:** هیچ Secret پیش‌فرضی وجود ندارد؛ کلیدها در اولین Boot تولید و در K8s Secret ذخیره می‌شوند؛ بدون کلید → `exit 1` (Fail-Closed) |
-| S3 🟠 | JWT در Cookie قابل‌خواندن با JS و `localStorage`؛ CSP خاموش | `client/src/plugins/index.ts:17`، `loginprompt.vue:165`، `main.ts:37-38` | **I-3:** Session Opaque در Cookie `__Host-` + `HttpOnly; Secure; SameSite=Lax`؛ CSP `default-src 'self'` بدون Inline |
-| S4 🟠 | Hash Legacy HMAC-SHA256 + مقایسه‌ی غیر Constant-time | `auth/auth.service.ts:36-51` | **I-4:** فقط Argon2id (OWASP m=19MiB,t=2,p=1) + `subtle::ConstantTimeEq`؛ Import از Kubero → Rehash-on-login |
-| S5 🟠 | CORS `*` روی WS، `cors: true`، بدون HSTS | `events.gateway.ts:13-17`، `main.ts:30` | **I-5:** Same-Origin پیش‌فرض؛ Origin Check در WS Upgrade؛ Allowlist صریح |
-| S6 🟠 | **PromQL Injection** | `metrics/metrics.service.ts:114, :228` | **I-6:** نام‌ها با Regex DNS-1123 اعتبارسنجی و از Projection خوانده می‌شوند، هرگز از رشته‌ی کاربر |
-| S7 🔴 | **Build Pod با SA Token و `bitnami/kubectl:latest`** که خودش CR را Patch می‌کند | `deployments/templates/buildpacks.yaml.ts:31, :48-49` | **I-7:** Build Pod هرگز API Server را نمی‌بیند (`automountServiceAccountToken: false` + NetPol Egress فقط Git/Registry/buildkitd). Controller نتیجه را از Job Status می‌خواند. همه‌ی Imageهای کمکی Digest-pinned |
-| S8 🟠 | Broadcast Notification به همه‌ی Socketها؛ Guard فقط روی Message نه Handshake | `events.gateway.ts:47-49` | **I-8:** Authn در Upgrade؛ Topicها مجوزدار |
-| S9 🟡 | خروجی Terminal کاربر به `process.stdout` سرور | `kubernetes.service.ts:1184` | **I-9:** محتوای Terminal هرگز Log نمی‌شود؛ فقط Metadata در Audit |
-| S10 🟡 | Passwordهای ثابت در Templateها (`password: wordpress`) | `services/wordpress/app.yaml` | **I-10:** Template Parameter Schema با `generate: password` |
-| C1 🔴 | **Context مشترک Mutable** (`setCurrentContext` در ۲۸ نقطه) → Race بین Clusterها | `logs/logs.service.ts:70`، `apps/apps.service.ts:163,403,683` | **I-11:** `ClusterRegistry` Immutable؛ هر عملیات `ClusterId` صریح می‌گیرد؛ هیچ Global Mutable |
-| C2 🔴 | **نشت Log Stream** (آرایه‌ی فقط-افزایشی، بدون Backpressure، Sleep 300ms) | `logs/logs.service.ts:12, :72-82, :218` | **I-12:** `LogHub` با Ref-count، `broadcast` Bounded، `LinesCodec::new_with_max_length(16KiB)`، Drop-with-marker |
-| C3 🟠 | Shell مشترک بین کاربران + Sleep 3s | `apps.service.ts:746-797` | **I-13:** یک Session برای هر تب/کاربر، Idle Timeout |
-| C4 🟠 | بدون Informer؛ Cron هر ۱۵s کل Cluster را List می‌کند | `status/status.service.ts:18` | **I-14:** Informer + Projection؛ شمارنده‌ها از حافظه |
-| C6 🟡 | Graceful Shutdown خاموش | `main.ts:109` | **I-15:** ترتیب Shutdown کامل (Readiness→Drain→Lease→Flush→Checkpoint) |
-| C7 🟡 | `execSync('npx prisma migrate deploy')` در Boot + `PRAGMA foreign_keys=OFF` | `database/database.service.ts:61-63` | **I-16:** `sqlx::migrate!` Embedded با Lock؛ FK همیشه ON |
-| A1 | **Source of Truth دوپاره** (SQLite + `Kuberoes` CRD + `config.yaml`) | `config/config.service.ts:70-131, :249-276` | **I-17:** مرز داده‌ی قطعی (بخش ۴.۲)؛ ارجاع SQL→CRD فقط با `uid` + BindingGC |
-| A2 | Operator = Helm Render؛ Status/Conditions ضعیف | Operator Go (خارج از Repo) | **I-18:** Builderهای Typed + SSA + Conditions kstatus + `observedGeneration` |
+| S1 🔴 | **Terminal/log eavesdropping and hijacking between users:** `join` with no authz, `handleTerminal` writes input into any room; room names are guessable | the incumbent's events gateway and apps service | **I-1:** every subscription (SSE/WS) = `authz.require(perm, resource)` in that same handler + a random 128-bit session ID bound to `user_id`. Type system: `LogStream::subscribe(&AuthzProof, ..)` does not compile without an `AuthzProof` |
+| S2 🔴 | **Default JWT secret in the code** | the incumbent's auth service and JWT strategy | **I-2:** there is no default secret; keys are generated on first boot and stored in a K8s Secret; no key → `exit 1` (fail-closed) |
+| S3 🟠 | JWT in a JS-readable cookie and in `localStorage`; CSP disabled | the incumbent's client plugin bootstrap, login prompt and app entry point | **I-3:** an opaque session in a `__Host-` cookie + `HttpOnly; Secure; SameSite=Lax`; CSP `default-src 'self'` with no inline |
+| S4 🟠 | Legacy HMAC-SHA256 hash + non-constant-time comparison | the incumbent's auth service | **I-4:** Argon2id only (OWASP m=19MiB,t=2,p=1) + `subtle::ConstantTimeEq`; imports from the incumbent → rehash on login |
+| S5 🟠 | CORS `*` on WS, `cors: true`, no HSTS | the incumbent's events gateway and server entry point | **I-5:** same-origin by default; origin check at the WS upgrade; explicit allowlist |
+| S6 🟠 | **PromQL injection** | the incumbent's metrics service | **I-6:** names are validated against a DNS-1123 regex and read from the projection, never from a user-supplied string |
+| S7 🔴 | **A build Pod with an SA token and `bitnami/kubectl:latest`** that patches the CR itself | the incumbent's buildpack job template | **I-7:** the build Pod never sees the API server (`automountServiceAccountToken: false` + a NetPol allowing egress only to Git/registry/buildkitd). The controller reads the result from the Job status. All helper images are digest-pinned |
+| S8 🟠 | Notifications broadcast to every socket; the guard is on the message, not on the handshake | the incumbent's events gateway | **I-8:** authn at the upgrade; topics are permissioned |
+| S9 🟡 | A user's terminal output goes to the server's `process.stdout` | the incumbent's Kubernetes service | **I-9:** terminal content is never logged; only metadata goes into the audit |
+| S10 🟡 | Hardcoded passwords in the templates (`password: wordpress`) | the incumbent's WordPress template | **I-10:** a template parameter schema with `generate: password` |
+| C1 🔴 | **Shared mutable context** (`setCurrentContext` in 28 places) → races between clusters | the incumbent's logs service and apps service | **I-11:** an immutable `ClusterRegistry`; every operation takes an explicit `ClusterId`; no global mutable state |
+| C2 🔴 | **Log stream leak** (an append-only array, no backpressure, a 300ms sleep) | the incumbent's logs service | **I-12:** a `LogHub` with ref-counting, a bounded `broadcast`, `LinesCodec::new_with_max_length(16KiB)`, drop-with-marker |
+| C3 🟠 | A shell shared between users + a 3s sleep | the incumbent's apps service | **I-13:** one session per tab/user, idle timeout |
+| C4 🟠 | No informer; a cron lists the whole cluster every 15s | the incumbent's status service | **I-14:** informer + projection; counters come from memory |
+| C6 🟡 | Graceful shutdown disabled | the incumbent's server entry point | **I-15:** a complete shutdown order (readiness → drain → lease → flush → checkpoint) |
+| C7 🟡 | `execSync('npx prisma migrate deploy')` at boot + `PRAGMA foreign_keys=OFF` | the incumbent's database service | **I-16:** embedded `sqlx::migrate!` with a lock; FKs always ON |
+| A1 | **A split source of truth** (SQLite + the incumbent's instance CR + `config.yaml`) | the incumbent's config service | **I-17:** a definitive data boundary (section 4.2); SQL→CRD references only by `uid` + BindingGC |
+| A2 | The operator is a Helm render; weak status/conditions | the incumbent's Go operator (outside the repo) | **I-18:** typed builders + SSA + kstatus conditions + `observedGeneration` |
 
-این ۱۸ Invariant به‌عنوان **Checklist اجباری Code Review** در `CONTRIBUTING.md` قرار می‌گیرند و هر کدام حداقل یک **تست منفی E2E** دارند (مثلاً: کاربر Viewer از Org دیگر تلاش می‌کند به Log Stream وصل شود → 403).
+These 18 invariants go into `CONTRIBUTING.md` as a **mandatory code-review checklist**, and each one has at least one **negative E2E test** (for example: a viewer from another org tries to attach to a log stream → 403).
 
 ---
 
-## ۳. بسته فیچرهای Hi-Tech و تمایزبخش
+## 3. The hi-tech, differentiating feature pack
 
-> برای هر قابلیت: **ارزش**، **معماری**، **سازوکار دقیق**، **محدودیت صادقانه**، **فاز**.
+> For each capability: **value**, **architecture**, **exact mechanism**, **honest limitation**, **phase**.
 
-### ۳.۱ Ephemeral Preview Environments per PR (با Auto-TTL)
+### 3.1 Ephemeral preview environments per PR (with auto-TTL)
 
-**ارزش:** همان چیزی که Qovery/Vercel می‌فروشند؛ Kubero Review App دارد ولی بدون TTL، بدون DB جدا و بدون Cost Guard.
+**Value:** exactly what Qovery/Vercel sell; the incumbent has review apps, but with no TTL, no separate DB and no cost guard.
 
-**مدل:**
+**Model:**
 
 ```yaml
 apiVersion: kuben.dev/v1alpha1
@@ -154,15 +154,15 @@ metadata:
   labels: { kuben.dev/project: shop, kuben.dev/type: preview, kuben.dev/pr: "482" }
 spec:
   type: preview
-  template: staging                 # Env مبنا: Env/Secret/Service از آن Fork می‌شود
+  template: staging                 # Base env: Env/Secret/Service are forked from it
   source: { provider: github, repo: acme/shop, pr: 482, headSha: 9f1c…, baseBranch: main }
-  ttl: { idle: 48h, max: 14d }      # حذف پس از ۴۸h بی‌ترافیکی یا حداکثر ۱۴ روز
-  budget: { maxMonthlyUsd: 40 }     # Cost Guard (بخش ۳.۶)
+  ttl: { idle: 48h, max: 14d }      # deleted after 48h with no traffic, or after 14 days at most
+  budget: { maxMonthlyUsd: 40 }     # Cost guard (section 3.6)
   overrides:
     env: [{ name: FEATURE_FLAGS, value: "all" }]
     services:
       - name: shop-db
-        mode: branch                # ← بخش ۳.۲ (Instant DB Branching)
+        mode: branch                # ← section 3.2 (Instant DB Branching)
   domains: { pattern: "pr-{pr}.{app}.{project}.{base}" }   # pr-482.api.shop.apps.example.com
 status:
   phase: Ready
@@ -171,7 +171,7 @@ status:
   lastTrafficAt: 2026-09-11T08:12:00Z
 ```
 
-**جریان:**
+**Flow:**
 
 ```mermaid
 sequenceDiagram
@@ -183,40 +183,40 @@ sequenceDiagram
   API->>K: upsert Environment(type=preview, headSha)
   K-->>C: watch
   C->>K: Namespace kx-shop-pr-482 (PSA restricted, Quota, NetPol default-deny)
-  C->>K: copy Secrets/ConfigMaps از staging با overrides (immutable, hashed names)
-  C->>K: ServiceBranch shop-db (mode=branch) → منتظر Ready
+  C->>K: copy Secrets/ConfigMaps from staging with overrides (immutable, hashed names)
+  C->>K: ServiceBranch shop-db (mode=branch) → wait for Ready
   C->>K: BuildRun (app+sha) → Release → Deployment/Service/HTTPRoute
   C-->>GH: Check Run + PR comment: "🟢 Preview ready: https://pr-482…"
-  Note over C: PreviewGC هر ۵ دقیقه: idle>ttl.idle یا now>expiresAt یا PR closed → Environment.delete
+  Note over C: PreviewGC every 5 minutes: idle>ttl.idle or now>expiresAt or PR closed → Environment.delete
   GH->>API: PR closed/merged → delete Environment
-  C->>K: Finalizer: حذف HTTPRoute، DNS record، ServiceBranch، Namespace (Grace 10m برای Undo)
+  C->>K: Finalizer: delete HTTPRoute, DNS record, ServiceBranch, Namespace (10m grace for undo)
 ```
 
-**جزئیات مهندسی:**
+**Engineering details:**
 
-- **Idle Detection:** `lastTrafficAt` از Activator/Proxy (بخش ۳.۳) یا از Gateway Access Log Metricها؛ اگر هیچ‌کدام نبود، از `HTTPRoute` Metricهای Traefik/Envoy (Prometheus Scrape سبک هر ۶۰s).
-- **Secrets Preview:** هرگز Production Secret کپی نمی‌شود؛ فقط `template` (که باید staging یا dev باشد) و `Environment.spec.protection.allowPreviewFrom` آن را مجاز کرده باشد.
-- **Cost Guard:** اگر تخمین ماهانه (بخش ۳.۶) از `budget` بگذرد → Scale-to-zero اجباری + Comment روی PR.
-- **Concurrency Limit:** `Project.spec.previews.max: 10`؛ بعد از آن، PR جدید در صف می‌ماند و قدیمی‌ترین Idle حذف می‌شود.
-- **دامنه و TLS:** Wildcard Cert (`*.shop.apps.example.com`) با DNS-01 اگر پیکربندی شده؛ در غیر این صورت HTTP-01 برای هر Host (به Rate Limit توجه شود — بخش ۴.۴).
-- **Bot Comment:** با GitHub App (نه PAT) → Check Run با Status و لینک Logs.
-- **حذف ایمن:** Finalizer با Timeout ۱۰ دقیقه؛ اگر ServiceBranch گیر کرد، Namespace حذف می‌شود و Branch به `Orphaned` می‌رود و در UI هشدار می‌دهد (نه اینکه Namespace در `Terminating` بماند).
+- **Idle detection:** `lastTrafficAt` comes from the activator/proxy (section 3.3) or from gateway access-log metrics; if neither exists, from the Traefik/Envoy metrics for the `HTTPRoute` (a light Prometheus scrape every 60s).
+- **Preview secrets:** a production secret is never copied; only the `template` (which must be staging or dev) and only if `Environment.spec.protection.allowPreviewFrom` has permitted it.
+- **Cost guard:** if the monthly estimate (section 3.6) exceeds `budget` → forced scale-to-zero + a comment on the PR.
+- **Concurrency limit:** `Project.spec.previews.max: 10`; beyond that, a new PR queues up and the oldest idle one is deleted.
+- **Domains and TLS:** a wildcard cert (`*.shop.apps.example.com`) with DNS-01 if it is configured; otherwise HTTP-01 per host (mind the rate limits — section 4.4).
+- **Bot comment:** via a GitHub App (not a PAT) → a check run with status and a link to the logs.
+- **Safe deletion:** a finalizer with a 10-minute timeout; if the ServiceBranch gets stuck, the namespace is deleted, the branch moves to `Orphaned` and the UI warns about it (rather than leaving the namespace in `Terminating`).
 
-**محدودیت صادقانه:** Preview برای Appهایی که به سرویس‌های خارجی Stateful (Stripe، S3 Bucket واقعی) وابسته‌اند، بدون Mock/Sandbox Keys کامل نیست؛ Kuben `overrides.env` را برای Sandbox Keys فراهم می‌کند، ولی معجزه نمی‌کند.
+**Honest limitation:** for apps that depend on external stateful services (Stripe, a real S3 bucket), a preview is not complete without mock or sandbox keys; Kuben provides `overrides.env` for sandbox keys, but it does not work miracles.
 
-**فاز:** ۲ (پس از MVP)؛ Environment CRD و Namespace Lifecycle در فاز ۰ طراحی می‌شوند.
+**Phase:** 2 (after the MVP); the Environment CRD and the namespace lifecycle are designed in phase 0.
 
-### ۳.۲ Instant DB Branching با Copy-on-Write
+### 3.2 Instant database branching with copy-on-write
 
-**ارزش:** Preview با داده‌ی واقعی (Masked) به‌جای Seed خالی؛ Neon/Supabase این را فقط در Cloud خودشان می‌دهند.
+**Value:** previews with real (masked) data instead of an empty seed; Neon/Supabase only offer this inside their own cloud.
 
-**اصل صادقانه:** «فوری» فقط وقتی ممکن است که Storage زیرین **Copy-on-Write** داشته باشد. Kuben سه Strategy را پشت یک CRD واحد قرار می‌دهد و **بهترین موجود را خودکار انتخاب می‌کند**:
+**The honest principle:** "instant" is only possible when the underlying storage supports **copy-on-write**. Kuben puts three strategies behind a single CRD and **automatically picks the best one available**:
 
-| Strategy | مکانیزم | زمان Branch ۵GB | نیاز | کجا |
+| Strategy | Mechanism | Branch time for 5GB | Requires | Where |
 |---|---|---|---|---|
-| **`csi-clone`** | `VolumeSnapshot` (GA از K8s 1.20) از PVC منبع → PVC جدید از Snapshot → CNPG `bootstrap.recovery.volumeSnapshots` | ثانیه‌ها روی Ceph RBD / Longhorn / OpenEBS Mayastor (thin) / ZFS-LocalPV؛ **دقیقه‌ها** روی EBS/GCE PD (Snapshot به Object Storage می‌رود) | CSI Driver با VolumeSnapshotClass | Managed و On-prem با CSI مناسب |
-| **`overlay`** | OverlayFS روی `PGDATA` (همان مکانیزم Container Image Layers): Lower = Base Backup منبع، Upper = Volume خالی Branch؛ Postgres با WAL Crash-Recovery بالا می‌آید. (الگوی pgbranch: ~۱.۹s مستقل از حجم) | **~۲ ثانیه** | `CAP_SYS_ADMIN` برای Mount در Container؛ Node ثابت (`hostPath` یا Local PV) | k3s تک/چند-Node، Dev/Preview |
-| **`logical`** | `pg_dump \| pg_restore` با Parallel Jobs + سقف حجم | دقیقه‌ها (خطی با حجم) | هیچ | Fallback همه‌جا؛ Cap پیش‌فرض ۲GB |
+| **`csi-clone`** | `VolumeSnapshot` (GA since K8s 1.20) of the source PVC → a new PVC from the snapshot → CNPG `bootstrap.recovery.volumeSnapshots` | seconds on Ceph RBD / Longhorn / OpenEBS Mayastor (thin) / ZFS-LocalPV; **minutes** on EBS/GCE PD (the snapshot goes to object storage) | a CSI driver with a VolumeSnapshotClass | Managed and on-prem with a suitable CSI |
+| **`overlay`** | OverlayFS over `PGDATA` (the same mechanism as container image layers): lower = the source's base backup, upper = the branch's empty volume; Postgres comes up through WAL crash recovery. (the pgbranch pattern: ~1.9s regardless of size) | **~2 seconds** | `CAP_SYS_ADMIN` to mount inside the container; a fixed node (`hostPath` or a local PV) | single- or multi-node k3s, dev/preview |
+| **`logical`** | `pg_dump \| pg_restore` with parallel jobs + a size cap | minutes (linear in size) | nothing | Fallback everywhere; default cap 2GB |
 
 **CRD:**
 
@@ -227,64 +227,64 @@ metadata: { name: shop-db-pr-482, namespace: kx-shop-pr-482 }
 spec:
   source: { namespace: kx-shop-staging, service: shop-db }   # CNPG Cluster
   strategy: auto                       # auto | csi-clone | overlay | logical
-  pointInTime: latest                  # یا timestamp (با WAL Archive)
-  masking:                             # PII Scrub قبل از در دسترس قرار گرفتن
+  pointInTime: latest                  # or a timestamp (with WAL archive)
+  masking:                             # PII scrub before it becomes reachable
     sqlRef: { configMap: shop-db-mask, key: mask.sql }
   ttl: 14d
-  size: { cpu: 250m, memory: 512Mi }   # کوچک‌تر از منبع
+  size: { cpu: 250m, memory: 512Mi }   # smaller than the source
 status:
   strategyUsed: overlay
   phase: Ready
-  connection: { secretRef: shop-db-pr-482-app }   # DATABASE_URL تزریق می‌شود
+  connection: { secretRef: shop-db-pr-482-app }   # DATABASE_URL is injected
   branchedAt: 2026-09-11T08:10:04Z
-  sizeOnDisk: 41Mi                     # فقط Delta
+  sizeOnDisk: 41Mi                     # delta only
 ```
 
-**سازوکار `overlay` (پیاده‌سازی Kuben، نه وابستگی خارجی):**
+**How `overlay` works (a Kuben implementation, not an external dependency):**
 
-1. Controller یک **Base Layer** برای هر Source نگه می‌دارد: `pg_basebackup` (یا CSI Snapshot اگر ارزان است) روی Local PV Node ذخیره‌شده و هر ۶ ساعت/پس از هر Migration Refresh می‌شود (Read-only، مشترک بین همه‌ی Branchها).
-2. برای هر Branch: یک PVC خالی (Upper) + Pod Postgres (Image استاندارد `postgres:17`) با Init Container Kuben (`kuben-overlay-init`، Rust، ~۳MB) که `mount -t overlay` را با `lowerdir=/base,upperdir=/upper/data,workdir=/upper/work` انجام می‌دهد و `PGDATA` را روی Merged View می‌گذارد.
-3. Postgres با Crash Recovery بالا می‌آید (مثل Power-cycle). صفحات تغییرکرده در Upper کپی می‌شوند (Copy-up)؛ بقیه از Lower خوانده می‌شوند.
-4. `masking.sql` اجرا می‌شود؛ Credential جدید تولید و در Secret قرار می‌گیرد.
-5. **امنیت:** Pod با `CAP_SYS_ADMIN` فقط برای Init Container و فقط در Namespaceهای `preview` (PSA `privileged` فقط برای این Namespaceها با Label صریح)؛ Kuben این را در UI به‌عنوان «Preview DB Branching requires privileged init on this cluster» شفاف می‌کند و روی Managed Clusterهای سخت‌گیر (GKE Autopilot) خودکار به `csi-clone` یا `logical` می‌افتد.
-6. **حذف:** Upper PVC حذف می‌شود؛ Base Layer با Ref-count و TTL.
+1. The controller keeps one **base layer** per source: a `pg_basebackup` (or a CSI snapshot if that is cheap) stored on a local PV on the node, refreshed every 6 hours and after every migration (read-only, shared by all branches).
+2. For each branch: an empty PVC (upper) + a Postgres Pod (the standard `postgres:17` image) with a Kuben init container (`kuben-overlay-init`, Rust, ~3MB) that performs `mount -t overlay` with `lowerdir=/base,upperdir=/upper/data,workdir=/upper/work` and points `PGDATA` at the merged view.
+3. Postgres comes up via crash recovery (like a power cycle). Changed pages are copied into the upper layer (copy-up); everything else is read from the lower layer.
+4. `masking.sql` runs; new credentials are generated and placed in a Secret.
+5. **Security:** the Pod gets `CAP_SYS_ADMIN` only for the init container and only in `preview` namespaces (PSA `privileged` only for those namespaces, via an explicit label); Kuben states this plainly in the UI as "Preview DB Branching requires privileged init on this cluster", and on strict managed clusters (GKE Autopilot) it automatically falls back to `csi-clone` or `logical`.
+6. **Deletion:** the upper PVC is deleted; the base layer is ref-counted and TTL'd.
 
-**برای MySQL/MariaDB:** `overlay` عیناً کار می‌کند (InnoDB Crash Recovery)؛ `csi-clone` با MariaDB Operator؛ برای Valkey/Redis فقط `logical` (RDB Copy).
+**For MySQL/MariaDB:** `overlay` works identically (InnoDB crash recovery); `csi-clone` works with the MariaDB operator; for Valkey/Redis only `logical` (an RDB copy).
 
-**محدودیت صادقانه:** Branch از Primary فعال گرفته می‌شود و **Source را نمی‌خواند** (Isolation کامل)، ولی Base Layer تا ۶ ساعت قدیمی است مگر `pointInTime: latest` که Refresh فوری (چند ثانیه تا دقیقه بسته به حجم) را Trigger می‌کند. Branch برای Production-grade HA نیست.
+**Honest limitation:** the branch is taken from the live primary and **does not read from the source** (full isolation), but the base layer can be up to 6 hours old unless `pointInTime: latest` triggers an immediate refresh (seconds to minutes depending on size). A branch is not meant for production-grade HA.
 
-**فاز:** ۲ (`logical` و `csi-clone`)، ۳ (`overlay`).
+**Phase:** 2 (`logical` and `csi-clone`), 3 (`overlay`).
 
-### ۳.۳ Sub-Second Scale-to-Zero بدون Knative
+### 3.3 Sub-second scale-to-zero without Knative
 
-**ارزش:** Preview Envها و Appهای کم‌ترافیک هزینه‌ی صفر داشته باشند؛ Kubero «sleep» ساده دارد؛ Coolify هیچ.
+**Value:** preview environments and low-traffic apps should cost zero; the incumbent has a simple "sleep"; Coolify has nothing.
 
-**اصل صادقانه درباره‌ی «زیر ۱ ثانیه»:** Cold Start واقعی Kubernetes = Scale (100–300ms) + Schedule (100–500ms) + Container Start (Image Cached: 200ms–2s) + App Boot (Node ~300ms، JVM چند ثانیه). **زیر ۱ ثانیه از Zero فقط برای Imageهای Cache‌شده و Appهای سریع** ممکن است. Kuben دو Mode می‌دهد و صادقانه گزارش می‌کند:
+**The honest principle behind "under 1 second":** a real Kubernetes cold start = scale (100–300ms) + schedule (100–500ms) + container start (image cached: 200ms–2s) + app boot (Node ~300ms, JVM several seconds). **Under one second from zero is only possible for cached images and fast apps.** Kuben offers two modes and reports honestly:
 
-| Mode | مکانیزم | Wake Latency | صرفه‌جویی |
+| Mode | Mechanism | Wake latency | Savings |
 |---|---|---|---|
-| **`throttle`** (پیش‌فرض برای Preview) | Pod زنده می‌ماند؛ با **In-place Pod Resize** (K8s ≥1.33، Beta پیش‌فرض فعال) CPU به `10m` و Memory به حداقل کاهش می‌یابد؛ درخواست جدید → Resize برمی‌گردد | **~۰ ms** (Pod در حال اجراست) + ۱۰۰–۳۰۰ms تا CPU برگردد | CPU ~۹۵٪، RAM ~۰٪ (Memory Resize کاهشی محدود است) |
-| **`zero`** | Replicas → 0؛ Activator درخواست را نگه می‌دارد؛ Scale به 1؛ Pod Ready → Forward | **۱ تا ۳ ثانیه** (Image Cached) | ۱۰۰٪ |
+| **`throttle`** (the default for previews) | The Pod stays alive; with **in-place Pod resize** (K8s ≥1.33, beta enabled by default) CPU drops to `10m` and memory to a minimum; a new request → the resize is reverted | **~0 ms** (the Pod is already running) + 100–300ms for the CPU to come back | CPU ~95%, RAM ~0% (downward memory resize is limited) |
+| **`zero`** | Replicas → 0; the activator holds the request; scale to 1; Pod ready → forward | **1 to 3 seconds** (image cached) | 100% |
 
-**معماری Activator (داخل همان Binary، Role `activator`):**
+**Activator architecture (inside the same binary, role `activator`):**
 
 ```
-Gateway (HTTPRoute host=pr-482.web…)  ──►  Service kuben-activator:8080  ──►  Pod app (وقتی بیدار است)
+Gateway (HTTPRoute host=pr-482.web…)  ──►  Service kuben-activator:8080  ──►  Pod app (when it is awake)
                                                    │
                                      Rust hyper proxy (~800 LOC):
                                      • per-host state: Awake | Sleeping | Waking(notify)
-                                     • request counter → lastTrafficAt (برای Idle Detection)
+                                     • request counter → lastTrafficAt (for idle detection)
                                      • Sleeping: hold request (max 30s) + Scale/Resize + wait Pod Ready via informer
-                                     • Waking: همه‌ی درخواست‌های هم‌زمان روی همان Notify منتظر می‌مانند (بدون Thundering Herd)
-                                     • Awake: Forward مستقیم به Pod IP (Endpoints از Projection) — یک Hop، ~100µs
-                                     • Browser: صفحه‌ی "Waking up…" با Refresh (HTML) اگر Accept: text/html و Wake > 2s
+                                     • Waking: all concurrent requests wait on the same notify (no thundering herd)
+                                     • Awake: forward straight to the Pod IP (endpoints from the projection) — one hop, ~100µs
+                                     • Browser: a "Waking up…" page with refresh (HTML) if Accept: text/html and wake > 2s
 ```
 
-- **همیشه در مسیر** برای Appهایی که `idle` فعال دارند (Toggle کردن HTTPRoute در هر Sleep/Wake با Propagation ۲ ثانیه‌ای Traefik جمع نمی‌شود). هزینه: یک Hop Rust. Appهای بدون `idle` مستقیم به Service خودشان می‌روند.
-- **Idle Detection:** Activator هر ۳۰s `lastTrafficAt` را به Controller گزارش می‌دهد (In-process Channel در `--roles=all`، یا CR Status Patch در HA). بعد از `idle.after` (پیش‌فرض ۱۵ دقیقه) → Sleep.
-- **Scale-out:** Activator Concurrency را می‌شمارد و می‌تواند به HPA/KEDA به‌عنوان External Metric بدهد (فاز ۳).
-- **HA:** Activator Stateless است؛ N Replica پشت Service؛ Notify بین Replicaها لازم نیست (هر کدام مستقل Pod Ready را Watch می‌کنند).
-- **گزینه‌ی جایگزین:** KEDA HTTP Add-on همین کار را با ۳ Component (Operator، Interceptor، Scaler) می‌کند؛ Kuben از آن **استفاده نمی‌کند** چون ۳ Deployment دیگر با Footprint بیشتر است، ولی `InterceptorRoute` را در فاز ۳ به‌عنوان Backend اختیاری پشتیبانی می‌کند.
+- **Always on the path** for apps that have `idle` enabled (toggling the HTTPRoute on every sleep/wake does not work out with Traefik's 2-second propagation). The cost: one Rust hop. Apps without `idle` go straight to their own Service.
+- **Idle detection:** the activator reports `lastTrafficAt` to the controller every 30s (an in-process channel under `--roles=all`, or a CR status patch in HA). After `idle.after` (15 minutes by default) → sleep.
+- **Scale-out:** the activator counts concurrency and can feed it to HPA/KEDA as an external metric (phase 3).
+- **HA:** the activator is stateless; N replicas behind a Service; no notify is needed between replicas (each one watches Pod readiness independently).
+- **The alternative:** the KEDA HTTP add-on does the same job with 3 components (operator, interceptor, scaler); Kuben **does not use it**, because that means 3 more Deployments with a bigger footprint — but it will support `InterceptorRoute` as an optional backend in phase 3.
 
 ```yaml
 # App.spec.runtime.processes.web.idle
@@ -293,18 +293,18 @@ idle:
   after: 15m
   throttle: { cpu: 10m }  # In-place resize target
   wakeTimeout: 30s
-  placeholder: true       # صفحه‌ی HTML "Waking up"
+  placeholder: true       # a "Waking up" HTML page
 ```
 
-**محدودیت صادقانه:** WebSocket/SSE طولانی‌مدت روی App خواب‌رفته را نمی‌توان «نگه داشت»؛ Activator آن‌ها را بعد از Wake برقرار می‌کند (Client باید Reconnect کند). In-place Resize روی Clusterهای قدیمی‌تر از 1.33 نیست → خودکار به `zero`.
+**Honest limitation:** a long-lived WebSocket/SSE connection to a sleeping app cannot be "held"; the activator re-establishes them after the wake (the client must reconnect). In-place resize does not exist on clusters older than 1.33 → automatic fallback to `zero`.
 
-**فاز:** ۲ (`zero`)، ۳ (`throttle`).
+**Phase:** 2 (`zero`), 3 (`throttle`).
 
-### ۳.۴ AI SRE: Auto Post-Mortem و پیشنهاد اصلاح یک‌کلیکی
+### 3.4 AI SRE: automatic post-mortems and one-click fix suggestions
 
-**ارزش:** «چرا Pod من Crash کرد؟» رایج‌ترین سؤال کاربران PaaS است؛ Qovery این را به‌عنوان AI Seat می‌فروشد.
+**Value:** "why did my Pod crash?" is the single most common question PaaS users ask; Qovery sells this as an AI seat.
 
-**اصل طراحی:** **قوانین Deterministic اول، LLM به‌عنوان توضیح‌دهنده و مشاور، هرگز به‌عنوان مجری خودکار.**
+**Design principle:** **deterministic rules first, the LLM as an explainer and advisor, never as an automatic executor.**
 
 ```mermaid
 flowchart LR
@@ -319,52 +319,52 @@ flowchart LR
   CARD --> ACT[One-click actions (RBAC-gated)<br/>Rollback · Bump memory · Fix healthcheck path · Restart · Open PR]
 ```
 
-**سازوکار:**
+**Mechanism:**
 
-1. **Detector** (در Controller، از Projection): ترکیب `containerStatuses.lastState.terminated.reason`, `restartCount`, Events (`FailedScheduling`, `Unhealthy`, `BackOff`) → `Incident{kind, app, pod, first_seen, count}`؛ Dedupe در پنجره‌ی ۱۰ دقیقه.
-2. **Context Pack** با **Redaction الزامی**: Regexهای Secret (AWS keys, JWT, `password=`, Bearer, PEM), مقادیر همه‌ی Env Varهایی که از Secret آمده‌اند (Replace با `<redacted:NAME>`), IPهای داخلی اختیاری. اندازه‌ی Pack ≤ ۱۶KB.
-3. **Rule Engine** (Rust، بدون LLM): ۱۵ تا ۲۰ قانون با Fix پیشنهادی قطعی (OOM → Memory؛ Probe 404 → Path؛ Port Mismatch → Port؛ `CrashLoop` با Exit 1 و لاگ `ECONNREFUSED :5432` → DB Service Down؛ ImagePullBackOff → Registry Auth).
-4. **LLM (اختیاری، Opt-in):** Crate `genai` (Multi-provider، Native Protocols، Ollama برای On-prem/Air-gap). Prompt ثابت + Schema خروجی JSON (`root_cause`, `confidence 0–1`, `evidence[]`, `actions[] {type, params, risk}`). Timeout ۲۰s، Cost Cap روزانه، Cache روی Hash Context (Incident تکراری = بدون Call).
-5. **Actions:** هر Action یک Mutation موجود در API است (Rollback به Release قبلی، Patch `App.spec.runtime.processes.web.size`, Patch `healthCheck.path`) → همان RBAC و Audit. **هیچ Action خودکار اجرا نمی‌شود** مگر `Environment.spec.autoRemediation` صریحاً برای قوانین Deterministic خاص (مثلاً Rollback خودکار وقتی Release جدید در ۵ دقیقه‌ی اول CrashLoop می‌شود — که اصلاً LLM نمی‌خواهد).
-6. **Post-Mortem Doc:** برای Incidentهای Production، یک Markdown خودکار (Timeline، Impact، Root Cause، Action Items) در Audit ذخیره و به Slack/Telegram ارسال می‌شود.
-7. **MCP Server داخلی** (`rmcp`): Toolهای `get_incident`, `get_logs`, `rollback` تا Agentهای خارجی (Cursor، IDE extensions، CLI) هم بتوانند Debug کنند — با همان Token و RBAC.
+1. **Detector** (in the controller, off the projection): combines `containerStatuses.lastState.terminated.reason`, `restartCount` and events (`FailedScheduling`, `Unhealthy`, `BackOff`) → `Incident{kind, app, pod, first_seen, count}`; deduplicated over a 10-minute window.
+2. **Context pack** with **mandatory redaction**: secret regexes (AWS keys, JWT, `password=`, Bearer, PEM), the values of every env var that came from a Secret (replaced with `<redacted:NAME>`), and internal IPs optionally. Pack size ≤ 16KB.
+3. **Rule engine** (Rust, no LLM): 15 to 20 rules with a definite suggested fix (OOM → memory; probe 404 → path; port mismatch → port; `CrashLoop` with exit 1 and an `ECONNREFUSED :5432` log line → DB service down; ImagePullBackOff → registry auth).
+4. **LLM (optional, opt-in):** the `genai` crate (multi-provider, native protocols, Ollama for on-prem/air-gapped). A fixed prompt + a JSON output schema (`root_cause`, `confidence 0–1`, `evidence[]`, `actions[] {type, params, risk}`). A 20s timeout, a daily cost cap, and a cache keyed on the context hash (a repeated incident = no call).
+5. **Actions:** every action is an existing mutation in the API (rollback to the previous release, patch `App.spec.runtime.processes.web.size`, patch `healthCheck.path`) → the same RBAC and audit. **No action runs automatically** unless `Environment.spec.autoRemediation` explicitly allows it for specific deterministic rules (for example an automatic rollback when a new release goes into CrashLoop within the first 5 minutes — which needs no LLM at all).
+6. **Post-mortem doc:** for production incidents, an automatic Markdown document (timeline, impact, root cause, action items) is stored in the audit log and sent to Slack/Telegram.
+7. **A built-in MCP server** (`rmcp`): the tools `get_incident`, `get_logs` and `rollback`, so external agents (Cursor, IDE extensions, the CLI) can debug too — with the same token and the same RBAC.
 
-**Privacy/Compliance:** پیش‌فرض LLM خاموش؛ Provider و Model در `KubenConfig`؛ گزینه‌ی «Local only (Ollama)»؛ Log کامل هر Prompt/Response در Audit (Redacted).
+**Privacy/compliance:** the LLM is off by default; provider and model live in `KubenConfig`; there is a "local only (Ollama)" option; every prompt/response is logged in full in the audit (redacted).
 
-**فاز:** ۲ (Detector + Rules + Card بدون LLM)، ۳ (LLM + MCP).
+**Phase:** 2 (detector + rules + card, no LLM), 3 (LLM + MCP).
 
-### ۳.۵ Observability با eBPF: Service Map زنده بدون دستکاری کد
+### 3.5 eBPF observability: a live service map with no code changes
 
-**ارزش:** نقشه‌ی سرویس‌ها، Latency و Error Rate برای هر App بدون SDK — Northflank/Qovery این را به‌عنوان Monitoring Add-on می‌فروشند.
+**Value:** a map of services, latency and error rate for every app with no SDK — Northflank/Qovery sell this as a monitoring add-on.
 
-**تصمیم کلیدی:** **Kuben کد eBPF نمی‌نویسد.** پروژه‌ی **OpenTelemetry eBPF Instrumentation (OBI)** — که Grafana Beyla را به OpenTelemetry اهدا کرده و اولین Release آن نوامبر ۲۰۲۵ منتشر شد — دقیقاً همین کار را می‌کند: RED Metrics و Trace برای HTTP/S، HTTP/2، gRPC، SQL، Redis، Kafka، MongoDB، بدون تغییر کد، خارج از Process. Kuben آن را به‌عنوان **Addon اختیاری** نصب و **داده‌اش را داخل خودش هضم می‌کند**.
+**The key decision: Kuben does not write eBPF code.** The **OpenTelemetry eBPF Instrumentation (OBI)** project — Grafana's donation of Beyla to OpenTelemetry, whose first release shipped in November 2025 — does exactly this: RED metrics and traces for HTTP/S, HTTP/2, gRPC, SQL, Redis, Kafka and MongoDB, with no code changes, out of process. Kuben installs it as an **optional addon** and **digests its data internally**.
 
 ```
 [OBI DaemonSet]  ──OTLP/HTTP (protobuf)──►  [kuben api: /otlp/v1/metrics, /otlp/v1/traces]  (feature "otlp")
-   • discovery: namespaces با label kuben.dev/managed                    │
-   • kernel ≥ 5.8 + BTF (k3s/Ubuntu 22.04+ OK)                           ▼
+   • discovery: namespaces with the label kuben.dev/managed                │
+   • kernel ≥ 5.8 + BTF (k3s/Ubuntu 22.04+ OK)                            ▼
                                                             [In-memory aggregator]
-                                                            • per (src_app → dst_app) edge: RPS, p50/p95/p99, error%  (ring buffer 1h، 15s buckets)
+                                                            • per (src_app → dst_app) edge: RPS, p50/p95/p99, error%  (ring buffer 1h, 15s buckets)
                                                             • per app: RED
-                                                            • sampled traces: 100 آخر برای هر App (برای "Slow request" drill-down)
+                                                            • sampled traces: the last 100 per app (for "slow request" drill-down)
                                                                     │
                                                                     ▼
                                                             SSE delta → React Flow Service Map + uPlot sparklines
 ```
 
-- **Fallback‌ها:** اگر Cilium نصب است، Hubble Relay (gRPC) به‌عنوان Source جایگزین؛ اگر هیچ eBPF ممکن نیست (Kernel قدیمی، Managed محدود)، Service Map از **NetworkPolicy + Gateway Access Logs** به‌صورت L4 (بدون Latency) ساخته می‌شود.
-- **Budget:** Aggregator با سقف ۵۰ App × ۲۰ Edge × ۲۴۰ Bucket × ۳۲B ≈ ۸MB؛ بیشتر از آن → Downsample. Traceها فقط Sampled (Tail-based ساده: خطاها + کندترین ۱٪).
-- **Export:** همان OTLP به Prometheus/VictoriaMetrics/Grafana Tempo کاربر Forward می‌شود (Kuben Long-term Storage نیست).
-- **Overhead:** OBI برای هر Node ~۵۰ تا ۱۵۰MB RAM (خارج از Control Plane Kuben، به‌عنوان Addon شفاف در UI نمایش داده می‌شود).
-- **امنیت:** OBI Privileged است (eBPF)؛ فقط توسط Cluster Admin فعال می‌شود؛ Kuben هیچ Payload HTTP را ذخیره نمی‌کند (فقط Metadata: Method, Route Template, Status, Duration).
+- **Fallbacks:** if Cilium is installed, Hubble Relay (gRPC) serves as an alternative source; if eBPF is impossible at all (an old kernel, a restricted managed cluster), the service map is built at L4 from **NetworkPolicy + gateway access logs** (without latency).
+- **Budget:** the aggregator is capped at 50 apps × 20 edges × 240 buckets × 32B ≈ 8MB; beyond that → downsample. Traces are sampled only (simple tail-based: errors + the slowest 1%).
+- **Export:** the same OTLP is forwarded to the user's Prometheus/VictoriaMetrics/Grafana Tempo (Kuben is not long-term storage).
+- **Overhead:** OBI costs ~50 to 150MB of RAM per node (outside Kuben's control plane, shown transparently in the UI as an addon).
+- **Security:** OBI is privileged (eBPF); only a cluster admin can enable it; Kuben stores no HTTP payloads (metadata only: method, route template, status, duration).
 
-**فاز:** ۳.
+**Phase:** 3.
 
-### ۳.۶ Live FinOps Meter (کنتور شفاف هزینه به دلار)
+### 3.6 Live FinOps meter (transparent dollar cost)
 
-**ارزش:** «این Preview Env چقدر برایمان آب می‌خورد؟» — بدون OpenCost/Kubecost کامل.
+**Value:** "how much is this preview env costing us?" — without a full OpenCost/Kubecost.
 
-**مدل (سازگار با OpenCost Specification):**
+**The model (compatible with the OpenCost specification):**
 
 ```
 cost(container, window) = Σ_resource max(request, usage) × duration_h × unit_price
@@ -372,31 +372,31 @@ cost(container, window) = Σ_resource max(request, usage) × duration_h × unit_
   Memory:  max(req_GB,    avg_usage_GB)    × h × $/GB-h
   Storage: pvc_GB × h × $/GB-h (by StorageClass)
   LB/IP:   per Gateway/LoadBalancer × $/h
-  Egress:  bytes × $/GB (اگر Metric موجود)
-Idle cost = Node cost − Σ workload cost  (نمایش جدا؛ Share اختیاری)
+  Egress:  bytes × $/GB (if the metric is available)
+Idle cost = Node cost − Σ workload cost  (shown separately; sharing optional)
 ```
 
-**منابع قیمت (به ترتیب اولویت):**
-1. **OpenCost موجود در Cluster** → فقط Query به `/allocation` (Kuben محاسبه نمی‌کند).
-2. **Cloud Provider Auto-detect** از Label `node.kubernetes.io/instance-type` + Region → جدول قیمت On-demand Embedded (AWS/GCP/Azure/Hetzner/DigitalOcean؛ ~۲۰۰KB JSON فشرده، به‌روزرسانی با هر Release یا Fetch اختیاری).
-3. **Custom Pricing** در `KubenConfig.spec.pricing` (`cpuHour`, `gbHour`, `storageGbMonth`, `lbMonth`, `currency`) برای On-prem — Kuben پیشنهاد اولیه بر اساس «قیمت Node ÷ ظرفیت» می‌دهد.
+**Price sources (in priority order):**
+1. **An OpenCost already in the cluster** → just query `/allocation` (Kuben does no calculation).
+2. **Cloud provider auto-detection** from the `node.kubernetes.io/instance-type` label + region → an embedded on-demand price table (AWS/GCP/Azure/Hetzner/DigitalOcean; ~200KB of compressed JSON, updated with every release or fetched optionally).
+3. **Custom pricing** in `KubenConfig.spec.pricing` (`cpuHour`, `gbHour`, `storageGbMonth`, `lbMonth`, `currency`) for on-prem — Kuben offers an initial suggestion based on "node price ÷ capacity".
 
-**پیاده‌سازی:** همان Poller metrics-server (هر ۱۵s) که Metrics Lite دارد، Usage را می‌دهد؛ Request از Projection؛ Ring Buffer ساعتی → Roll-up روزانه در SQL (`cost_rollups(app_uid, day, cpu_usd, mem_usd, storage_usd)`) → نمایش: Live ($/h)، Month-to-date، Forecast (Linear)، برای هر Pod/App/Environment/Project/Team؛ Budget Alerts (Outbox → Slack/Telegram)؛ Cost Guard برای Preview (بخش ۳.۱).
+**Implementation:** the same metrics-server poller (every 15s) that Metrics Lite uses provides usage; requests come from the projection; an hourly ring buffer → a daily roll-up in SQL (`cost_rollups(app_uid, day, cpu_usd, mem_usd, storage_usd)`) → displayed as live ($/h), month-to-date and a (linear) forecast, for each Pod/App/Environment/Project/Team; budget alerts (outbox → Slack/Telegram); a cost guard for previews (section 3.1).
 
-**محدودیت صادقانه:** بدون Billing API واقعی، این «تخمین بر اساس قیمت List» است، نه صورت‌حساب؛ UI این را با برچسب «Estimated» می‌گوید. Spot/Reserved Discountها فقط با Custom Pricing.
+**Honest limitation:** without a real billing API this is "an estimate based on list prices", not an invoice; the UI says so with an "Estimated" label. Spot/reserved discounts only work with custom pricing.
 
-**فاز:** ۲ (Meter پایه)، ۳ (Budget/Forecast/Team).
+**Phase:** 2 (the basic meter), 3 (budget/forecast/team).
 
-### ۳.۷ 4-Eyes Approval Gate برای Production (Telegram/Slack/UI)
+### 3.7 Four-eyes approval gate for production (Telegram/Slack/UI)
 
-**ارزش:** SOC2/ISO الزام Separation of Duties دارند؛ Qovery این را در «Policy as Code» پلن Business می‌فروشد.
+**Value:** SOC2/ISO require separation of duties; Qovery sells this under "policy as code" in the Business plan.
 
-**مدل:**
+**Model:**
 
 ```yaml
 # Environment.spec.protection
 protection:
-  requireApprovals: 2                 # تأییدکنندگان متمایز، غیر از Requester
+  requireApprovals: 2                 # distinct approvers, not the requester
   approverRoles: [owner, admin, release-manager]
   channels: [ui, telegram, slack]
   timeout: 4h
@@ -404,90 +404,90 @@ protection:
   window: { allow: "Mon-Fri 08:00-18:00 Europe/Berlin", elseRequireApprovals: 3 }
 ```
 
-**جریان:**
+**Flow:**
 
-1. `POST /releases/{id}/promote?to=prod` → اگر Protection فعال است، `Approval{id, release, requester, required=2, expires}` در SQL ساخته می‌شود (نه CRD؛ داده‌ی Workflow انسانی است) و Release در `status.phase: AwaitingApproval` می‌ماند.
-2. **Outbox** پیام را به کانال‌ها می‌فرستد:
-   - **Telegram** (`teloxide`): پیام با Diff خلاصه (Image Digest، Env تغییرکرده، Scaling) + Inline Keyboard `[✅ Approve] [❌ Reject] [🔍 Open in Kuben]`. `callback_data = "apr:<approval_id>:<nonce>"` (بدون داده‌ی حساس). در Callback: `from.id` Telegram → جدول `identity_links(provider=telegram, subject=<id>, user_id)` (Link با کد یک‌بارمصرف از پروفایل کاربر) → بررسی Role و تمایز از Requester → ثبت رأی → ویرایش پیام به «1/2 approved by @alice». Bot در حالت **Webhook** (نه Long-polling) پشت همان API با Secret Token Header.
-   - **Slack:** Block Kit با Interactive Buttons؛ Signing Secret Verify؛ `user.id` → `identity_links(provider=slack)`.
+1. `POST /releases/{id}/promote?to=prod` → if protection is enabled, an `Approval{id, release, requester, required=2, expires}` is created in SQL (not a CRD; this is human workflow data) and the release stays in `status.phase: AwaitingApproval`.
+2. The **outbox** sends the message to the channels:
+   - **Telegram** (`teloxide`): a message with a summarized diff (image digest, changed env, scaling) + an inline keyboard `[✅ Approve] [❌ Reject] [🔍 Open in Kuben]`. `callback_data = "apr:<approval_id>:<nonce>"` (no sensitive data). On the callback: the Telegram `from.id` → the `identity_links(provider=telegram, subject=<id>, user_id)` table (linked with a one-time code from the user's profile) → check the role and that it differs from the requester → record the vote → edit the message to "1/2 approved by @alice". The bot runs in **webhook** mode (not long polling) behind the same API, with a secret token header.
+   - **Slack:** Block Kit with interactive buttons; signing-secret verification; `user.id` → `identity_links(provider=slack)`.
    - **UI/CLI:** `kuben approve <id>`.
-3. با رسیدن به `required`، Controller Promotion را انجام می‌دهد؛ Audit شامل همه‌ی رأی‌ها (کاربر، کانال، IP/Telegram ID، زمان) است.
-4. **Break-glass:** Owner می‌تواند با Reason الزامی Bypass کند → Alert فوری به Security Channel + Post-mortem خودکار (بخش ۳.۴).
-5. **ضد-دور زدن:** Approver نمی‌تواند Requester باشد؛ یک User با دو Identity (Telegram + Slack) یک رأی دارد؛ Approval به `release.digest` قفل است — اگر Digest عوض شود، Approval باطل می‌شود.
+3. Once `required` is reached, the controller performs the promotion; the audit record includes every vote (user, channel, IP/Telegram ID, time).
+4. **Break-glass:** an owner can bypass with a mandatory reason → an immediate alert to the security channel + an automatic post-mortem (section 3.4).
+5. **Anti-circumvention:** an approver cannot be the requester; a user with two identities (Telegram + Slack) still has one vote; the approval is locked to `release.digest` — if the digest changes, the approval is void.
 
-**فاز:** ۲ (UI)، ۳ (Telegram/Slack/Window/Break-glass).
+**Phase:** 2 (UI), 3 (Telegram/Slack/window/break-glass).
 
 ---
 
-## ۴. مشخصات نهایی پشته فنی و ساختار Monorepo
+## 4. Final technology stack and monorepo structure
 
-### ۴.۱ Backend
+### 4.1 Backend
 
-| مؤلفه | انتخاب | نسخه (سپتامبر ۲۰۲۶) | یادداشت |
+| Component | Choice | Version (September 2026) | Notes |
 |---|---|---|---|
-| زبان | Rust, Edition 2024 | MSRV **1.94** (الزام sqlx 0.9) | `rust-toolchain.toml` |
+| Language | Rust, Edition 2024 | MSRV **1.94** (required by sqlx 0.9) | `rust-toolchain.toml` |
 | HTTP | `axum` | 0.8.x | + `axum-extra` (Cookie, TypedHeader) |
-| Runtime | `tokio` (یک Runtime؛ Bulkhead پشت Config) | 1.x | `worker_threads = min(4, cpus)`, `max_blocking_threads = 16` |
+| Runtime | `tokio` (one runtime; bulkhead behind config) | 1.x | `worker_threads = min(4, cpus)`, `max_blocking_threads = 16` |
 | Middleware | `tower`, `tower-http` (trace, timeout, limit, compression, request-id, cors, set-header) | 0.5 / 0.6 | |
-| Kubernetes | `kube` (runtime, derive, ws, rustls-tls), `k8s-openapi` | **kube 4.0** (ژوئن ۲۰۲۶) | Streaming Lists، Retry Policy پیش‌فرض، WS Keepalive |
-| CRD Schema | `schemars` | 1.x | CEL در `x-kubernetes-validations` |
-| DB | `sqlx` (sqlite, postgres, runtime-tokio, tls-rustls, migrate, uuid) | **0.9** (مه ۲۰۲۶) | `sqlx.toml` Multi-DB، `SqlSafeStr` |
-| Query Builder | `sea-query` + `sea-query-binder` | آخرین سازگار با sqlx 0.9 | برای Queryهای پویا |
+| Kubernetes | `kube` (runtime, derive, ws, rustls-tls), `k8s-openapi` | **kube 4.0** (June 2026) | Streaming lists, a default retry policy, WS keepalive |
+| CRD schema | `schemars` | 1.x | CEL in `x-kubernetes-validations` |
+| DB | `sqlx` (sqlite, postgres, runtime-tokio, tls-rustls, migrate, uuid) | **0.9** (May 2026) | Multi-DB `sqlx.toml`, `SqlSafeStr` |
+| Query builder | `sea-query` + `sea-query-binder` | the latest compatible with sqlx 0.9 | For dynamic queries |
 | OpenAPI | `utoipa`, `utoipa-axum`, `utoipa-scalar` | 5.5 / 0.2 | OpenAPI 3.1 |
-| Auth | `argon2`, `subtle`, `openidconnect`, `totp-rs`, `webauthn-rs` | | Session Opaque؛ JWT فقط داخلی |
+| Auth | `argon2`, `subtle`, `openidconnect`, `totp-rs`, `webauthn-rs` | | Opaque sessions; JWT internal only |
 | Crypto | `sha2`, `hmac`, `chacha20poly1305`, `rand`, `secrecy`, `zeroize` | | |
-| Cache/Concurrency | `moka`, `papaya`/`dashmap`, `arc-swap`, `parking_lot` | | |
+| Cache/concurrency | `moka`, `papaya`/`dashmap`, `arc-swap`, `parking_lot` | | |
 | Config/CLI | `figment`, `clap` | | |
-| Observability | `tracing`, `tracing-subscriber` (json), `metrics`, `metrics-exporter-prometheus`; `opentelemetry-otlp` پشت Feature `otel` | | |
-| Retry/Backoff | `backon` | 1.x | |
-| Git | `octocrab` (GitHub), `reqwest` (بقیه), `gix` (ls-remote) | | |
-| LLM | `genai` | 0.6/0.7 | پشت Feature `ai` |
-| Telegram | `teloxide` (webhook mode) | | پشت Feature `telegram` |
-| MCP | `rmcp` | | پشت Feature `mcp` |
-| Assets | `rust-embed` (+ Brotli از پیش فشرده) | 8.x | |
-| Allocator | `mimalloc` (Purge کوتاه) — Benchmark در Spike-A | | |
-| IDs/Time | `uuid` (v7), `jiff` | | |
-| Errors | `thiserror` (libs), `anyhow` (bin) | 2 / 1 | RFC 9457 در API |
+| Observability | `tracing`, `tracing-subscriber` (json), `metrics`, `metrics-exporter-prometheus`; `opentelemetry-otlp` behind the `otel` feature | | |
+| Retry/backoff | `backon` | 1.x | |
+| Git | `octocrab` (GitHub), `reqwest` (everything else), `gix` (ls-remote) | | |
+| LLM | `genai` | 0.6/0.7 | Behind the `ai` feature |
+| Telegram | `teloxide` (webhook mode) | | Behind the `telegram` feature |
+| MCP | `rmcp` | | Behind the `mcp` feature |
+| Assets | `rust-embed` (+ pre-compressed Brotli) | 8.x | |
+| Allocator | `mimalloc` (short purge) — benchmarked in Spike-A | | |
+| IDs/time | `uuid` (v7), `jiff` | | |
+| Errors | `thiserror` (libs), `anyhow` (bin) | 2 / 1 | RFC 9457 in the API |
 | Test | `cargo-nextest`, `insta`, `rstest`, `testcontainers`, `wiremock`, `proptest` | | |
 
-### ۴.۲ مرز داده (قطعی)
+### 4.2 The data boundary (final)
 
-| داده | مالک | ارجاع |
+| Data | Owner | Reference |
 |---|---|---|
-| Project, Environment, App, Release, BuildRun, Domain, Service, ServiceBranch, KubenConfig | **CRD (etcd)** | SQL فقط با `uid` ارجاع می‌دهد؛ `BindingGC` Bindingهای یتیم را با تأخیر ۱ ساعت حذف می‌کند |
-| Org, User, Identity, Membership, RoleBinding, Session, ApiToken, Audit, Approval, Outbox, CostRollup, IdempotencyKey | **SQL** (SQLite WAL تک‌Replica / Postgres HA) | Org روی CR با Label `kuben.dev/org` |
-| Build Logs, Backups | **فایل روی PVC** یا `object_store` | SQL: Metadata + Hash |
-| Metrics کوتاه‌مدت, Projectionها, Service Map | **حافظه** (Bounded) | بازسازی از Watch پس از Restart |
+| Project, Environment, App, Release, BuildRun, Domain, Service, ServiceBranch, KubenConfig | **CRD (etcd)** | SQL references them only by `uid`; `BindingGC` deletes orphaned bindings after a 1-hour delay |
+| Org, User, Identity, Membership, RoleBinding, Session, ApiToken, Audit, Approval, Outbox, CostRollup, IdempotencyKey | **SQL** (single-replica SQLite WAL / HA Postgres) | The org is carried on the CR via the `kuben.dev/org` label |
+| Build logs, backups | **files on a PVC** or `object_store` | SQL: metadata + hash |
+| Short-term metrics, projections, service map | **memory** (bounded) | Rebuilt from the watch after a restart |
 
-### ۴.۳ Frontend
+### 4.3 Frontend
 
-| مؤلفه | انتخاب | نسخه |
+| Component | Choice | Version |
 |---|---|---|
 | Build | **Vite 8** (Rolldown + Oxc) | 8.x |
 | UI | **React 19** + React Compiler | 19.x |
-| Routing | `@tanstack/react-router` (file-based, `defaultPreload: 'intent'`) | 1.x stable (v2 وقتی Stable شد) |
-| Server State | `@tanstack/react-query` | 5.x |
-| API Client | `openapi-typescript` + `openapi-fetch` + `openapi-react-query` (تولید از `utoipa`) | |
-| Styling | **Tailwind CSS v4** (`@tailwindcss/vite`) + **shadcn/ui روی Base UI** | 4.x |
-| RTL/فارسی | Logical Properties (`ms-`, `pe-`, `start`, `end`), `dir` پویا، فونت Self-hosted **Vazirmatn** + Inter Variable، `paraglide-js` برای i18n Compile-time | |
-| Terminal/Logs | `@xterm/xterm` + fit, web-links, webgl, search, unicode11 | 5.x |
+| Routing | `@tanstack/react-router` (file-based, `defaultPreload: 'intent'`) | 1.x stable (v2 once it goes stable) |
+| Server state | `@tanstack/react-query` | 5.x |
+| API client | `openapi-typescript` + `openapi-fetch` + `openapi-react-query` (generated from `utoipa`) | |
+| Styling | **Tailwind CSS v4** (`@tailwindcss/vite`) + **shadcn/ui on Base UI** | 4.x |
+| RTL/Persian | Logical properties (`ms-`, `pe-`, `start`, `end`), dynamic `dir`, self-hosted **Vazirmatn** + Inter Variable fonts, `paraglide-js` for compile-time i18n | |
+| Terminal/logs | `@xterm/xterm` + fit, web-links, webgl, search, unicode11 | 5.x |
 | Charts | `uplot` | |
-| Graph (Service Map, Pipeline) | `@xyflow/react` | 12.x |
-| Editor | CodeMirror 6 (YAML) — **نه Monaco** | |
+| Graph (service map, pipeline) | `@xyflow/react` | 12.x |
+| Editor | CodeMirror 6 (YAML) — **not Monaco** | |
 | Forms | `react-hook-form` + `zod` | |
 | Tooling | `@biomejs/biome`, `vitest`, `@playwright/test`, `msw`, `size-limit`, `knip` | |
-| TypeScript | ^5.9 (TS 6 پس از پایداری Ecosystem) | |
+| TypeScript | ^5.9 (TS 6 after the ecosystem stabilizes) | |
 
-### ۴.۴ Build، Network، TLS
+### 4.4 Build, network, TLS
 
-- **Build:** `buildkitd` Rootless (StatefulSet، PVC Cache ۲۰Gi، GC داخلی) در Namespace `kuben-builds` (PSA `baseline`؛ `seccompProfile: Unconfined` + AppArmor `unconfined` فقط برای این Pod — الزام BuildKit Rootless) + Job سبک `buildctl` برای هر Build (بدون SA Token). Frontendها: `dockerfile.v0`، `gateway.v0` با `ghcr.io/railwayapp/railpack-frontend@<digest>` (پس از `railpack prepare` در Init Container برای تولید `railpack-plan.json`). Deploy بر اساس **Digest**. Registry خارجی در MVP؛ Zot داخلی در فاز ۲ فقط با دامنه‌ی عمومی + ACME.
-- **Networking:** **Gateway API** (`HTTPRoute`). پیاده‌سازی پیش‌فرض:
-  - روی **k3s**: Traefik Bundled خود k3s با `providers.kubernetesGateway.enabled=true` (بدون Component اضافه؛ Zero-Ops واقعی).
-  - روی Clusterهای دیگر: **Envoy Gateway** (استاندارد CNCF) یا Traefik 3 — انتخاب در Installer؛ Kuben فقط `HTTPRoute` و `Gateway` استاندارد می‌نویسد و به هیچ Annotation اختصاصی وابسته نیست. ⚠️ Benchmarkهای مستقل نشان می‌دهند Traefik با چند Gateway هم‌زمان و هزاران Route مشکل دارد و Envoy Gateway در Churn شدید Route نشت حافظه داشته؛ برای نصب‌های بزرگ (>۵۰۰ Route) Istio Gateway یا kgateway در مستندات پیشنهاد می‌شود.
-- **TLS:** cert-manager با `config.enableGatewayAPI: true` (HTTP-01 از طریق HTTPRoute موقت روی Listener پورت ۸۰؛ DNS-01 برای Wildcard).
-- **دامنه‌ی پیش‌فرض بدون DNS کاربر:** `<ip>.sslip.io`. ⚠️ **ریسک واقعی:** Let's Encrypt سقف «گواهی برای هر Registered Domain» را روی `sslip.io` اعمال می‌کند؛ با وجود افزایش‌های مکرر (تا ۲۰۰ هزار در هفته)، در فوریه ۲۰۲۶ باز هم Exhaust شد. **راهبرد Kuben:** (۱) ترجیح **IP Certificate** مستقیم از Let's Encrypt (پشتیبانی رسمی؛ Rate Limit بر اساس همان IP، نه sslip.io) وقتی Kuben روی IP عمومی است؛ (۲) Fallback به `nip.io`؛ (۳) Fallback به ZeroSSL (ACME EAB)؛ (۴) پیام واضح در Wizard: «برای Production دامنه‌ی خودتان را متصل کنید». Wildcard روی sslip.io هرگز (نیازمند DNS-01 روی دامنه‌ای که مال ما نیست).
+- **Build:** rootless `buildkitd` (StatefulSet, a 20Gi PVC cache, internal GC) in the `kuben-builds` namespace (PSA `baseline`; `seccompProfile: Unconfined` + AppArmor `unconfined` for this Pod only — a rootless BuildKit requirement) + a lightweight `buildctl` Job per build (with no SA token). Frontends: `dockerfile.v0`, and `gateway.v0` with `ghcr.io/railwayapp/railpack-frontend@<digest>` (after `railpack prepare` runs in an init container to produce `railpack-plan.json`). Deployment is by **digest**. An external registry in the MVP; an internal Zot in phase 2, only with a public domain + ACME.
+- **Networking:** the **Gateway API** (`HTTPRoute`). Default implementations:
+  - On **k3s**: k3s's own bundled Traefik with `providers.kubernetesGateway.enabled=true` (no extra component; genuinely zero-ops).
+  - On other clusters: **Envoy Gateway** (the CNCF standard) or Traefik 3 — chosen in the installer; Kuben only writes standard `HTTPRoute` and `Gateway` resources and depends on no vendor-specific annotation. ⚠️ Independent benchmarks show that Traefik struggles with several simultaneous Gateways and thousands of routes, and that Envoy Gateway has leaked memory under heavy route churn; for large installations (>500 routes) the documentation will recommend Istio Gateway or kgateway.
+- **TLS:** cert-manager with `config.enableGatewayAPI: true` (HTTP-01 via a temporary HTTPRoute on the port-80 listener; DNS-01 for wildcards).
+- **The default domain when the user has no DNS:** `<ip>.sslip.io`. ⚠️ **A real risk:** Let's Encrypt applies its "certificates per registered domain" cap to `sslip.io`; despite repeated increases (up to 200,000 per week), it was exhausted again in February 2026. **Kuben's strategy:** (1) prefer an **IP certificate** directly from Let's Encrypt (officially supported; the rate limit is tied to that IP, not to sslip.io) when Kuben sits on a public IP; (2) fall back to `nip.io`; (3) fall back to ZeroSSL (ACME EAB); (4) a clear message in the wizard: "for production, connect your own domain". Never a wildcard on sslip.io (it would need DNS-01 on a domain that is not ours).
 
-### ۴.۵ ساختار `kuben-monorepo`
+### 4.5 `kuben-monorepo` layout
 
 ```
 kuben-monorepo/
@@ -497,62 +497,62 @@ kuben-monorepo/
 ├── deny.toml                       # cargo-deny: licenses, advisories, bans
 ├── clippy.toml
 ├── .cargo/config.toml              # target-cpu, linker (mold/lld), musl targets
-├── justfile                        # نقطه‌ی ورود واحد
+├── justfile                        # the single entry point
 ├── package.json                    # pnpm root (private)
 ├── pnpm-workspace.yaml             # packages + catalog
 ├── biome.json
 ├── .npmrc
 ├── .github/workflows/{ci.yml,release.yml,budgets.yml}
 ├── crates/
-│   ├── kuben-crd/                  # CRD types (kube-derive + schemars + CEL) + bin crdgen — بدون tokio/axum
+│   ├── kuben-crd/                  # CRD types (kube-derive + schemars + CEL) + bin crdgen — no tokio/axum
 │   ├── kuben-core/                 # domain types, ids, errors, config, traits (Store, PolicyEngine, IdentityProvider, LeaderElector, BlobStore, MetricsSource)
 │   ├── kuben-store/                # sqlx + sea-query, repositories, migrations/{sqlite,postgres}, sqlx.toml
 │   ├── kuben-platform/             # ClusterRegistry, informers → projections, LogHub, exec, controllers, build, activator, incidents
 │   ├── kuben-api/                  # axum routers, OpenAPI (utoipa), auth middleware, SSE/WS, web assets embed, bin openapi
-│   └── kuben/                      # bin «kuben»: serve (roles), migrate, backup, restore, doctor, reset-admin, import
+│   └── kuben/                      # bin "kuben": serve (roles), migrate, backup, restore, doctor, reset-admin, import
 ├── apps/
 │   └── web/                        # Vite 8 + React 19 SPA (→ dist/ embedded)
 ├── packages/
 │   └── api-client/                 # openapi.json + schema.d.ts (generated, committed)
-├── charts/kuben/                   # Helm chart (OCI); crds/ تولیدشده
+├── charts/kuben/                   # Helm chart (OCI); crds/ generated
 ├── deploy/
 │   ├── install.sh                  # k3s + Gateway + cert-manager + kuben
 │   └── manifests/                  # kubectl apply -k
 ├── docs/adr/                       # ADR-001 … ADR-022
 ├── scripts/                        # budget checks, e2e helpers
-└── CONTRIBUTING.md                 # 18 Invariant به‌عنوان Review Checklist
+└── CONTRIBUTING.md                 # the 18 invariants as a review checklist
 ```
 
-**معیار Split کردن Crate جدید:** فقط وقتی (الف) Compile Time یک Crate > ۶۰s در Incremental، (ب) Crate مستقلاً منتشر شود (`kuben-client` برای CLI/SDK در فاز ۲)، یا (ج) مرز Team.
+**The criterion for splitting out a new crate:** only when (a) one crate's incremental compile time exceeds 60s, (b) the crate will be published independently (`kuben-client` for the CLI/SDK in phase 2), or (c) it marks a team boundary.
 
 ---
 
-## ۵. پلن اجرایی فازبندی‌شده و فاز ۰ با تمام جزئیات
+## 5. Phased execution plan, with phase 0 in full detail
 
-### ۵.۱ نقشه‌ی راه (تیم ۳ نفره‌ی Rust-fluent)
+### 5.1 Roadmap (a three-person Rust-fluent team)
 
-| فاز | مدت | خروجی | Exit Criteria |
+| Phase | Duration | Output | Exit Criteria |
 |---|---|---|---|
-| **۰ — Skeleton** | ۶ هفته | Monorepo، ۶ Crate، Auth Local + Session، Store دو-DB، CRD v1alpha1 + Self-apply، OpenAPI→TS Pipeline، UI Shell (Login، Layout، Command Palette، RTL)، Informer + Projection پایه، Health/Shutdown، CI با Budget Gateها، `install.sh` اولیه | `kuben serve` روی kind: Login → لیست Projects (خالی) → ایجاد Project/Environment → Namespace ساخته می‌شود؛ Image < ۳۰MB؛ RSS Idle < ۳۰MB؛ CI سبز |
-| **۱ — MVP** | ۶ هفته | App از Image + از Git (Dockerfile/Railpack روی buildkitd)، Release/Rollback، HTTPRoute + TLS (sslip.io/IP cert)، LogHub + SSE per tab، Terminal WS + Ephemeral Debug، GitHub Webhook + Polling، `kuben doctor`، `backup/restore` | Git push → URL با TLS در < ۵ دقیقه از VPS خالی؛ Soak Test ۱h لاگ بدون رشد حافظه؛ ۵ کاربر Alpha خارجی |
-| **۲ — Parity+** | ۱۶ تا ۲۰ هفته | Preview Env + TTL (۳.۱)، DB Branching `logical`/`csi-clone` (۳.۲)، Scale-to-zero `zero` (۳.۳)، Incident Rules + Card (۳.۴)، FinOps Meter (۳.۶)، Approval UI (۳.۷)، Git Providerها، CNPG/Valkey/MariaDB، Cron، Trivy، Notifications (Outbox)، Custom Domains، Template Catalog + Importer Kubero، CLI (`kuben-client`)، Helm، Zot اختیاری، `db migrate`، Docs (Astro)، i18n (fa/en/de) | مهاجرت یک نصب واقعی Kubero بدون از دست رفتن داده؛ Public Beta |
-| **۳ — Enterprise** | ۱۲ تا ۱۶ هفته | OIDC/Passkeys/Scoped RBAC، HA (Postgres + Leader + N API)، Multi-cluster، Quota/NetPol/PSA کامل، DB Branching `overlay`، Scale-to-zero `throttle`، AI SRE با LLM + MCP، eBPF Service Map (۳.۵)، Telegram/Slack Approvals + Break-glass، Air-gap، OTel، Session Recording، Merkle Audit Anchor، Self-upgrade | Chaos Suite سبز (Kill API Server، 410 Gone، Kill Leader، Disk Full)؛ Restore آزمایش‌شده؛ **v1.0** |
-| **۴ — Differentiators** | ادامه‌دار | Compose Import، Terraform Provider، GitHub Action، GitOps دوطرفه، Cedar Policies، KEDA Integration | — |
+| **0 — Skeleton** | 6 weeks | Monorepo, 6 crates, local auth + session, two-DB store, CRD v1alpha1 + self-apply, OpenAPI→TS pipeline, UI shell (login, layout, command palette, RTL), informer + basic projection, health/shutdown, CI with budget gates, initial `install.sh` | `kuben serve` on kind: login → project list (empty) → create project/environment → the namespace is created; image < 30MB; idle RSS < 30MB; CI green |
+| **1 — MVP** | 6 weeks | App from an image + from Git (Dockerfile/Railpack on buildkitd), release/rollback, HTTPRoute + TLS (sslip.io/IP cert), LogHub + SSE per tab, terminal WS + ephemeral debug, GitHub webhook + polling, `kuben doctor`, `backup/restore` | Git push → URL with TLS in < 5 minutes from an empty VPS; 1h log soak test with no memory growth; 5 external alpha users |
+| **2 — Parity+** | 16 to 20 weeks | Preview env + TTL (3.1), DB branching `logical`/`csi-clone` (3.2), scale-to-zero `zero` (3.3), incident rules + card (3.4), FinOps meter (3.6), approval UI (3.7), Git providers, CNPG/Valkey/MariaDB, cron, Trivy, notifications (outbox), custom domains, template catalog + importer for the incumbent PaaS, CLI (`kuben-client`), Helm, optional Zot, `db migrate`, docs (Astro), i18n (fa/en/de) | Migrating a real installation of the incumbent PaaS without losing data; public beta |
+| **3 — Enterprise** | 12 to 16 weeks | OIDC/passkeys/scoped RBAC, HA (Postgres + leader + N API), multi-cluster, full quota/NetPol/PSA, DB branching `overlay`, scale-to-zero `throttle`, AI SRE with LLM + MCP, eBPF service map (3.5), Telegram/Slack approvals + break-glass, air-gap, OTel, session recording, Merkle audit anchor, self-upgrade | Chaos suite green (kill the API server, 410 Gone, kill the leader, disk full); restore tested; **v1.0** |
+| **4 — Differentiators** | Ongoing | Compose import, Terraform provider, GitHub Action, bidirectional GitOps, Cedar policies, KEDA integration | — |
 
-**سه Spike قبل از فاز ۰ (هر کدام ۲ تا ۳ روز):** (A) RSS با kube 4 + axum + sqlx + rustls + Projection ۲۰۰ Pod روی kind با ۳ Allocator؛ (B) buildkitd Rootless روی k3s و GKE Autopilot؛ (C) Backpressure ترمینال با `yes` و Browser Throttled.
+**Three spikes before phase 0 (2 to 3 days each):** (A) RSS with kube 4 + axum + sqlx + rustls + a projection of 200 pods on kind with 3 allocators; (B) rootless buildkitd on k3s and GKE Autopilot; (C) terminal backpressure with `yes` and a throttled browser.
 
-### ۵.۲ فاز ۰ — Breakdown هفتگی
+### 5.2 Phase 0 — weekly breakdown
 
-| هفته | Track A (Platform/Rust) | Track B (API/Store/Auth) | Track C (Frontend/DX) | Acceptance |
+| Week | Track A (Platform/Rust) | Track B (API/Store/Auth) | Track C (Frontend/DX) | Acceptance |
 |---|---|---|---|---|
-| **۱** | Scaffold Monorepo، `kuben-core` (types، config، errors)، `kuben-crd` (Project/Environment/App/Release/BuildRun + crdgen)، CI (fmt/clippy/nextest/deny) | `kuben-store`: sqlite+postgres Pool، `sqlx.toml`، Migration 0001 (orgs/users/sessions/tokens/role_bindings/audit)، Repository Traits + Matrix Test | Vite 8 + React 19 + TanStack + Tailwind v4 + shadcn (Base UI) + RTL Tokens + Biome؛ MSW Mock از OpenAPI Stub | `just ci` سبز؛ `crdgen` YAML معتبر (`kubectl apply --dry-run=server`) |
-| **۲** | `kuben` bin: `serve --roles`, signals, Supervisor, Health (`/livez`,`/readyz`), Graceful Shutdown, Config (figment), tracing JSON | `kuben-api`: axum + utoipa Router، Problem+JSON، Request-ID، Body Limit، Rate Limit، `POST /auth/login` (Argon2 + Session Cookie)، `GET /me`، `openapi` bin | Login صفحه، Layout، Theme (Dark)، Command Palette، Router Guards (`beforeLoad`)، 401 Handling سراسری | Login واقعی از UI؛ Cookie `__Host-`؛ CSP بدون Violation |
-| **۳** | `ClusterRegistry` (in-cluster/kubeconfig)، Informer Projection برای Namespace/Deployment/Pod با Label Selector، Sequence سراسری، Delta Bus (`broadcast`) | RBAC Engine (Static Roles، moka Cache، Version Counter)، `AuthzProof` Type، API Tokens (`kbn_pat_…`)، Audit Writer + Request Context | SSE Client (`Last-Event-ID`، Snapshot+Delta با `setQueryData` + rAF Batching)، Projects/Environments Pages | `kubectl create -f app.yaml` → UI در < ۱s تغییر را نشان می‌دهد |
-| **۴** | CRD Self-apply در Boot (SSA)، Controller Project/Environment → Namespace (PSA/Quota/NetPol)، Conditions + `observedGeneration`، Events Recorder، Error Policy + Backoff per-object، Soft-delete (Grace 7d) | CRUD API برای Project/Environment/App (Validation garde + CEL)، `If-Match`/ETag، Idempotency-Key، Cursor Pagination | فرم‌های Project/Environment/App (react-hook-form + zod از Schema)، YAML Viewer (CodeMirror) | ایجاد Environment از UI → Namespace با Labels/Quota؛ حذف → Terminating با Countdown |
-| **۵** | `rust-embed` + Brotli Precompressed + SPA Fallback + Cache Headers؛ Dockerfile (cargo-chef + zigbuild + distroless/static:nonroot)؛ Budget Gates (Binary/Image/RSS/JS) | Backup/Restore (SQLite `VACUUM INTO` + CRD Export)، `reset-admin`، `doctor` (Preflight: RWO StorageClass، Gateway Class، cert-manager، metrics-server، PSA) | `size-limit` per-route، Playwright E2E (Login → Create Project)، Lighthouse a11y | Image ≤ ۳۰MB؛ RSS Idle ≤ ۳۰MB روی kind با Fixture ۵۰ App/۲۰۰ Pod |
-| **۶** | `install.sh` (k3s + Traefik Gateway API + cert-manager + kuben)، Helm Chart Skeleton، Bootstrap Order، Polling Fallback Stub | OpenAPI Drift Check در CI، Threat Model Doc، ADR 001–022 نهایی | Docs Site حداقلی (README + docs/)، Storybook اختیاری | نصب روی VPS خالی با یک دستور → Login از `https://<ip>.sslip.io` (یا IP Cert) |
+| **1** | Scaffold the monorepo, `kuben-core` (types, config, errors), `kuben-crd` (Project/Environment/App/Release/BuildRun + crdgen), CI (fmt/clippy/nextest/deny) | `kuben-store`: sqlite+postgres pool, `sqlx.toml`, migration 0001 (orgs/users/sessions/tokens/role_bindings/audit), repository traits + matrix test | Vite 8 + React 19 + TanStack + Tailwind v4 + shadcn (Base UI) + RTL tokens + Biome; MSW mock from the OpenAPI stub | `just ci` green; `crdgen` produces valid YAML (`kubectl apply --dry-run=server`) |
+| **2** | `kuben` bin: `serve --roles`, signals, supervisor, health (`/livez`,`/readyz`), graceful shutdown, config (figment), tracing JSON | `kuben-api`: axum + utoipa router, Problem+JSON, request-ID, body limit, rate limit, `POST /auth/login` (Argon2 + session cookie), `GET /me`, `openapi` bin | Login page, layout, theme (dark), command palette, router guards (`beforeLoad`), global 401 handling | Real login from the UI; `__Host-` cookie; CSP with no violations |
+| **3** | `ClusterRegistry` (in-cluster/kubeconfig), informer projection for Namespace/Deployment/Pod with a label selector, global sequence, delta bus (`broadcast`) | RBAC engine (static roles, moka cache, version counter), `AuthzProof` type, API tokens (`kbn_pat_…`), audit writer + request context | SSE client (`Last-Event-ID`, snapshot+delta with `setQueryData` + rAF batching), Projects/Environments pages | `kubectl create -f app.yaml` → the UI shows the change in < 1s |
+| **4** | CRD self-apply at boot (SSA), Project/Environment controller → namespace (PSA/Quota/NetPol), conditions + `observedGeneration`, events recorder, error policy + per-object backoff, soft-delete (7d grace) | CRUD API for Project/Environment/App (validation with garde + CEL), `If-Match`/ETag, Idempotency-Key, cursor pagination | Project/Environment/App forms (react-hook-form + zod from the schema), YAML viewer (CodeMirror) | Creating an environment from the UI → a namespace with labels/quota; deleting it → Terminating with a countdown |
+| **5** | `rust-embed` + Brotli precompressed + SPA fallback + cache headers; Dockerfile (cargo-chef + zigbuild + distroless/static:nonroot); budget gates (binary/image/RSS/JS) | Backup/restore (SQLite `VACUUM INTO` + CRD export), `reset-admin`, `doctor` (preflight: RWO StorageClass, Gateway class, cert-manager, metrics-server, PSA) | `size-limit` per route, Playwright E2E (login → create project), Lighthouse a11y | Image ≤ 30MB; idle RSS ≤ 30MB on kind with a 50 app/200 pod fixture |
+| **6** | `install.sh` (k3s + Traefik Gateway API + cert-manager + kuben), Helm chart skeleton, bootstrap order, polling fallback stub | OpenAPI drift check in CI, threat model doc, ADR 001–022 finalized | Minimal docs site (README + docs/), optional Storybook | Install on an empty VPS with a single command → login from `https://<ip>.sslip.io` (or an IP cert) |
 
-### ۵.۳ فایل‌های ریشه‌ی Monorepo
+### 5.3 Monorepo root files
 
 #### `Cargo.toml` (Workspace)
 
@@ -596,12 +596,12 @@ reqwest      = { version = "0.12", default-features = false, features = ["rustls
 
 # --- kubernetes ---
 kube         = { version = "4", default-features = false, features = ["client", "runtime", "derive", "ws", "rustls-tls", "gzip"] }
-k8s-openapi  = { version = "0.27", features = ["v1_32"] }   # ← پایین‌ترین K8s پشتیبانی‌شده؛ در زمان scaffold بررسی شود
+k8s-openapi  = { version = "0.27", features = ["v1_32"] }   # ← lowest supported K8s version; re-check at scaffold time
 schemars     = { version = "1", features = ["chrono04"] }
 
 # --- data ---
 sqlx             = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "sqlite", "postgres", "migrate", "uuid", "macros", "json"] }
-sea-query        = { version = "0.32", features = ["backend-sqlite", "backend-postgres", "derive"] }   # ← نسخه‌ی سازگار با sqlx 0.9 را در scaffold پین کنید
+sea-query        = { version = "0.32", features = ["backend-sqlite", "backend-postgres", "derive"] }   # ← pin the version compatible with sqlx 0.9 at scaffold time
 sea-query-binder = { version = "0.7", features = ["sqlx-sqlite", "sqlx-postgres", "with-uuid", "with-json"] }
 serde            = { version = "1", features = ["derive", "rc"] }
 serde_json       = { version = "1", features = ["raw_value"] }
@@ -692,7 +692,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
-panic = "unwind"            # Supervisor باید panic را بگیرد
+panic = "unwind"            # the supervisor must be able to catch panics
 debug = "line-tables-only"
 
 [profile.dev]
@@ -700,7 +700,7 @@ opt-level = 0
 debug = 1
 
 [profile.dev.package."*"]
-opt-level = 2               # dependencies بهینه در dev برای سرعت اجرا
+opt-level = 2               # optimized dependencies in dev, for runtime speed
 
 [profile.ci]
 inherits = "release"
@@ -708,7 +708,7 @@ lto = "thin"
 codegen-units = 16
 ```
 
-> ⚠️ **نسخه‌ها:** اعداد بالا بر اساس آخرین Releaseهای شناخته‌شده تا سپتامبر ۲۰۲۶ (kube 4.0، axum 0.8.9، sqlx 0.9.0، utoipa 5.5) هستند. Crateهای کم‌اهمیت‌تر (sea-query، rmcp، teloxide، opentelemetry، testcontainers) را در روز Scaffold با `cargo add` پین کنید و Renovate را فعال کنید. `k8s-openapi` را روی **پایین‌ترین نسخه‌ی Kubernetes پشتیبانی‌شده** پین کنید (پیشنهاد: 1.32 = k3s پایدار ۲۰۲۶).
+> ⚠️ **Versions:** the numbers above are based on the latest known releases up to September 2026 (kube 4.0, axum 0.8.9, sqlx 0.9.0, utoipa 5.5). Pin the less critical crates (sea-query, rmcp, teloxide, opentelemetry, testcontainers) with `cargo add` on scaffold day, and enable Renovate. Pin `k8s-openapi` to the **lowest supported Kubernetes version** (suggested: 1.32 = stable k3s in 2026).
 
 #### `rust-toolchain.toml`
 
@@ -740,7 +740,7 @@ rustflags = ["-C", "target-feature=+crt-static", "-C", "link-self-contained=yes"
 xtask = "run -p kuben --"
 ```
 
-#### `deny.toml` (خلاصه)
+#### `deny.toml` (summary)
 
 ```toml
 [licenses]
@@ -947,7 +947,7 @@ import type { paths } from './schema'
 export const api = createClient<paths>({
   baseUrl: '/api/v1',
   credentials: 'same-origin',
-  headers: { 'X-Kuben-Client': 'web' },   // CSRF: هدر سفارشی الزامی برای mutationها
+  headers: { 'X-Kuben-Client': 'web' },   // CSRF: a custom header is mandatory for mutations
 })
 export type { paths, components } from './schema'
 ```
@@ -1071,7 +1071,7 @@ ENTRYPOINT ["/kuben"]
 CMD ["serve", "--roles=all"]
 ```
 
-### ۵.۴ Crateها — `Cargo.toml` و اسکلت کد
+### 5.4 Crates — `Cargo.toml` and code skeletons
 
 #### `crates/kuben-crd/Cargo.toml`
 
@@ -1105,7 +1105,7 @@ workspace = true
 
 ```rust
 // crates/kuben-crd/src/lib.rs
-//! CRD types. این crate عمداً tokio/axum ندارد تا توسط CLI و ابزارهای شخص ثالث قابل استفاده باشد.
+//! CRD types. This crate deliberately has no tokio/axum so that the CLI and third-party tools can use it.
 pub mod v1alpha1;
 pub use v1alpha1::*;
 
@@ -1119,7 +1119,7 @@ pub const LABEL_APP: &str = "kuben.dev/app";
 ```
 
 ```rust
-// crates/kuben-crd/src/v1alpha1/app.rs (خلاصه)
+// crates/kuben-crd/src/v1alpha1/app.rs (summary)
 use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1140,7 +1140,7 @@ pub struct AppSpec {
     pub runtime: Runtime,
     #[serde(default)] pub env: Vec<EnvVar>,
     #[serde(default)] pub domains: Vec<Domain>,
-    /// Escape hatch: strategic-merge patch روی Deployment تولیدشده
+    /// Escape hatch: a strategic-merge patch over the generated Deployment
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<serde_json::Value>")]
     pub workload_patch: Option<serde_json::Value>,
@@ -1277,18 +1277,18 @@ pub mod ids;
 pub mod model;      // User, Org, Session, ApiToken, RoleBinding, AuditEvent …
 pub mod perm;       // Perm enum + Role → Perm mapping
 pub mod traits;     // Store, PolicyEngine, IdentityProvider, LeaderElector, BlobStore, MetricsSource, NotificationSink
-pub mod authz;      // AuthzProof — تنها راه ساختنش از PolicyEngine::check است
+pub mod authz;      // AuthzProof — the only way to build one is PolicyEngine::check
 
 pub use error::{Error, Result};
 ```
 
 ```rust
 // crates/kuben-core/src/authz.rs
-//! Invariant I-1: هیچ Subscription/Mutation بدون AuthzProof ممکن نیست.
+//! Invariant I-1: no Subscription/Mutation is possible without an AuthzProof.
 use crate::{ids::UserId, perm::Perm};
 
-/// اثبات اینکه `user` مجوز `perm` روی `scope` را دارد.
-/// فقط `PolicyEngine::check` می‌تواند آن را بسازد (constructor خصوصی).
+/// Proof that `user` holds `perm` on `scope`.
+/// Only `PolicyEngine::check` can build one (private constructor).
 #[derive(Debug, Clone)]
 pub struct AuthzProof { user: UserId, perm: Perm, scope: ScopeRef }
 
@@ -1304,7 +1304,7 @@ impl AuthzProof {
 ```
 
 ```rust
-// crates/kuben-core/src/config.rs (خلاصه)
+// crates/kuben-core/src/config.rs (summary)
 use figment::{providers::{Env, Format, Serialized, Toml}, Figment};
 use serde::{Deserialize, Serialize};
 
@@ -1343,7 +1343,7 @@ impl Default for Config { fn default() -> Self { Self {
 }}}
 
 impl Config {
-    /// ترتیب: defaults ← /etc/kuben/config.toml ← ./kuben.toml ← env KUBEN_* (nested با `__`)
+    /// Order: defaults ← /etc/kuben/config.toml ← ./kuben.toml ← env KUBEN_* (nested with `__`)
     pub fn load() -> figment::Result<Self> {
         Figment::from(Serialized::defaults(Config::default()))
             .merge(Toml::file("/etc/kuben/config.toml"))
@@ -1401,13 +1401,13 @@ crates/kuben-store/
     ├── lib.rs                       # Store { writer, reader }, connect(), migrate()
     ├── sqlite.rs                    # single-writer pool (max=1) + read pool (max=4), WAL, FK ON
     ├── postgres.rs
-    ├── iden.rs                      # #[derive(Iden)] enums برای همه‌ی جداول/ستون‌ها
+    ├── iden.rs                      # #[derive(Iden)] enums for every table/column
     ├── repo/{users,orgs,sessions,tokens,bindings,audit,outbox,idempotency}.rs
-    └── tests/matrix.rs              # هر تست روی sqlite و postgres (KUBEN_TEST_DB)
+    └── tests/matrix.rs              # every test runs on both sqlite and postgres (KUBEN_TEST_DB)
 ```
 
 ```rust
-// crates/kuben-store/src/sqlite.rs (اصل)
+// crates/kuben-store/src/sqlite.rs (the essentials)
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::{str::FromStr, time::Duration};
 
@@ -1419,7 +1419,7 @@ pub async fn connect(url: &str) -> sqlx::Result<(sqlx::SqlitePool, sqlx::SqliteP
         .busy_timeout(Duration::from_secs(5))
         .foreign_keys(true)                       // Invariant I-16
         .pragma("temp_store", "memory")
-        .pragma("cache_size", "-2000");           // ~2MiB/conn → بودجه‌ی RAM
+        .pragma("cache_size", "-2000");           // ~2MiB/conn → RAM budget
     let writer = SqlitePoolOptions::new().max_connections(1).connect_with(base.clone()).await?;
     let reader = SqlitePoolOptions::new().max_connections(4).connect_with(base.read_only(true)).await?;
     sqlx::migrate!("./migrations/sqlite").run(&writer).await?;
@@ -1428,7 +1428,7 @@ pub async fn connect(url: &str) -> sqlx::Result<(sqlx::SqlitePool, sqlx::SqliteP
 ```
 
 ```sql
--- crates/kuben-store/migrations/sqlite/0001_init.sql (خلاصه؛ نسخه‌ی postgres با BYTEA/BIGINT IDENTITY)
+-- crates/kuben-store/migrations/sqlite/0001_init.sql (summary; the postgres version uses BYTEA/BIGINT IDENTITY)
 CREATE TABLE organizations (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at BIGINT NOT NULL);
 CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, display_name TEXT, password_hash TEXT,
   is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at BIGINT NOT NULL);
@@ -1528,7 +1528,7 @@ crates/kuben-platform/src/
 ├── loghub.rs            # Invariant I-12
 ├── exec.rs              # terminal session (WS ↔ kube exec), ephemeral debug
 ├── controller/
-│   ├── mod.rs           # run_all(shared, token) با supervise()
+│   ├── mod.rs           # run_all(shared, token) with supervise()
 │   ├── project.rs
 │   ├── environment.rs   # namespace, PSA, quota, netpol, soft-delete
 │   ├── app.rs           # Deployment/Service/HTTPRoute via SSA + conditions
@@ -1647,7 +1647,7 @@ opentelemetry-otlp = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 
 [build-dependencies]
-# build.rs: در release با feature embed-ui وجود apps/web/dist را الزام می‌کند
+# build.rs: in a release build with the embed-ui feature, requires apps/web/dist to exist
 
 [dev-dependencies]
 insta.workspace = true
@@ -1671,7 +1671,7 @@ fn main() {
 ```
 
 ```rust
-// crates/kuben-api/src/lib.rs (اسکلت Router)
+// crates/kuben-api/src/lib.rs (Router skeleton)
 pub mod auth;        // login/logout/me, session cookie, argon2 (spawn_blocking + Semaphore)
 pub mod authz;       // extractor: Authz → PolicyEngine::check → AuthzProof
 pub mod error;       // ApiError → application/problem+json (RFC 9457)
@@ -1695,11 +1695,11 @@ pub fn router(state: state::ApiState) -> Router {
         .split_for_parts();
 
     let api = api
-        .route("/stream", axum::routing::get(stream::handler))          // SSE — بدون timeout/compression
+        .route("/stream", axum::routing::get(stream::handler))          // SSE — no timeout/compression
         .route("/apps/{app}/terminal", axum::routing::any(routes::terminal::ws)) // WS (HTTP/2-capable via any())
         .layer(middleware::from_fn_with_state(state.clone(), auth::session_middleware))
         .layer(middleware::from_fn(auth::csrf_fetch_metadata))         // Sec-Fetch-Site + X-Kuben-Client
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)))   // stream routes خودشان opt-out می‌کنند
+        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)))   // stream routes opt out themselves
         .layer(RequestBodyLimitLayer::new(1 << 20));
 
     Router::new()
@@ -1707,7 +1707,7 @@ pub fn router(state: state::ApiState) -> Router {
         .merge(utoipa_scalar::Scalar::with_url("/api/docs", openapi))
         .route("/livez", axum::routing::get(routes::health::livez))
         .route("/readyz", axum::routing::get(routes::health::readyz))
-        .fallback(web::spa_fallback)                                     // /api/* ناشناخته → 404 JSON، بقیه → index.html
+        .fallback(web::spa_fallback)                                     // unknown /api/* → 404 JSON, everything else → index.html
         .layer(CompressionLayer::new().br(true).gzip(true))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -1773,12 +1773,12 @@ workspace = true
 ```
 
 ```rust
-// crates/kuben/src/main.rs — اسکلت باینری فاز ۰
+// crates/kuben/src/main.rs — phase 0 binary skeleton
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cli;        // clap: serve | migrate | backup | restore | doctor | reset-admin | import
-mod serve;      // ساخت runtime، shared state، supervisor، signals
+mod serve;      // build the runtime, shared state, supervisor, signals
 mod telemetry;  // tracing json + prometheus exporter (+otel feature)
 
 fn main() -> anyhow::Result<()> {
@@ -1817,7 +1817,7 @@ pub fn build_runtime(rt: &RuntimeCfg) -> anyhow::Result<tokio::runtime::Runtime>
 }
 
 pub fn run(cfg: Config, opts: crate::cli::ServeOpts) -> anyhow::Result<()> {
-    // ADR-013: یک runtime در فاز ۰؛ `runtime.bulkhead=true` بعداً runtime دوم برای controller می‌سازد
+    // ADR-013: a single runtime in phase 0; `runtime.bulkhead=true` will later build a second runtime for the controller
     let rt = build_runtime(&cfg.runtime)?;
     rt.block_on(async move {
         let shutdown = CancellationToken::new();
@@ -1833,12 +1833,12 @@ pub fn run(cfg: Config, opts: crate::cli::ServeOpts) -> anyhow::Result<()> {
         let health = kuben_platform::health::Health::new();
         let projections = kuben_platform::projection::Projections::new();
 
-        // CRDها را خود binary اعمال می‌کند (ADR-017) — فقط controller/all
+        // the binary applies the CRDs itself (ADR-017) — controller/all only
         if has(Role::Controller) {
             kuben_platform::controller::crd_apply::ensure(&cluster.primary()).await?;
         }
 
-        // Informers → projections (API هم برای reads به آن نیاز دارد)
+        // Informers → projections (the API needs them for reads too)
         let inf_token = shutdown.child_token();
         let (c, p, h) = (cluster.clone(), projections.clone(), health.clone());
         tokio::spawn(kuben_platform::supervise::supervise("informers", inf_token, h.clone(), move |t| {
@@ -1876,7 +1876,7 @@ pub fn run(cfg: Config, opts: crate::cli::ServeOpts) -> anyhow::Result<()> {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await; // endpoint drain
         shutdown.cancel();
         for t in tasks { let _ = tokio::time::timeout(std::time::Duration::from_secs(10), t).await; }
-        store.checkpoint_and_close().await?;        // PRAGMA wal_checkpoint(TRUNCATE) در sqlite
+        store.checkpoint_and_close().await?;        // PRAGMA wal_checkpoint(TRUNCATE) on sqlite
         Ok(())
     })
 }
@@ -1890,7 +1890,7 @@ async fn signals(token: CancellationToken) {
 }
 ```
 
-### ۵.۵ CI (`.github/workflows/ci.yml` — خلاصه)
+### 5.5 CI (`.github/workflows/ci.yml` — summary)
 
 ```yaml
 name: ci
@@ -1938,121 +1938,121 @@ jobs:
       - run: just build-musl && scripts/check-budgets.sh   # binary ≤ 25MB; RSS idle ≤ 30MB (fixture 50 apps/200 pods, 5 min)
 ```
 
-### ۵.۶ Bootstrap Order و `install.sh` (فاز ۰ → ۱)
+### 5.6 Bootstrap order and `install.sh` (phase 0 → 1)
 
 ```
-1. (اختیاری) k3s: curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --disable=servicelb --secrets-encryption --kube-apiserver-arg=feature-gates=InPlacePodVerticalScaling=true" sh -
-2. Gateway API CRDs (standard channel) + فعال‌سازی Traefik Gateway provider در k3s (HelmChartConfig)
-   — روی Clusterهای دیگر: Envoy Gateway (helm) یا Traefik 3
-3. cert-manager (helm) با config.enableGatewayAPI=true + ClusterIssuer (letsencrypt-prod؛ IP cert اگر Public IP)
-4. kuben (helm/OCI یا manifests): Namespace kuben-system، RWO PVC، Secret master-key (تولید در Boot اگر نبود)
-5. kuben doctor (Preflight) → چاپ URL اولیه: https://<ip>.sslip.io  (یا https://<ip> با IP cert)
-6. Wizard در UI: Admin password → Base domain (یا ادامه با sslip.io) → Registry → Git provider (هر مرحله Test)
+1. (optional) k3s: curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --disable=servicelb --secrets-encryption --kube-apiserver-arg=feature-gates=InPlacePodVerticalScaling=true" sh -
+2. Gateway API CRDs (standard channel) + enable the Traefik Gateway provider in k3s (HelmChartConfig)
+   — on other clusters: Envoy Gateway (helm) or Traefik 3
+3. cert-manager (helm) with config.enableGatewayAPI=true + ClusterIssuer (letsencrypt-prod; IP cert if a public IP)
+4. kuben (helm/OCI or manifests): namespace kuben-system, RWO PVC, master-key Secret (generated at boot if absent)
+5. kuben doctor (preflight) → prints the initial URL: https://<ip>.sslip.io  (or https://<ip> with an IP cert)
+6. Wizard in the UI: admin password → base domain (or continue with sslip.io) → registry → Git provider (each step has a Test)
 ```
 
-### ۵.۷ Definition of Done فاز ۰
+### 5.7 Phase 0 definition of done
 
-- [ ] `just ci` سبز روی Linux amd64 و arm64.
-- [ ] `kuben serve --roles=all` روی kind: Login → Project → Environment → Namespace با PSA/Quota/NetPol؛ `kubectl delete environment` → Soft-delete.
-- [ ] `openapi.json` و `schema.d.ts` Commit‌شده و بدون Drift؛ UI با `openapi-fetch` تایپ‌شده.
-- [ ] Budgetها: Binary ≤ ۲۵MB، Image ≤ ۳۰MB، RSS Idle ≤ ۳۰MB (Fixture)، JS Shell ≤ ۲۰۰KB.
-- [ ] Threat Model + ADR 001–022 در `docs/adr/`؛ `CONTRIBUTING.md` با ۱۸ Invariant.
-- [ ] `install.sh` روی VPS خالی (Ubuntu 24.04، ۲vCPU/۲GB) → Login از مرورگر با TLS.
+- [ ] `just ci` green on Linux amd64 and arm64.
+- [ ] `kuben serve --roles=all` on kind: login → project → environment → namespace with PSA/quota/netpol; `kubectl delete environment` → soft-delete.
+- [ ] `openapi.json` and `schema.d.ts` committed and drift-free; the UI typed with `openapi-fetch`.
+- [ ] Budgets: binary ≤ 25MB, image ≤ 30MB, RSS idle ≤ 30MB (fixture), JS shell ≤ 200KB.
+- [ ] Threat model + ADR 001–022 in `docs/adr/`; `CONTRIBUTING.md` with 18 invariants.
+- [ ] `install.sh` on an empty VPS (Ubuntu 24.04, 2vCPU/2GB) → browser login over TLS.
 
-### ۵.۸ وضعیت پیاده‌سازی و اصلاحات طلایی (به‌روزرسانی ۲۰۲۶-۰۹-۱۱)
+### 5.8 Implementation status and golden fixes (updated 2026-09-11)
 
-کد در `kuben-monorepo/` پیاده‌سازی شده است. این بخش سه چیز را ثبت می‌کند: آنچه ساخته شد، مشکلاتی که **هنگام پیاده‌سازی** پیدا شد، و اصلاحاتی که به پلن اضافه و اجرا شد. هر جا این بخش با بخش‌های ۵.۳ تا ۵.۶ تعارض داشت، **این بخش مقدم است**.
+The code is implemented in `kuben-monorepo/`. This section records three things: what was built, the problems found **during implementation**, and the fixes that were added to the plan and carried out. Wherever this section conflicts with sections 5.3 through 5.6, **this section takes precedence**.
 
-#### ۵.۸.۱ آنچه ساخته شد (فاز ۰ کامل + هسته‌ی فاز ۱)
+#### 5.8.1 What was built (phase 0 complete, plus the core of phase 1)
 
-| حوزه | پیاده‌سازی |
+| Area | Implementation |
 |---|---|
-| Workspace | ۶ Crate با اعضای صریح (نه `crates/*`)، MSRV 1.94، `clippy::pedantic` با `-D warnings`، `unsafe_code = forbid` |
-| CRD | `kuben.dev/v1alpha1` (Project، Environment، App، Release، BuildRun، KubenConfig)، Self-apply با SSA در Boot |
-| Controller: Project | وضعیت: تعداد Environmentها + Condition `Ready` |
-| Controller: Environment | Namespace `kb-<project>-<env>` + PSA (`baseline` enforce، `restricted` warn/audit) + ResourceQuota (همیشه `services.loadbalancers=0` و `nodeports=0`) + LimitRange + NetworkPolicy ایزوله‌سازی مستأجر + Finalizer با Soft-delete و Grace (پیش‌فرض ۱۶۸ ساعت برای Production) + منع Adopt کردن Namespace غیرخودی |
-| Controller: App | Deployment برای هر Process (RollingUpdate با maxUnavailable=0، امنیت Pod، بدون SA Token) + HPA وقتی `max > min` + Service + HTTPRoute (Gateway API) + Prune + Conditionهای `Ready` و `Exposed` + Backoff جدا برای هر شیء |
-| Projection/SSE | Pod، Project، Environment و App + **فیلتر Stream برای هر Org** |
-| API | Projects، Environments، Apps (CRUD، Restart، Logs) و Secrets (فقط‌نوشتنی) + OpenAPI 3.1 + کلاینت TS تایپ‌شده |
-| UI | Login، Projects، Project، Environment (Deploy، Secrets)، App (Image، Scale، Env، Pods، Logs) + به‌روزرسانی زنده با SSE |
-| CLI | `backup`/`restore` واقعی (اتصال مجدد ownerReference) |
-| تحویل | Helm Chart، دو Dockerfile، CI با ۱۱ Job + `CI success`، Release برای ۵ هدف + checksums + attestation + GHCR + OCI Chart + verify-install، `install.sh`، Dependabot |
-| مستندات | README، CONTRIBUTING (۱۸ Invariant به‌عنوان چک‌لیست Review)، SECURITY، `docs/ci-cd.md`، `docs/deploy.md` |
+| Workspace | 6 crates with explicit members (not `crates/*`), MSRV 1.94, `clippy::pedantic` with `-D warnings`, `unsafe_code = forbid` |
+| CRD | `kuben.dev/v1alpha1` (Project, Environment, App, Release, BuildRun, KubenConfig), self-apply with SSA at boot |
+| Controller: Project | Status: number of environments + `Ready` condition |
+| Controller: Environment | Namespace `kb-<project>-<env>` + PSA (`baseline` enforce, `restricted` warn/audit) + ResourceQuota (always `services.loadbalancers=0` and `nodeports=0`) + LimitRange + tenant-isolation NetworkPolicy + finalizer with soft-delete and grace (168 hours by default for production) + refusal to adopt a namespace that is not its own |
+| Controller: App | A Deployment per process (RollingUpdate with maxUnavailable=0, pod security, no SA token) + HPA when `max > min` + Service + HTTPRoute (Gateway API) + prune + `Ready` and `Exposed` conditions + a separate backoff per object |
+| Projection/SSE | Pod, Project, Environment and App + **per-org stream filtering** |
+| API | Projects, Environments, Apps (CRUD, restart, logs) and Secrets (write-only) + OpenAPI 3.1 + a typed TS client |
+| UI | Login, Projects, Project, Environment (deploy, secrets), App (image, scale, env, pods, logs) + live updates over SSE |
+| CLI | Real `backup`/`restore` (ownerReference re-linking) |
+| Delivery | Helm chart, two Dockerfiles, CI with 11 jobs + `CI success`, releases for 5 targets + checksums + attestation + GHCR + OCI chart + verify-install, `install.sh`, Dependabot |
+| Docs | README, CONTRIBUTING (18 invariants as a review checklist), SECURITY, `docs/ci-cd.md`, `docs/deploy.md` |
 
-#### ۵.۸.۲ مشکلاتی که پیدا شد و اصلاح شد (Golden Fixes)
+#### 5.8.2 Problems found and fixed (golden fixes)
 
-1. **CRD با enum تگ‌دار (`Source { kind: Image | Git }`)** اسکیمای Structural معتبر نمی‌ساخت و `crdgen` در kube-core panic می‌کرد. ← به struct به سبک one-of تبدیل شد: `Source { image?, git? }`. قاعده‌ی «دقیقاً یکی» در کنترلر اعمال می‌شود (`InvalidSource`). یک تست گارد اضافه شد و این قاعده به CONTRIBUTING رفت.
-2. **operationId تکراری در OpenAPI.** همه‌ی `list`/`get`/`create` یک operationId داشتند، در نتیجه openapi-typescript نوع‌ها را روی هم ریخت. ← به هر endpoint یک `operation_id` یکتا داده شد و این قانون به CONTRIBUTING رفت.
-3. **نقض I-1 در SSE.** Snapshot به هر کاربر لاگین‌شده، منابع همه‌ی Orgها را نشان می‌داد. ← `Visibility` جداگانه برای هر اتصال ساخته شد و Deleteها فقط برای کلیدهایی ارسال می‌شوند که کاربر قبلاً دیده است. نتیجه: حتی نام منابع مستأجر دیگر نشت نمی‌کند.
-4. **Finalizer کمکی kube-rs با Soft-delete سازگار نیست.** در آن، اگر Cleanup مقدار Ok برگرداند، Finalizer بلافاصله حذف می‌شود. ← Finalizer دستی با `resourceVersion` (نوشتن شرطی) پیاده شد.
-5. **Restore با ownerReference قدیمی.** GC منابعِ بازیابی‌شده را پاک می‌کرد، چون uid مالک دیگر وجود نداشت. ← ownerReferenceها به uid جدید Projectها وصل می‌شوند و Namespace با همان Builder کنترلر بلافاصله ساخته می‌شود.
-6. **مقادیر env دیگر در Stream نیستند.** فقط نام و مرجع ارسال می‌شود. خود مقدار فقط در App Detail و فقط برای کاربری که مجوز `secret-read` دارد برمی‌گردد.
-7. **Release بر پایه‌ی باینری‌های checksum‌شده ساخته می‌شود.**
-   - ایمیج Release فقط `COPY` همان باینری‌هاست؛ QEMU لازم نیست.
-   - `USER 65532:65532` عددی است تا `runAsNonRoot` کار کند.
-   - Release بدون Cache ساخته می‌شود.
-   - Actionها با SHA کامیت pin شده‌اند (برای تگ‌های annotated با `^{}`).
-   - یک Job تجمیعی `CI success` تنها check الزامی است.
+1. **A CRD with a tagged enum (`Source { kind: Image | Git }`)** did not produce a valid structural schema, and `crdgen` panicked inside kube-core. ← It was turned into a one-of style struct: `Source { image?, git? }`. The "exactly one" rule is enforced in the controller (`InvalidSource`). A guard test was added and the rule went into CONTRIBUTING.
+2. **Duplicate operationIds in the OpenAPI document.** Every `list`/`get`/`create` shared a single operationId, so openapi-typescript collapsed the types into each other. ← Each endpoint was given a unique `operation_id`, and the rule went into CONTRIBUTING.
+3. **An I-1 violation in SSE.** The snapshot showed every logged-in user the resources of all orgs. ← A separate `Visibility` is now built per connection, and deletes are sent only for keys the user has already seen. The result: not even the names of another tenant's resources leak.
+4. **kube-rs's finalizer helper is not compatible with soft-delete.** With it, as soon as cleanup returns Ok the finalizer is removed. ← A manual finalizer with `resourceVersion` (conditional writes) was implemented.
+5. **Restore with stale ownerReferences.** GC deleted the restored resources, because the owner's uid no longer existed. ← ownerReferences are now attached to the projects' new uids, and the namespace is created immediately with the controller's own builder.
+6. **env values are no longer in the stream.** Only the name and the reference are sent. The value itself is returned only in App Detail, and only to a user who holds the `secret-read` permission.
+7. **Releases are built from checksummed binaries.**
+   - The release image is nothing but a `COPY` of those same binaries; QEMU is not needed.
+   - `USER 65532:65532` is numeric so that `runAsNonRoot` works.
+   - Releases are built without cache.
+   - Actions are pinned by commit SHA (for annotated tags, with `^{}`).
+   - A single aggregate `CI success` job is the only required check.
 8. **Chart:**
-   - استراتژی `Recreate`، چون ولوم SQLite از نوع RWO است.
-   - PVC با `resource-policy: keep` حذف نمی‌شود.
-   - اگر `replicas > 1` بدون PostgreSQL باشد، Chart خطا می‌دهد.
-   - ClusterRole فقط شامل منابعی است که کنترلرها واقعاً استفاده می‌کنند.
-9. **پین نسخه‌ها بر اساس واقعیت اکوسیستم:**
-   - pnpm 10.34، نه 12؛ ثبات مهم‌تر از جدیدترین نسخه است.
-   - size-limit 12، چون نسخه‌ی 13 به Node ≥ 22.18 نیاز دارد.
-   - TypeScript 5.9، چون peer dependency پکیج openapi-typescript روی ‎^5 است.
-   - k8s-openapi 0.28 (زمان‌ها بر پایه‌ی jiff) و kube 4.2.
-10. **`build.rs` در kuben-api حذف شد.** rust-embed خودش پوشه‌ی گم‌شده را خطا می‌دهد. نتیجه: یک build script کمتر، و دیگر linker warning زیر `-D warnings` نمی‌گیریم.
-11. **Workspace members صریح شدند.** یک پوشه‌ی مخفی که ابزار ساخته بود، الگوی `crates/*` را خراب کرده بود.
-12. **پراکسی سازمانی.** اگر `HTTPS_PROXY` تنظیم شده بود، `kuben serve` اصلاً بالا نمی‌آمد. دو علت داشت: feature `kube/http-proxy` خاموش بود، و خطای ساخت کلاینت کلاستر با `?` کل سرور را از کار می‌انداخت. این باگ را smoke test باینری Release پیدا کرد. ← feature `http-proxy` روشن شد. حالا اگر `kube.required=false` باشد، **هر** خطای کلاستر فقط سرور را به حالت degraded می‌برد، نه crash.
-13. **نشت credential در پیام خطا.** همان خطا، URL پراکسی را همراه با نام کاربری و رمزش در خروجی `doctor` و لاگ چاپ کرد. ← تابع `redact_credentials` (با تست) حالا روی همه‌ی خطاهای کلاستر و همه‌ی خروجی‌های `doctor` اعمال می‌شود، از جمله خطای دیتابیس، چون URL پستگرس هم ممکن است رمز داشته باشد.
+   - The `Recreate` strategy, because the SQLite volume is RWO.
+   - The PVC is not deleted, thanks to `resource-policy: keep`.
+   - If `replicas > 1` without PostgreSQL, the chart errors out.
+   - The ClusterRole covers only the resources the controllers actually use.
+9. **Version pins based on ecosystem reality:**
+   - pnpm 10.34, not 12; stability matters more than the newest version.
+   - size-limit 12, because version 13 requires Node ≥ 22.18.
+   - TypeScript 5.9, because the openapi-typescript package's peer dependency is on ^5.
+   - k8s-openapi 0.28 (jiff-based times) and kube 4.2.
+10. **`build.rs` was removed from kuben-api.** rust-embed already errors on a missing directory. The result: one build script fewer, and no more linker warnings under `-D warnings`.
+11. **Workspace members were made explicit.** A hidden directory created by tooling had broken the `crates/*` glob.
+12. **Corporate proxy.** With `HTTPS_PROXY` set, `kuben serve` would not come up at all. There were two causes: the `kube/http-proxy` feature was off, and an error building the cluster client was propagated with `?`, taking down the entire server. The release binary's smoke test found this bug. ← The `http-proxy` feature was turned on. Now, when `kube.required=false`, **any** cluster error only puts the server into degraded mode instead of crashing it.
+13. **Credential leak in an error message.** That same error printed the proxy URL, username and password included, into the `doctor` output and the log. ← The `redact_credentials` function (with tests) is now applied to every cluster error and every `doctor` output, including database errors, since a Postgres URL can carry a password too.
 
-#### ۵.۸.۳ باقی‌مانده، با اولویت (پلن اصلاح‌شده)
+#### 5.8.3 What remains, in priority order (revised plan)
 
 > **Update 2026-09-11:** Four P0 items below are now implemented — login rate limiting, API tokens, audit of every mutation, and TLS for custom domains — see §5.9 (scenarios 1, 2, 3 and 9). What remains P0: running the kind e2e job in CI and publishing `v0.1.0-rc.1`.
 
-**P0 — قبل از اولین Release عمومی:**
-- اجرای Job e2e روی kind در CI و انتشار `v0.1.0-rc.1` برای آزمودن کل Pipeline. اسکریپت آماده است (`scripts/e2e.sh`). در این جلسه Sandbox دسترسی به `docker.sock` و `127.0.0.1:6443` را مسدود می‌کرد، بنابراین e2e و بیلد Docker **فقط در CI یا روی ماشین کاربر** قابل اجراست.
-- **TLS دامنه‌های سفارشی.** در Gateway API، گواهی روی Listener تعریف می‌شود، نه روی Route. طرح: یک Certificate وایلدکارد (DNS-01) برای `*.baseDomain`، و برای دامنه‌های سفارشی، ساخت ListenerSet (یا Listener جداگانه) توسط App Controller.
-- Rate limit برای `/auth/login` بر اساس IP، مثلاً با moka. الان فقط یک Semaphore روی Argon2 وجود دارد.
-- API Token (`kbn_pat_…`). مسیر احراز هویتش الان فقط stub است.
-- ثبت Audit برای همه‌ی Mutationها. الان فقط Login ثبت می‌شود.
+**P0 — before the first public release:**
+- Run the e2e job on kind in CI and publish `v0.1.0-rc.1` to exercise the whole pipeline. The script is ready (`scripts/e2e.sh`). In this session the sandbox blocked access to `docker.sock` and `127.0.0.1:6443`, so e2e and the Docker build can run **only in CI or on the user's machine**.
+- **TLS for custom domains.** In Gateway API the certificate is defined on the listener, not on the route. The plan: one wildcard Certificate (DNS-01) for `*.baseDomain`, and for custom domains, a ListenerSet (or a separate listener) created by the App controller.
+- Per-IP rate limiting for `/auth/login`, for example with moka. Today there is only a semaphore around Argon2.
+- API tokens (`kbn_pat_…`). Their authentication path is currently only a stub.
+- Audit records for every mutation. Today only login is recorded.
 
 **P1:**
-- Build از Git: buildkitd rootless + Railpack + Job `buildctl`، مطابق I-7.
-- `Release` CRD با Digest Pinning و Rollback.
-- LogHub با حالت follow روی SSE (I-12).
-- Terminal با WS (I-8، I-9 و I-13).
-- ثبت Kubernetes Events توسط کنترلرها.
-- Leader Election با Lease، قبل از اجرای چند Replica.
-- اضافه شدن بررسی «CNI از NetworkPolicy پشتیبانی می‌کند» به `doctor`.
+- Build from Git: rootless buildkitd + Railpack + a `buildctl` job, per I-7.
+- The `Release` CRD with digest pinning and rollback.
+- LogHub with follow mode over SSE (I-12).
+- Terminal over WS (I-8, I-9 and I-13).
+- Kubernetes Events emitted by the controllers.
+- Leader election with a Lease, before running multiple replicas.
+- Adding a "the CNI supports NetworkPolicy" check to `doctor`.
 
-**P2:** طبق نقشه‌ی راه ۵.۱: Preview Env، Scale-to-zero، DB Branching و بقیه.
+**P2:** per the 5.1 roadmap: preview environments, scale-to-zero, DB branching and the rest.
 
-#### ۵.۸.۴ وضعیت اعتبارسنجی
+#### 5.8.4 Validation status
 
-نتیجه‌ی اجرای محلی در این جلسه در §۵.۸.۵ ثبت شده است.
+The results of this session's local run are recorded in §5.8.5.
 
-#### ۵.۸.۵ نتایج اعتبارسنجی محلی (۲۰۲۶-۰۹-۱۱، macOS arm64، Rust 1.97، Node 22.15)
+#### 5.8.5 Local validation results (2026-09-11, macOS arm64, Rust 1.97, Node 22.15)
 
-| بررسی | نتیجه |
+| Check | Result |
 |---|---|
-| `cargo fmt --all --check` | ✅ تمیز |
-| `cargo clippy --workspace --all-targets --locked -- -D warnings` (pedantic) | ✅ ۰ خطا، ۰ هشدار |
-| `cargo test --workspace --no-fail-fast` | ✅ **۶۹ تست پاس، ۰ شکست** (Redaction و Degrade کلاستر، Builderها، Validation، Visibility، Session، API HTTP، Store روی SQLite، CRD Structural + Snapshot) |
-| Web: `biome check` + `tsc` | ✅ تمیز |
-| Web: vitest | ✅ **۱۰ تست پاس** |
-| Web: build + size-limit | ✅ JS **۹۸٫۷ kB** brotli (بودجه ۲۰۰)، CSS ۴٫۳ kB (بودجه ۲۵) |
-| `just gen` / drift | ✅ `openapi.json`، `schema.d.ts` و `kuben.dev_all.yaml` تولید شدند |
-| `helm lint --strict` + `helm template --kube-version 1.32.0` | ✅ ۸ منبع؛ هر دو Guard (SQLite با چند Replica، فرمت نادرست gateway) خطای روشن می‌دهند |
-| `install.sh` | ✅ تحت `sh -n` و `bash -n`؛ تست منفی با Release ناموجود: خطای تمیز، هیچ فایلی نصب نشد، پوشه‌ی موقت پاک شد |
-| `check-budgets.sh` | ✅ حالت‌های ok، FAIL (exit 1) و usage (exit 2) |
-| YAML (workflowها، dependabot، chart) + `just --list` | ✅ همه parse می‌شوند؛ ci.yml: ۱۱ Job + `ci-success`؛ release.yml: ۷ Job |
-| باینری Release با UI جاسازی‌شده (`--release --features embed-ui`، LTO کامل) | ✅ **۱۹٫۷۵ MiB** (بودجه ۲۵)، macOS arm64. زمان بیلد حدود ۷٫۵ دقیقه. `--version` و `--help` درست کار می‌کنند. عدد رسمی را Job `budgets` روی musl لینوکس اندازه می‌گیرد |
-| `cargo deny check` (0.20.2) | ✅ advisories، bans، licenses و sources همه ok، بعد از دو اصلاح: (۱) `version = "0.1.0"` روی path-dependencyهای داخلی (بدون آن‌ها wildcard حساب می‌شوند و انتشار در crates.io هم ناممکن است)؛ (۲) `unmaintained = "workspace"`. crate `paste` که unmaintained است فقط از طریق proc-macroی `utoipa-axum` وارد می‌شود، در باینری نیست، و با Dependabot پیگیری می‌شود |
-| Smoke test باینری (بدون کلاستر) | ✅ `migrate` روی SQLite تازه؛ `reset-admin`؛ `doctor` دیتابیس را OK و کلاستر را با خطای تمیز FAIL گزارش می‌کند؛ `serve` دیتابیس و Admin را bootstrap می‌کند و Informer و Controller پس از خطای اتصال با Supervisor دوباره راه می‌افتند (crash نمی‌کند)؛ بررسی نشت credential: ۰. همین تست باگ‌های ۱۲ و ۱۳ در §۵.۸.۲ را پیدا کرد |
-| e2e روی kind، بیلد Docker، Release واقعی | ⛔ در این جلسه اجرا نشد: Sandbox دسترسی به `docker.sock` و `127.0.0.1:6443` را می‌بندد. این‌ها در CI اجرا می‌شوند (Jobهای `e2e`، `budgets`، و `release.yml`) یا روی ماشین کاربر با `just e2e` |
+| `cargo fmt --all --check` | ✅ clean |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` (pedantic) | ✅ 0 errors, 0 warnings |
+| `cargo test --workspace --no-fail-fast` | ✅ **69 tests passed, 0 failed** (redaction and cluster degrade, builders, validation, visibility, session, API HTTP, store on SQLite, CRD structural + snapshot) |
+| Web: `biome check` + `tsc` | ✅ clean |
+| Web: vitest | ✅ **10 tests passed** |
+| Web: build + size-limit | ✅ JS **98.7 kB** brotli (budget 200), CSS 4.3 kB (budget 25) |
+| `just gen` / drift | ✅ `openapi.json`, `schema.d.ts` and `kuben.dev_all.yaml` were generated |
+| `helm lint --strict` + `helm template --kube-version 1.32.0` | ✅ 8 resources; both guards (SQLite with multiple replicas, malformed gateway) produce a clear error |
+| `install.sh` | ✅ passes `sh -n` and `bash -n`; negative test against a non-existent release: a clean error, no files installed, the temp directory cleaned up |
+| `check-budgets.sh` | ✅ the ok, FAIL (exit 1) and usage (exit 2) paths |
+| YAML (workflows, dependabot, chart) + `just --list` | ✅ all parse; ci.yml: 11 jobs + `ci-success`; release.yml: 7 jobs |
+| Release binary with the UI embedded (`--release --features embed-ui`, full LTO) | ✅ **19.75 MiB** (budget 25), macOS arm64. Build time about 7.5 minutes. `--version` and `--help` work correctly. The official number is measured by the `budgets` job on Linux musl |
+| `cargo deny check` (0.20.2) | ✅ advisories, bans, licenses and sources all ok, after two fixes: (1) `version = "0.1.0"` on the internal path dependencies (without it they count as wildcards, and publishing to crates.io is impossible too); (2) `unmaintained = "workspace"`. The unmaintained `paste` crate enters only through `utoipa-axum`'s proc macro, is not in the binary, and is tracked with Dependabot |
+| Binary smoke test (no cluster) | ✅ `migrate` on a fresh SQLite; `reset-admin`; `doctor` reports the database OK and the cluster FAIL with a clean error; `serve` bootstraps the database and the admin, and the informer and controller are restarted by the supervisor after a connection error (it does not crash); credential leak check: 0. This same test found bugs 12 and 13 in §5.8.2 |
+| e2e on kind, Docker build, a real release | ⛔ not run in this session: the sandbox blocks access to `docker.sock` and `127.0.0.1:6443`. These run in CI (the `e2e` and `budgets` jobs, and `release.yml`) or on the user's machine with `just e2e` |
 
 ---
 
@@ -2072,13 +2072,13 @@ jobs:
 | 5 | Release history, rollback, safe rollouts | None | Railway and Render: one-click rollback | `app_releases` table with a spec snapshot (never a secret value); startup/liveness probes and `progressDeadlineSeconds` | 2 |
 | 6 | Persistent volumes | None | Railway volumes; Render disks (single instance) | PVCs **without** an ownerReference, so deleting an App never deletes data; `Recreate` strategy; single-replica validation; data is deleted only on explicit request | — |
 | 7 | Cron jobs and "run now" | None | Render cron jobs; Coolify scheduled tasks | A process with `schedule` becomes a CronJob (`concurrencyPolicy: Forbid`); "run now" creates a Job from the CronJob template | — |
-| 8 | One-click templates and databases | None | Coolify ~371 templates; Kubero ~164 | A small reviewed catalogue; generated secret with a ready-to-use `url` key; `protocol: tcp` processes get no public route | 6 |
+| 8 | One-click templates and databases | None | Coolify ~371 templates; the incumbent ~164 | A small reviewed catalogue; generated secret with a ready-to-use `url` key; `protocol: tcp` processes get no public route | 6 |
 | 9 | Custom domains with automatic HTTPS | TLS exists in name only | Coolify/Dokploy: Traefik ACME; Render/Railway: automatic | Kuben owns the Gateway listeners: one HTTPS listener per host, certificates issued by cert-manager's gateway-shim; global http→https redirect; DNS check | — |
-| 10 | Promote staging → production | None | Kubero pipelines; Qovery clone; Railway sync with diff | Copy image, runtime, env and volumes (**not** domains) with the `release-promote` permission; `dry_run` returns the diff; warnings for secrets missing in the target | 5 |
+| 10 | Promote staging → production | None | The incumbent's pipelines; Qovery clone; Railway sync with diff | Copy image, runtime, env and volumes (**not** domains) with the `release-promote` permission; `dry_run` returns the diff; warnings for secrets missing in the target | 5 |
 
 #### 5.9.1 Evidence-based comparison with competitors (research 2026-09-11)
 
-| Capability | Coolify | Dokploy | Railway | Render | Kubero | Qovery | Northflank | **Kuben (after §5.9)** |
+| Capability | Coolify | Dokploy | Railway | Render | The incumbent | Qovery | Northflank | **Kuben (after §5.9)** |
 |---|---|---|---|---|---|---|---|---|
 | Login protection | 5/min per email+IP; header-spoofing bypass fixed Oct 2025 [1] | 2FA/passkeys; rate limit unconfirmed | 2FA, enforceable on Pro | "Secure login" | ❌ | SSO only | Enforced MFA | Three buckets, `429` + `Retry-After`, IP from last XFF hop (phase 3: TOTP/passkeys) |
 | Audit log | ❌ not in the UI | Enterprise only | All plans, 48h–18mo | Pro+, ≥90d | Opt-in, off by default, capped at 1000 | 7–30d | Enterprise | **Free, always on, unbounded, structural** |
@@ -2097,7 +2097,7 @@ Key sources:
 - docs.dokploy.com/docs/core/guides/production-hardening (audit log is Enterprise-only)
 - docs.railway.com/enterprise/audit-logs; docs.railway.com/volumes/reference
 - render.com/docs/audit-logs; render.com/docs/disks
-- github.com/kubero-dev/kubero-operator (values.yaml: audit settings)
+- the incumbent's operator chart (values.yaml: audit settings)
 - qovery.com/pricing
 - northflank.com/docs/v1/application/secure/grant-api-access
 
@@ -2308,27 +2308,27 @@ CI artefact:
    `just gen` now builds both generators first, because a failed build used to
    truncate the committed `openapi.json`.
 
-## پیوست A. منابع
+## Appendix A. Sources
 
-- Qovery Pricing (qovery.com/pricing، Apr 2026؛ SaaSpartout/Gappsy review، Qovery blog Sep 2026): Team از $899/mo، Business $1,999–2,999/mo، Enterprise Custom.
-- Northflank Pricing (northflank.com/pricing؛ blog BYOC Sep 2026): BYOC $0.01389/vCPU-hr + $0.00139/GB-hr؛ PaaS $0.01667/vCPU-hr.
-- Porter Pricing (porter.run/pricing؛ docs): $13/vCPU-mo، $6/GB-mo؛ Cluster پیش‌فرض AWS ~$201/mo شامل Node مانیتورینگ.
-- Coolify Docs (installation؛ how-coolify-works؛ TECH_STACK.md): حداقل ۲CPU/۲GB؛ ۴ Container پایه (Laravel، PostgreSQL، Redis، Soketi). گزارش کاربری ~۱.۳GB Idle (nusendra.com، Jun 2026).
-- Dokploy Docs: حداقل ۲GB RAM/۳۰GB؛ Swarm + Traefik + PostgreSQL.
-- Devtron Docs (Getting Started): ۲CPU/۶GB (CI/CD، ≤۵ App)؛ ۶CPU/۱۳GB (>۵ App).
-- KubeVela vela-core chart: request 20Mi / limit 1Gi؛ Performance Fine-tuning: Small 0.5CPU/1Gi.
-- Kubernetes Blog: Ingress NGINX Retirement (Nov 2025)؛ Steering/SRC Statement (Jan 2026)؛ Ingress2Gateway 1.0 (Mar 2026).
-- Kaniko: GoogleContainerTools/kaniko#3348؛ Chainguard fork (archived June 2025).
-- Railpack: railpack.com (BuildKit Frontend Reference، Running in Production)؛ Railway blog (Mar 2025)؛ Nixpacks Maintenance Mode.
-- BuildKit rootless: moby/buildkit docs/rootless.md؛ الزام seccomp/AppArmor unconfined.
-- KEDA HTTP Add-on 0.16 docs (Architecture، Scaling، Cold-Start)؛ Sablier (sablierapp.dev).
-- pgbranch (OverlayFS CoW، ~1.9s)؛ CloudNativePG docs (Volume Snapshot backup/recovery، Replica clusters)؛ OpenEBS + CNPG.
-- OpenTelemetry eBPF Instrumentation (OBI): opentelemetry.io/docs/zero-code/obi؛ Grafana Beyla donation (May 2025)؛ First release (Nov 2025). Coroot؛ Cilium Hubble.
-- OpenCost Specification و Allocation API.
-- kube-rs 4.0.0 (Jun 2026)، 3.x changelog (streaming lists، retry policy، WS keepalive).
-- axum 0.8.9 (Apr 2026)؛ sqlx 0.9.0 (May 2026؛ MSRV 1.94؛ sqlx.toml؛ SqlSafeStr)؛ utoipa 5.5.0 (May 2026)؛ utoipa-axum 0.2.
+- Qovery Pricing (qovery.com/pricing, Apr 2026; SaaSpartout/Gappsy review, Qovery blog Sep 2026): Team from $899/mo, Business $1,999–2,999/mo, Enterprise Custom.
+- Northflank Pricing (northflank.com/pricing; blog BYOC Sep 2026): BYOC $0.01389/vCPU-hr + $0.00139/GB-hr; PaaS $0.01667/vCPU-hr.
+- Porter Pricing (porter.run/pricing; docs): $13/vCPU-mo, $6/GB-mo; the default AWS cluster ~$201/mo including the monitoring node.
+- Coolify Docs (installation; how-coolify-works; TECH_STACK.md): minimum 2CPU/2GB; 4 base containers (Laravel, PostgreSQL, Redis, Soketi). A user report of ~1.3GB idle (nusendra.com, Jun 2026).
+- Dokploy Docs: minimum 2GB RAM/30GB; Swarm + Traefik + PostgreSQL.
+- Devtron Docs (Getting Started): 2CPU/6GB (CI/CD, ≤5 App); 6CPU/13GB (>5 App).
+- KubeVela vela-core chart: request 20Mi / limit 1Gi; Performance Fine-tuning: Small 0.5CPU/1Gi.
+- Kubernetes Blog: Ingress NGINX Retirement (Nov 2025); Steering/SRC Statement (Jan 2026); Ingress2Gateway 1.0 (Mar 2026).
+- Kaniko: GoogleContainerTools/kaniko#3348; Chainguard fork (archived June 2025).
+- Railpack: railpack.com (BuildKit Frontend Reference, Running in Production); Railway blog (Mar 2025); Nixpacks Maintenance Mode.
+- BuildKit rootless: moby/buildkit docs/rootless.md; requires seccomp/AppArmor unconfined.
+- KEDA HTTP Add-on 0.16 docs (Architecture, Scaling, Cold-Start); Sablier (sablierapp.dev).
+- pgbranch (OverlayFS CoW, ~1.9s); CloudNativePG docs (Volume Snapshot backup/recovery, Replica clusters); OpenEBS + CNPG.
+- OpenTelemetry eBPF Instrumentation (OBI): opentelemetry.io/docs/zero-code/obi; Grafana Beyla donation (May 2025); First release (Nov 2025). Coroot; Cilium Hubble.
+- OpenCost Specification and Allocation API.
+- kube-rs 4.0.0 (Jun 2026), 3.x changelog (streaming lists, retry policy, WS keepalive).
+- axum 0.8.9 (Apr 2026); sqlx 0.9.0 (May 2026; MSRV 1.94; sqlx.toml; SqlSafeStr); utoipa 5.5.0 (May 2026); utoipa-axum 0.2.
 - cert-manager docs: HTTP-01 Gateway API solver (`config.enableGatewayAPI`).
-- Let's Encrypt Rate Limits (Aug 2026)؛ cunnie/sslip.io#57 و #108 (Exhaust در فوریه ۲۰۲۶؛ افزایش تا ۲۰۰k)؛ sslip.io توصیه به IP Certificate.
-- Gateway API Bench (howardjohn/gateway-api-bench): Envoy Gateway memory leak در Churn؛ Traefik ناامن با چند Gateway/Route زیاد.
-- pnpm 10 Catalogs؛ Vite 8 + React 19 + Tailwind v4 + shadcn on Base UI Templates (2026).
-- teloxide (buttons example، CallbackQuery)؛ rust-genai (v0.6، Ollama/OpenAI/Anthropic/Gemini native).
+- Let's Encrypt Rate Limits (Aug 2026); cunnie/sslip.io#57 and #108 (exhaustion in February 2026; raised to 200k); sslip.io recommends an IP Certificate.
+- Gateway API Bench (howardjohn/gateway-api-bench): Envoy Gateway memory leak under churn; Traefik unsafe with several Gateways and many Routes.
+- pnpm 10 Catalogs; Vite 8 + React 19 + Tailwind v4 + shadcn on Base UI Templates (2026).
+- teloxide (buttons example, CallbackQuery); rust-genai (v0.6, Ollama/OpenAI/Anthropic/Gemini native).

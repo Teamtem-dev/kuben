@@ -1,5 +1,6 @@
 //! `KubenConfig` — cluster-scoped singleton holding platform settings.
-//! Replaces Kubero's `Kuberoes` CR **and** its `config.yaml` (Invariant I-17).
+//! One resource replaces both the platform CR **and** a `config.yaml` file:
+//! settings live in the cluster, not on disk (Invariant I-17).
 
 use kube::CustomResource;
 use schemars::JsonSchema;
