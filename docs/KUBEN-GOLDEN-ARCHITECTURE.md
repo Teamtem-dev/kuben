@@ -1,182 +1,181 @@
-# 🏆 سند معماری طلایی Kuben
+# 🏆 Kuben Golden Architecture Document
 
-> بازطراحی Kubero به یک PaaS فوق‌سبک، Kubernetes-native و Single-Binary با Rust — بازبینی عمیق، واقع‌گرایانه و Pragmatic
+> A redesign of the incumbent PaaS into an ultra-light, Kubernetes-native, single-binary PaaS built in Rust — a deep, realistic and pragmatic review
 
 | | |
 |---|---|
-| **نسخه سند** | 1.0 |
-| **تاریخ** | 2026-09-10 |
-| **وضعیت** | پیشنهاد نهایی برای بازبینی (Proposed) |
-| **مبنا** | خواندن مستقیم کد `kubero-main` (سرور NestJS، کلاینت Vue، Templateها، Build Jobها) + طرح معماری پیشنهادی شما |
-| **مخاطب** | تیم فنی Kuben (Architect، Backend Rust، Frontend، DevOps) |
-| **نقد و اصلاحات** | این نسخه توسط [KUBEN-ARCHITECTURE-CRITIQUE.md](./KUBEN-ARCHITECTURE-CRITIQUE.md) نقد شده است؛ در تعارض، تصمیم‌های v1.1 آن سند (بخش ۰ و ۵) مقدم‌اند |
+| **Document version** | 1.0 |
+| **Date** | 2026-09-10 |
+| **Basis** | A direct reading of the incumbent's code (NestJS server, Vue client, templates, build jobs) plus your proposed architecture |
+| **Audience** | Kuben's technical team (architect, Rust backend, frontend, DevOps) |
+| **Critique and corrections** | This version has been critiqued in [KUBEN-ARCHITECTURE-CRITIQUE.md](./KUBEN-ARCHITECTURE-CRITIQUE.md); where they conflict, that document's v1.1 decisions (sections 0 and 5) take precedence |
 
 ---
 
-## فهرست
+## Contents
 
-- [۰. خلاصه اجرایی (TL;DR)](#۰-خلاصه-اجرایی-tldr)
-- [۱. کالبدشکافی Kubero فعلی — شواهد از کد](#۱-کالبدشکافی-kubero-فعلی--شواهد-از-کد)
-- [۲. جایگاه رقابتی و تعریف صادقانه «سبک‌ترین»](#۲-جایگاه-رقابتی-و-تعریف-صادقانه-سبکترین)
-- [۳. اصول معماری Kuben (Tenets)](#۳-اصول-معماری-kuben-tenets)
-- [۴. معماری کلان](#۴-معماری-کلان)
-- [۵. پاسخ سؤال ۱: Controller و API در یک Process](#۵-پاسخ-سؤال-۱-controller-و-api-در-یک-process)
-- [۶. پاسخ سؤال ۲: Database و ORM](#۶-پاسخ-سؤال-۲-database-و-orm)
-- [۷. پاسخ سؤال ۳: Frontend Stack](#۷-پاسخ-سؤال-۳-frontend-stack)
-- [۸. پاسخ سؤال ۴: چک‌لیست Production-Ready](#۸-پاسخ-سؤال-۴-چکلیست-production-ready)
-- [۹. تصمیم‌های «جذاب ولی خطرناک» و جایگزین‌ها](#۹-تصمیمهای-جذاب-ولی-خطرناک-و-جایگزینها)
-- [۱۰. پیشنهادهای طلایی: چطور Kuben بهترین شود](#۱۰-پیشنهادهای-طلایی-چطور-kuben-بهترین-شود)
-- [۱۱. Toolchain نهایی (Rust Crates و Frontend Packages)](#۱۱-toolchain-نهایی-rust-crates-و-frontend-packages)
-- [۱۲. ساختار Monorepo و Build Pipeline](#۱۲-ساختار-monorepo-و-build-pipeline)
-- [۱۳. بودجه‌های Performance و SLO](#۱۳-بودجههای-performance-و-slo)
-- [۱۴. Roadmap اجرایی](#۱۴-roadmap-اجرایی)
-- [۱۵. مسیر مهاجرت از Kubero](#۱۵-مسیر-مهاجرت-از-kubero)
-- [۱۶. ریسک‌ها و ADRهای پیشنهادی](#۱۶-ریسکها-و-adrهای-پیشنهادی)
-- [۱۷. جمع‌بندی نهایی](#۱۷-جمعبندی-نهایی)
+- [0. Executive summary (TL;DR)](#0-executive-summary-tldr)
+- [1. Dissecting the incumbent PaaS — evidence from its code](#1-dissecting-the-incumbent-paas--evidence-from-its-code)
+- [2. Competitive position and an honest definition of "lightest"](#2-competitive-position-and-an-honest-definition-of-lightest)
+- [3. Kuben's architecture tenets](#3-kubens-architecture-tenets)
+- [4. High-level architecture](#4-high-level-architecture)
+- [5. Question 1: controller and API in one process](#5-question-1-controller-and-api-in-one-process)
+- [6. Question 2: database and ORM](#6-question-2-database-and-orm)
+- [7. Question 3: frontend stack](#7-question-3-frontend-stack)
+- [8. Question 4: production-readiness checklist](#8-question-4-production-readiness-checklist)
+- [9. "Attractive but dangerous" decisions and their alternatives](#9-attractive-but-dangerous-decisions-and-their-alternatives)
+- [10. Golden proposals: how Kuben becomes the best](#10-golden-proposals-how-kuben-becomes-the-best)
+- [11. Final toolchain (Rust crates and frontend packages)](#11-final-toolchain-rust-crates-and-frontend-packages)
+- [12. Monorepo structure and build pipeline](#12-monorepo-structure-and-build-pipeline)
+- [13. Performance budgets and SLOs](#13-performance-budgets-and-slos)
+- [14. Execution roadmap](#14-execution-roadmap)
+- [15. Migration path from the incumbent PaaS](#15-migration-path-from-the-incumbent-paas)
+- [16. Risks and proposed ADRs](#16-risks-and-proposed-adrs)
+- [17. Final summary](#17-final-summary)
 
 ---
 
-## ۰. خلاصه اجرایی (TL;DR)
+## 0. Executive summary (TL;DR)
 
-**حکم کلی:** حدود ۸۰٪ طرح شما درست است و ستون‌های اصلی آن — Rust/Axum/kube-rs، Single Binary، SQLite embedded، React SPA، rust-embed و Image مینیمال — انتخاب‌های درستی هستند. **اما ۲۰٪ باقیمانده دقیقاً همان جایی است که PaaSها در Production شکست می‌خورند:** مدل Session و Token، پشتیبانی هم‌زمان از دو Database با sqlx، حافظه‌ی Reflectorها، ایزوله‌سازی Failure Domain داخل یک Process، Backpressure در Logها، Networking (Ingress در برابر Gateway API)، Build System و هزینه‌ی واقعی Kubernetes روی VPSهای کوچک.
+**Overall verdict:** about 80% of your design is right, and its main pillars — Rust/Axum/kube-rs, a single binary, embedded SQLite, a React SPA, rust-embed and a minimal image — are the correct choices. **But the remaining 20% is exactly where PaaS platforms fail in production:** the session and token model, supporting two databases at once with sqlx, the memory footprint of the reflectors, isolating failure domains inside a single process, backpressure in logs, networking (Ingress versus Gateway API), the build system, and the real cost of Kubernetes on small VPSes.
 
-### ۱۲ تصمیم طلایی
+### Twelve golden decisions
 
-1. **Kubernetes منبع حقیقت برای Desired State است** (CRDها: `App`، `Environment`، `Release`، `BuildRun` و …). SQL فقط برای Identity، RBAC، Audit و History استفاده می‌شود. این همان ایده‌ی اولیه‌ی Kubero بود که بعدها با اضافه‌شدن SQLite، `Kuberoes` CRD و `config.yaml` از بین رفت.
-2. **Modular Monolith با Roleها:** یک Binary و چند Role (`api`، `controller`، …). در Self-host همه‌چیز در یک Pod اجرا می‌شود و در Enterprise همان Binary با Roleهای جدا Deploy می‌شود.
-3. **Bulkhead درون‌Process:** دو Tokio Runtime جدا (API و Control Plane) + Supervisor برای هر Subsystem.
-4. **Read-Model (Projection) به‌جای Cache کردن Objectهای خام K8s.** بدون این کار، هدف RAM زیر ۳۰ مگابایت عملاً دست‌نیافتنی است.
-5. **Realtime = Snapshot + Delta روی SSE با Sequence Number.** Terminal روی WebSocket باینری با Flow Control اجرا می‌شود.
-6. **Log Fan-out:** یک Upstream برای هر Container، `broadcast` Ring Buffer، رفتار *drop-with-marker* برای Logها و *Backpressure واقعی* برای Terminal.
-7. **Auth:** Session کوکی `HttpOnly` از نوع Opaque برای مرورگر، API Token از نوع Opaque با SHA-256، Argon2id فقط برای Password (همراه Semaphore)، و پشتیبانی از OIDC و Passkeys.
-8. **DB:** ترکیب `sqlx` + `sea-query` پشت یک Repository Trait، تست ماتریسی روی SQLite و Postgres، و Migrationهای Embedded.
-9. **Type-Safety:** رویکرد OpenAPI-first با `utoipa` → `openapi-typescript` + `openapi-fetch`، به‌جای اتکای صرف به ts-rs.
-10. **Gateway API** به‌جای Ingress-NGINX (که بازنشسته شده)، cert-manager، BuildKit + Railpack/CNB، Deploy بر اساس Digest و Releaseهای Immutable.
-11. **Validation با CEL** داخل CRD به‌جای Admission Webhook، برای رسیدن به Zero-Ops واقعی.
-12. **Build:** Cargo Workspace + pnpm + `just`، و Turborepo به‌صورت اختیاری. Image نهایی: musl + mimalloc + `distroless/static:nonroot`.
+1. **Kubernetes is the source of truth for desired state** (CRDs: `App`, `Environment`, `Release`, `BuildRun` and so on). SQL is used only for identity, RBAC, audit and history. This was the incumbent's own original idea, which was later lost once SQLite, the incumbent's instance CR and `config.yaml` were added.
+2. **A modular monolith with roles:** one binary and several roles (`api`, `controller`, …). In self-hosted mode everything runs in a single pod, and in enterprise mode the same binary is deployed with separate roles.
+3. **An in-process bulkhead:** two separate Tokio runtimes (API and control plane) + a supervisor for each subsystem.
+4. **A read-model (projection) instead of caching raw K8s objects.** Without this, a target of under 30 MB of RAM is effectively unreachable.
+5. **Realtime = snapshot + delta over SSE with a sequence number.** The terminal runs over a binary WebSocket with flow control.
+6. **Log fan-out:** one upstream per container, a `broadcast` ring buffer, *drop-with-marker* behaviour for logs and *real backpressure* for the terminal.
+7. **Auth:** an `HttpOnly` cookie session holding an opaque ID for the browser, opaque API tokens hashed with SHA-256, Argon2id for passwords only (paired with a semaphore), and support for OIDC and passkeys.
+8. **DB:** a combination of `sqlx` + `sea-query` behind a repository trait, matrix testing on SQLite and Postgres, and embedded migrations.
+9. **Type safety:** an OpenAPI-first approach with `utoipa` → `openapi-typescript` + `openapi-fetch`, instead of relying on ts-rs alone.
+10. **Gateway API** instead of Ingress-NGINX (which has been retired), cert-manager, BuildKit + Railpack/CNB, digest-based deployment and immutable releases.
+11. **Validation with CEL** inside the CRD instead of an admission webhook, to reach true zero-ops.
+12. **Build:** a Cargo workspace + pnpm + `just`, with Turborepo optional. Final image: musl + mimalloc + `distroless/static:nonroot`.
 
-### کارنامه‌ی طرح پیشنهادی شما
+### Report card on the proposed design
 
-| تصمیم شما | حکم | خلاصه‌ی دلیل |
+| Your decision | Verdict | Reason in brief |
 |---|---|---|
-| pnpm + Turborepo برای کل Monorepo (شامل Rust) | ⚠️ اصلاح | Turbo گراف وابستگی Cargo را نمی‌فهمد و Cache آن برای `target/` کارایی ندارد. Cargo خودش Build Graph است. |
-| Axum + Tokio + Tower | ✅ تأیید | بهترین انتخاب فعلی اکوسیستم |
-| kube-rs `Controller` + `reflector` | ✅ مشروط | با Projection، Label Selector، حذف `managedFields` و `metadata_watcher` |
-| API و Controller در یک Process | ✅ مشروط | Role Flags + Bulkhead Runtimes + Leader Election |
-| sqlx + SQLite WAL + Postgres | ⚠️ اصلاح | ماکروی `query!` هم‌زمان برای دو دیتابیس کار نمی‌کند. راه‌حل: SeaQuery، Single-Writer Pool و استراتژی `Recreate` |
-| WebSocket برای Terminal و SSE برای Logs | ✅ تأیید | همراه با HTTP/2، Multiplexing، `Last-Event-ID` و Origin Check |
-| «SPDY PTY Streaming» | ⚠️ اصلاح | kube-rs از WebSocket استفاده می‌کند و SPDY در Kubernetes در حال حذف است |
-| Argon2id | ✅ فقط برای Password | نه برای API Token؛ مصرف حافظه با Semaphore محدود شود |
-| PASETO/JWT برای Session | ❌ برای مرورگر رد | امکان Revoke ندارد و در معرض سرقت از طریق XSS است. Cookie Session جایگزین آن است |
-| ts-rs | ⚠️ اصلاح | فقط Type تولید می‌کند؛ قرارداد Endpointها را پوشش نمی‌دهد |
-| Vite + React 19 + TanStack Router/Query | ✅ تأیید | + React Compiler |
-| Tailwind + shadcn/ui | ✅ تأیید | Tailwind v4 + Logical Properties برای پشتیبانی RTL |
-| رد Astro برای Dashboard | ✅ تأیید | ولی Astro برای سایت Docs و Marketing عالی است |
-| rust-embed | ✅ تأیید | + Brotli از پیش فشرده‌شده + `Cache-Control: immutable` |
-| `distroless/cc` یا `scratch` | ⚠️ اصلاح | Build استاتیک musl → `distroless/static:nonroot`. `scratch` توصیه نمی‌شود |
-| RAM Idle کمتر از ۲۵ مگابایت | ⚠️ مشروط | فقط با Projection و Bufferهای Bounded ممکن است، و باید به‌عنوان SLO در CI اندازه‌گیری شود |
-| API در محدوده‌ی میکروثانیه | ⚠️ اصلاح انتظار | این عدد فقط زمان Handler است؛ زمان End-to-End در حد میلی‌ثانیه خواهد بود |
+| pnpm + Turborepo for the whole monorepo (including Rust) | ⚠️ Revise | Turbo does not understand Cargo's dependency graph and its cache is ineffective for `target/`. Cargo is itself a build graph. |
+| Axum + Tokio + Tower | ✅ Confirmed | The best choice in the ecosystem today |
+| kube-rs `Controller` + `reflector` | ✅ Conditional | With projections, label selectors, dropping `managedFields` and `metadata_watcher` |
+| API and controller in one process | ✅ Conditional | Role flags + bulkhead runtimes + leader election |
+| sqlx + SQLite WAL + Postgres | ⚠️ Revise | The `query!` macro does not work for two databases at once. The fix: SeaQuery, a single-writer pool and a `Recreate` strategy |
+| WebSocket for the terminal and SSE for logs | ✅ Confirmed | Together with HTTP/2, multiplexing, `Last-Event-ID` and an origin check |
+| "SPDY PTY streaming" | ⚠️ Revise | kube-rs uses WebSocket, and SPDY is on its way out of Kubernetes |
+| Argon2id | ✅ For passwords only | Not for API tokens; cap memory use with a semaphore |
+| PASETO/JWT for sessions | ❌ Rejected for the browser | It cannot be revoked and is exposed to theft via XSS. A cookie session replaces it |
+| ts-rs | ⚠️ Revise | It only generates types; it does not cover the endpoint contract |
+| Vite + React 19 + TanStack Router/Query | ✅ Confirmed | + React Compiler |
+| Tailwind + shadcn/ui | ✅ Confirmed | Tailwind v4 + logical properties for RTL support |
+| Rejecting Astro for the dashboard | ✅ Confirmed | But Astro is excellent for the docs and marketing site |
+| rust-embed | ✅ Confirmed | + pre-compressed Brotli + `Cache-Control: immutable` |
+| `distroless/cc` or `scratch` | ⚠️ Revise | A static musl build → `distroless/static:nonroot`. `scratch` is not recommended |
+| Idle RAM under 25 MB | ⚠️ Conditional | Only possible with projections and bounded buffers, and it must be measured as an SLO in CI |
+| An API in the microsecond range | ⚠️ Revise the expectation | That number is handler time only; end-to-end time will be in the millisecond range |
 
 ---
 
-## ۱. کالبدشکافی Kubero فعلی — شواهد از کد
+## 1. Dissecting the incumbent PaaS — evidence from its code
 
-> هدف این بخش تحقیر Kubero نیست؛ Kubero ایده‌های محصولی خوبی دارد (Pipeline، Review Apps، Template Catalog، سادگی). هدف این است که Kuben این **کلاس** از مشکلات را **به‌صورت ساختاری غیرممکن** کند، نه اینکه صرفاً «با دقت بیشتر» کد بنویسد.
+> The goal of this section is not to belittle the incumbent; it has good product ideas (pipelines, review apps, a template catalog, simplicity). The goal is for Kuben to make this **class** of problem **structurally impossible**, rather than merely writing code "more carefully".
 >
-> تمام مسیرهای زیر نسبت به `kubero-main/` هستند.
+> Every reference below points into the incumbent's own source tree.
 
-### ۱.۱ امنیت
+### 1.1 Security
 
-| # | مشکل | شاهد در کد | اثر | راه‌حل ساختاری در Kuben |
+| # | Problem | Evidence in the code | Impact | Structural fix in Kuben |
 |---|---|---|---|---|
-| **S1** 🔴 | **شنود و Hijack ترمینال و لاگ بین کاربران.** هر کاربر می‌تواند به هر Room دلخواهی `join` کند، و `handleTerminal` ورودی را در `execStreams[data.room]` می‌نویسد بدون اینکه Authorization را بررسی کند. نام Room هم کاملاً قابل‌حدس است: `pipeline-phase-app-pod-container-terminal` | `server/src/events/events.gateway.ts:29-36` و `:57-65`، `server/src/apps/apps.service.ts:746` | شروع Console نیاز به `app:write` دارد (`apps.controller.ts:247-250`)، ولی **پیوستن و تزریق کلید فقط یک JWT معتبر می‌خواهد**. در نتیجه یک کاربر Read-only از Tenant دیگر می‌تواند خروجی Shell را ببیند و در Shell باز شخص دیگری فرمان اجرا کند | Session ID تصادفی ۱۲۸ بیتی متصل به کاربر؛ Authorization برای هر Subscription؛ عدم اشتراک Shell بین کاربران؛ Origin Check |
-| **S2** 🔴 | **Secret پیش‌فرض JWT داخل Source Code قرار دارد** | `server/src/auth/auth.service.ts:156-158`، `auth/strategies/jwt.strategy.ts:13-15`، `auth/auth.module.ts:34-35` | اگر `JWT_SECRET` تنظیم نشده باشد، هر کسی که Repo را خوانده باشد می‌تواند Token جعل کند | کلید Ed25519 در اولین Boot تولید و در K8s Secret ذخیره می‌شود. بدون کلید، سرویس Start نمی‌شود (Fail-Closed). چرخش کلید با `kid` |
-| **S3** 🟠 | **JWT در Cookie قابل‌خواندن با JS و در `localStorage` ذخیره می‌شود**، اعتبار ۱۰ ساعته دارد و قابل Revoke نیست، و در همین حال CSP هم خاموش است | `client/src/components/loginprompt.vue:165`، `client/src/plugins/index.ts:17`، `server/src/main.ts:37-38` | هر XSS برابر با سرقت کامل Session است | کوکی `HttpOnly; Secure; SameSite=Lax` با Session ID از نوع Opaque و CSP سخت‌گیرانه |
-| **S4** 🟠 | مسیر Legacy برای Password با HMAC-SHA256 و مقایسه‌ی غیر Constant-time با `===`، کنار bcrypt | `server/src/auth/auth.service.ts:36-51` | Downgrade دائمی هش و احتمال Timing Leak | Argon2id + Rehash-on-Login + مقایسه‌ی Constant-time (`subtle`) |
-| **S5** 🟠 | CORS با `origin: '*'` روی WebSocket، `cors: true` روی HTTP، و CSP و HSTS خاموش | `events.gateway.ts:13-17`، `main.ts:30`، `main.ts:37-38` | امکان CSWSH (Cross-Site WebSocket Hijacking) و XSS بدون هیچ دفاعی | Same-Origin به‌صورت پیش‌فرض، CSP سخت‌گیرانه (SPA بدون Inline Script)، و Origin Check در WS Upgrade |
-| **S6** 🟠 | **PromQL Injection:** مقادیر `pipeline` و `phase` مستقیماً داخل Query قرار می‌گیرند | `server/src/metrics/metrics.service.ts:114`، `:228` | خواندن Metricهای Namespaceهای دیگر | اعتبارسنجی نام‌ها با Regex استاندارد DNS-1123 و ساخت Label Matcher از روی Projection، نه از رشته‌ی خام |
-| **S7** 🔴 | **Build Pod کد کاربر را اجرا می‌کند و در عین حال Token سرویس‌اکانت دارد:** `automountServiceAccountToken: true` + `bitnami/kubectl:latest` با `imagePullPolicy: Always` که خودش `kuberoapps` را Patch می‌کند | `server/src/deployments/templates/buildpacks.yaml.ts:31`، `:48-49` | کد Build کاربر می‌تواند Token را بخواند و CRها را تغییر دهد. علاوه بر آن، Tag شناور یک ریسک Supply Chain است (کاتالوگ عمومی Bitnami در ۲۰۲۵ تغییر کرد) | **Build Pod هرگز به K8s API دسترسی ندارد.** Controller تکمیل `BuildRun` را مشاهده می‌کند و خودش `Release` را می‌سازد. همه‌ی Imageها با Digest پین می‌شوند |
-| **S8** 🟠 | Broadcast سراسری Notificationها با `server.emit` به همه‌ی Socketها. Guardهای NestJS فقط روی `@SubscribeMessage` اجرا می‌شوند و روی Handshake اجرا نمی‌شوند | `events.gateway.ts:47-49`، `notifications.service.ts:65` | احتمالاً حتی Socketهای احراز هویت‌نشده هم رویدادها را دریافت می‌کنند | احراز هویت در Handshake/Upgrade + Topicهای مجوزدار |
-| **S9** 🟡 | خروجی Terminal کاربر به `process.stdout` خود سرور Pipe می‌شود | `server/src/kubernetes/kubernetes.service.ts:1184` | محتوای Shell کاربران (از جمله Secretها) وارد لاگ‌های Kubero می‌شود | محتوای Terminal هرگز Log نمی‌شود. فقط Metadata مثل شروع/پایان Session و کاربر در Audit ثبت می‌شود |
-| **S10** 🟡 | Templateهایی با Password ثابت (مثلاً `password: wordpress`) | `services/wordpress/app.yaml` | همه‌ی نصب‌ها Credential یکسان دارند | Template Parameter Schema + Secretهای تولیدشده به‌صورت خودکار |
+| **S1** 🔴 | **Eavesdropping on and hijacking terminals and logs between users.** Any user can `join` any room they like, and the terminal handler writes input into `execStreams[data.room]` without checking authorization. Room names are entirely guessable: `pipeline-phase-app-pod-container-terminal` | The incumbent's WebSocket events gateway (its join and terminal handlers) and the exec path in its apps service | Starting a console requires `app:write` (checked in the incumbent's apps controller), but **joining a room and injecting keystrokes only requires a valid JWT**. As a result a read-only user from another tenant can watch shell output and run commands in someone else's open shell | A random 128-bit session ID bound to the user; an authorization check for every subscription; no shell sharing between users; an origin check |
+| **S2** 🔴 | **A default JWT secret sits in the source code** | The incumbent's auth service, its JWT strategy and its auth module | If `JWT_SECRET` is not set, anyone who has read the repo can forge a token | An Ed25519 key is generated on first boot and stored in a K8s Secret. Without a key the service does not start (fail-closed). Key rotation via `kid` |
+| **S3** 🟠 | **The JWT is stored in a JS-readable cookie and in `localStorage`**, is valid for 10 hours and cannot be revoked, and meanwhile CSP is off as well | The incumbent's login prompt component, its client plugin bootstrap and its server entrypoint | Any XSS equals complete session theft | An `HttpOnly; Secure; SameSite=Lax` cookie holding an opaque session ID, plus a strict CSP |
+| **S4** 🟠 | A legacy password path using HMAC-SHA256 and a non-constant-time comparison with `===`, alongside bcrypt | The incumbent's auth service | A permanent hash downgrade and a possible timing leak | Argon2id + rehash-on-login + constant-time comparison (`subtle`) |
+| **S5** 🟠 | CORS with `origin: '*'` on WebSocket, `cors: true` on HTTP, and CSP and HSTS off | The incumbent's events gateway and its server entrypoint | CSWSH (cross-site WebSocket hijacking) becomes possible, and XSS meets no defence at all | Same-origin by default, a strict CSP (an SPA with no inline script), and an origin check on the WS upgrade |
+| **S6** 🟠 | **PromQL injection:** the `pipeline` and `phase` values are placed straight into the query | The incumbent's metrics service, at two call sites | Reading the metrics of other namespaces | Validate the names against the standard DNS-1123 regex and build the label matcher from the projection, not from a raw string |
+| **S7** 🔴 | **The build pod runs user code and at the same time holds a service account token:** `automountServiceAccountToken: true` + `bitnami/kubectl:latest` with `imagePullPolicy: Always`, which itself patches the incumbent's app CRs | The incumbent's buildpacks build template | The user's build code can read the token and modify CRs. On top of that, a floating tag is a supply-chain risk (the public Bitnami catalog changed in 2025) | **The build pod never has access to the K8s API.** The controller watches for `BuildRun` completion and creates the `Release` itself. Every image is pinned by digest |
+| **S8** 🟠 | A global broadcast of notifications with `server.emit` to every socket. NestJS guards run only on `@SubscribeMessage` and do not run on the handshake | The incumbent's events gateway and its notifications service | Even unauthenticated sockets probably receive the events | Authentication at handshake/upgrade + authorized topics |
+| **S9** 🟡 | The user's terminal output is piped into the server's own `process.stdout` | The incumbent's Kubernetes service | The contents of users' shells (including secrets) end up in the incumbent's logs | Terminal content is never logged. Only metadata such as session start/end and the user is recorded in the audit log |
+| **S10** 🟡 | Templates with a fixed password (for example `password: wordpress`) | The incumbent's WordPress service template | Every installation has identical credentials | A template parameter schema + automatically generated secrets |
 
-### ۱.۲ Concurrency و Correctness
+### 1.2 Concurrency and correctness
 
-| # | مشکل | شاهد | راه‌حل در Kuben |
+| # | Problem | Evidence | Fix in Kuben |
 |---|---|---|---|
-| **C1** 🔴 | **Context مشترک و Mutable در Singleton:** فراخوانی `setCurrentContext` روی `KubernetesService` در ۲۸ نقطه از کد. در حالت Multi-cluster، دو درخواست هم‌زمان با هم Race دارند و ممکن است درخواست B روی Cluster درخواست A اجرا شود | `server/src/logs/logs.service.ts:70`، `apps/apps.service.ts:163,403,683` | یک `ClusterRegistry { ClusterId → kube::Client }` Immutable. Context هرگز Global نیست و هر عملیات Cluster خودش را صریحاً همراه دارد |
-| **C2** 🔴 | **نشت Log Streamها:** آرایه‌ی `podLogStreams` فقط بزرگ می‌شود؛ Streamهای `follow` حتی بدون بیننده هم بسته نمی‌شوند؛ Dedupe بر اساس Pod انجام می‌شود نه Container (پس Container دوم هیچ‌وقت Stream نمی‌شود)؛ هر Chunk لزوماً یک خط نیست؛ برای هر Chunk یک UUID ساخته می‌شود؛ هیچ Backpressure‌ای وجود ندارد؛ و یک Sleep هک‌گونه‌ی ۳۰۰ms در کد هست | `server/src/logs/logs.service.ts:12`، `:72-82`، `:218` | `LogHub` با Reference Counting، `broadcast` Bounded و Line Framing محدود (بخش ۵.۸) |
-| **C3** 🟠 | یک Shell مشترک برای هر Pod/Container بین همه‌ی کاربران، به‌همراه Sleep هک‌گونه‌ی ۳ ثانیه‌ای | `apps.service.ts:746-797`، `:774` | یک Session برای هر تب و هر کاربر، با Idle Timeout |
-| **C4** 🟠 | هیچ Informer/Cache‌ای وجود ندارد: هر List مستقیماً به API Server می‌رود، و یک Cron هر ۱۵ ثانیه همه‌ی Appها را در کل Cluster List می‌کند | `server/src/status/status.service.ts:18` | Informer + Projection؛ Metricهای شمارشی مستقیماً از روی Read-Model محاسبه می‌شوند |
-| **C5** 🟡 | Patchها به‌صورت Fire-and-forget ارسال و خطاهایشان بلعیده می‌شود، در حالی که مسیر عادی با سطح `error` لاگ می‌شود | `kubernetes.service.ts:1104`، `:1127-1150` | Server-Side Apply + Status Conditions + Error Typeهای صریح |
-| **C6** 🟡 | Graceful Shutdown خاموش است | `server/src/main.ts:109` (`//app.enableShutdownHooks();`) | ترتیب Shutdown کامل (بخش ۸.۱) |
-| **C7** 🟡 | Migration با `execSync('npx prisma migrate deploy')` در زمان Boot اجرا می‌شود، همراه با `PRAGMA foreign_keys=OFF` | `server/src/database/database.service.ts:61-63` | این روش به `npx` و `node_modules` در Image Production نیاز دارد، Event Loop را Block می‌کند و در حالت چند Replica دچار Race می‌شود. در Kuben: `sqlx::migrate!` Embedded با Lock |
+| **C1** 🔴 | **Shared, mutable context in a singleton:** `setCurrentContext` is called on the Kubernetes service at 28 points in the code. In multi-cluster mode two concurrent requests race with each other, and request B may end up running against request A's cluster | The incumbent's logs service and several call sites in its apps service | An immutable `ClusterRegistry { ClusterId → kube::Client }`. Context is never global, and every operation explicitly carries its own cluster |
+| **C2** 🔴 | **Log stream leaks:** the `podLogStreams` array only ever grows; `follow` streams are not closed even when nobody is watching; deduplication is done per pod rather than per container (so the second container is never streamed); a chunk is not necessarily a single line; a UUID is generated for every chunk; there is no backpressure at all; and there is a hacky 300ms sleep in the code | The incumbent's logs service | A `LogHub` with reference counting, a bounded `broadcast` and capped line framing (section 5.8) |
+| **C3** 🟠 | One shared shell per pod/container across all users, together with a hacky 3-second sleep | The incumbent's apps service, in its exec path | One session per tab and per user, with an idle timeout |
+| **C4** 🟠 | There is no informer or cache at all: every list goes straight to the API server, and a cron lists every app in the whole cluster every 15 seconds | The incumbent's status service | Informer + projection; counter metrics are computed directly from the read-model |
+| **C5** 🟡 | Patches are sent fire-and-forget and their errors are swallowed, while the normal path is logged at `error` level | The incumbent's Kubernetes service | Server-side apply + status conditions + explicit error types |
+| **C6** 🟡 | Graceful shutdown is disabled | The incumbent's server entrypoint (`//app.enableShutdownHooks();`) | A complete shutdown ordering (section 8.1) |
+| **C7** 🟡 | Migrations run at boot via `execSync('npx prisma migrate deploy')`, together with `PRAGMA foreign_keys=OFF` | The incumbent's database service | That approach needs `npx` and `node_modules` in the production image, blocks the event loop, and races when there are multiple replicas. In Kuben: embedded `sqlx::migrate!` with a lock |
 
-### ۱.۳ معماری و عملیات
+### 1.3 Architecture and operations
 
-- **A1 — Source of Truth دوپاره:** README ادعا می‌کند *«All data is stored on your Kubernetes etcd without an extra database»*، اما امروز داده بین SQLite (Users، Audit، Runpacks، PodSizes، Notifications)، CRD `Kuberoes` و `config.yaml` پخش شده است.
-- **A2 — Operator مبتنی بر Helm (Operator SDK):** Reconcile در عمل همان Render کردن Chart است. Status و Conditionها ضعیف‌اند، اضافه‌کردن منطقی مثل Finalizer، Promotion یا Rollback سخت است، و CRD هنوز در `v1alpha1` مانده است.
-- **A3 — Addonهای ناهمگون:** بخشی به OLM Operatorها وابسته است (که بیرون از OpenShift کمتر نصب می‌شوند) و بخشی به Chartهای شخص ثالث.
-- **A4 — Build:** برای هر Build یک Job ساخته می‌شود با TTL یک‌ساله (`ttlSecondsAfterFinished: 31536000`، `buildpacks.yaml.ts:14`)، بدون Queue و محدودیت Concurrency. Deploy بر اساس Tag انجام می‌شود، نه Digest.
-- **A5 — Footprint:** Image مبتنی بر `node:22-alpine` با کل `node_modules`، به‌علاوه‌ی Operator جداگانه، به‌علاوه‌ی Prometheus برای Metricها (`metrics.service.ts:30`).
-- **A6 — کیفیت کد:** حدود ۲۰ هزار خط TypeScript در سرور، `console.log`های پراکنده، کدهای Comment‌شده و Typeهای `any`.
+- **A1 — A split source of truth:** the README claims *"All data is stored on your Kubernetes etcd without an extra database"*, but today the data is spread across SQLite (users, audit, runpacks, pod sizes, notifications), the incumbent's instance CR and `config.yaml`.
+- **A2 — A Helm-based operator (Operator SDK):** reconciliation is in practice just rendering the chart. Status and conditions are weak, adding logic such as finalizers, promotion or rollback is hard, and the CRD is still at `v1alpha1`.
+- **A3 — Heterogeneous addons:** part of it depends on OLM operators (which are rarely installed outside OpenShift) and part on third-party charts.
+- **A4 — Build:** a Job is created for every build with a one-year TTL (`ttlSecondsAfterFinished: 31536000`, in the buildpacks build template), with no queue and no concurrency limit. Deployment is by tag, not by digest.
+- **A5 — Footprint:** an image based on `node:22-alpine` carrying the whole of `node_modules`, plus a separate operator, plus Prometheus for metrics (in the metrics service).
+- **A6 — Code quality:** about 20,000 lines of TypeScript on the server, scattered `console.log`s, commented-out code and `any` types.
 
-### ۱.۴ درس‌ها → Invariantهای طراحی Kuben
+### 1.4 Lessons → Kuben's design invariants
 
-این قواعد باید در Code Review و Lint به‌صورت **غیرقابل‌مذاکره** اعمال شوند:
+These rules must be enforced as **non-negotiable** in code review and lint:
 
-1. **هیچ State سراسری Mutable برای «Context» وجود ندارد.** هر درخواست Cluster خودش را صریحاً همراه دارد.
-2. **هر Subscription (Log، Terminal، Event) = یک Authorization Check + یک Resource محدود + یک Owner مشخص.**
-3. **هر Buffer محدود (Bounded) است؛ هر Stream قابل Cancel است؛ هر Task تحت نظارت (Supervised) است.**
-4. **هیچ Secretی در Source یا Log وجود ندارد؛ رفتار پیش‌فرض Fail-Closed است.**
-5. **Build Pod هرگز به Kubernetes API دسترسی ندارد.**
-6. **Deploy بر اساس Digest انجام می‌شود؛ همه‌چیز Idempotent و Level-triggered است.**
+1. **There is no global mutable state for "context".** Every request explicitly carries its own cluster.
+2. **Every subscription (log, terminal, event) = one authorization check + one bounded resource + one explicit owner.**
+3. **Every buffer is bounded; every stream is cancellable; every task is supervised.**
+4. **No secret lives in the source or in logs; the default behaviour is fail-closed.**
+5. **The build pod never has access to the Kubernetes API.**
+6. **Deployment is by digest; everything is idempotent and level-triggered.**
 
 ---
 
-## ۲. جایگاه رقابتی و تعریف صادقانه «سبک‌ترین»
+## 2. Competitive position and an honest definition of "lightest"
 
-| پروژه | K8s-native | Open Source | Git → Build → Deploy | UI / Logs / Metrics | Multi-cluster | توسعه‌پذیری | Footprint کنترل‌پلین | سادگی |
+| Project | K8s-native | Open source | Git → build → deploy | UI / logs / metrics | Multi-cluster | Extensibility | Control-plane footprint | Simplicity |
 |---|---|---|---|---|---|---|---|---|
-| Coolify | ❌ (Docker + SSH) | ✅ | ✅ | ⭐⭐⭐⭐ | ❌ (Multi-server) | ⭐⭐⭐ | متوسط (PHP + PG + Redis + Realtime) | ⭐⭐⭐⭐⭐ |
-| Dokploy | ❌ (Docker Swarm) | ✅ | ✅ | ⭐⭐⭐⭐ | ❌ | ⭐⭐⭐ | متوسط (Node + PG + Redis) | ⭐⭐⭐⭐⭐ |
-| Kubero | ✅ | ✅ GPLv3 | ✅ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | سنگین برای کاری که انجام می‌دهد | ⭐⭐⭐⭐ |
-| Devtron | ✅ عمیق | ✅ هسته | ✅ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | سنگین (کامپوننت‌های زیاد) | ⭐⭐⭐ |
-| KubeVela | ✅ عمیق | ✅ Apache-2.0 | ⚠️ نیاز به معماری | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | متوسط | ⭐⭐ |
-| Porter / Northflank / Qovery | ✅ | ❌ تجاری | ✅ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | Managed | ⭐⭐⭐⭐⭐ |
-| **🎯 هدف Kuben** | ✅ | ✅ | ✅ بسیار ساده | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ (از طریق CRD) | **حدود ۲۰ تا ۳۰ مگابایت، یک Pod** | ⭐⭐⭐⭐⭐ |
+| Coolify | ❌ (Docker + SSH) | ✅ | ✅ | ⭐⭐⭐⭐ | ❌ (multi-server) | ⭐⭐⭐ | Moderate (PHP + PG + Redis + realtime) | ⭐⭐⭐⭐⭐ |
+| Dokploy | ❌ (Docker Swarm) | ✅ | ✅ | ⭐⭐⭐⭐ | ❌ | ⭐⭐⭐ | Moderate (Node + PG + Redis) | ⭐⭐⭐⭐⭐ |
+| The incumbent | ✅ | ✅ GPLv3 | ✅ | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ | Heavy for what it actually does | ⭐⭐⭐⭐ |
+| Devtron | ✅ deep | ✅ core | ✅ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Heavy (many components) | ⭐⭐⭐ |
+| KubeVela | ✅ deep | ✅ Apache-2.0 | ⚠️ needs architecture work | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | Moderate | ⭐⭐ |
+| Porter / Northflank / Qovery | ✅ | ❌ commercial | ✅ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | Managed | ⭐⭐⭐⭐⭐ |
+| **🎯 Kuben's target** | ✅ | ✅ | ✅ very simple | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ (through CRDs) | **About 20 to 30 MB, a single pod** | ⭐⭐⭐⭐⭐ |
 
-### ⚠️ حقیقت ناخوشایندی که باید از روز اول پذیرفت
+### ⚠️ An uncomfortable truth to accept from day one
 
-**Kuben می‌تواند سبک‌ترین *Control Plane* روی Kubernetes باشد، اما خود Kubernetes (حتی k3s) معمولاً چند صد مگابایت سربار پایه دارد.** روی یک VPS یک‌گیگابایتی، Coolify و Dokploy (که روی Docker خام کار می‌کنند) همچنان سبک‌تر خواهند بود. اصرار روی ادعای «کم‌مصرف‌ترین به‌طور مطلق» یک تله‌ی بازاریابی است که کاربران خیلی زود با آن روبه‌رو می‌شوند.
+**Kuben can be the lightest *control plane* on Kubernetes, but Kubernetes itself (even k3s) usually carries a few hundred megabytes of baseline overhead.** On a 1 GB VPS, Coolify and Dokploy (which run on plain Docker) will still be lighter. Insisting on an "absolutely lowest footprint" claim is a marketing trap that users run into very quickly.
 
-**استراتژی درست:**
+**The right strategy:**
 
-1. **پیام محصول:** *«سبک‌ترین PaaS Kubernetes-native؛ از یک VPS تا صد Node بدون مهاجرت.»* مزیت رقابتی Kuben مقیاس‌پذیری، HA واقعی و APIهای استاندارد است، نه RAM روی VPS یک‌گیگی.
-2. **Installer یک‌خطی** که k3s را با تنظیمات حداقلی نصب می‌کند (غیرفعال کردن کامپوننت‌های بلااستفاده) و Kuben را هم نصب می‌کند، تا تجربه‌ی Onboarding هم‌تراز Coolify باشد.
-3. **حداقل سخت‌افزار رسمی:** ۲ گیگابایت RAM و ۲ vCPU. این عدد صادقانه و قابل‌دفاع است.
-4. **Kuben باید روی هر Cluster موجود** (EKS، GKE، AKS، k3s، Talos، RKE2) هم با یک Helm Chart یا Manifest نصب شود. این همان جایی است که Coolify و Dokploy اصلاً نمی‌توانند حضور داشته باشند.
-
----
-
-## ۳. اصول معماری Kuben (Tenets)
-
-1. **Kubernetes پایگاه‌داده‌ی Desired State است.** هر چیزی که «باید اجرا شود» یک CRD است. بنابراین GitOps (ArgoCD/Flux) و `kubectl apply` به‌صورت رایگان کار می‌کنند.
-2. **خاموش بودن Control Plane به معنی خاموش بودن Appها نیست.** Data Plane (Podها، Gateway، DBها) کاملاً مستقل از Kuben کار می‌کند.
-3. **همه‌چیز Bounded است:** Channelها، Bufferها، Concurrency، Body Size، تعداد Streamها و طول خطوط.
-4. **Level-triggered و Idempotent:** بعد از هر Restart، Reconcile کامل انجام می‌شود و هیچ State حیاتی فقط در حافظه نگه داشته نمی‌شود.
-5. **Secure by Default و Fail-Closed.**
-6. **یک Binary، چند Role.**
-7. **پیش‌فرض‌های Zero-Ops، همراه با Escape Hatch برای حرفه‌ای‌ها:** امکان Raw YAML Override و Patch برای Workloadها وجود دارد.
-8. **بودجه‌ها در CI اندازه‌گیری می‌شوند:** اندازه‌ی Binary، RSS، Latency و Bundle Size.
-9. **API استاندارد بر API اختصاصی مقدم است:** Gateway API، OCI، OIDC، OpenAPI، CNB و OpenTelemetry.
-10. **Progressive Disclosure:** سطح رابط کاربری به سادگی Heroku است، ولی هر وقت لازم باشد عمق Kubernetes در دسترس است.
+1. **Product message:** *"The lightest Kubernetes-native PaaS; from a single VPS to a hundred nodes with no migration."* Kuben's competitive advantage is scalability, real HA and standard APIs — not RAM on a 1 GB VPS.
+2. **A one-line installer** that installs k3s with minimal settings (disabling the unused components) and installs Kuben too, so that onboarding is on a par with Coolify.
+3. **Official minimum hardware:** 2 GB of RAM and 2 vCPU. That number is honest and defensible.
+4. **Kuben must also install on any existing cluster** (EKS, GKE, AKS, k3s, Talos, RKE2) with a single Helm chart or manifest. This is precisely where Coolify and Dokploy cannot compete at all.
 
 ---
 
-## ۴. معماری کلان
+## 3. Kuben's architecture tenets
 
-### ۴.۱ نمای کلی
+1. **Kubernetes is the desired-state database.** Anything that "must run" is a CRD. As a result GitOps (ArgoCD/Flux) and `kubectl apply` work for free.
+2. **A control plane being down does not mean the apps are down.** The data plane (pods, gateway, databases) works entirely independently of Kuben.
+3. **Everything is bounded:** channels, buffers, concurrency, body size, the number of streams and line lengths.
+4. **Level-triggered and idempotent:** after every restart a full reconciliation runs, and no critical state is held in memory alone.
+5. **Secure by default and fail-closed.**
+6. **One binary, several roles.**
+7. **Zero-ops defaults, with an escape hatch for professionals:** raw YAML overrides and patches for workloads are available.
+8. **Budgets are measured in CI:** binary size, RSS, latency and bundle size.
+9. **Standard APIs take precedence over proprietary ones:** Gateway API, OCI, OIDC, OpenAPI, CNB and OpenTelemetry.
+10. **Progressive disclosure:** the UI is as simple as Heroku, but the depth of Kubernetes is available whenever it is needed.
+
+---
+
+## 4. High-level architecture
+
+### 4.1 Overview
 
 ```mermaid
 flowchart LR
@@ -227,21 +226,21 @@ flowchart LR
   GW --> APPS
 ```
 
-### ۴.۲ مدل CRD (جایگزین `KuberoApp` و `Kuberoes`)
+### 4.2 CRD model (replacing the incumbent's app and instance CRs)
 
-| CRD | Scope | نقش |
+| CRD | Scope | Role |
 |---|---|---|
-| `KubenConfig` | Cluster (Singleton) | تنظیمات Platform؛ جایگزین `Kuberoes` CRD و `config.yaml` |
-| `Project` | Cluster | گروه‌بندی Environmentها؛ مالک Namespaceها |
-| `Environment` | Cluster | یک Namespace ایزوله (Quota، NetworkPolicy، PSA)؛ شامل ترتیب Promotion |
-| `App` | Namespaced | Spec برنامه: Source، Processes، Env، Domains، Scaling |
-| `BuildRun` | Namespaced (`kuben-builds`) | صف و وضعیت Build؛ **Durable Queue بدون نیاز به زیرساخت اضافه** |
-| `Release` | Namespaced (Immutable) | Image Digest + Snapshot پیکربندی؛ مبنای Rollback یک‌کلیکی |
-| `Service` (Addon) | Namespaced | Postgres، Valkey، MariaDB و …؛ به‌همراه Binding به App |
-| `Domain` | Namespaced | Host + TLS + تأیید مالکیت (TXT) |
-| `BackupPolicy` / `Backup` | Namespaced | زمان‌بندی Backup و Restore |
+| `KubenConfig` | Cluster (singleton) | Platform settings; replaces the incumbent's instance CR and `config.yaml` |
+| `Project` | Cluster | Groups environments; owns namespaces |
+| `Environment` | Cluster | One isolated namespace (quota, NetworkPolicy, PSA); includes the promotion order |
+| `App` | Namespaced | The application spec: source, processes, env, domains, scaling |
+| `BuildRun` | Namespaced (`kuben-builds`) | The build queue and its status; **a durable queue with no extra infrastructure** |
+| `Release` | Namespaced (immutable) | Image digest + a snapshot of the configuration; the basis for one-click rollback |
+| `Service` (addon) | Namespaced | Postgres, Valkey, MariaDB and so on; together with binding to an app |
+| `Domain` | Namespaced | Host + TLS + ownership verification (TXT) |
+| `BackupPolicy` / `Backup` | Namespaced | Backup scheduling and restore |
 
-**نمونه‌ی `App` (بخش Validation با CEL انجام می‌شود، نه Webhook):**
+**An `App` example (validation is done with CEL, not a webhook):**
 
 ```yaml
 apiVersion: kuben.dev/v1alpha1
@@ -272,42 +271,42 @@ status:
 ```
 
 ```yaml
-# بخشی از OpenAPI schema تولیدشده برای CRD (از schemars + kube-derive)
+# Part of the OpenAPI schema generated for the CRD (from schemars + kube-derive)
 x-kubernetes-validations:
   - rule: "self.replicas.min <= self.replicas.max"
     message: "replicas.min must be <= replicas.max"
 ```
 
-### ۴.۳ کجا چه داده‌ای ذخیره می‌شود
+### 4.3 Where each kind of data lives
 
-| داده | محل ذخیره | دلیل |
+| Data | Stored in | Why |
 |---|---|---|
-| App، Environment، Domain، Service و Release (N تای آخر) | **etcd (CRD)** | Desired State؛ سازگاری با GitOps؛ Reconcile سطحی (Level-triggered) |
-| BuildRun فعال | **etcd (CRD)** | Durable Queue رایگان؛ بعد از Restart ادامه پیدا می‌کند |
-| Users، Orgs، Memberships، RoleBindings | **SQL** | داده‌ی Relational و خصوصی؛ جایش در etcd نیست |
-| Sessions و API Tokens (به‌صورت هش‌شده) | **SQL** (+ Cache در حافظه با moka) | Revoke فوری |
-| Audit Log | **SQL** (Append-only، Hash-chain) + امکان Export | Compliance |
-| تاریخچه‌ی Releaseها و Buildها (قدیمی‌تر از N) | **SQL** (خلاصه) | etcd برای تاریخچه‌ی نامحدود ساخته نشده است |
-| Build Logs | **zstd در SQL یا Object Storage** (با سقف حجم) | Podهای Build بعد از مدتی پاک می‌شوند |
-| Credentialهای Git Provider و Registry | **K8s Secret** (+ Envelope Encryption در صورت نگهداری در SQL) | Least Privilege |
-| Metricهای کوتاه‌مدت (یک ساعت اخیر) | **Ring Buffer در حافظه** | نمایش Sparkline بدون نیاز به Prometheus |
+| App, Environment, Domain, Service and Release (the last N) | **etcd (CRD)** | Desired state; compatibility with GitOps; level-triggered reconciliation |
+| Active BuildRun | **etcd (CRD)** | A durable queue for free; it resumes after a restart |
+| Users, orgs, memberships, role bindings | **SQL** | Relational and private data; it does not belong in etcd |
+| Sessions and API tokens (hashed) | **SQL** (+ an in-memory cache with moka) | Immediate revocation |
+| Audit log | **SQL** (append-only, hash-chained) + exportable | Compliance |
+| The history of releases and builds (older than N) | **SQL** (summarized) | etcd is not built for unbounded history |
+| Build logs | **zstd in SQL or object storage** (with a size cap) | Build pods are deleted after a while |
+| Git provider and registry credentials | **K8s Secret** (+ envelope encryption if they are kept in SQL) | Least privilege |
+| Short-term metrics (the last hour) | **An in-memory ring buffer** | Sparklines without needing Prometheus |
 
-### ۴.۴ Roleها (Modular Monolith)
+### 4.4 Roles (modular monolith)
 
 ```bash
-kuben serve --roles=all                  # Self-host: همه چیز در یک Pod (پیش‌فرض)
-kuben serve --roles=api                  # Enterprise: N replica پشت Load Balancer
-kuben serve --roles=controller           # Enterprise: 2 replica با Leader Election
+kuben serve --roles=all                  # Self-host: everything in one pod (default)
+kuben serve --roles=api                  # Enterprise: N replicas behind a load balancer
+kuben serve --roles=controller           # Enterprise: 2 replicas with leader election
 kuben migrate | backup | restore | reset-admin | export
 ```
 
-| Role | مسئولیت | تعداد Replica |
+| Role | Responsibility | Replica count |
 |---|---|---|
-| `api` | REST، SSE، WS، LogHub، Exec، Informerهای Read-Model | ۱ تا N (بدون State؛ نیاز به Postgres برای بیش از ۱) |
-| `controller` | Reconcilerها، Webhook Processing، Schedulerها (Backup، Cleanup) | ۱ تا ۲ (فقط Leader فعال است) |
-| `all` | هر دو Role | ۱ (حالت SQLite) |
+| `api` | REST, SSE, WS, LogHub, exec, read-model informers | 1 to N (stateless; needs Postgres for more than 1) |
+| `controller` | Reconcilers, webhook processing, schedulers (backup, cleanup) | 1 to 2 (only the leader is active) |
+| `all` | Both roles | 1 (SQLite mode) |
 
-### ۴.۵ جریان Deploy (Git Push تا Production)
+### 4.5 Deploy flow (git push to production)
 
 ```mermaid
 sequenceDiagram
@@ -333,35 +332,35 @@ sequenceDiagram
 
 ---
 
-## ۵. پاسخ سؤال ۱: Controller و API در یک Process
+## 5. Question 1: controller and API in one process
 
-### ۵.۱ آیا Reconciler می‌تواند باعث Starvation شدن HTTP شود؟
+### 5.1 Can the reconciler starve HTTP?
 
-**بله، ولی تقریباً هیچ‌وقت به دلیل I/O نیست؛ همیشه به دلیل کار CPU یا Blocking داخل Async است.** Tokio یک Scheduler تعاونی (Cooperative) است؛ Taskی که بدون `.await` روی CPU بماند، Worker Thread را اشغال می‌کند. منابع واقعی Starvation در این پروژه:
+**Yes, but almost never because of I/O; it is always because of CPU work or blocking inside async code.** Tokio is a cooperative scheduler; a task that stays on the CPU without an `.await` occupies a worker thread. The real sources of starvation in this project:
 
-| منبع | چرا خطرناک است | راه‌حل |
+| Source | Why it is dangerous | Solution |
 |---|---|---|
-| Deserialize کردن LIST اولیه‌ی بزرگ (هزاران Pod) | چند ده میلی‌ثانیه CPU پیوسته | `page_size` در `watcher::Config`، Label Selector، و Streaming Lists در نسخه‌های جدید K8s (WatchList) |
-| Argon2id در Login | حدود ۱۰ تا ۵۰ms CPU + حدود ۱۹ تا ۴۶MiB حافظه برای هر Hash | `spawn_blocking` + `Semaphore(2)` |
-| Render و Diff Manifestهای بزرگ، YAML Parsing و Template Rendering | CPU-bound | `spawn_blocking` برای ورودی‌های بزرگ؛ Builderهای Typed به‌جای Template رشته‌ای |
-| Compression پویای Brotli با Quality بالا | CPU بسیار زیاد | Quality 4 برای پاسخ‌های پویا؛ Assetها از قبل فشرده شوند |
-| `Store::state()` روی Listهای بزرگ در هر Request | O(n) Clone از `Arc`ها | Projection با Index (بخش ۵.۴) |
-| Mutex سنکرون که روی `.await` نگه داشته شود | Deadlock یا Stall | Clippy Lint `await_holding_lock` + استفاده از `parking_lot` فقط برای بخش‌های کوتاه |
-| Blocking Pool پیش‌فرض (۵۱۲ Thread) | انفجار Thread و RSS | `max_blocking_threads(16)` |
+| Deserializing a large initial LIST (thousands of pods) | Tens of milliseconds of continuous CPU | `page_size` in `watcher::Config`, a label selector, and streaming lists in newer K8s versions (WatchList) |
+| Argon2id at login | Roughly 10 to 50ms of CPU + roughly 19 to 46MiB of memory per hash | `spawn_blocking` + `Semaphore(2)` |
+| Rendering and diffing large manifests, YAML parsing and template rendering | CPU-bound | `spawn_blocking` for large inputs; typed builders instead of string templating |
+| Dynamic Brotli compression at high quality | Very heavy CPU | Quality 4 for dynamic responses; pre-compress assets |
+| `Store::state()` over large lists on every request | An O(n) clone of `Arc`s | A projection with an index (section 5.4) |
+| A synchronous mutex held across an `.await` | Deadlock or stall | The Clippy lint `await_holding_lock` + use `parking_lot` only for short critical sections |
+| The default blocking pool (512 threads) | Thread and RSS explosion | `max_blocking_threads(16)` |
 
-### ۵.۲ پیشنهاد اصلی: Bulkhead با دو Runtime در یک Process
+### 5.2 The original proposal: a bulkhead with two runtimes in one process
 
-به‌جای یک Runtime مشترک، **دو Tokio Runtime روی Thread Poolهای جدا** راه بیندازید. هزینه‌ی این کار ناچیز است (فقط چند Thread اضافه) و ایزوله‌سازی CPU و Scheduling واقعی ایجاد می‌کند:
+Instead of one shared runtime, run **two Tokio runtimes on separate thread pools**. The cost is negligible (just a few extra threads) and it gives you real CPU and scheduling isolation:
 
-- **Control Runtime** (۱ تا ۲ Worker): Informerها، Reconcilerها، Leader Election و Schedulerها.
-- **API Runtime** (۲ تا ۴ Worker): HTTP، SSE، WebSocket و LogHub/Exec (یعنی بار ناشی از کاربر).
+- **Control runtime** (1 to 2 workers): informers, reconcilers, leader election and schedulers.
+- **API runtime** (2 to 4 workers): HTTP, SSE, WebSocket and LogHub/Exec (that is, user-driven load).
 
-در نتیجه، سیل کاربرانی که Log می‌بینند Reconcile را کند نمی‌کند، و یک Reconcile سنگین هم UI را Freeze نمی‌کند. Read-Modelها (`Arc<...>` با قفل‌های Sync کوتاه یا Lock-free) بین دو Runtime به اشتراک گذاشته می‌شوند.
+As a result, a flood of users watching logs does not slow reconciliation down, and one heavy reconcile does not freeze the UI. Read-models (`Arc<...>` with short sync locks, or lock-free) are shared between the two runtimes.
 
-> ⚠️ **Gotcha:** برای هر Runtime یک `kube::Client` جدا بسازید. Connection Taskهای Hyper روی Runtimeی Spawn می‌شوند که درخواست را اجرا کرده است؛ به اشتراک گذاشتن یک Client بین Runtimeها باعث وابستگی‌های پنهان در Lifecycle می‌شود. Client ارزان است. همین جداسازی به شما اجازه می‌دهد **Rate Limit و Connection Pool جداگانه** برای «درخواست‌های کاربر» و «Reconcile» داشته باشید.
+> ⚠️ **Gotcha:** build a separate `kube::Client` for each runtime. Hyper's connection tasks are spawned on the runtime that issued the request; sharing one client across runtimes creates hidden lifecycle dependencies. A client is cheap. That same separation lets you have **separate rate limits and connection pools** for "user requests" and for "reconcile".
 
 ```rust
-// crates/kuben-server/src/main.rs — طرح اولیه (Sketch)، نه کد نهایی
+// crates/kuben-server/src/main.rs — sketch, not final code
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -384,7 +383,7 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // وضعیت مشترک: DB pools، ClusterRegistry، Read-Models، Health
+    // Shared state: DB pools, ClusterRegistry, read-models, health
     let shared = api_rt.block_on(kuben_server::Shared::init(&cfg))?;
 
     let ctrl = {
@@ -406,19 +405,19 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-### ۵.۳ مدیریت Watch Streamها
+### 5.3 Managing watch streams
 
-1. **هر Watcher باید Backoff داشته باشد** (`.default_backoff()`). بدون آن، هنگام خطا یک Hot Loop روی API Server ایجاد می‌شود. این رایج‌ترین باگ Controllerهای Rust است.
-2. **برای هر Kind در هر Cluster فقط یک Watch مشترک وجود داشته باشد**، نه یک Watch برای هر کاربر یا هر Request.
-3. **Label Selector روی همه چیز:** `app.kubernetes.io/managed-by=kuben`. Kuben نباید کل Podهای Cluster را Watch کند.
-4. **حذف `managedFields`** (و Annotationهای حجیم مثل `last-applied-configuration`) قبل از ذخیره، با `.modify(...)`. این کار به‌تنهایی معمولاً بخش قابل‌توجهی از حجم هر Object را حذف می‌کند.
-5. **از `metadata_watcher` برای Kindهایی استفاده کنید** که فقط Label و OwnerReference آن‌ها لازم است (مثلاً Deployment/ReplicaSetهای تحت مالکیت، که فقط برای Trigger کردن Reconcile لازم‌اند).
-6. **Readiness = Sync شدن Cacheها:** `store.wait_until_ready()` یا رویداد `InitDone` (معادل `WaitForCacheSync` در controller-runtime). تا این لحظه `/readyz` باید false برگرداند.
-7. **410 Gone / Desync:** Watcher در kube-rs خودش Re-list می‌کند و رویدادهای `Init` → `InitApply`… → `InitDone` را می‌فرستد. Projection شما باید در `InitDone` **به‌صورت اتمیک Swap شود** تا یک پنجره‌ی زمانی خالی ایجاد نشود، و یک رویداد `resync` به Clientهای SSE ارسال شود.
-8. **RBAC Scope:** حالت پیش‌فرض یک Watch سراسری روی Cluster با Label Selector است (یک Connection). یک حالت Namespace-scoped هم برای محیط‌هایی با RBAC محدود پیش‌بینی کنید.
+1. **Every watcher must have backoff** (`.default_backoff()`). Without it, an error turns into a hot loop against the API server. This is the most common bug in Rust controllers.
+2. **There must be exactly one shared watch per kind per cluster**, not one watch per user or per request.
+3. **A label selector on everything:** `app.kubernetes.io/managed-by=kuben`. Kuben must not watch every pod in the cluster.
+4. **Strip `managedFields`** (and bulky annotations such as `last-applied-configuration`) before storing, using `.modify(...)`. This alone usually removes a significant fraction of each object's size.
+5. **Use `metadata_watcher` for kinds** where you only need labels and owner references (for example owned Deployments/ReplicaSets, which are needed only to trigger a reconcile).
+6. **Readiness = caches synced:** `store.wait_until_ready()` or the `InitDone` event (the equivalent of `WaitForCacheSync` in controller-runtime). Until that moment `/readyz` must return false.
+7. **410 Gone / desync:** the watcher in kube-rs re-lists on its own and emits `Init` → `InitApply`… → `InitDone`. Your projection must be **swapped atomically** at `InitDone` so that no empty time window appears, and a `resync` event must be sent to SSE clients.
+8. **RBAC scope:** the default mode is a single cluster-wide watch with a label selector (one connection). Also plan for a namespace-scoped mode for environments with restricted RBAC.
 
 ```rust
-// Informer → Projection (نه reflector خام)
+// Informer → projection (not a raw reflector)
 let pods = Api::<Pod>::all(client.clone());
 let cfg = watcher::Config::default()
     .labels("app.kubernetes.io/managed-by=kuben")
@@ -432,7 +431,7 @@ watcher(pods, cfg)
             match ev {
                 watcher::Event::Init => rm.pods.begin_resync(),
                 watcher::Event::InitApply(p) => rm.pods.stage(PodView::from(&p)),
-                watcher::Event::InitDone => rm.pods.commit_resync(), // swap اتمیک + epoch++ → SSE "resync"
+                watcher::Event::InitDone => rm.pods.commit_resync(), // atomic swap + epoch++ → SSE "resync"
                 watcher::Event::Apply(p) => rm.pods.upsert(PodView::from(&p)), // delta → broadcast
                 watcher::Event::Delete(p) => rm.pods.remove(&p),
             }
@@ -442,9 +441,9 @@ watcher(pods, cfg)
     .await?;
 ```
 
-### ۵.۴ طراحی Local Cache: Projection به‌جای Reflector خام
+### 5.4 Local cache design: projections instead of a raw reflector
 
-**این مهم‌ترین تصمیم برای رسیدن به هدف RAM است.** یک Pod خام در حافظه (حتی بعد از حذف `managedFields`) معمولاً چند کیلوبایت تا بیش از ده کیلوبایت حجم دارد. در مقابل، چیزی که UI واقعاً لازم دارد حدود ۲۰۰ بایت است:
+**This is the single most important decision for hitting the RAM target.** A raw pod in memory (even after `managedFields` is stripped) is usually several kilobytes to more than ten kilobytes. What the UI actually needs, by contrast, is about 200 bytes:
 
 ```rust
 pub struct PodView {
@@ -461,47 +460,47 @@ pub struct PodView {
 }
 ```
 
-**ساختار Read-Model:**
+**Read-model structure:**
 
-- **Primary Map:** `papaya::HashMap<Key, Arc<View>>` یا `DashMap`، برای Lookup در حد میکروثانیه.
-- **Secondary Index:** `AppKey → SmallVec<PodKey>` تا جواب «Podهای این App» بدون Scan بیاید.
-- **Sequence سراسری:** یک `AtomicU64` که برای هر تغییر افزایش پیدا می‌کند، و هم برای **ETag** و هم برای **SSE Event ID** استفاده می‌شود.
-- **Delta Bus:** `tokio::sync::broadcast::Sender<Arc<Delta>>` (Bounded). Subscriberهای SSE آن را بر اساس مجوزهایشان Filter می‌کنند.
-- **AppView ترکیبی:** از App CR + Deployment + Pods + Release ساخته می‌شود (مثلاً `replicas 2/3 ready`، URL، آخرین Deploy). **UI هیچ‌وقت Object خام K8s دریافت نمی‌کند**؛ مگر در تب «YAML» که آن هم On-demand و مستقیم از API Server خوانده می‌شود.
+- **Primary map:** `papaya::HashMap<Key, Arc<View>>` or `DashMap`, for microsecond-scale lookups.
+- **Secondary index:** `AppKey → SmallVec<PodKey>` so that "the pods of this app" is answered without a scan.
+- **A global sequence:** an `AtomicU64` incremented on every change, used both for the **ETag** and for the **SSE event ID**.
+- **Delta bus:** `tokio::sync::broadcast::Sender<Arc<Delta>>` (bounded). SSE subscribers filter it according to their permissions.
+- **A composite AppView:** built from the App CR + Deployment + pods + release (for example `replicas 2/3 ready`, the URL, the last deploy). **The UI never receives a raw K8s object**, except in the "YAML" tab, which is fetched on demand directly from the API server.
 
-**برآورد حافظه:** برای ۵۰ App، ۲۰۰ Pod، ۵۰ Deployment و ۵۰ CR، کل Projectionها احتمالاً زیر یک مگابایت خواهند بود. Reflector خام برای همین حجم ممکن است چند مگابایت تا ده‌ها مگابایت مصرف کند.
+**Memory estimate:** for 50 apps, 200 pods, 50 deployments and 50 CRs, the projections in total will probably stay under one megabyte. A raw reflector for the same volume might consume several megabytes to tens of megabytes.
 
-> ⚠️ **دقت کنید:** `kube::runtime::Controller` برای Kind اصلی (و `owns()`ها) خودش یک Reflector از Objectهای کامل نگه می‌دارد. برای Kindهای تحت مالکیت از Stream متادیتا استفاده کنید (APIهای Stream Control در kube-runtime ممکن است پشت Featureهای `unstable-runtime` باشند؛ هنگام پیاده‌سازی نسخه‌ی روز را بررسی کنید).
+> ⚠️ **Careful:** `kube::runtime::Controller` keeps its own reflector of complete objects for the main kind (and for `owns()`). For owned kinds, use a metadata stream (the stream-control APIs in kube-runtime may sit behind the `unstable-runtime` features; check the current release when you implement this).
 
-### ۵.۵ رفتار هنگام Restart یا قطع Watch
+### 5.5 Behaviour on restart or a dropped watch
 
-| رویداد | رفتار درست |
+| Event | Correct behaviour |
 |---|---|
-| Restart کامل Process | Readiness تا زمان Sync شدن Cache برابر false است → Reconcile کامل همه‌ی CRها (Level-triggered). همه‌ی عملیات‌ها با Server-Side Apply و `fieldManager: kuben` انجام می‌شوند و Idempotent هستند |
-| قطع Watch (Network، Restart شدن API Server) | Watcher با Backoff و از آخرین `resourceVersion` ادامه می‌دهد. در صورت 410، Re-list و Swap اتمیک انجام می‌شود |
-| Clientهای SSE هنگام Resync | ارسال رویداد `resync` → Client Snapshot را دوباره Fetch می‌کند. اگر `Last-Event-ID` از Ring Buffer قدیمی‌تر باشد، Snapshot کامل ارسال می‌شود |
-| Webhookهای Git از دست رفته در زمان Downtime | بعد از Start، برای هر App با `autodeploy` آخرین SHA برنچ با `gix` (معادل `ls-remote`) مقایسه می‌شود → Catch-up خودکار |
-| از دست رفتن Leadership | Cancel فوری Reconcilerها (`CancellationToken`). Overlap کوتاه بی‌خطر است چون همه‌ی عملیات‌ها Idempotent هستند و از SSA استفاده می‌کنند |
-| Cluster غیرقابل‌دسترس (Multi-cluster) | وضعیت آن Cluster → `Degraded`. Circuit Breaker ضربه زدن به API Server را متوقف می‌کند و UI داده‌ی Stale را با برچسب «Last synced at» نشان می‌دهد |
+| Full process restart | Readiness is false until the cache is synced → a full reconcile of every CR (level-triggered). All operations use server-side apply with `fieldManager: kuben` and are idempotent |
+| Dropped watch (network, API server restart) | The watcher resumes with backoff from the last `resourceVersion`. On a 410 it re-lists and swaps atomically |
+| SSE clients during a resync | Send a `resync` event → the client re-fetches the snapshot. If `Last-Event-ID` is older than the ring buffer, a full snapshot is sent |
+| Git webhooks missed during downtime | After startup, for each app with `autodeploy` the branch's latest SHA is compared using `gix` (the equivalent of `ls-remote`) → automatic catch-up |
+| Loss of leadership | Immediate cancellation of the reconcilers (`CancellationToken`). A brief overlap is harmless because all operations are idempotent and use SSA |
+| Unreachable cluster (multi-cluster) | That cluster's state → `Degraded`. A circuit breaker stops hammering the API server and the UI shows stale data labelled "Last synced at" |
 
-### ۵.۶ ایزوله‌سازی Failure Domain در یک Process
+### 5.6 Isolating failure domains inside one process
 
-1. **Supervisor Tree:** هر Subsystem (Informerهای هر Cluster، هر Controller، Build Dispatcher، Scheduler، LogHub) با Restart و Backoff اجرا می‌شود.
-2. **استفاده از `panic = "unwind"` (نه `abort`).** یک Panic در Reconciler نباید API را از کار بیندازد: `JoinError::is_panic()` → ثبت Metric → Restart آن Subsystem. (با `abort` کل Binary از کار می‌افتد.)
-3. **Health چندلایه:**
-   - `/livez`: فقط اگر API Runtime قفل شده باشد false می‌شود. یک Watchdog Task روی API Runtime هر ثانیه یک Atomic Timestamp را به‌روز می‌کند و اگر این مقدار بیشتر از ۱۰ ثانیه قدیمی شود، Liveness Fail می‌شود.
-   - `/readyz`: Cacheها Sync شده باشند + DB در دسترس باشد.
-   - `/healthz/details` (نیازمند Auth): وضعیت هر Subsystem، شامل `degraded` و `last_error`.
-   - **Controller خراب نباید Readiness را برای API false کند**؛ در این حالت API سرویس‌دهی را ادامه می‌دهد و فقط Alert ارسال می‌شود.
-4. **Memory Isolation واقعی در یک Process ممکن نیست**، پس تنها راه **Bounded بودن همه‌چیز** است:
-   - Semaphoreها: حداکثر Upstream Log Streamها (مثلاً ۳۲)، Terminalها (۱۶)، Loginهای هم‌زمان (۲)، Buildهای هم‌زمان برای هر Org.
-   - محدودیت برای هر کاربر: حداکثر تعداد SSE و Terminal.
-   - `RequestBodyLimitLayer`، و `max_message_size` برای WebSocket.
-   - Metricهای Allocator (mimalloc/jemalloc stats) + Alert روی RSS.
-5. **Client Isolation:** Clientهای جداگانه با `tower` Rate Limit برای Reconcile و برای Userها.
+1. **Supervisor tree:** every subsystem (each cluster's informers, each controller, the build dispatcher, the scheduler, the LogHub) runs with restart and backoff.
+2. **Use `panic = "unwind"` (not `abort`).** A panic in a reconciler must not take the API down: `JoinError::is_panic()` → record a metric → restart that subsystem. (With `abort` the whole binary goes down.)
+3. **Layered health:**
+   - `/livez`: goes false only if the API runtime is locked up. A watchdog task on the API runtime updates an atomic timestamp every second, and if that value becomes more than 10 seconds old, liveness fails.
+   - `/readyz`: caches synced + the DB reachable.
+   - `/healthz/details` (auth required): the state of each subsystem, including `degraded` and `last_error`.
+   - **A broken controller must not make readiness false for the API**; in that case the API keeps serving and only an alert is raised.
+4. **Real memory isolation inside a single process is impossible**, so the only way is to **bound everything**:
+   - Semaphores: a maximum on upstream log streams (say 32), terminals (16), concurrent logins (2), concurrent builds per org.
+   - Per-user limits: a maximum number of SSE connections and terminals.
+   - `RequestBodyLimitLayer`, and `max_message_size` for WebSocket.
+   - Allocator metrics (mimalloc/jemalloc stats) + an alert on RSS.
+5. **Client isolation:** separate clients with `tower` rate limits for reconciliation and for users.
 
 ```rust
-// Supervisor — طرح اولیه
+// Supervisor — sketch
 pub async fn supervise<F, Fut>(name: &'static str, token: CancellationToken, health: Health, mut make: F)
 where
     F: FnMut(CancellationToken) -> Fut,
@@ -525,7 +524,7 @@ where
 }
 ```
 
-### ۵.۷ Controller: Concurrency، Error Policy، Finalizer
+### 5.7 Controller: concurrency, error policy, finalizers
 
 ```rust
 Controller::new(Api::<App>::all(client.clone()), watcher::Config::default())
@@ -539,50 +538,50 @@ Controller::new(Api::<App>::all(client.clone()), watcher::Config::default())
 
 fn error_policy(app: Arc<App>, err: &Error, ctx: Arc<Ctx>) -> Action {
     if err.is_permanent() {
-        // Spec نامعتبر: Condition قبلاً ست شده؛ منتظر تغییر کاربر بمان، requeue بی‌فایده است
+        // Invalid spec: the condition is already set; wait for the user to change it, requeueing is pointless
         return Action::await_change();
     }
-    let n = ctx.failures.bump(ObjectRef::from_obj(&*app)); // در reconcile موفق reset شود
+    let n = ctx.failures.bump(ObjectRef::from_obj(&*app)); // reset on a successful reconcile
     Action::requeue(backoff_with_jitter(n, Duration::from_secs(1), Duration::from_secs(300)))
 }
 ```
 
-- **Backoff برای هر Object:** kube-rs به‌صورت پیش‌فرض تعداد شکست‌های هر Object را نگه نمی‌دارد، پس خودتان یک Map از `ObjectRef` به تعداد تلاش‌ها نگه دارید.
-- **Periodic Resync:** برای تشخیص Drift، هر ۵ تا ۱۰ دقیقه با Jitter یک `Action::requeue` انجام شود.
-- **Finalizerها** (با Helper `kube::runtime::finalizer`) برای پاکسازی منابع خارجی: رکوردهای DNS، Imageهای Registry، Backupها و Addon DBها. **حتماً** Timeout داشته باشند و دستور `kuben uninstall` Finalizerها را آزاد کند؛ وگرنه بعد از حذف Kuben، Namespaceها در وضعیت `Terminating` گیر می‌کنند.
-- **Kubernetes Events** با `kube::runtime::events::Recorder` ثبت شوند تا `kubectl describe app api` برای کاربر حرفه‌ای معنادار باشد.
-- **Status Conditionها** به سبک kstatus (`Ready`، `Progressing`، `Degraded`) همراه با `observedGeneration`.
+- **Per-object backoff:** kube-rs does not track a per-object failure count by default, so keep your own map from `ObjectRef` to attempt count.
+- **Periodic resync:** to detect drift, issue an `Action::requeue` every 5 to 10 minutes with jitter.
+- **Finalizers** (via the `kube::runtime::finalizer` helper) for cleaning up external resources: DNS records, registry images, backups and addon databases. They **must** have a timeout, and the `kuben uninstall` command must release the finalizers; otherwise, after Kuben is removed, namespaces get stuck in `Terminating`.
+- **Kubernetes events** should be recorded with `kube::runtime::events::Recorder` so that `kubectl describe app api` is meaningful for a power user.
+- **Status conditions** in the kstatus style (`Ready`, `Progressing`, `Degraded`) along with `observedGeneration`.
 
-### ۵.۸ Log Streaming: Backpressure، Buffer و Flow Control
+### 5.8 Log streaming: backpressure, buffering and flow control
 
-**اصل کلیدی:** Log یک منبع **مشترک** است (ممکن است N بیننده داشته باشد)؛ بنابراین **Producer هرگز نباید به خاطر یک Consumer کند Block شود.** راه‌حل استاندارد این است: **یک Ring Buffer محدود + Drop کردن داده‌ی قدیمی برای Consumer کند + اطلاع‌رسانی صریح درباره‌ی Drop.**
+**The key principle:** logs are a **shared** resource (there may be N viewers); therefore **the producer must never block because of one slow consumer.** The standard solution is: **a bounded ring buffer + dropping old data for a slow consumer + an explicit notification about the drop.**
 
 ```
 kubelet ──(1 upstream per pod/container)──► pump task
-                                             │  line framing با سقف 16KiB (خطوط بلندتر truncate می‌شوند)
-                                             │  batching: هر 50ms یا 8KiB
+                                             │  line framing capped at 16KiB (longer lines are truncated)
+                                             │  batching: every 50ms or 8KiB
                                              ▼
                                tokio::sync::broadcast (capacity = 128 batch)
                                   │              │              │
-                              SSE client A   SSE client B   SSE client C (کند)
+                              SSE client A   SSE client B   SSE client C (slow)
                                                              └─ RecvError::Lagged(n) → event "dropped: n"
 ```
 
-**سقف حافظه قابل‌محاسبه است:** `128 batch × 8KiB × 32 upstream ≈ 32MiB` در بدترین حالت. در حالت عادی این عدد بسیار کمتر است، و هر سه پارامتر قابل تنظیم‌اند.
+**The memory ceiling is computable:** `128 batch × 8KiB × 32 upstream ≈ 32MiB` in the worst case. In normal operation this number is far lower, and all three parameters are tunable.
 
 ```rust
 pub struct LogHub {
     streams: DashMap<LogKey, Weak<LogStream>>,
-    client: kube::Client,          // client مخصوص API runtime
-    upstream_limit: Arc<Semaphore>, // حداکثر upstream هم‌زمان
+    client: kube::Client,          // client dedicated to the API runtime
+    upstream_limit: Arc<Semaphore>, // max concurrent upstreams
 }
 
 pub struct LogStream { tx: broadcast::Sender<Arc<LogBatch>>, cancel: CancellationToken }
-impl Drop for LogStream { fn drop(&mut self) { self.cancel.cancel(); } } // آخرین بیننده رفت → upstream بسته شود
+impl Drop for LogStream { fn drop(&mut self) { self.cancel.cancel(); } } // last viewer left → close the upstream
 
 impl LogHub {
     pub fn subscribe(&self, key: LogKey) -> Result<(Arc<LogStream>, broadcast::Receiver<Arc<LogBatch>>), Error> {
-        // از entry API استفاده کنید تا race بین get و insert نباشد
+        // use the entry API so there is no race between get and insert
         let mut slot = self.streams.entry(key.clone()).or_insert_with(Weak::new);
         if let Some(s) = slot.upgrade() { let rx = s.tx.subscribe(); return Ok((s, rx)); }
         let permit = self.upstream_limit.clone().try_acquire_owned().map_err(|_| Error::TooManyStreams)?;
@@ -596,14 +595,14 @@ impl LogHub {
 ```
 
 ```rust
-// SSE handler — slow consumer هرگز producer را block نمی‌کند
+// SSE handler — a slow consumer never blocks the producer
 async fn app_logs(State(s): State<ApiState>, authz: Authz, Path(p): Path<LogPath>)
     -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError>
 {
-    authz.require(Perm::AppLogsRead, &p.app)?;               // مجوز برای هر subscription
+    authz.require(Perm::AppLogsRead, &p.app)?;               // permission check per subscription
     let (guard, mut rx) = s.logs.subscribe(p.into())?;
     let stream = async_stream::stream! {
-        let _guard = guard;                                  // تا وقتی client وصل است upstream زنده می‌ماند
+        let _guard = guard;                                  // the upstream stays alive while the client is connected
         loop {
             match rx.recv().await {
                 Ok(b) => yield Ok(Event::default().event("logs").data(b.json())),
@@ -616,34 +615,34 @@ async fn app_logs(State(s): State<ApiState>, authz: Authz, Path(p): Path<LogPath
 }
 ```
 
-**جزئیاتی که معمولاً فراموش می‌شوند:**
+**Details that are usually forgotten:**
 
-- ⚠️ **خط بی‌انتها = OOM.** متد `.lines()` سقفی برای طول خط ندارد؛ Containerی که یک خط یک‌گیگابایتی بدون `\n` چاپ کند، سرور را از کار می‌اندازد. از `tokio_util::codec::LinesCodec::new_with_max_length(16 * 1024)` استفاده کنید (با `compat()` برای تبدیل `futures::AsyncRead`) یا یک Codec که خط را Truncate کند.
-- **Grace Period:** وقتی آخرین بیننده قطع می‌شود، `Arc` را ۱۰ ثانیه بعد Drop کنید (`tokio::spawn(async move { sleep(10s).await; drop(guard) })`) تا Refresh صفحه یا تغییر تب باعث قطع و وصل مجدد Upstream نشود.
-- **Tail اولیه:** `tail_lines: 200` + `timestamps: true` + `since_seconds` برای Reconnect، و Dedupe بر اساس Timestamp در سمت Client.
-- **پایان Container:** رویداد `eof` → UI دکمه‌ی «Previous container logs» (`previous: true`) را نشان می‌دهد.
-- **Rate Guard:** اگر نرخ تولید لاگ از یک آستانه (مثلاً ۲۰ هزار خط در ثانیه) بیشتر شود، Sampling همراه با پیام اطلاع‌رسانی انجام شود.
-- **تاریخچه و جستجو خارج از Scope هسته است:** kubelet فقط لاگ Container فعلی و قبلی را نگه می‌دارد. برای Search و Retention، یک Addon اختیاری با **VictoriaLogs** (سبک) یا **Loki** ارائه کنید.
-- **Build Logs:** در پایان هر Build، لاگ با zstd فشرده و با سقف حجم (مثلاً ۵ مگابایت) ذخیره شود.
+- ⚠️ **An unterminated line = OOM.** The `.lines()` method has no ceiling on line length; a container that prints a one-gigabyte line with no `\n` takes the server down. Use `tokio_util::codec::LinesCodec::new_with_max_length(16 * 1024)` (with `compat()` to convert a `futures::AsyncRead`) or a codec that truncates the line.
+- **Grace period:** when the last viewer disconnects, drop the `Arc` 10 seconds later (`tokio::spawn(async move { sleep(10s).await; drop(guard) })`) so that a page refresh or a tab switch does not tear the upstream down and bring it back up.
+- **Initial tail:** `tail_lines: 200` + `timestamps: true` + `since_seconds` for reconnects, and dedupe by timestamp on the client side.
+- **Container exit:** an `eof` event → the UI shows a "Previous container logs" button (`previous: true`).
+- **Rate guard:** if the log production rate exceeds a threshold (say 20 thousand lines per second), sample and show a notice about it.
+- **History and search are out of scope for the core:** kubelet keeps only the current and previous container's logs. For search and retention, offer an optional addon with **VictoriaLogs** (lightweight) or **Loki**.
+- **Build logs:** at the end of each build, compress the log with zstd and store it with a size cap (say 5 megabytes).
 
-### ۵.۹ Terminal روی WebSocket: PTY، Resize و Flow Control
+### 5.9 Terminal over WebSocket: PTY, resize and flow control
 
-> **تصحیح طرح:** kube-rs برای Exec از **WebSocket** استفاده می‌کند (پروتکل Channel در Kubernetes)، نه SPDY. خود Kubernetes هم در حال مهاجرت از SPDY به WebSocket است (KEP-4006). پس «SPDY PTY» در طرح شما باید به «K8s Exec over WebSocket» تغییر کند.
+> **Correction to the design:** kube-rs uses **WebSocket** for exec (the channel protocol in Kubernetes), not SPDY. Kubernetes itself is also migrating from SPDY to WebSocket (KEP-4006). So "SPDY PTY" in your design must become "K8s exec over WebSocket".
 
-**اصل کلیدی:** برخلاف Log، **Terminal نباید هیچ داده‌ای را Drop کند**؛ Drop شدن بایت‌ها Escape Sequenceها را خراب می‌کند و Terminal را از کار می‌اندازد. Terminal یک ارتباط **یک‌به‌یک** است، پس **Backpressure باید تا PTY منتقل شود**: وقتی Browser کند است، ما خواندن از stdout را متوقف می‌کنیم → Buffer کرنل پر می‌شود → پروسه‌ی داخل Container روی `write` Block می‌شود. این دقیقاً همان رفتار صحیح Unix برای یک TTY است.
+**The key principle:** unlike logs, **the terminal must never drop any data**; dropped bytes corrupt escape sequences and break the terminal. A terminal is a **one-to-one** connection, so **backpressure must propagate all the way to the PTY**: when the browser is slow, we stop reading from stdout → the kernel buffer fills → the process inside the container blocks on `write`. This is exactly the correct Unix behaviour for a TTY.
 
-**پروتکل فریم (WebSocket باینری):**
+**Frame protocol (binary WebSocket):**
 
-| بایت اول (Channel) | جهت | محتوا |
+| First byte (channel) | Direction | Content |
 |---|---|---|
-| `0` STDIN | Browser → Server | بایت‌های ورودی |
-| `1` STDOUT | Server → Browser | بایت‌های خروجی (stderr در حالت TTY با stdout ادغام می‌شود) |
+| `0` STDIN | Browser → Server | input bytes |
+| `1` STDOUT | Server → Browser | output bytes (in TTY mode stderr is merged into stdout) |
 | `3` RESIZE | Browser → Server | JSON: `{"cols":120,"rows":40}` |
-| `4` PAUSE / `5` RESUME | Browser → Server | Flow Control مبتنی بر Watermark |
-| `9` CONTROL | دوطرفه | Ping، `exit code`، خطا |
+| `4` PAUSE / `5` RESUME | Browser → Server | watermark-based flow control |
+| `9` CONTROL | Bidirectional | ping, `exit code`, errors |
 
 ```rust
-// Server: pump دوطرفه با backpressure واقعی
+// Server: bidirectional pump with real backpressure
 let mut stdin = proc.stdin().expect("stdin");
 let mut stdout = proc.stdout().expect("stdout");
 let mut resize = proc.terminal_size().expect("tty");     // Sender<TerminalSize>
@@ -653,11 +652,11 @@ let mut paused = false;
 
 loop {
     tokio::select! {
-        // فقط وقتی paused نیستیم می‌خوانیم → backpressure به PTY می‌رسد
+        // we read only while not paused → backpressure reaches the PTY
         n = stdout.read(&mut buf), if !paused => {
             let n = n?; if n == 0 { break; }
             let mut f = Vec::with_capacity(n + 1); f.push(CH_STDOUT); f.extend_from_slice(&buf[..n]);
-            // send().await خودش منتظر socket می‌ماند؛ timeout برای client مرده
+            // send().await waits on the socket itself; the timeout is for a dead client
             if timeout(Duration::from_secs(30), tx.send(Message::Binary(f.into()))).await.is_err() { break; }
         }
         msg = rx.next() => match msg {
@@ -678,7 +677,7 @@ loop {
 ```
 
 ```ts
-// Client: flow control مبتنی بر watermark (الگوی توصیه‌شده در مستندات xterm.js)
+// Client: watermark-based flow control (the pattern recommended in the xterm.js docs)
 const HIGH = 512 * 1024, LOW = 64 * 1024;
 let pending = 0, paused = false;
 ws.binaryType = 'arraybuffer';
@@ -693,90 +692,90 @@ ws.onmessage = (ev) => {
   });
   if (!paused && pending > HIGH) { paused = true; send(CH.PAUSE); }
 };
-// Resize: FitAddon + ResizeObserver با debounce حدود 100ms؛ اولین size قبل از اولین خروجی ارسال شود
+// Resize: FitAddon + ResizeObserver with a debounce of about 100ms; send the first size before the first output
 ```
 
-**امنیت و UX ترمینال:**
+**Terminal security and UX:**
 
-- Permission جدا به نام **`app:exec`** (نه `app:write`)، بررسی در **لحظه‌ی Upgrade**، به‌علاوه‌ی **Origin Check** (برای جلوگیری از CSWSH).
-- یک Session برای هر تب، با ID تصادفی ۱۲۸ بیتی؛ حداکثر Session برای هر کاربر؛ Idle Timeout (۱۵ دقیقه) و Max Duration.
-- **Audit:** شروع و پایان Session، کاربر، Pod و مدت. در نسخه‌ی Enterprise، **Session Recording** با فرمت asciicast و ذخیره در Object Storage.
-- **Shell Fallback:** اجرای `bash` و در صورت نبود آن `sh`، و اگر هیچ‌کدام نبود →
-- 🌟 **Ephemeral Debug Container:** برای Imageهای Distroless که Shell ندارند (و Console در Kubero روی آن‌ها کار نمی‌کند)، یک Container موقت با `busybox`/`netshoot` و `targetContainerName` برای اشتراک Process Namespace ساخته می‌شود. این یک مزیت رقابتی واقعی است.
+- A separate permission named **`app:exec`** (not `app:write`), checked **at the moment of the upgrade**, plus an **origin check** (to prevent CSWSH).
+- One session per tab, with a random 128-bit ID; a maximum number of sessions per user; an idle timeout (15 minutes) and a max duration.
+- **Audit:** session start and end, the user, the pod and the duration. In the Enterprise edition, **session recording** in asciicast format, stored in object storage.
+- **Shell fallback:** run `bash`, and `sh` if it is missing, and if neither exists →
+- 🌟 **Ephemeral debug container:** for distroless images that have no shell (where the incumbent's console does not work), a temporary container is created with `busybox`/`netshoot` and `targetContainerName` to share the process namespace. This is a genuine competitive advantage.
 
-### ۵.۱۰ جزئیات SSE در Production
+### 5.10 SSE details in production
 
-- **محدودیت ۶ Connection در HTTP/1.1:** در HTTP/1.1 مرورگر حداکثر ۶ Connection برای هر Origin باز می‌کند. با چند تب و چند SSE، مرورگر عملاً قفل می‌شود. راه‌حل‌ها: (۱) HTTP/2 در لبه (Gateway/Ingress با TLS)، و (۲) **یک SSE Multiplexed برای هر تب** برای رویدادهای Cluster (Topicها از طریق Query/Subscribe API انتخاب می‌شوند) + SSE جداگانه فقط برای Log Viewerهای باز.
-- **Proxy Buffering:** غیرفعال کردن Buffering در Gateway، هدر `X-Accel-Buffering: no`، Keep-Alive Comment هر ۱۵ ثانیه، و Timeoutهای مناسب.
-- **`id:` برای هر رویداد** (Sequence سراسری) → `EventSource` در Reconnect به‌صورت خودکار `Last-Event-ID` را می‌فرستد → Server از Ring Buffer Delta تحویل می‌دهد یا `resync` ارسال می‌کند.
-- **Auth:** `EventSource` نمی‌تواند Header سفارشی بفرستد، پس **Cookie Session** لازم است. این هم یک دلیل دیگر علیه Bearer JWT در مرورگر است.
-- **Compression:** Compression را روی SSE غیرفعال کنید، چون Flush را خراب می‌کند.
+- **The 6-connection limit in HTTP/1.1:** on HTTP/1.1 a browser opens at most 6 connections per origin. With several tabs and several SSE streams, the browser effectively locks up. The solutions: (1) HTTP/2 at the edge (a gateway/ingress with TLS), and (2) **one multiplexed SSE stream per tab** for cluster events (topics are chosen through a query/subscribe API) + a separate SSE stream only for open log viewers.
+- **Proxy buffering:** disable buffering at the gateway, the `X-Accel-Buffering: no` header, a keep-alive comment every 15 seconds, and appropriate timeouts.
+- **An `id:` on every event** (the global sequence) → on reconnect `EventSource` automatically sends `Last-Event-ID` → the server delivers deltas from the ring buffer or sends a `resync`.
+- **Auth:** `EventSource` cannot send custom headers, so a **cookie session** is required. This is one more argument against bearer JWTs in the browser.
+- **Compression:** disable compression on SSE, because it breaks flushing.
 
 ---
 
-## ۶. پاسخ سؤال ۲: Database و ORM
+## 6. Question 2: database and ORM
 
-### ۶.۱ ابتدا: اصلاً چه چیزی در DB است؟
+### 6.1 First: what is actually in the database?
 
-با تصمیم «K8s = Desired State» (بخش ۴.۳)، DB **کوچک، کم‌ترافیک و Relational** است: Users، Orgs، Memberships، RoleBindings، Sessions، Tokens، Audit و History. **QPS نوشتن پایین است و بیشتر خواندن‌ها از Cache حافظه انجام می‌شود.** بنابراین معیار اصلی انتخاب ORM «سرعت خام» نیست، بلکه **قابلیت حمل بین SQLite و Postgres، شفافیت SQL، Migrationهای Embedded و قابلیت تست** است.
+With the "K8s = desired state" decision (section 4.3), the DB is **small, low-traffic and relational**: users, orgs, memberships, role bindings, sessions, tokens, audit and history. **Write QPS is low and most reads are served from the in-memory cache.** So the main criterion for choosing an ORM is not "raw speed" but **portability between SQLite and Postgres, SQL transparency, embedded migrations and testability**.
 
-### ۶.۲ مقایسه
+### 6.2 Comparison
 
-| معیار | **sqlx** (خام) | **SeaORM** | **SeaQuery + sqlx** | **Diesel 2** |
+| Criterion | **sqlx** (raw) | **SeaORM** | **SeaQuery + sqlx** | **Diesel 2** |
 |---|---|---|---|---|
-| فلسفه‌ی نزدیک به Drizzle | ⭐⭐⭐ (SQL خام) | ⭐⭐ (ActiveRecord-ish) | ⭐⭐⭐⭐ (Query Builder تایپ‌شده) | ⭐⭐⭐⭐⭐ (Schema-as-code + DSL شبیه SQL) |
-| Compile-time Safety | ⭐⭐⭐⭐⭐ با `query!`، **ولی فقط برای یک Backend** | ⭐⭐⭐ (Typeها بله، SQL در Runtime) | ⭐⭐⭐⭐ (شناسه‌های Typed با `Iden`؛ SQL در Runtime) | ⭐⭐⭐⭐⭐ (بررسی در برابر Schema) |
-| SQLite + Postgres هم‌زمان | ❌ برای `query!` / ✅ با `query_as` در Runtime و SQL مشترک | ✅ | ✅ (تولید SQL مخصوص هر Dialect) | ✅ با `MultiConnection` |
-| Queryهای پویا (Filter، Sort، Pagination) | ⭐⭐ (QueryBuilder دستی و زشت) | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ (Boxed Queries) |
-| Async | ✅ Native | ✅ | ✅ | ⚠️ Sync (یا `diesel-async`) |
-| Runtime Overhead | بسیار کم | متوسط | کم | بسیار کم |
-| Migrationهای Embedded | ✅ `sqlx::migrate!` | ✅ | ✅ (از sqlx) | ✅ `embed_migrations!` |
-| زمان Compile و خوانایی خطاها | خوب | متوسط | خوب | ⚠️ سنگین و خطاهای پیچیده |
-| Relations | دستی | ✅ | دستی (با Join تایپ‌شده) | ✅ (`belongs_to`، Join) |
+| Philosophy closest to Drizzle | ⭐⭐⭐ (raw SQL) | ⭐⭐ (ActiveRecord-ish) | ⭐⭐⭐⭐ (typed query builder) | ⭐⭐⭐⭐⭐ (schema-as-code + SQL-like DSL) |
+| Compile-time safety | ⭐⭐⭐⭐⭐ with `query!`, **but only for a single backend** | ⭐⭐⭐ (types yes, SQL at runtime) | ⭐⭐⭐⭐ (typed identifiers via `Iden`; SQL at runtime) | ⭐⭐⭐⭐⭐ (checked against the schema) |
+| SQLite + Postgres at the same time | ❌ for `query!` / ✅ with `query_as` at runtime and shared SQL | ✅ | ✅ (generates dialect-specific SQL) | ✅ with `MultiConnection` |
+| Dynamic queries (filter, sort, pagination) | ⭐⭐ (manual, ugly QueryBuilder) | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ (boxed queries) |
+| Async | ✅ Native | ✅ | ✅ | ⚠️ Sync (or `diesel-async`) |
+| Runtime overhead | very low | medium | low | very low |
+| Embedded migrations | ✅ `sqlx::migrate!` | ✅ | ✅ (from sqlx) | ✅ `embed_migrations!` |
+| Compile time and error readability | good | medium | good | ⚠️ heavy, with complex errors |
+| Relations | manual | ✅ | manual (with typed joins) | ✅ (`belongs_to`, joins) |
 
-### ۶.۳ حکم
+### 6.3 Verdict
 
-**پیشنهاد اصلی: `sqlx` + `sea-query` (+ `sea-query-binder`) در یک Crate به نام `kuben-store` پشت Repository Trait.**
+**Primary recommendation: `sqlx` + `sea-query` (+ `sea-query-binder`) in a crate called `kuben-store`, behind a repository trait.**
 
-- Queryهای ثابت با SQL مشترک (Portable Subset) و `sqlx::query_as` نوشته می‌شوند؛ Queryهای پویا (مثل جستجو در Audit یا فیلتر لیست‌ها) با SeaQuery.
-- **جایگزین Compile-time Check:** (۱) شناسه‌های جدول و ستون به‌صورت `enum` با `#[derive(Iden)]`، که Typo را در زمان Compile می‌گیرد؛ (۲) **اجرای کامل Test Suite مربوط به Repository روی هر دو Backend در CI** (Matrix: SQLite in-memory + Postgres با testcontainers).
-- **SeaORM را انتخاب نکنید:** Abstraction ActiveModel، شفافیت SQL کمتر، Binary و Compile سنگین‌تر، و برای این حجم داده سودی ندارد.
-- **اگر «Drizzle-level Compile-time Safety» برای شما خط قرمز است:** از **Diesel 2 + `MultiConnection`** استفاده کنید (با `deadpool-diesel` یا `spawn_blocking`). هزینه‌ی آن مدل Sync و Compile کندتر است. این انتخاب مشروع است، اما برای Kuben فایده‌اش به هزینه‌اش نمی‌ارزد.
-- **اگر تصمیم گرفتید فقط یک Backend داشته باشید** (مثلاً فقط SQLite برای همیشه، یا فقط Postgres)، آن‌وقت `sqlx::query!` با Offline Mode (`.sqlx/`) بهترین گزینه است. **دو Backend و `query!` با هم جمع نمی‌شوند.** این مهم‌ترین Gotcha در طرح شماست.
+- Fixed queries are written with shared SQL (a portable subset) and `sqlx::query_as`; dynamic queries (searching the audit log, filtering lists) use SeaQuery.
+- **Replacement for compile-time checking:** (1) table and column identifiers as `enum`s with `#[derive(Iden)]`, which catches typos at compile time; (2) **running the full repository test suite against both backends in CI** (matrix: SQLite in-memory + Postgres via testcontainers).
+- **Do not pick SeaORM:** the ActiveModel abstraction, less SQL transparency, a heavier binary and slower compiles — and at this data volume it buys nothing.
+- **If "Drizzle-level compile-time safety" is a hard requirement for you:** use **Diesel 2 + `MultiConnection`** (with `deadpool-diesel` or `spawn_blocking`). The price is a sync model and slower compiles. This is a legitimate choice, but for Kuben the benefit does not justify the cost.
+- **If you decide to support only one backend** (say SQLite forever, or Postgres only), then `sqlx::query!` with offline mode (`.sqlx/`) is the best option. **Two backends and `query!` do not go together.** This is the most important gotcha in your design.
 
-### ۶.۴ پیکربندی Production برای SQLite
+### 6.4 Production configuration for SQLite
 
 ```rust
 let base = SqliteConnectOptions::from_str(&cfg.database_url)?
     .create_if_missing(true)
     .journal_mode(SqliteJournalMode::Wal)
-    .synchronous(SqliteSynchronous::Normal) // در WAL امن است (بدون corruption)؛ برای audit سخت‌گیرانه Full
+    .synchronous(SqliteSynchronous::Normal) // safe under WAL (no corruption); use Full for strict audit
     .busy_timeout(Duration::from_secs(5))
-    .foreign_keys(true)                     // برخلاف Kubero که آن را OFF می‌کند
+    .foreign_keys(true)                     // unlike the incumbent, which turns this OFF
     .pragma("temp_store", "memory")
-    .pragma("cache_size", "-2000");         // حدود 2MiB برای هر connection → بودجه‌ی RAM را رعایت کنید
+    .pragma("cache_size", "-2000");         // about 2MiB per connection → mind the RAM budget
 
-// Single-writer: یک connection برای نوشتن → هیچ‌وقت SQLITE_BUSY ناشی از upgrade تراکنش رخ نمی‌دهد
+// Single-writer: one connection for writes → SQLITE_BUSY from a transaction upgrade never happens
 let writer = SqlitePoolOptions::new().max_connections(1).connect_with(base.clone()).await?;
 let reader = SqlitePoolOptions::new().max_connections(4).connect_with(base.read_only(true)).await?;
 sqlx::migrate!("./migrations/sqlite").run(&writer).await?;
 ```
 
-**Gotchaهای SQLite در Kubernetes:**
+**SQLite gotchas on Kubernetes:**
 
-- ❌ **هرگز SQLite را روی NFS یا RWX (مثل Longhorn RWX یا EFS) قرار ندهید.** Lockها و WAL روی فایل‌سیستم شبکه‌ای قابل‌اعتماد نیستند و نتیجه‌اش Corruption است. فقط از **RWO PVC** یا **local-path** استفاده کنید.
-- ⚠️ **در حالت SQLite از `strategy: Recreate` استفاده کنید** (نه RollingUpdate). با RWO، Pod جدید روی Node دیگر تا وقتی Pod قدیمی بسته نشده نمی‌تواند Volume را Mount کند، و دو Writer هم ممنوع است. Downtime برای Control Plane حدود ۱ تا ۳ ثانیه است (Rust سریع Boot می‌شود)، **ولی Appها هیچ Downtime‌ای ندارند** (Tenet شماره‌ی ۲).
-- **`last_used_at` برای Tokenها:** آن را در هر Request نوشتن نکنید (با SQLite Single-writer یک Write Amplification جدی ایجاد می‌کند). مقادیر را در حافظه جمع کنید و هر ۶۰ ثانیه به‌صورت Batch بنویسید.
-- **در Shutdown:** دستور `PRAGMA wal_checkpoint(TRUNCATE)` اجرا شود.
+- ❌ **Never put SQLite on NFS or RWX (Longhorn RWX, EFS and the like).** Locks and the WAL are not reliable on a network filesystem, and the result is corruption. Use **RWO PVCs** or **local-path** only.
+- ⚠️ **In SQLite mode use `strategy: Recreate`** (not RollingUpdate). With RWO, a new pod on another node cannot mount the volume until the old pod is gone, and two writers are forbidden anyway. Control-plane downtime is roughly 1 to 3 seconds (Rust boots fast), **but the apps have no downtime at all** (tenet number 2).
+- **`last_used_at` for tokens:** do not write it on every request (with single-writer SQLite it causes serious write amplification). Accumulate the values in memory and write them in a batch every 60 seconds.
+- **On shutdown:** run `PRAGMA wal_checkpoint(TRUNCATE)`.
 
-### ۶.۵ Schema منطقی (Multi-tenant + RBAC)
+### 6.5 Logical schema (multi-tenant + RBAC)
 
 ```sql
--- Dialect: SQLite. تفاوت‌های Postgres: BLOB→BYTEA، INTEGER PRIMARY KEY→BIGINT GENERATED ALWAYS AS IDENTITY
--- IDها: UUIDv7 (time-ordered → index locality بهتر در هر دو DB). زمان: BIGINT unix-ms.
+-- Dialect: SQLite. Postgres differences: BLOB→BYTEA, INTEGER PRIMARY KEY→BIGINT GENERATED ALWAYS AS IDENTITY
+-- IDs: UUIDv7 (time-ordered → better index locality in both DBs). Time: BIGINT unix-ms.
 CREATE TABLE organizations (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at BIGINT NOT NULL);
 CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, display_name TEXT,
-  password_hash TEXT,                       -- NULL برای کاربران فقط-SSO؛ فرمت PHC (argon2id)
+  password_hash TEXT,                       -- NULL for SSO-only users; PHC format (argon2id)
   is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at BIGINT NOT NULL);
 CREATE TABLE identities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider TEXT NOT NULL, subject TEXT NOT NULL, UNIQUE (provider, subject));          -- OIDC/GitHub
@@ -790,12 +789,12 @@ CREATE TABLE role_bindings (id TEXT PRIMARY KEY, org_id TEXT NOT NULL REFERENCES
   scope_kind TEXT NOT NULL,                 -- org | project | environment
   scope_id TEXT, created_at BIGINT NOT NULL);
 CREATE INDEX rb_subject ON role_bindings (subject_kind, subject_id);
-CREATE TABLE sessions (id_hash BLOB PRIMARY KEY,  -- sha256(session_id)؛ خود ID فقط در cookie
+CREATE TABLE sessions (id_hash BLOB PRIMARY KEY,  -- sha256(session_id); the ID itself lives only in the cookie
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at BIGINT NOT NULL,
   expires_at BIGINT NOT NULL, last_seen_at BIGINT, ip TEXT, user_agent TEXT, mfa_at BIGINT);
 CREATE TABLE api_tokens (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, owner_user_id TEXT, name TEXT NOT NULL,
-  prefix TEXT NOT NULL,                     -- مثل kbx_pat_7f3a (نمایش در UI و secret scanning)
-  secret_hash BLOB NOT NULL UNIQUE,         -- sha256؛ Argon2 برای token پرآنتروپی لازم نیست
+  prefix TEXT NOT NULL,                     -- e.g. kbx_pat_7f3a (shown in the UI and used for secret scanning)
+  secret_hash BLOB NOT NULL UNIQUE,         -- sha256; Argon2 is unnecessary for a high-entropy token
   scopes TEXT NOT NULL, expires_at BIGINT, last_used_at BIGINT, revoked_at BIGINT, created_at BIGINT NOT NULL);
 CREATE TABLE audit_events (seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, org_id TEXT,
   actor_kind TEXT NOT NULL, actor_id TEXT, action TEXT NOT NULL, target_kind TEXT, target_ref TEXT,
@@ -804,60 +803,60 @@ CREATE TABLE audit_events (seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, org
 CREATE INDEX audit_org_time ON audit_events (org_id, created_at);
 CREATE TABLE idempotency_keys (key TEXT PRIMARY KEY, user_id TEXT, request_hash BLOB, response TEXT, created_at BIGINT);
 CREATE TABLE outbox (id TEXT PRIMARY KEY, topic TEXT NOT NULL, payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-  next_attempt_at BIGINT NOT NULL, created_at BIGINT NOT NULL);   -- notifications با at-least-once
+  next_attempt_at BIGINT NOT NULL, created_at BIGINT NOT NULL);   -- notifications with at-least-once delivery
 ```
 
-**RBAC Engine:** مجوزها رشته‌هایی مثل `app:deploy`، `app:exec`، `app:logs:read` و `secret:read` هستند و Roleهای Built-in به این مجوزها نگاشت می‌شوند. ارزیابی کاملاً در حافظه انجام می‌شود (Cache با `moka` که با یک Version Counter Invalidate می‌شود)، در حد میکروثانیه. Engine پشت یک Trait به نام `PolicyEngine` تعریف می‌شود تا در Enterprise بتوان **Cedar** (موتور Policy نوشته‌شده با Rust، سریع و قابل‌تحلیل) را برای ABAC جایگزین کرد.
+**RBAC engine:** permissions are strings such as `app:deploy`, `app:exec`, `app:logs:read` and `secret:read`, and the built-in roles map onto those permissions. Evaluation happens entirely in memory (a `moka` cache invalidated by a version counter), on the order of microseconds. The engine sits behind a trait called `PolicyEngine`, so that in Enterprise it can be swapped for **Cedar** (a policy engine written in Rust — fast and analyzable) to support ABAC.
 
-### ۶.۶ Migration، Backup و حالت‌های HA
+### 6.6 Migrations, backups and HA modes
 
-| حالت | DB | Replica | Backup |
+| Mode | DB | Replicas | Backup |
 |---|---|---|---|
-| **Solo** (پیش‌فرض) | SQLite روی RWO PVC | ۱ (`Recreate`) | `VACUUM INTO` زمان‌بندی‌شده → S3/MinIO (با `object_store`) + دستور `kuben restore` |
-| **HA** | Postgres (CloudNativePG یا Managed) | API: N، Controller: ۲ (Leader) | Backup داخلی CNPG + PITR |
+| **Solo** (default) | SQLite on an RWO PVC | 1 (`Recreate`) | scheduled `VACUUM INTO` → S3/MinIO (via `object_store`) + a `kuben restore` command |
+| **HA** | Postgres (CloudNativePG or managed) | API: N, controller: 2 (leader) | CNPG's own backup + PITR |
 
-- **Migrationها:** دو پوشه‌ی `migrations/sqlite` و `migrations/postgres`. CI بررسی می‌کند که Schemaها معادل باشند (یک تست که Metadata ستون‌ها را مقایسه می‌کند).
-- **Expand/Contract** برای Zero-Downtime در حالت Postgres: هر Migration باید با نسخه‌ی N و N+1 سازگار باشد؛ ستون‌ها در یک Release حذف نمی‌شوند.
-- **Migration Lock:** در Postgres، sqlx خودش Advisory Lock می‌گیرد. در SQLite هم Single-writer کافی است.
-- **Importer از Kubero:** Import کاربران از Prisma SQLite. هش‌های bcrypt در اولین Login موفق به Argon2id Rehash می‌شوند. کاربرانی که هش Legacy SHA-256 دارند مجبور به Reset Password می‌شوند.
+- **Migrations:** two directories, `migrations/sqlite` and `migrations/postgres`. CI checks that the schemas are equivalent (a test that compares column metadata).
+- **Expand/contract** for zero-downtime in Postgres mode: every migration must be compatible with versions N and N+1; columns are never dropped in the same release.
+- **Migration lock:** on Postgres, sqlx takes an advisory lock itself. On SQLite, single-writer is enough.
+- **Importer from the incumbent PaaS:** import users from its Prisma SQLite database. bcrypt hashes are rehashed to Argon2id on the first successful login. Users with legacy SHA-256 hashes are forced through a password reset.
 
 ---
 
-## ۷. پاسخ سؤال ۳: Frontend Stack
+## 7. Question 3: frontend stack
 
-### ۷.۱ SPA در برابر Astro
+### 7.1 SPA versus Astro
 
-**کاملاً موافقم.** Dashboard یک PaaS یک اپلیکیشن طولانی‌مدت، Stateful و Realtime است؛ مدل Islands در Astro و استفاده‌ی گسترده از `client:only` در اینجا یک Anti-pattern است. **ولی Astro را کنار نگذارید:** برای **سایت Docs و Marketing** (مثلاً با Starlight) بهترین انتخاب است. اپلیکیشن `apps/docs` را با Astro بسازید.
+**Fully agreed.** A PaaS dashboard is a long-lived, stateful, realtime application; Astro's islands model and heavy use of `client:only` are an anti-pattern here. **But do not write Astro off:** for the **docs and marketing site** (with Starlight, say) it is the best choice. Build the `apps/docs` application with Astro.
 
-**Trade-offهای SPA و نحوه‌ی جبران آن‌ها:**
+**SPA trade-offs and how to compensate for them:**
 
-| هزینه‌ی SPA | راه‌حل |
+| Cost of an SPA | Solution |
 |---|---|
-| زمان بارگذاری اولیه | Code-splitting برای هر Route، Shell کوچک (بودجه‌ی ۲۰۰KB بعد از Brotli)، `modulepreload` |
-| وابستگی به JS | برای Dashboard مسئله‌ای نیست |
-| SEO | برای Dashboard بی‌اهمیت است؛ Docs با Astro ساخته می‌شود |
-| مدیریت Auth | Cookie Session + Route Guard در `beforeLoad` روتر |
+| Initial load time | per-route code splitting, a small shell (a 200KB budget after Brotli), `modulepreload` |
+| JS dependency | not an issue for a dashboard |
+| SEO | irrelevant for a dashboard; the docs are built with Astro |
+| Auth handling | cookie session + a route guard in the router's `beforeLoad` |
 
-### ۷.۲ React 19 در برابر Svelte 5
+### 7.2 React 19 versus Svelte 5
 
-| معیار | React 19 (+ React Compiler) | Svelte 5 (Runes) |
+| Criterion | React 19 (+ React Compiler) | Svelte 5 (runes) |
 |---|---|---|
-| Bundle پایه | بزرگ‌تر (React + ReactDOM حدود ده‌ها KB بعد از gzip) | بسیار کوچک (Runtime حداقلی و Compiled) |
-| Runtime Overhead و حافظه | Virtual DOM + Reconciliation؛ با Compiler، Re-renderها بهینه می‌شوند | Fine-grained Signals؛ کمترین Overhead |
-| مدل Reactivity | Top-down Re-render (Memoization خودکار با Compiler) | Signals (`$state`، `$derived`) |
-| Developer Experience | خوب، ولی Hookها قلق دارند | عالی و کم‌کد |
-| Ecosystem مورد نیاز Kuben | ⭐⭐⭐⭐⭐: shadcn، TanStack (Router، Query، Table، Virtual)، React Flow، dnd-kit، Pragmatic DnD، CodeMirror و … | ⭐⭐⭐: shadcn-svelte و bits-ui خوب هستند ولی کتابخانه‌های تخصصی کمترند |
-| Component Library | shadcn/ui (مرجع اصلی) | shadcn-svelte (Port) |
-| استخدام و Enterprise | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
-| نگهداری بلندمدت | بسیار پایدار | خوب (البته Svelte 5 خودش یک Breaking Change بزرگ نسبت به Svelte 4 بود) |
-| Performance در UI Realtime | **به معماری بستگی دارد، نه به Framework** | کمی بهتر در Microbenchmarkها |
+| Baseline bundle | larger (React + ReactDOM, tens of KB after gzip) | very small (minimal, compiled runtime) |
+| Runtime overhead and memory | virtual DOM + reconciliation; with the compiler, re-renders are optimized | fine-grained signals; minimal overhead |
+| Reactivity model | top-down re-render (automatic memoization via the compiler) | signals (`$state`, `$derived`) |
+| Developer experience | good, but hooks have their quirks | excellent and low-ceremony |
+| Ecosystem Kuben needs | ⭐⭐⭐⭐⭐: shadcn, TanStack (Router, Query, Table, Virtual), React Flow, dnd-kit, Pragmatic DnD, CodeMirror and more | ⭐⭐⭐: shadcn-svelte and bits-ui are good, but the specialized libraries are fewer |
+| Component library | shadcn/ui (the reference implementation) | shadcn-svelte (a port) |
+| Hiring and enterprise | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| Long-term maintenance | very stable | good (though Svelte 5 was itself a large breaking change from Svelte 4) |
+| Performance in a realtime UI | **depends on the architecture, not the framework** | slightly better in microbenchmarks |
 
-**حکم: React 19 + React Compiler.** دلیل این است که **گلوگاه واقعی در Dashboard یک PaaS Framework نیست، بلکه این است که چطور جریان پرسرعت داده را وارد UI کنید.** اگر هر خط لاگ یک `setState` باشد، Svelte هم کند می‌شود؛ اگر لاگ مستقیماً در xterm یا یک لیست Virtualized با Ring Buffer نوشته شود، React هم بدون مشکل ۶۰fps نگه می‌دارد. مزیت Ecosystem (TanStack، shadcn، React Flow) و استخدام به‌مراتب بیشتر از چند ده KB صرفه‌جویی در Bundle ارزش دارد. (اگر روزی واقعاً Fine-grained Reactivity لازم شد، SolidJS گزینه‌ی بعدی است، نه Svelte.)
+**Verdict: React 19 + React Compiler.** The reason is that **the real bottleneck in a PaaS dashboard is not the framework, it is how you get a high-rate data stream into the UI.** If every log line is a `setState`, Svelte will be slow too; if logs are written straight into xterm or a virtualized list backed by a ring buffer, React holds 60fps without trouble. The ecosystem advantage (TanStack, shadcn, React Flow) and hiring are worth far more than a few dozen KB of bundle savings. (If fine-grained reactivity ever really becomes necessary, SolidJS is the next option, not Svelte.)
 
-### ۷.۳ الگوهای Realtime UI (مهم‌تر از انتخاب Framework)
+### 7.3 Realtime UI patterns (more important than the framework choice)
 
-1. **لاگ هرگز وارد React State نمی‌شود.** برای Live Tail از xterm در حالت Read-only + `@xterm/addon-webgl` استفاده کنید (Renderer مبتنی بر GPU که ده‌ها هزار خط را روان نشان می‌دهد). برای History قابل‌جستجو از TanStack Virtual + Ring Buffer (مثلاً ۱۰ هزار خط آخر) استفاده کنید.
-2. **رویدادهای SSE با `setQueryData` Patch می‌شوند و Batch آن‌ها با `requestAnimationFrame` انجام می‌شود**، نه با `invalidateQueries` که یک طوفان Refetch ایجاد می‌کند:
+1. **Logs never enter React state.** For live tail, use xterm in read-only mode + `@xterm/addon-webgl` (a GPU-based renderer that scrolls tens of thousands of lines smoothly). For searchable history, use TanStack Virtual + a ring buffer (the last 10,000 lines, say).
+2. **SSE events are patched in with `setQueryData` and batched with `requestAnimationFrame`**, not with `invalidateQueries`, which triggers a refetch storm:
 
 ```ts
 useEffect(() => {
@@ -878,322 +877,322 @@ useEffect(() => {
 }, [projectId, qc]);
 ```
 
-3. **Metricها با uPlot نمایش داده شوند** (کتابخانه‌ای بسیار سبک و سریع برای Time-series)، نه Recharts یا Chart.js که برای داده‌ی Realtime سنگین‌اند.
-4. **Optimistic Updates** برای Scale و Restart، به‌علاوه‌ی Rollback در صورت خطا.
-5. **Prefetch با `defaultPreload: 'intent'`** در TanStack Router، به‌همراه `loader` که `queryClient.ensureQueryData` را صدا می‌زند.
-6. **Optimistic Concurrency در ویرایش:** هنگام ذخیره‌ی فرم App، هدر `If-Match` با `resourceVersion` یا ETag ارسال شود تا Lost Update رخ ندهد.
+3. **Render metrics with uPlot** (a very light, very fast time-series library), not Recharts or Chart.js, which are too heavy for realtime data.
+4. **Optimistic updates** for scale and restart, plus rollback on error.
+5. **Prefetch with `defaultPreload: 'intent'`** in TanStack Router, together with a `loader` that calls `queryClient.ensureQueryData`.
+6. **Optimistic concurrency on edits:** when saving the app form, send an `If-Match` header with the `resourceVersion` or ETag so that no lost update occurs.
 
-### ۷.۴ Type-Safety سرتاسری: OpenAPI-first
+### 7.4 End-to-end type safety: OpenAPI-first
 
-**چرا ts-rs کافی نیست:** ts-rs فقط Typeها را صادر می‌کند. **قرارداد Endpointها** (Path، Params، Status Code و Error Shape) پوشش داده نمی‌شود و Fetcherها دستی نوشته می‌شوند که Drift ایجاد می‌کند. علاوه بر این، **API عمومی Kuben یک محصول است** (برای CLI، Terraform Provider، GitHub Action و ابزارهای شخص ثالث) و **در هر صورت به OpenAPI نیاز دارد.**
+**Why ts-rs is not enough:** ts-rs only exports types. **The endpoint contract** (path, params, status codes and error shape) is not covered, and fetchers are written by hand, which creates drift. On top of that, **Kuben's public API is a product** (for the CLI, a Terraform provider, a GitHub Action and third-party tooling) and **needs OpenAPI regardless.**
 
 ```
 Rust handlers + #[utoipa::path] + #[derive(ToSchema)]
         │  cargo run -p kuben-api --bin openapi > packages/api-client/openapi.json
         ▼
 openapi-typescript  →  packages/api-client/src/schema.d.ts
-openapi-fetch       →  client تایپ‌شده (paths، params، responses)
-openapi-react-query →  hookهای تایپ‌شده برای TanStack Query
+openapi-fetch       →  typed client (paths, params, responses)
+openapi-react-query →  typed hooks for TanStack Query
         │
-CI: git diff --exit-code روی فایل‌های تولیدشده (drift = شکست build)
+CI: git diff --exit-code on the generated files (drift = build failure)
 ```
 
-- Payloadهای SSE و WebSocket هم به‌صورت Component Schema در همان OpenAPI تعریف می‌شوند (یک منبع واحد). اگر ts-rs را برای Enumهای رویداد ترجیح می‌دهید، اشکالی ندارد؛ فقط **یک** Generator را برای هر Type مسئول کنید.
-- Errorها با فرمت **RFC 9457 (`application/problem+json`)** و یک Enum ثابت از `code`ها برمی‌گردند.
+- SSE and WebSocket payloads are also defined as component schemas in the same OpenAPI document (a single source). If you prefer ts-rs for the event enums, that is fine; just make **one** generator responsible for each type.
+- Errors come back in **RFC 9457 (`application/problem+json`)** format with a fixed enum of `code`s.
 
-### ۷.۵ Embed و Serving
+### 7.5 Embedding and serving
 
-- **در `build.rs`:** اگر `apps/web/dist` وجود ندارد (در Build Release)، Build با خطای واضح Fail شود. در حالت Debug، فایل‌ها از دیسک خوانده شوند و Vite Dev Server با Proxy به Rust کار کند.
-- **فقط نسخه‌ی `.br` و `.gz` هر Asset را Embed کنید** (از قبل با بالاترین Quality فشرده شده باشند) و مستقیماً با `Content-Encoding` مناسب سرو کنید. نسخه‌ی خام فقط برای Clientهای قدیمی لازم است. این کار Binary را کوچک‌تر و CPU را آزادتر نگه می‌دارد. (کتابخانه‌ی `memory-serve` دقیقاً همین کار را در Compile-time انجام می‌دهد و جایگزین مناسبی برای rust-embed است.)
-- Assetهای Hashed با `Cache-Control: public, max-age=31536000, immutable`؛ فایل `index.html` با `no-cache` و ETag.
-- **SPA Fallback:** هر Path ناشناخته که با `/api` شروع نمی‌شود `index.html` برمی‌گرداند؛ ولی `/api/*` ناشناخته باید 404 از نوع JSON برگرداند (نه `index.html`!).
-- **CSP سخت‌گیرانه:** `default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'`. Vite به‌طور پیش‌فرض Inline Script تولید نمی‌کند. **فونت‌ها Self-hosted باشند** (Inter و Vazirmatn برای فارسی)، نه Google Fonts CDN (به دلیل Air-gap، Privacy و CSP).
-
----
-
-## ۸. پاسخ سؤال ۴: چک‌لیست Production-Ready
-
-> ستون «فاز»: **D1** یعنی از روز اول در معماری باشد (حتی اگر پیاده‌سازی ساده باشد)، و **D2** یعنی بعداً اضافه شود ولی باید برایش جا باز گذاشت.
-
-### ۸.۱ Lifecycle و Resilience
-
-| الگو | پیاده‌سازی در Kuben | فاز |
-|---|---|---|
-| **Graceful Shutdown** | با SIGTERM به ترتیب: `/readyz` برابر false → صبر حدود ۵ ثانیه (برای خروج از Endpointها؛ یا `preStop`) → توقف Accept → Drain HTTP (`with_graceful_shutdown`) → ارسال رویداد `reconnect` برای SSE و بستن WebSocketها با کد **1012** → آزاد کردن Lease رهبری → Flush کردن Outbox و Audit → `wal_checkpoint` → خروج. همه‌ی این مراحل باید کمتر از `terminationGracePeriodSeconds` طول بکشند | D1 |
-| **Leader Election** | Lease API (`coordination.k8s.io`) با یک Crate مثل `kube-lease-manager` یا پیاده‌سازی حدوداً ۱۵۰ خطی. Lease ۱۵ ثانیه، Renew هر ۱۰ ثانیه. با از دست رفتن Lease، Cancel فوری انجام شود | D1 (Interface) / D2 (فعال‌سازی HA) |
-| **Health Checks** | `/livez` (Watchdog)، `/readyz` (Cache + DB)، `/healthz/details` | D1 |
-| **Request Timeouts** | `tower_http::timeout` روی REST (مثلاً ۳۰ ثانیه)؛ **Streamها مستثنی هستند** و Idle Timeout جداگانه دارند | D1 |
-| **Body و Connection Limits** | `RequestBodyLimitLayer` (۱ مگابایت پیش‌فرض و بیشتر برای Upload)، `ConcurrencyLimitLayer` + `load_shed`، و Semaphoreهای Stream | D1 |
-| **Rate Limiting** | `tower_governor`: برای هر IP و هر Token؛ Login با Backoff تصاعدی برای هر حساب | D1 |
-| **Retry Policies** | کتابخانه‌ی `backon` با Jitter، **فقط برای عملیات Idempotent**؛ روی POSTهای غیر Idempotent هرگز Retry نشود | D1 |
-| **Circuit Breaker** | برای هر Host خارجی (Git Providerها، Registry، Webhookهای Notification، Prometheus) و برای هر Cluster | D1 (Cluster) / D2 |
-| **Idempotency** | هدر `Idempotency-Key` برای `POST /deploy`، `/releases` و `/apps` (نگهداری ۲۴ ساعته)؛ نام BuildRun به‌صورت Deterministic از `app+sha` ساخته می‌شود | D1 |
-| **Backpressure** | بخش‌های ۵.۸ و ۵.۹ | D1 |
-| **Resource Limits** | در Helm Chart مقدار Memory Request/Limit مشخص باشد؛ `worker_threads` و `max_blocking_threads` صریحاً تنظیم شوند؛ از CPU Limit سخت‌گیرانه اجتناب شود (CFS Throttling باعث Tail Latency بالا می‌شود) | D1 |
-
-### ۸.۲ Controller
-
-| الگو | پیاده‌سازی | فاز |
-|---|---|---|
-| **Server-Side Apply** | `PatchParams::apply("kuben").force()`؛ مالکیت فیلدها مشخص است و `kubectl edit` کاربر روی فیلدهایی که Kuben مدیریت نمی‌کند حفظ می‌شود | D1 |
-| **OwnerReferences** | Garbage Collection خودکار منابع فرزند | D1 |
-| **Finalizers** | فقط برای منابع **خارجی**، همراه Timeout و مسیر Uninstall | D1 |
-| **Error Policy + Backoff برای هر Object** | بخش ۵.۷؛ تفکیک خطای دائمی از موقت | D1 |
-| **Status Conditions + `observedGeneration`** | استاندارد kstatus؛ UI مستقیماً از روی آن رنگ و وضعیت را تعیین می‌کند | D1 |
-| **Validation** | **CEL در CRD** (`x-kubernetes-validations`) + **ValidatingAdmissionPolicy** (که از K8s 1.30 به‌صورت GA در دسترس است). **از Admission Webhook اجتناب کنید**، چون به TLS و cert-manager نیاز دارد و وقتی Kuben Down است، Webhook با `failurePolicy: Fail` نوشتن را Block می‌کند. این در تضاد مستقیم با Zero-Ops است | D1 |
-| **CRD Versioning** | از `v1alpha1` شروع کنید، تغییرات فقط به‌صورت Additive باشند، و برای `v1beta1` Conversion تعریف کنید. Conversion Webhook را فقط وقتی واقعاً لازم شد اضافه کنید | D1 (سیاست) |
-| **Kubernetes Events** | `Recorder` برای رویدادهای مهم | D1 |
-| **Drift Detection** | Requeue دوره‌ای همراه با Jitter | D1 |
-
-### ۸.۳ امنیت
-
-| الگو | پیاده‌سازی | فاز |
-|---|---|---|
-| **Password** | Argon2id (پارامترهای پیشنهادی OWASP: m=19MiB، t=2، p=1) + `spawn_blocking` + `Semaphore` | D1 |
-| **Session مرورگر** | Session ID تصادفی ۲۵۶ بیتی در کوکی `__Host-kuben_session; HttpOnly; Secure; SameSite=Lax; Path=/`. در DB فقط `sha256` آن ذخیره می‌شود. Cache با moka (TTL یک دقیقه). Revoke فوری. Rotation پس از Login یا ارتقای سطح دسترسی | D1 |
-| **API Token** | فرمت `kbx_pat_<prefix>_<secret>`، ذخیره با `sha256`، دارای Scope و Expiry. Prefix برای GitHub Secret Scanning قابل ثبت است | D1 |
-| **JWT/PASETO** | **فقط** برای موارد Stateless داخلی، مثل Tokenهای کوتاه‌مدت Callback یا Download Link امضاشده (Ed25519 با `kid`) | D2 |
-| **OIDC / SSO** | `openidconnect` (Authorization Code + PKCE)، Group Mapping به Role، Just-in-Time Provisioning | D1 (GitHub + OIDC عمومی) |
-| **MFA** | TOTP (`totp-rs`) + **Passkeys/WebAuthn** (`webauthn-rs`) | D1 (TOTP) / D2 (Passkeys) |
-| **CSRF** | SameSite=Lax + بررسی **Fetch Metadata** (`Sec-Fetch-Site: same-origin`) + الزام هدر سفارشی (`X-Kuben-Client`) برای درخواست‌های تغییردهنده. در WebSocket، **بررسی Origin** | D1 |
-| **CORS** | به‌صورت پیش‌فرض بسته (Same-Origin)؛ Allowlist صریح | D1 |
-| **CSP و Security Headers** | CSP سخت‌گیرانه، HSTS، `X-Content-Type-Options`، `Referrer-Policy`، `frame-ancestors 'none'` | D1 |
-| **Secret Management** | Secretهای App به‌صورت K8s Secret هستند (با امکان Integration با External Secrets Operator یا SOPS). Credentialهای Git و Registry با **Envelope Encryption** (XChaCha20-Poly1305) و Master Key در K8s Secret یا KMS، به‌همراه `kid` برای Rotation | D1 |
-| **حافظه‌ی Secretها** | `secrecy` + `zeroize`؛ در `Debug` و Logها Redact شوند | D1 |
-| **Audit Logging** | Append-only با Hash-chain، شامل Request ID، Actor، Target و Outcome؛ Export به SIEM (Webhook یا OTLP Logs)؛ سیاست Retention | D1 |
-| **Supply Chain** | `cargo-deny` و `cargo-audit`، `pnpm audit`، SBOM (با syft)، امضای Imageها (cosign)، SLSA Provenance، پین کردن همه‌ی Imageهای کمکی با Digest، و Renovate | D1 |
-| **Webhookهای Git** | بررسی HMAC به‌صورت Constant-time + Dedupe بر اساس Delivery ID + پردازش Async (ساخت BuildRun) | D1 |
-
-### ۸.۴ Multi-Tenancy و ایزوله‌سازی Workload
-
-| الگو | پیاده‌سازی | فاز |
-|---|---|---|
-| **سلسله‌مراتب** | Org → Project → Environment → App. هر Environment یک Namespace دارد: `kx-<project>-<env>` (با در نظر گرفتن محدودیت ۶۳ کاراکتر و استفاده از Short ID در صورت نیاز) | D1 |
-| **Pod Security Admission** | Label `pod-security.kubernetes.io/enforce: restricted` روی Namespaceهای Tenant | D1 |
-| **NetworkPolicy** | Default-deny برای Ingress بین Tenantها؛ اجازه‌ی ترافیک از Gateway و از داخل همان Namespace؛ Egress قابل پیکربندی | D1 |
-| **ResourceQuota / LimitRange** | برای هر Environment، بر اساس Plan یا Size | D1 |
-| **ServiceAccount** | `automountServiceAccountToken: false` برای همه‌ی Podهای App (مگر با درخواست صریح) | D1 |
-| **ایزوله‌سازی Build** | Namespace جداگانه به نام `kuben-builds`، بدون SA Token، NetworkPolicy با Egress فقط به Git و Registry، و ترجیحاً Node Pool جدا. ⚠️ BuildKit به‌صورت Rootless معمولاً به Seccomp/AppArmor در حالت Unconfined نیاز دارد، پس Buildها را حتماً روی Node یا Namespace ایزوله اجرا کنید | D1 |
-| **RBAC خود Kuben** | ClusterRole با حداقل دسترسی لازم (Least Privilege)؛ و در Enterprise، **Kubernetes Impersonation** تا Audit Log خود K8s هم کاربر واقعی را نشان دهد | D1 / D2 |
-| **Hard Multi-tenancy** | برای Tenantهای غیرقابل‌اعتماد: RuntimeClass با gVisor یا Kata، یا vCluster. در مستندات صادقانه بگویید که Namespace فقط Soft Isolation است | D2 |
-
-### ۸.۵ داده، Backup و Disaster Recovery
-
-| الگو | پیاده‌سازی | فاز |
-|---|---|---|
-| **Connection Pooling** | Poolهای sqlx (در SQLite به شکل Writer=1 و Reader=4؛ در Postgres بین ۱۰ تا ۲۰) | D1 |
-| **Migrations** | Embedded، همراه با Lock، الگوی Expand/Contract | D1 |
-| **Backup پلتفرم** | `kuben backup` شامل DB + Export همه‌ی CRDها به YAML → S3؛ Restore با یک دستور | D1 |
-| **Backup سرویس‌های کاربر** | CNPG با Barman Cloud برای PITR در Postgres؛ برای بقیه، Snapshot زمان‌بندی‌شده | D2 |
-| **DR** | Appها CRD هستند → Velero یا Export/Import کامل؛ Runbook مستند؛ **تست Restore در CI** (هر Backup‌ای که Restore آن تست نشده، Backup نیست) | D2 |
-| **Encryption at Rest** | Envelope Encryption برای فیلدهای حساس DB؛ پیشنهاد فعال‌سازی Encryption برای etcd در مستندات | D1 |
-
-### ۸.۶ Observability
-
-| الگو | پیاده‌سازی | فاز |
-|---|---|---|
-| **Structured Logging** | `tracing` + `tracing-subscriber` با فرمت JSON؛ `request_id` و `trace_id` در هر خط؛ Redaction | D1 |
-| **Tracing** | OpenTelemetry (OTLP) **پشت Cargo Feature `otel`** تا Binary پیش‌فرض سبک بماند؛ Trace Propagation به Callهای K8s | D1 (Feature) |
-| **Metrics** | `metrics` + `metrics-exporter-prometheus` روی Port جداگانه: HTTP RED Metrics، Reconcile (Duration، Errors، Queue Depth)، Watch Restartها، Streamهای فعال، Lagهای Broadcast، Tokio Runtime Metrics و RSS | D1 |
-| **Metrics کاربران (بدون Prometheus)** | Poll کردن metrics-server هر ۱۵ ثانیه (یک Call برای کل Cluster) → Ring Buffer یک‌ساعته در حافظه برای هر Pod (مثلاً ۲۴۰ نمونه × ۲ متریک × ۴ بایت ≈ ۲KB برای هر Pod) → Sparkline و Chart بدون نیاز به Prometheus. Prometheus یا VictoriaMetrics به‌صورت اختیاری برای History طولانی‌مدت | D1 |
-| **Dev Profiling** | `tokio-console` فقط در Build توسعه، و `pprof`/`dhat` برای پیدا کردن Leak | D1 |
-
-### ۸.۷ API و Delivery
-
-| الگو | پیاده‌سازی | فاز |
-|---|---|---|
-| **API Versioning** | مسیر `/api/v1`؛ سیاست Deprecation با Header `Sunset`؛ نسخه‌ی CRD مستقل از نسخه‌ی REST | D1 |
-| **Pagination و Caching** | Cursor-based Pagination، ETag یا `If-None-Match` بر اساس Sequence ← پاسخ 304 تقریباً رایگان | D1 |
-| **Zero-Downtime Upgrade** | **Appها:** Rolling Update + Readiness + PDB. **Control Plane در حالت Solo:** Downtime چندثانیه‌ای در `Recreate` که شفاف مستند شده است. **Control Plane در حالت HA:** Rolling + Expand/Contract | D1 |
-| **Self-Upgrade از UI** | دکمه‌ی Upgrade (مشابه Coolify) که Image را با Digest امضاشده Patch می‌کند، همراه Pre-flight Checks و Backup خودکار قبل از Upgrade | D2 |
-
-### ۸.۸ مواردی که در لیست شما نبودند ولی حیاتی‌اند
-
-1. **Networking با Gateway API:** پروژه‌ی **ingress-nginx بازنشسته شده است** (نگهداری Best-effort تا مارس ۲۰۲۶ ادامه داشت). Kubero به Ingress وابسته است. Kuben باید **از ابتدا روی Gateway API** (`HTTPRoute`) ساخته شود؛ پیاده‌سازی پیش‌فرض Traefik یا Envoy Gateway باشد (Cilium و NGINX Gateway Fabric هم پشتیبانی شوند) و Ingress فقط به‌عنوان Fallback باقی بماند.
-2. **TLS خودکار:** cert-manager با ACME (HTTP-01 و DNS-01 برای Wildcard)؛ دامنه‌های Preview به شکل `*.apps.example.com`؛ تأیید مالکیت دامنه‌ی سفارشی با رکورد TXT.
-3. **Release Model:** Releaseهای Immutable (Digest + Snapshot پیکربندی)، **Build Once, Promote Everywhere** (همان Digest از Staging به Production منتقل می‌شود)، Rollback یک‌کلیکی، و Protection Rule برای Production (Approval).
-4. **Build System مدرن:** **BuildKit** (با Cache در Registry)؛ **Railpack** به‌جای Nixpacks (Nixpacks در حالت نگهداری است و Railway آن را با Railpack جایگزین کرده)؛ **Cloud Native Buildpacks**؛ و Dockerfile. **از Kaniko استفاده نکنید** (Repo اصلی آن در ۲۰۲۵ آرشیو شد). Queue با Concurrency Limit برای هر Org، و Timeout برای هر Build.
-5. **Registry داخلی اختیاری:** **Zot** (سبک، OCI-native و Single Binary) برای نصب‌های Solo، به‌همراه Garbage Collection برای Imageهای قدیمی.
-6. **Health Check و Autoscaling اپلیکیشن‌ها:** Probeهای پیش‌فرض هوشمند، HPA، **KEDA** به‌صورت اختیاری، و Scale-to-zero (همان قابلیت «sleep» در Kubero) از طریق KEDA HTTP Add-on.
-7. **سرویس‌های داده‌ی First-class:** **CloudNativePG** (استاندارد عملی Postgres روی K8s، با Backup و PITR)، **Valkey** (به‌جای Redis؛ Fork با لایسنس BSD)، و MariaDB Operator. تزریق Connection String از طریق Secret Reference (با الهام از Service Binding).
-8. **Air-gapped و Registry Mirror:** همه‌ی Imageهای Platform و Build از طریق یک Registry قابل‌پیکربندی کشیده شوند (هیچ `docker.io` هاردکدی وجود نداشته باشد)، Template Catalog آفلاین باشد و فونت‌ها و Assetها Self-hosted باشند. این قابلیت برای Enterprise و برای شبکه‌هایی با دسترسی محدود به Registryهای عمومی حیاتی است.
-9. **Outbox Pattern برای Notificationها** (Slack، Discord، Telegram، Email با `lettre`، ntfy، و Webhook امضاشده با HMAC)، با تحویل At-least-once.
-10. **Missed-webhook Catch-up** (بخش ۵.۵) و **Polling Fallback** برای Git Providerهایی که Webhook ندارند.
-11. **i18n و RTL:** پشتیبانی کامل از زبان‌های راست‌به‌چپ مثل فارسی، با Logical Properties در Tailwind (`ms-*`، `pe-*`) و `dir` پویا.
-12. **مجوز (License):** Kubero تحت **GPL-3.0** است. اگر کد یا Templateهای آن را کپی کنید، الزامات GPL به Kuben هم منتقل می‌شود. یک بازنویسی Clean-room با Rust می‌تواند لایسنس دلخواه داشته باشد: **Apache-2.0** برای بیشترین پذیرش در Enterprise، یا **AGPL-3.0** اگر می‌خواهید از استفاده‌ی SaaS بدون مشارکت جلوگیری کنید. Template Catalog را در یک Repo جدا با لایسنس مشخص نگه دارید. (این مشاوره‌ی حقوقی نیست؛ پیش از انتشار با یک متخصص بررسی کنید.)
+- **In `build.rs`:** if `apps/web/dist` does not exist (in a release build), fail the build with a clear error. In debug mode, read the files from disk and let the Vite dev server proxy to Rust.
+- **Embed only the `.br` and `.gz` variants of each asset** (pre-compressed at the highest quality) and serve them directly with the appropriate `Content-Encoding`. The raw variant is only needed for old clients. This keeps the binary smaller and the CPU freer. (The `memory-serve` library does exactly this at compile time and is a good replacement for rust-embed.)
+- Hashed assets get `Cache-Control: public, max-age=31536000, immutable`; `index.html` gets `no-cache` and an ETag.
+- **SPA fallback:** any unknown path that does not start with `/api` returns `index.html`; but an unknown `/api/*` must return a JSON 404 (not `index.html`!).
+- **Strict CSP:** `default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'`. Vite does not emit inline scripts by default. **Fonts must be self-hosted** (Inter, and Vazirmatn for Persian), not the Google Fonts CDN (because of air-gap, privacy and CSP).
 
 ---
 
-## ۹. تصمیم‌های «جذاب ولی خطرناک» و جایگزین‌ها
+## 8. Question 4: production-readiness checklist
 
-| # | تصمیم به‌ظاهر جذاب | چرا در Production مشکل‌ساز است | جایگزین |
+> The "Phase" column: **D1** means it must be in the architecture from day one (even if the implementation is simple), and **D2** means it comes later but room must be left for it.
+
+### 8.1 Lifecycle and resilience
+
+| Pattern | Implementation in Kuben | Phase |
+|---|---|---|
+| **Graceful shutdown** | on SIGTERM, in order: `/readyz` goes false → wait about 5 seconds (to drop out of the endpoints; or use `preStop`) → stop accepting → drain HTTP (`with_graceful_shutdown`) → send a `reconnect` event for SSE and close WebSockets with code **1012** → release the leadership lease → flush the outbox and audit log → `wal_checkpoint` → exit. All of these steps must fit inside `terminationGracePeriodSeconds` | D1 |
+| **Leader election** | the Lease API (`coordination.k8s.io`) with a crate like `kube-lease-manager`, or roughly 150 lines of our own. 15-second lease, renewed every 10 seconds. On losing the lease, cancel immediately | D1 (interface) / D2 (enabling HA) |
+| **Health checks** | `/livez` (watchdog), `/readyz` (cache + DB), `/healthz/details` | D1 |
+| **Request timeouts** | `tower_http::timeout` on REST (30 seconds, say); **streams are excluded** and have their own idle timeout | D1 |
+| **Body and connection limits** | `RequestBodyLimitLayer` (1 MB by default, more for uploads), `ConcurrencyLimitLayer` + `load_shed`, and per-stream semaphores | D1 |
+| **Rate limiting** | `tower_governor`: per IP and per token; login with exponential backoff per account | D1 |
+| **Retry policies** | the `backon` library with jitter, **only for idempotent operations**; never retry a non-idempotent POST | D1 |
+| **Circuit breaker** | per external host (git providers, registry, notification webhooks, Prometheus) and per cluster | D1 (cluster) / D2 |
+| **Idempotency** | an `Idempotency-Key` header for `POST /deploy`, `/releases` and `/apps` (kept for 24 hours); the BuildRun name is derived deterministically from `app+sha` | D1 |
+| **Backpressure** | sections 5.8 and 5.9 | D1 |
+| **Resource limits** | set memory request/limit explicitly in the Helm chart; set `worker_threads` and `max_blocking_threads` explicitly; avoid tight CPU limits (CFS throttling causes high tail latency) | D1 |
+
+### 8.2 Controller
+
+| Pattern | Implementation | Phase |
+|---|---|---|
+| **Server-side apply** | `PatchParams::apply("kuben").force()`; field ownership is explicit, and a user's `kubectl edit` on fields Kuben does not manage is preserved | D1 |
+| **OwnerReferences** | automatic garbage collection of child resources | D1 |
+| **Finalizers** | only for **external** resources, with a timeout and an uninstall path | D1 |
+| **Per-object error policy + backoff** | section 5.7; separating permanent errors from transient ones | D1 |
+| **Status conditions + `observedGeneration`** | the kstatus standard; the UI derives color and state directly from it | D1 |
+| **Validation** | **CEL in the CRD** (`x-kubernetes-validations`) + **ValidatingAdmissionPolicy** (GA since K8s 1.30). **Avoid admission webhooks**, because they require TLS and cert-manager, and when Kuben is down a webhook with `failurePolicy: Fail` blocks writes. That is in direct conflict with zero-ops | D1 |
+| **CRD versioning** | start at `v1alpha1`, keep changes additive only, and define a conversion for `v1beta1`. Add a conversion webhook only when it is genuinely needed | D1 (policy) |
+| **Kubernetes events** | a `Recorder` for the significant events | D1 |
+| **Drift detection** | periodic requeue with jitter | D1 |
+
+### 8.3 Security
+
+| Pattern | Implementation | Phase |
+|---|---|---|
+| **Password** | Argon2id (OWASP's recommended parameters: m=19MiB, t=2, p=1) + `spawn_blocking` + a `Semaphore` | D1 |
+| **Browser session** | a random 256-bit session ID in the `__Host-kuben_session; HttpOnly; Secure; SameSite=Lax; Path=/` cookie. Only its `sha256` is stored in the DB. Cached with moka (one-minute TTL). Immediate revocation. Rotation after login or a privilege escalation | D1 |
+| **API token** | format `kbx_pat_<prefix>_<secret>`, stored as `sha256`, with scopes and an expiry. The prefix can be registered with GitHub secret scanning | D1 |
+| **JWT/PASETO** | **only** for internal stateless cases, such as short-lived callback tokens or signed download links (Ed25519 with a `kid`) | D2 |
+| **OIDC / SSO** | `openidconnect` (authorization code + PKCE), group mapping to roles, just-in-time provisioning | D1 (GitHub + generic OIDC) |
+| **MFA** | TOTP (`totp-rs`) + **passkeys/WebAuthn** (`webauthn-rs`) | D1 (TOTP) / D2 (passkeys) |
+| **CSRF** | SameSite=Lax + a **fetch metadata** check (`Sec-Fetch-Site: same-origin`) + requiring a custom header (`X-Kuben-Client`) on mutating requests. On WebSockets, **check the Origin** | D1 |
+| **CORS** | closed by default (same-origin); explicit allowlist | D1 |
+| **CSP and security headers** | strict CSP, HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'` | D1 |
+| **Secret management** | app secrets are K8s Secrets (with optional integration with External Secrets Operator or SOPS). Git and registry credentials use **envelope encryption** (XChaCha20-Poly1305) with the master key in a K8s Secret or KMS, plus a `kid` for rotation | D1 |
+| **Secrets in memory** | `secrecy` + `zeroize`; redacted in `Debug` and in logs | D1 |
+| **Audit logging** | append-only with a hash chain, including request ID, actor, target and outcome; export to SIEM (webhook or OTLP logs); a retention policy | D1 |
+| **Supply chain** | `cargo-deny` and `cargo-audit`, `pnpm audit`, SBOM (via syft), image signing (cosign), SLSA provenance, pinning every helper image by digest, and Renovate | D1 |
+| **Git webhooks** | constant-time HMAC verification + dedupe by delivery ID + async processing (creating the BuildRun) | D1 |
+
+### 8.4 Multi-tenancy and workload isolation
+
+| Pattern | Implementation | Phase |
+|---|---|---|
+| **Hierarchy** | Org → Project → Environment → App. Each environment gets a namespace: `kx-<project>-<env>` (respecting the 63-character limit and using a short ID when necessary) | D1 |
+| **Pod Security Admission** | the `pod-security.kubernetes.io/enforce: restricted` label on tenant namespaces | D1 |
+| **NetworkPolicy** | default-deny for ingress between tenants; allow traffic from the gateway and from within the same namespace; configurable egress | D1 |
+| **ResourceQuota / LimitRange** | per environment, based on plan or size | D1 |
+| **ServiceAccount** | `automountServiceAccountToken: false` for every app pod (unless explicitly requested) | D1 |
+| **Build isolation** | a separate namespace called `kuben-builds`, no SA token, a NetworkPolicy whose egress is limited to git and the registry, and preferably a separate node pool. ⚠️ Rootless BuildKit usually needs seccomp/AppArmor in unconfined mode, so always run builds on an isolated node or namespace | D1 |
+| **Kuben's own RBAC** | a ClusterRole with least privilege; and in Enterprise, **Kubernetes impersonation** so that K8s's own audit log shows the real user | D1 / D2 |
+| **Hard multi-tenancy** | for untrusted tenants: a RuntimeClass with gVisor or Kata, or vCluster. Say honestly in the documentation that a namespace is only soft isolation | D2 |
+
+### 8.5 Data, backup and disaster recovery
+
+| Pattern | Implementation | Phase |
+|---|---|---|
+| **Connection pooling** | sqlx pools (on SQLite, writer=1 and reader=4; on Postgres, between 10 and 20) | D1 |
+| **Migrations** | embedded, with a lock, following the expand/contract pattern | D1 |
+| **Platform backup** | `kuben backup` covering the DB + exporting every CRD to YAML → S3; restore with a single command | D1 |
+| **User service backup** | CNPG with Barman Cloud for PITR on Postgres; scheduled snapshots for everything else | D2 |
+| **DR** | apps are CRDs → Velero or a full export/import; a documented runbook; **restore testing in CI** (a backup whose restore is untested is not a backup) | D2 |
+| **Encryption at rest** | envelope encryption for sensitive DB fields; recommend enabling etcd encryption in the documentation | D1 |
+
+### 8.6 Observability
+
+| Pattern | Implementation | Phase |
+|---|---|---|
+| **Structured logging** | `tracing` + `tracing-subscriber` with JSON formatting; `request_id` and `trace_id` on every line; redaction | D1 |
+| **Tracing** | OpenTelemetry (OTLP) **behind the `otel` cargo feature** so the default binary stays light; trace propagation into K8s calls | D1 (feature) |
+| **Metrics** | `metrics` + `metrics-exporter-prometheus` on a separate port: HTTP RED metrics, reconcile (duration, errors, queue depth), watch restarts, active streams, broadcast lag, Tokio runtime metrics and RSS | D1 |
+| **User metrics (without Prometheus)** | poll metrics-server every 15 seconds (one call for the whole cluster) → a one-hour in-memory ring buffer per pod (roughly 240 samples × 2 metrics × 4 bytes ≈ 2KB per pod) → sparklines and charts with no Prometheus needed. Prometheus or VictoriaMetrics optionally, for long-term history | D1 |
+| **Dev profiling** | `tokio-console` in development builds only, and `pprof`/`dhat` for finding leaks | D1 |
+
+### 8.7 API and delivery
+
+| Pattern | Implementation | Phase |
+|---|---|---|
+| **API versioning** | the `/api/v1` path; a deprecation policy with the `Sunset` header; the CRD version is independent of the REST version | D1 |
+| **Pagination and caching** | cursor-based pagination, ETag or `If-None-Match` based on a sequence ← a 304 response is nearly free | D1 |
+| **Zero-downtime upgrade** | **Apps:** rolling update + readiness + PDB. **Control plane in solo mode:** a few seconds of downtime during `Recreate`, documented transparently. **Control plane in HA mode:** rolling + expand/contract | D1 |
+| **Self-upgrade from the UI** | an upgrade button (like Coolify's) that patches the image to a signed digest, with pre-flight checks and an automatic backup before the upgrade | D2 |
+
+### 8.8 Critical items missing from the original list
+
+1. **Networking with the Gateway API:** **the ingress-nginx project has been retired** (best-effort maintenance ran until March 2026). The incumbent PaaS depends on Ingress. Kuben must be built **on the Gateway API from the start** (`HTTPRoute`); the default implementation should be Traefik or Envoy Gateway (with Cilium and NGINX Gateway Fabric also supported), and Ingress should remain only as a fallback.
+2. **Automatic TLS:** cert-manager with ACME (HTTP-01, and DNS-01 for wildcards); preview domains of the form `*.apps.example.com`; custom-domain ownership verification via a TXT record.
+3. **Release model:** immutable releases (digest + a snapshot of the configuration), **build once, promote everywhere** (the same digest moves from staging to production), one-click rollback, and a protection rule for production (approval).
+4. **A modern build system:** **BuildKit** (with cache in the registry); **Railpack** instead of Nixpacks (Nixpacks is in maintenance mode and Railway replaced it with Railpack); **Cloud Native Buildpacks**; and Dockerfile. **Do not use Kaniko** (its main repo was archived in 2025). A queue with a per-org concurrency limit, and a per-build timeout.
+5. **An optional internal registry:** **Zot** (lightweight, OCI-native, a single binary) for solo installs, with garbage collection for old images.
+6. **Health checks and autoscaling for applications:** smart default probes, HPA, **KEDA** optionally, and scale-to-zero (the same "sleep" capability the incumbent has) via the KEDA HTTP add-on.
+7. **First-class data services:** **CloudNativePG** (the de facto standard for Postgres on K8s, with backup and PITR), **Valkey** (instead of Redis; a BSD-licensed fork), and MariaDB Operator. Connection strings injected via a secret reference (inspired by Service Binding).
+8. **Air-gapped operation and registry mirroring:** every platform and build image is pulled through a configurable registry (no hardcoded `docker.io` anywhere), the template catalog works offline, and fonts and assets are self-hosted. This is essential for enterprise and for networks with limited access to public registries.
+9. **The outbox pattern for notifications** (Slack, Discord, Telegram, email via `lettre`, ntfy, and HMAC-signed webhooks), with at-least-once delivery.
+10. **Missed-webhook catch-up** (section 5.5) and a **polling fallback** for git providers without webhooks.
+11. **i18n and RTL:** full support for right-to-left languages such as Persian, using logical properties in Tailwind (`ms-*`, `pe-*`) and a dynamic `dir`.
+12. **License:** the incumbent PaaS is under **GPL-3.0**. If you copy its code or templates, GPL's obligations carry over to Kuben as well. A clean-room rewrite in Rust can carry whatever license you want: **Apache-2.0** for the widest enterprise adoption, or **AGPL-3.0** if you want to prevent SaaS use without contribution. Keep the template catalog in a separate repo with an explicit license. (This is not legal advice; check with a specialist before releasing.)
+
+---
+
+## 9. "Attractive but dangerous" decisions and their alternatives
+
+| # | The seemingly attractive decision | Why it hurts in production | Alternative |
 |---|---|---|---|
-| 1 | «API در محدوده‌ی میکروثانیه» | زمان End-to-End شامل TLS، Gateway، Auth و Serialization است. میکروثانیه فقط زمان Handler روی Cache است | SLO: p50 کمتر از ۱ms و p99 کمتر از ۵ms برای Readهای Cache‌شده (سمت Server)؛ اندازه‌گیری در CI |
-| 2 | Cache کردن همه‌ی Podها و CRDها با Reflector خام | با رشد Cluster، RAM به ده‌ها و صدها مگابایت می‌رسد | Projection + Label Selector + حذف `managedFields` + `metadata_watcher` |
-| 3 | PASETO/JWT برای Session مرورگر | Revoke ندارد، XSS برابر با سرقت Token است، و با `EventSource` جور درنمی‌آید | کوکی `HttpOnly` از نوع Opaque + Session در DB و Cache |
-| 4 | Argon2id برای API Token | در هر Request چند ده میلی‌ثانیه CPU و ده‌ها مگابایت RAM مصرف می‌کند؛ هدف Latency از بین می‌رود | SHA-256 برای Tokenهای پرآنتروپی (۲۵۶ بیت)؛ Argon2 فقط برای Password |
-| 5 | `sqlx::query!` با پشتیبانی هم‌زمان از SQLite و Postgres | این ماکروها برای یک Backend Check می‌شوند و درایور `Any` از آن‌ها پشتیبانی نمی‌کند | SeaQuery + `query_as` + تست ماتریسی (یا Diesel MultiConnection) |
-| 6 | SQLite با چند Replica یا روی RWX/NFS | Corruption، `SQLITE_BUSY` و Split-brain | در حالت Solo یک Replica با `Recreate` و RWO؛ در حالت HA، Postgres |
-| 7 | Turborepo برای Orchestrate کردن Cargo | Turbo گراف Crateها را نمی‌فهمد و Cache آن برای `target/` (که چند گیگابایت است) ناکارآمد است | Cargo Workspace + `sccache`/`rust-cache` + `cargo-chef`؛ `just` به‌عنوان Entry Point |
-| 8 | Image بر پایه‌ی `scratch` | نه CA Certificate دارد، نه tzdata، نه کاربر nonroot؛ خطاهای TLS و Timezone مرموز ایجاد می‌شود | `gcr.io/distroless/static-debian12:nonroot` (فقط حدود ۲ مگابایت اضافه) |
-| 9 | musl با Allocator پیش‌فرض | Allocator پیش‌فرض musl زیر بار Multi-thread کند است | `mimalloc` (یا jemalloc) به‌عنوان `#[global_allocator]` |
-| 10 | Admission Webhook در همان Binary | وابستگی حلقوی، نیاز به TLS و cert-manager، و Block شدن نوشتن هنگام Down بودن Kuben | CEL در CRD + ValidatingAdmissionPolicy |
-| 11 | Reconciler که Helm Chart را Render می‌کند (مدل Operator فعلی Kubero) | Diff و Status ضعیف، Debug سخت، و منطق محدود | Builderهای Typed در Rust + SSA + Snapshot Test با `insta` روی Manifestهای خروجی |
-| 12 | ts-rs به‌تنهایی | قرارداد Endpointها پوشش داده نمی‌شود و API عمومی بدون Spec می‌ماند | OpenAPI-first با utoipa |
-| 13 | همه‌چیز در یک Runtime بدون محدودیت | یک مسیر CPU-bound کل UI را Freeze می‌کند | دو Runtime (Bulkhead) + Semaphoreها + `spawn_blocking` |
-| 14 | یک Log Stream برای هر بیننده | فشار بر kubelet و API Server و مصرف حافظه‌ی خطی | LogHub با Fan-out و Ref-counting |
-| 15 | نگه‌داشتن لاگ در React State | Re-render در هر خط و از کار افتادن مرورگر | xterm با WebGL یا لیست Virtualized + Ring Buffer |
-| 16 | `panic = "abort"` برای کوچک‌تر شدن Binary | یک Panic در Reconciler کل API را از کار می‌اندازد | `unwind` + Supervisor |
-| 17 | Ingress با Annotationهای ingress-nginx | پروژه بازنشسته شده و Annotationها غیرقابل‌حمل‌اند | Gateway API |
-| 18 | Deploy بر اساس Tag (مثل `:latest` یا SHA-Tag) | Tagها Mutable هستند؛ Rollback و Audit غیرقابل‌اعتماد می‌شوند | Deploy بر اساس Digest (`@sha256:`) |
-| 19 | ادعای «کم‌مصرف‌ترین Self-hosted» به‌طور مطلق | سربار پایه‌ی K8s این ادعا را روی VPS کوچک رد می‌کند | «سبک‌ترین Control Plane Kubernetes-native» + Installer بهینه‌ی k3s |
-| 20 | Compression پویای Brotli با Quality 11 | CPU زیادی مصرف می‌کند و Latency را خراب می‌کند | Assetها از قبل فشرده شوند؛ برای پاسخ‌های پویا zstd یا br با Quality 4، و SSE بدون Compression |
-| 21 | `serde_yaml` | این Crate دیگر نگهداری نمی‌شود (Deprecated) | یک Fork نگهداری‌شده (مثل `serde_yaml_ng`؛ هنگام انتخاب وضعیت روز را بررسی کنید)، یا کار با JSON در همه‌ی مسیرها و YAML فقط در لبه |
+| 1 | "An API in the microsecond range" | End-to-end time includes TLS, the gateway, auth and serialization. Microseconds are only the handler's time over the cache | SLO: p50 under 1ms and p99 under 5ms for cached reads (server side); measured in CI |
+| 2 | Caching every Pod and CRD with a raw reflector | As the cluster grows, RAM climbs into the tens and hundreds of megabytes | Projection + label selector + dropping `managedFields` + `metadata_watcher` |
+| 3 | PASETO/JWT for browser sessions | No revocation, XSS equals token theft, and it does not fit `EventSource` | An opaque `HttpOnly` cookie + the session in the DB and cache |
+| 4 | Argon2id for API tokens | Every request burns tens of milliseconds of CPU and tens of megabytes of RAM; the latency goal is gone | SHA-256 for high-entropy tokens (256 bits); Argon2 only for passwords |
+| 5 | `sqlx::query!` with simultaneous support for SQLite and Postgres | These macros are checked against a single backend, and the `Any` driver does not support them | SeaQuery + `query_as` + matrix testing (or Diesel MultiConnection) |
+| 6 | SQLite with several replicas, or on RWX/NFS | Corruption, `SQLITE_BUSY` and split-brain | In solo mode, one replica with `Recreate` and RWO; in HA mode, Postgres |
+| 7 | Turborepo to orchestrate Cargo | Turbo does not understand the crate graph, and its cache is ineffective for `target/` (which runs to several gigabytes) | Cargo workspace + `sccache`/`rust-cache` + `cargo-chef`; `just` as the entry point |
+| 8 | An image based on `scratch` | It has no CA certificates, no tzdata and no nonroot user; it produces mysterious TLS and timezone errors | `gcr.io/distroless/static-debian12:nonroot` (only about 2MB more) |
+| 9 | musl with the default allocator | musl's default allocator is slow under multi-threaded load | `mimalloc` (or jemalloc) as the `#[global_allocator]` |
+| 10 | An admission webhook in the same binary | A circular dependency, a need for TLS and cert-manager, and writes blocked while Kuben is down | CEL in the CRD + ValidatingAdmissionPolicy |
+| 11 | A reconciler that renders Helm charts (the incumbent's current operator model) | Weak diffs and status, hard debugging, and limited logic | Typed builders in Rust + SSA + snapshot tests with `insta` over the output manifests |
+| 12 | ts-rs on its own | The endpoint contracts are not covered, and the public API is left without a spec | OpenAPI-first with utoipa |
+| 13 | Everything in one runtime, with no limits | A single CPU-bound path freezes the whole UI | Two runtimes (a bulkhead) + semaphores + `spawn_blocking` |
+| 14 | One log stream per viewer | Pressure on the kubelet and the API server, and linear memory use | A LogHub with fan-out and ref-counting |
+| 15 | Keeping logs in React state | A re-render on every line, and the browser falls over | xterm with WebGL, or a virtualized list + ring buffer |
+| 16 | `panic = "abort"` to shrink the binary | One panic in the reconciler takes the whole API down | `unwind` + a supervisor |
+| 17 | Ingress with ingress-nginx annotations | The project is retired and the annotations are not portable | Gateway API |
+| 18 | Deploying by tag (such as `:latest` or a SHA tag) | Tags are mutable; rollback and audit become unreliable | Deploying by digest (`@sha256:`) |
+| 19 | Claiming to be the "lowest-footprint self-hosted" option outright | The base overhead of K8s refutes that claim on a small VPS | "The lightest Kubernetes-native control plane" + an optimized k3s installer |
+| 20 | Dynamic Brotli compression at quality 11 | It burns a lot of CPU and ruins latency | Pre-compress the assets; for dynamic responses use zstd or br at quality 4, and no compression on SSE |
+| 21 | `serde_yaml` | This crate is no longer maintained (deprecated) | A maintained fork (such as `serde_yaml_ng`; check its current state when you choose), or work in JSON on every path and keep YAML at the edge only |
 
 ---
 
-## ۱۰. پیشنهادهای طلایی: چطور Kuben بهترین شود
+## 10. Golden proposals: how Kuben becomes the best
 
-### ۱۰.۱ جایگاه محصول در یک جمله
+### 10.1 The product's position in one sentence
 
-> **«سادگی Heroku، قدرت Kubernetes، در یک Binary بیست مگابایتی — تماماً Open Source و Self-hosted.»**
-> در برابر Coolify و Dokploy: Scale، HA، Multi-node و APIهای استاندارد. در برابر Devtron و KubeVela: سادگی و Footprint کمتر. در برابر Porter، Northflank و Qovery: بدون Vendor Lock-in و کاملاً Self-hosted.
+> **"The simplicity of Heroku, the power of Kubernetes, in a twenty-megabyte binary — fully open source and self-hosted."**
+> Against Coolify and Dokploy: scale, HA, multi-node and standard APIs. Against Devtron and KubeVela: simplicity and a smaller footprint. Against Porter, Northflank and Qovery: no vendor lock-in, and fully self-hosted.
 
-### ۱۰.۲ ویژگی‌هایی که Kuben را متمایز می‌کنند
+### 10.2 The features that set Kuben apart
 
-| # | ویژگی | چرا برنده است | فاز |
+| # | Feature | Why it wins | Phase |
 |---|---|---|---|
-| 1 | **نصب یک‌خطی** (`curl -sfL get.kuben.dev \| sh`) که k3s با تنظیمات حداقلی و Kuben را نصب می‌کند | Onboarding هم‌تراز Coolify، ولی روی Kubernetes | P2 |
-| 2 | **Realtime همه‌جا** (Snapshot + Delta)، بدون Polling | UI زنده مثل Linear و Vercel | P1 |
-| 3 | **Ephemeral Debug Shell** برای Imageهای Distroless | Console در Kubero و بسیاری رقبا روی این Imageها کار نمی‌کند | P1 |
-| 4 | **Build Once, Promote Everywhere** با Releaseهای Immutable و Rollback یک‌کلیکی | اصل 12-Factor به‌صورت واقعی | P1 |
-| 5 | **Import از Docker Compose** | بزرگ‌ترین اهرم مهاجرت از Coolify و Dokploy | P3 |
-| 6 | **Importer برای Kubero** (CRDها، کاربران و بیش از ۱۶۰ Template) | مهاجرت بی‌دردسر کاربران Kubero و یک Catalog آماده از روز اول | P2 |
-| 7 | **سرویس‌های داده با Backup و PITR** (CNPG، Valkey، MariaDB) + Restore از UI | محبوب‌ترین قابلیت Coolify، به‌علاوه‌ی HA واقعی | P2 |
-| 8 | **Metrics Lite داخلی** بدون نیاز به Prometheus | Zero-Ops واقعی | P1 |
-| 9 | **Gateway API + TLS خودکار + Preview Domainها** | آماده‌ی آینده، برخلاف وابستگی به ingress-nginx | P1 |
-| 10 | **Review Apps با TTL و محدودیت هزینه** | جلوگیری از انباشته شدن Environmentهای رهاشده | P2 |
-| 11 | **Passkeys + OIDC + Audit با Hash-chain** | امنیت در سطح Enterprise در نسخه‌ی Open Source | P2–P3 |
-| 12 | **Air-gapped Mode و Registry Mirror** | کار در شبکه‌های محدود و محیط‌های Regulated | P3 |
-| 13 | **CLI + Terraform Provider + GitHub Action** (همگی تولیدشده از OpenAPI) | Platform Engineering و IaC | P2–P3 |
-| 14 | **MCP Server داخلی** (با Crate `rmcp`) | امکان Deploy، دیدن لاگ و Rollback از طریق Agentهای AI؛ در حال تبدیل شدن به استاندارد صنعت | P4 |
-| 15 | **GitOps دوطرفه** (Export و Sync CRDها به Git) | سازگاری با ArgoCD و Flux و Audit کامل | P4 |
-| 16 | **توسعه‌پذیری از طریق CRD** (بدون Plugin داخل Process) | هر Controller شخص ثالث می‌تواند `App` را Watch کند. `ServiceClass` برای تعریف Addonها به‌صورت داده. بدون Sandbox سنگین مثل WASM در Binary | P3 |
-| 17 | **Session Recording برای Terminal** | Compliance در Enterprise | P3 |
-| 18 | **بودجه‌های Performance عمومی** (Binary، RSS، Latency) در README و CI | اعتمادسازی با عدد، نه با ادعا | P0 |
+| 1 | **One-line install** (`curl -sfL get.kuben.dev \| sh`) that installs k3s with minimal settings, plus Kuben | Onboarding on par with Coolify, but on Kubernetes | P2 |
+| 2 | **Realtime everywhere** (snapshot + delta), no polling | A live UI like Linear and Vercel | P1 |
+| 3 | **An ephemeral debug shell** for distroless images | The incumbent's console — and that of many competitors — does not work on these images | P1 |
+| 4 | **Build once, promote everywhere**, with immutable releases and one-click rollback | The 12-factor principle, for real | P1 |
+| 5 | **Import from Docker Compose** | The biggest lever for migrating off Coolify and Dokploy | P3 |
+| 6 | **An importer for the incumbent** (CRDs, users, and more than 160 templates) | Painless migration for the incumbent's users, and a ready-made catalog from day one | P2 |
+| 7 | **Data services with backup and PITR** (CNPG, Valkey, MariaDB) + restore from the UI | Coolify's most popular capability, plus real HA | P2 |
+| 8 | **Built-in Metrics Lite**, with no need for Prometheus | Zero-ops, for real | P1 |
+| 9 | **Gateway API + automatic TLS + preview domains** | Future-ready, unlike a dependency on ingress-nginx | P1 |
+| 10 | **Review apps with a TTL and a cost cap** | Stops abandoned environments from piling up | P2 |
+| 11 | **Passkeys + OIDC + hash-chained audit** | Enterprise-grade security in the open source edition | P2–P3 |
+| 12 | **Air-gapped mode and a registry mirror** | Works on restricted networks and in regulated environments | P3 |
+| 13 | **CLI + Terraform provider + GitHub Action** (all generated from OpenAPI) | Platform engineering and IaC | P2–P3 |
+| 14 | **A built-in MCP server** (with the `rmcp` crate) | Deploying, viewing logs and rolling back through AI agents; fast becoming an industry standard | P4 |
+| 15 | **Bidirectional GitOps** (exporting and syncing CRDs to git) | Compatibility with ArgoCD and Flux, and a complete audit trail | P4 |
+| 16 | **Extensibility through CRDs** (no in-process plugins) | Any third-party controller can watch `App`. `ServiceClass` defines addons as data. No heavy sandbox such as WASM inside the binary | P3 |
+| 17 | **Session recording for the terminal** | Enterprise compliance | P3 |
+| 18 | **Public performance budgets** (binary, RSS, latency) in the README and in CI | Trust built on numbers, not on claims | P0 |
 
-### ۱۰.۳ تجربه‌ی توسعه‌دهنده (DX) در سطح Vercel
+### 10.3 Vercel-grade developer experience
 
-- Command Palette (`⌘K` با `cmdk`)، کلیدهای میان‌بر، و Deep Link به هر لاگ، هر Release و هر رویداد.
-- Wizard ساخت App: تشخیص خودکار نوع پروژه (با Railpack)، پیشنهاد Port و Health Check، و Dry-run که Manifestهای نهایی را نشان می‌دهد.
-- **دکمه‌ی «Explain this failure»:** جمع‌آوری Eventهای K8s، Exit Code، OOMKilled و آخرین خطوط لاگ در یک کارت قابل‌فهم. (در آینده می‌تواند با یک LLM اختیاری ترکیب شود.)
-- Diff Viewer برای هر Release: تغییرات Env، Image و Scaling.
+- A command palette (`⌘K` with `cmdk`), keyboard shortcuts, and a deep link to every log, every release and every event.
+- An app-creation wizard: automatic project-type detection (with Railpack), suggested port and health check, and a dry run that shows the final manifests.
+- **An "Explain this failure" button:** it gathers K8s events, the exit code, OOMKilled and the last lines of the log into one comprehensible card. (In the future this could be combined with an optional LLM.)
+- A diff viewer for every release: changes to env, image and scaling.
 
 ---
 
-## ۱۱. Toolchain نهایی (Rust Crates و Frontend Packages)
+## 11. Final toolchain (Rust crates and frontend packages)
 
-> نسخه‌ها عمداً ذکر نشده‌اند. در زمان Scaffold آخرین نسخه‌ی پایدار را پین کنید و Renovate را برای به‌روزرسانی فعال کنید. نسخه‌ی `k8s-openapi` را روی **پایین‌ترین نسخه‌ی Kubernetes پشتیبانی‌شده** پین کنید.
+> Versions are deliberately omitted. Pin the latest stable version at scaffold time and turn on Renovate to keep them updated. Pin the `k8s-openapi` version to the **lowest supported Kubernetes version**.
 
-### ۱۱.۱ Rust Crates
+### 11.1 Rust crates
 
-| حوزه | Crate | نکته |
+| Area | Crate | Note |
 |---|---|---|
-| Runtime | `tokio`، `tokio-util` (CancellationToken، codec، compat)، `tokio-stream`، `futures`، `async-stream` | |
-| HTTP | `axum`، `axum-extra` (Cookie، TypedHeader)، `tower`، `tower-http` (trace، cors، compression، timeout، limit، request-id، sensitive-headers، set-header) | |
-| Rate Limit | `tower_governor` / `governor` | |
-| Kubernetes | `kube` (Featureهای `runtime`، `derive`، `ws`، `rustls-tls`، `client`)، `k8s-openapi`، `schemars` | ⚠️ برای Cross-build روی musl، Provider رمزنگاری rustls را انتخاب کنید (ممکن است `ring` ساده‌تر از `aws-lc-rs` باشد) |
-| Leader Election | `kube-lease-manager` (یا پیاده‌سازی Lease داخلی) | پیش از انتخاب وضعیت نگهداری را بررسی کنید |
-| DB | `sqlx` (sqlite، postgres، runtime-tokio، tls-rustls، migrate، uuid)، `sea-query`، `sea-query-binder` | |
-| Serialization | `serde`، `serde_json`، و یک Fork نگهداری‌شده از serde_yaml | |
-| IDs و زمان | `uuid` (v7)، `jiff` یا `chrono` | با کتابخانه‌ی زمانی که `k8s-openapi` استفاده می‌کند هم‌راستا شوید تا دو کتابخانه‌ی زمان در پروژه نداشته باشید |
-| Concurrency | `papaya` یا `dashmap`، `arc-swap`، `parking_lot`، `moka` (Cache با TTL) | |
-| Auth | `argon2`، `password-hash`، `openidconnect`، `oauth2`، `totp-rs`، `webauthn-rs`، `jsonwebtoken` (EdDSA) یا `pasetors` | فقط برای موارد داخلی |
-| Crypto | `sha2`، `hmac`، `subtle`، `chacha20poly1305`، `rand`، `secrecy`، `zeroize` | |
-| Policy | Trait داخلی، و در آینده `cedar-policy` | |
-| OpenAPI | `utoipa`، `utoipa-axum`، `utoipa-scalar` یا `utoipa-swagger-ui` | برای Air-gap، Assetهای UI مستندات Embed شوند |
-| Validation | `garde` یا `validator` | |
-| Errors | `thiserror` (برای Library Crateها)، `anyhow` (برای Binary) | |
-| Config و CLI | `figment`، `clap` | |
-| Observability | `tracing`، `tracing-subscriber`، `tracing-opentelemetry`، `opentelemetry`، `opentelemetry-otlp` (پشت Feature)، `metrics`، `metrics-exporter-prometheus`، `tokio-metrics` | |
-| Retry و Backoff | `backon` | |
-| Git | `octocrab` (GitHub)، `reqwest` + Structهای Typed برای GitLab، Gitea و Bitbucket؛ `gix` برای ls-remote | |
-| Notification | `lettre`، `reqwest` | |
-| Storage | `object_store` (S3، GCS، Azure) برای Backup و لاگ‌ها | |
-| Assets | `rust-embed` یا `memory-serve`، `mime_guess` | |
-| Allocator | `mimalloc` یا `tikv-jemallocator` | |
-| Docker Compose Import | `docker-compose-types` (ارزیابی شود) | |
-| MCP | `rmcp` (SDK رسمی Rust) | |
-| Test | `cargo-nextest`، `insta`، `proptest`، `rstest`، `testcontainers`، `wiremock`، `divan` یا `criterion` | |
+| Runtime | `tokio`, `tokio-util` (CancellationToken, codec, compat), `tokio-stream`, `futures`, `async-stream` | |
+| HTTP | `axum`, `axum-extra` (Cookie, TypedHeader), `tower`, `tower-http` (trace, cors, compression, timeout, limit, request-id, sensitive-headers, set-header) | |
+| Rate limiting | `tower_governor` / `governor` | |
+| Kubernetes | `kube` (the `runtime`, `derive`, `ws`, `rustls-tls` and `client` features), `k8s-openapi`, `schemars` | ⚠️ For cross-building against musl, choose the rustls crypto provider deliberately (`ring` may be simpler than `aws-lc-rs`) |
+| Leader election | `kube-lease-manager` (or an in-house Lease implementation) | Check its maintenance status before choosing |
+| DB | `sqlx` (sqlite, postgres, runtime-tokio, tls-rustls, migrate, uuid), `sea-query`, `sea-query-binder` | |
+| Serialization | `serde`, `serde_json`, and a maintained fork of serde_yaml | |
+| IDs and time | `uuid` (v7), `jiff` or `chrono` | Align with the time library that `k8s-openapi` uses, so the project does not carry two time libraries |
+| Concurrency | `papaya` or `dashmap`, `arc-swap`, `parking_lot`, `moka` (a cache with TTL) | |
+| Auth | `argon2`, `password-hash`, `openidconnect`, `oauth2`, `totp-rs`, `webauthn-rs`, `jsonwebtoken` (EdDSA) or `pasetors` | Internal use only |
+| Crypto | `sha2`, `hmac`, `subtle`, `chacha20poly1305`, `rand`, `secrecy`, `zeroize` | |
+| Policy | An in-house trait, and `cedar-policy` in the future | |
+| OpenAPI | `utoipa`, `utoipa-axum`, `utoipa-scalar` or `utoipa-swagger-ui` | For air-gapped use, embed the docs UI assets |
+| Validation | `garde` or `validator` | |
+| Errors | `thiserror` (for library crates), `anyhow` (for the binary) | |
+| Config and CLI | `figment`, `clap` | |
+| Observability | `tracing`, `tracing-subscriber`, `tracing-opentelemetry`, `opentelemetry`, `opentelemetry-otlp` (behind a feature), `metrics`, `metrics-exporter-prometheus`, `tokio-metrics` | |
+| Retry and backoff | `backon` | |
+| Git | `octocrab` (GitHub), `reqwest` + typed structs for GitLab, Gitea and Bitbucket; `gix` for ls-remote | |
+| Notifications | `lettre`, `reqwest` | |
+| Storage | `object_store` (S3, GCS, Azure) for backups and logs | |
+| Assets | `rust-embed` or `memory-serve`, `mime_guess` | |
+| Allocator | `mimalloc` or `tikv-jemallocator` | |
+| Docker Compose import | `docker-compose-types` (to be evaluated) | |
+| MCP | `rmcp` (the official Rust SDK) | |
+| Test | `cargo-nextest`, `insta`, `proptest`, `rstest`, `testcontainers`, `wiremock`, `divan` or `criterion` | |
 
-### ۱۱.۲ Frontend Packages
+### 11.2 Frontend packages
 
-| حوزه | Package |
+| Area | Package |
 |---|---|
-| Core | `react`، `react-dom`، `babel-plugin-react-compiler`، `vite`، `@vitejs/plugin-react`، `typescript` |
-| Routing | `@tanstack/react-router`، `@tanstack/router-plugin` (Routeهای File-based)، `@tanstack/react-router-devtools` |
-| Server State | `@tanstack/react-query` + devtools |
-| API Client | `openapi-typescript`، `openapi-fetch`، `openapi-react-query` |
-| Styling و UI | `tailwindcss` v4 + `@tailwindcss/vite`، shadcn/ui (Radix Primitives)، `class-variance-authority`، `tailwind-merge`، `clsx`، `lucide-react`، `sonner`، `cmdk` |
-| Tables و لیست‌ها | `@tanstack/react-table`، `@tanstack/react-virtual` |
-| Forms | `react-hook-form` + `zod` (یا `@tanstack/react-form`) |
-| Terminal و Logs | `@xterm/xterm`، `@xterm/addon-fit`، `@xterm/addon-web-links`، `@xterm/addon-webgl`، `@xterm/addon-search`، `@xterm/addon-unicode11` |
+| Core | `react`, `react-dom`, `babel-plugin-react-compiler`, `vite`, `@vitejs/plugin-react`, `typescript` |
+| Routing | `@tanstack/react-router`, `@tanstack/router-plugin` (file-based routes), `@tanstack/react-router-devtools` |
+| Server state | `@tanstack/react-query` + devtools |
+| API client | `openapi-typescript`, `openapi-fetch`, `openapi-react-query` |
+| Styling and UI | `tailwindcss` v4 + `@tailwindcss/vite`, shadcn/ui (Radix primitives), `class-variance-authority`, `tailwind-merge`, `clsx`, `lucide-react`, `sonner`, `cmdk` |
+| Tables and lists | `@tanstack/react-table`, `@tanstack/react-virtual` |
+| Forms | `react-hook-form` + `zod` (or `@tanstack/react-form`) |
+| Terminal and logs | `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-web-links`, `@xterm/addon-webgl`, `@xterm/addon-search`, `@xterm/addon-unicode11` |
 | Charts | `uplot` |
-| Drag and Drop و گراف Pipeline | `@dnd-kit/core` یا `@atlaskit/pragmatic-drag-and-drop`؛ `@xyflow/react` |
-| Editor | CodeMirror 6 (`@uiw/react-codemirror` + `@codemirror/lang-yaml`). **Monaco انتخاب نشود**، چون چند مگابایت حجم دارد و Binary را سنگین می‌کند |
-| i18n | `@inlang/paraglide-js` (Compile-time و Type-safe) یا Lingui؛ فونت‌ها با `@fontsource-variable/inter` و Vazirmatn (Self-hosted) |
+| Drag and drop, and the pipeline graph | `@dnd-kit/core` or `@atlaskit/pragmatic-drag-and-drop`; `@xyflow/react` |
+| Editor | CodeMirror 6 (`@uiw/react-codemirror` + `@codemirror/lang-yaml`). **Do not pick Monaco**, because it weighs several megabytes and bloats the binary |
+| i18n | `@inlang/paraglide-js` (compile-time and type-safe) or Lingui; fonts via `@fontsource-variable/inter` and Vazirmatn (self-hosted) |
 | Dates | `date-fns` |
-| Tooling | `@biomejs/biome` (جایگزین ESLint و Prettier)، `knip`، `size-limit`، `vitest`، `@testing-library/react`، `msw`، `@playwright/test` |
+| Tooling | `@biomejs/biome` (replacing ESLint and Prettier), `knip`, `size-limit`, `vitest`, `@testing-library/react`, `msw`, `@playwright/test` |
 
-### ۱۱.۳ Dev و CI Tooling
+### 11.3 Dev and CI tooling
 
-`just` · `bacon` · `cargo-nextest` · `cargo-llvm-cov` · `cargo-deny` · `cargo-audit` · `cargo-machete` · `cargo-chef` · `cargo-zigbuild` (Build چندمعماری amd64 و arm64) · `sccache` / `Swatinem/rust-cache` · `cargo-dist` (انتشار CLI) · `kind` یا `k3d` (E2E) · `oha` یا `k6` (Load Test) · `syft` + `cosign` · Renovate · `helm` + `chart-testing`
+`just` · `bacon` · `cargo-nextest` · `cargo-llvm-cov` · `cargo-deny` · `cargo-audit` · `cargo-machete` · `cargo-chef` · `cargo-zigbuild` (multi-architecture builds for amd64 and arm64) · `sccache` / `Swatinem/rust-cache` · `cargo-dist` (CLI releases) · `kind` or `k3d` (E2E) · `oha` or `k6` (load testing) · `syft` + `cosign` · Renovate · `helm` + `chart-testing`
 
 ---
 
-## ۱۲. ساختار Monorepo و Build Pipeline
+## 12. Monorepo structure and build pipeline
 
-### ۱۲.۱ درخت پیشنهادی
+### 12.1 Proposed tree
 
 ```
 kuben/
-├── Cargo.toml                 # [workspace] — منبع حقیقت برای Rust
+├── Cargo.toml                 # [workspace] — the source of truth for Rust
 ├── rust-toolchain.toml
 ├── deny.toml
-├── justfile                   # نقطه‌ی ورود واحد: just dev | build | test | ci | image
+├── justfile                   # the single entry point: just dev | build | test | ci | image
 ├── package.json               # pnpm workspace root
 ├── pnpm-workspace.yaml
 ├── crates/
-│   ├── kuben-core/            # domain types، IDs، errors، config (بدون IO)
+│   ├── kuben-core/            # domain types, IDs, errors, config (no IO)
 │   ├── kuben-crd/             # CRD structs (kube-derive + schemars) + bin: crdgen
-│   ├── kuben-store/           # sqlx + sea-query، repositories، migrations/{sqlite,postgres}
-│   ├── kuben-auth/            # sessions، tokens، argon2، OIDC، WebAuthn، PolicyEngine
-│   ├── kuben-k8s/             # ClusterRegistry، clients، informers، read-models، LogHub، exec
-│   ├── kuben-controller/      # reconcilers: App، Release، BuildRun، Domain، Service، Backup
+│   ├── kuben-store/           # sqlx + sea-query, repositories, migrations/{sqlite,postgres}
+│   ├── kuben-auth/            # sessions, tokens, argon2, OIDC, WebAuthn, PolicyEngine
+│   ├── kuben-k8s/             # ClusterRegistry, clients, informers, read-models, LogHub, exec
+│   ├── kuben-controller/      # reconcilers: App, Release, BuildRun, Domain, Service, Backup
 │   ├── kuben-build/           # build strategies → BuildKit Job specs (auto/dockerfile/railpack/cnb)
-│   ├── kuben-api/             # axum routers، OpenAPI (utoipa)، SSE/WS، middleware + bin: openapi
-│   ├── kuben-web/             # embed assets (build.rs بررسی وجود dist)
+│   ├── kuben-api/             # axum routers, OpenAPI (utoipa), SSE/WS, middleware + bin: openapi
+│   ├── kuben-web/             # embed assets (build.rs checks that dist exists)
 │   ├── kuben-telemetry/       # tracing/metrics/otel (feature-gated)
-│   ├── kuben-server/          # bin «kuben»: roles، runtimes، supervisor، signals
-│   ├── kuben-cli/             # bin «kubenctl»: کلاینت تولیدشده از OpenAPI
-│   └── kuben-testkit/         # fixtures، fake clusters، builders
+│   ├── kuben-server/          # bin "kuben": roles, runtimes, supervisor, signals
+│   ├── kuben-cli/             # bin "kubenctl": the client generated from OpenAPI
+│   └── kuben-testkit/         # fixtures, fake clusters, builders
 ├── apps/
 │   ├── web/                   # Vite + React 19 SPA
-│   └── docs/                  # Astro Starlight (اینجا Astro انتخاب درستی است)
+│   └── docs/                  # Astro Starlight (Astro is the right choice here)
 ├── packages/
-│   └── api-client/            # openapi.json + schema.d.ts + client تولیدشده
+│   └── api-client/            # openapi.json + schema.d.ts + the generated client
 ├── charts/kuben/              # Helm chart (OCI)
 ├── deploy/
 │   ├── install.sh             # k3s + kuben one-liner
 │   └── manifests/             # kubectl apply -k
-├── templates/                 # App catalog (یا Repo جدا با لایسنس مستقل)
+├── templates/                 # App catalog (or a separate repo under its own license)
 └── docs/adr/                  # Architecture Decision Records
 ```
 
-### ۱۲.۲ ترتیب Build
+### 12.2 Build order
 
 ```make
-# justfile (خلاصه)
+# justfile (abridged)
 gen:
     cargo run -q -p kuben-api --bin openapi > packages/api-client/openapi.json
     pnpm -F api-client generate
@@ -1205,7 +1204,7 @@ web: gen
 build: web
     cargo build -p kuben-server --release --features embed-ui
 
-dev:                           # دو پروسه: vite (HMR) + bacon/cargo-watch؛ Vite به :8080/api پراکسی می‌کند
+dev:                           # two processes: vite (HMR) + bacon/cargo-watch; Vite proxies to :8080/api
     just -j2 dev-web dev-api
 
 ci: gen
@@ -1215,21 +1214,21 @@ ci: gen
     pnpm -r typecheck && pnpm -r lint && pnpm -r test
 ```
 
-> **درباره‌ی Turborepo:** با فقط ۲ تا ۳ پکیج JS، سود Turbo ناچیز است. اگر بعدها پکیج‌های JS زیاد شدند، Turbo را **فقط برای سمت JS** اضافه کنید (یا moonrepo را که از Rust و JS در یک گراف پشتیبانی می‌کند ارزیابی کنید). Cache واقعی Rust با `sccache` در CI و `cargo-chef` در Docker به دست می‌آید.
+> **On Turborepo:** with only 2 or 3 JS packages, Turbo's benefit is negligible. If the JS packages multiply later, add Turbo **for the JS side only** (or evaluate moonrepo, which supports Rust and JS in a single graph). Real Rust caching comes from `sccache` in CI and `cargo-chef` in Docker.
 
-### ۱۲.۳ پروفایل Release
+### 12.3 Release profile
 
 ```toml
 [profile.release]
 opt-level = 3
-lto = "fat"            # یا "thin" برای build سریع‌تر در CI
+lto = "fat"            # or "thin" for faster builds in CI
 codegen-units = 1
 strip = true
-panic = "unwind"       # عمداً: Supervisor باید panic را بگیرد
-debug = "line-tables-only"  # stack trace معنادار بدون حجم زیاد (و split-debuginfo برای symbol server)
+panic = "unwind"       # deliberate: the supervisor must catch panics
+debug = "line-tables-only"  # meaningful stack traces without much size (and split-debuginfo for a symbol server)
 ```
 
-### ۱۲.۴ Dockerfile
+### 12.4 Dockerfile
 
 ```dockerfile
 # syntax=docker/dockerfile:1.7
@@ -1272,131 +1271,131 @@ CMD ["serve", "--roles=all"]
 
 ---
 
-## ۱۳. بودجه‌های Performance و SLO
+## 13. Performance budgets and SLOs
 
-> هر عدد زیر یک **Gate در CI** است. اگر Budget شکسته شود، PR Merge نمی‌شود. اعداد اولیه هستند و پس از اولین Benchmark واقعی کالیبره می‌شوند.
+> Every number below is a **gate in CI**. If a budget is broken, the PR does not merge. These are starting numbers, to be calibrated after the first real benchmark.
 
-| Budget | هدف | نحوه‌ی اندازه‌گیری |
+| Budget | Target | How it is measured |
 |---|---|---|
-| حجم Binary (Stripped، با UI) | ≤ ۲۵ مگابایت | `ls -l` در CI |
-| حجم Image | ≤ ۳۰ مگابایت | `docker image inspect` |
-| RSS در حالت Idle (۵۰ App، ۲۰۰ Pod) | ≤ ۳۰ مگابایت | kind + Fixture + `/proc/<pid>/status` پس از ۵ دقیقه |
-| RSS زیر بار (۵۰ SSE، ۱۰ Log Stream، ۴ Terminal) | ≤ ۸۰ مگابایت | Load Test با oha و k6 |
-| زمان تا Ready (Cluster کوچک) | ≤ ۲ ثانیه | Timestamp بین شروع Process و `/readyz=200` |
-| p99 خواندن‌های Cache‌شده (سمت Server) | ≤ ۵ms | Histogram مربوط به `http_server_duration` |
-| Fan-out لاگ | ۱۰ هزار خط در ثانیه برای هر Stream بدون رشد حافظه | Soak Test ۳۰ دقیقه‌ای |
-| Reconcile یک App (بدون Build) | p95 ≤ ۵۰۰ms | Metricهای Controller |
-| JS اولیه (Brotli) | ≤ ۲۰۰KB | `size-limit` |
-| زمان Build در CI (Warm) | ≤ ۸ دقیقه | GitHub Actions |
+| Binary size (stripped, with UI) | ≤ 25MB | `ls -l` in CI |
+| Image size | ≤ 30MB | `docker image inspect` |
+| RSS at idle (50 apps, 200 pods) | ≤ 30MB | kind + fixture + `/proc/<pid>/status` after 5 minutes |
+| RSS under load (50 SSE, 10 log streams, 4 terminals) | ≤ 80MB | Load test with oha and k6 |
+| Time to ready (small cluster) | ≤ 2 seconds | The timestamp between process start and `/readyz=200` |
+| p99 for cached reads (server side) | ≤ 5ms | The `http_server_duration` histogram |
+| Log fan-out | 10 thousand lines per second per stream, with no memory growth | A 30-minute soak test |
+| Reconciling one app (no build) | p95 ≤ 500ms | Controller metrics |
+| Initial JS (Brotli) | ≤ 200KB | `size-limit` |
+| Build time in CI (warm) | ≤ 8 minutes | GitHub Actions |
 
-**واقع‌گرایی در مورد عدد ۲۵ مگابایت:** Binary یک برنامه‌ی Rust با kube، axum، sqlx و rustls معمولاً در Idle چند مگابایت تا حدود ده مگابایت RSS دارد. بخش باقیمانده‌ی بودجه به Projectionها، Page Cache مربوط به SQLite (با `cache_size` قابل کنترل است)، Stack Threadها و Bufferها می‌رسد. پس هدف ۲۵ تا ۳۰ مگابایت در Idle **برای Clusterهای کوچک و متوسط کاملاً قابل‌دستیابی است**، به شرطی که بخش‌های ۵.۴ و ۵.۸ رعایت شوند و OpenTelemetry پیش‌فرض خاموش باشد.
+**Being realistic about the 25MB number:** the binary of a Rust program with kube, axum, sqlx and rustls typically sits somewhere between a few megabytes and around ten megabytes of RSS at idle. The rest of the budget goes to projections, SQLite's page cache (controllable via `cache_size`), thread stacks and buffers. So a target of 25 to 30MB at idle **is entirely achievable for small and medium clusters**, provided sections 5.4 and 5.8 are respected and OpenTelemetry is off by default.
 
 ---
 
-## ۱۴. Roadmap اجرایی
+## 14. Execution roadmap
 
-> برآورد زمانی برای تیمی ۲ تا ۴ نفره با تجربه‌ی Rust است. هر فاز یک **Exit Criteria** دارد و فاز بعدی قبل از رسیدن به آن شروع نمی‌شود.
+> The time estimates assume a team of 2 to 4 people with Rust experience. Every phase has an **exit criterion**, and the next phase does not start before it is met.
 
-### فاز ۰ — Foundations (حدود ۴ تا ۶ هفته)
+### Phase 0 — foundations (about four to six weeks)
 
-- Monorepo، `just`، CI (fmt، clippy، nextest، deny، Budgetها)، و ADRهای ۱ تا ۱۲.
-- Binary با Roleها، دو Runtime، Supervisor، Graceful Shutdown و Health.
-- `kuben-store` (SQLite + Postgres Matrix)، Auth Core (Password، Session، Token، RBAC پایه) و Audit.
-- CRD `v1alpha1` (App، Environment، Project، Release، BuildRun) + CEL.
-- Pipeline OpenAPI → TypeScript؛ UI Shell (Login، Layout، Command Palette، Theme و RTL).
-- **Exit:** اجرای `kuben serve` روی kind؛ Login؛ نمایش وضعیت Cluster؛ Image کمتر از ۳۰ مگابایت؛ RSS Idle کمتر از ۳۰ مگابایت؛ CI سبز.
+- The monorepo, `just`, CI (fmt, clippy, nextest, deny, the budgets), and ADRs 1 through 12.
+- The binary with roles, two runtimes, a supervisor, graceful shutdown and health.
+- `kuben-store` (the SQLite + Postgres matrix), the auth core (password, session, token, basic RBAC) and audit.
+- The `v1alpha1` CRDs (App, Environment, Project, Release, BuildRun) + CEL.
+- The OpenAPI → TypeScript pipeline; the UI shell (login, layout, command palette, theme and RTL).
+- **Exit:** `kuben serve` runs on kind; login works; cluster status is displayed; image under 30MB; idle RSS under 30MB; CI green.
 
-### فاز ۱ — حلقه‌ی اصلی Deploy (حدود ۸ هفته)
+### Phase 1 — the core deploy loop (about eight weeks)
 
-- ساخت App از روی Image؛ Informerها + Projection + SSE (Snapshot و Delta).
-- App Controller (Deployment، Service، HTTPRoute با SSA)، Status Conditions و Events.
-- Build: Dockerfile + Railpack با BuildKit؛ BuildRun به‌عنوان Queue؛ Build Logs.
-- Releaseهای Immutable، Rollback، Env و Secrets، Domain + cert-manager.
-- LogHub (بخش ۵.۸)، Terminal (بخش ۵.۹) و Ephemeral Debug.
+- Creating an app from an image; informers + projection + SSE (snapshot and delta).
+- The app controller (Deployment, Service, HTTPRoute via SSA), status conditions and events.
+- Build: Dockerfile + Railpack with BuildKit; BuildRun as a queue; build logs.
+- Immutable releases, rollback, env and secrets, domains + cert-manager.
+- LogHub (section 5.8), the terminal (section 5.9) and ephemeral debug.
 - Metrics Lite.
-- **Exit:** مسیر کامل Git Push → URL با TLS، به‌همراه Rollback؛ تست E2E با Playwright روی kind؛ Soak Test لاگ بدون رشد حافظه.
+- **Exit:** the complete path from git push → a URL with TLS, plus rollback; an E2E test with Playwright on kind; a log soak test with no memory growth.
 
-### فاز ۲ — برابری با Kubero و فراتر (حدود ۸ هفته)
+### Phase 2 — parity with the incumbent and beyond (about eight weeks)
 
-- Projectها و Environmentها + Promotion + Protection Rules؛ Review Apps با TTL.
-- Webhookها برای GitHub، GitLab، Gitea، Bitbucket و Gogs + Catch-up.
-- سرویس‌های داده (CNPG، Valkey، MariaDB) + Binding + Backup.
-- Template Catalog + **Importer برای Kubero** (Templateها، CRDها و کاربران).
-- Notificationها (Outbox)، CronJobها، Basic Auth (با Filterهای Gateway)، Vulnerability Scan با Trivy.
-- CLI، Helm Chart و Installer یک‌خطی.
-- **Exit:** مهاجرت یک نصب واقعی Kubero بدون از دست رفتن داده؛ Public Beta.
+- Projects and environments + promotion + protection rules; review apps with a TTL.
+- Webhooks for GitHub, GitLab, Gitea, Bitbucket and Gogs + catch-up.
+- Data services (CNPG, Valkey, MariaDB) + binding + backup.
+- The template catalog + **an importer for the incumbent** (templates, CRDs and users).
+- Notifications (outbox), CronJobs, basic auth (with Gateway filters), vulnerability scanning with Trivy.
+- The CLI, the Helm chart and the one-line installer.
+- **Exit:** migrating a real incumbent installation with no data loss; public beta.
 
-### فاز ۳ — Enterprise (حدود ۸ تا ۱۰ هفته)
+### Phase 3 — enterprise (about eight to ten weeks)
 
-- OIDC، Group Mapping، Passkeys و Scoped RBAC؛ Audit Export.
-- حالت HA (Postgres + Leader Election + چند Replica برای API)؛ Zero-downtime Upgrade.
-- Multi-cluster (ClusterRegistry + Circuit Breaker)، Quotaها، NetworkPolicy و PSA.
-- Air-gapped Mode، OTel، Session Recording و Self-upgrade.
-- **Exit:** Chaos Test (قطع API Server، 410 Gone، Kill شدن Leader، پر شدن دیسک) بدون از دست رفتن داده؛ Restore آزمایش‌شده.
+- OIDC, group mapping, passkeys and scoped RBAC; audit export.
+- HA mode (Postgres + leader election + several API replicas); zero-downtime upgrades.
+- Multi-cluster (ClusterRegistry + circuit breaker), quotas, NetworkPolicy and PSA.
+- Air-gapped mode, OTel, session recording and self-upgrade.
+- **Exit:** chaos tests (the API server going down, 410 Gone, the leader being killed, the disk filling up) with no data loss; a tested restore.
 
-### فاز ۴ — متمایزکننده‌ها (ادامه‌دار)
+### Phase 4 — differentiators (ongoing)
 
-Import از Docker Compose، MCP Server، Terraform Provider، GitHub Action، GitOps دوطرفه، Scale-to-zero، Cedar Policies و ServiceClassها.
-
----
-
-## ۱۵. مسیر مهاجرت از Kubero
-
-1. **ابزار Import:** دستور `kuben import kubero --kubeconfig ... --db kubero.sqlite`.
-2. **CRDها:** `KuberoApp` (`application.kubero.dev/v1alpha1`) → `App` (`kuben.dev/v1alpha1`)؛ Pipeline و Phase → Project و Environment. Namespaceهای موجود با الگوی `pipeline-phase` را **Adopt کنید** (با افزودن Label)، نه اینکه از نو بسازید.
-3. **کاربران:** هش‌های bcrypt Import شوند و بعد از اولین Login به Argon2id Rehash شوند. هش‌های Legacy (HMAC-SHA256) قابل انتقال نیستند و نیاز به Reset دارند. Tokenها از نو صادر شوند.
-4. **Templateها:** Password‌های ثابت به Parameterهای تولیدشده تبدیل شوند و Addonها به ServiceClassهای جدید نگاشت شوند (با توجه به لایسنس، بخش ۸.۸).
-5. **Side-by-side:** Kuben و Kubero می‌توانند موقتاً کنار هم روی یک Cluster اجرا شوند، چون CRD Groupهای متفاوتی دارند. مهاجرت App به App انجام می‌شود و در صورت نیاز امکان بازگشت وجود دارد.
+Import from Docker Compose, the MCP server, the Terraform provider, the GitHub Action, bidirectional GitOps, scale-to-zero, Cedar policies and ServiceClasses.
 
 ---
 
-## ۱۶. ریسک‌ها و ADRهای پیشنهادی
+## 15. Migration path from the incumbent PaaS
 
-### ۱۶.۱ ریسک‌های اصلی
+1. **The import tool:** a `kuben import` command that takes the incumbent's kubeconfig and its SQLite database.
+2. **CRDs:** the incumbent's app CR → `App` (`kuben.dev/v1alpha1`); its pipeline and phase → Project and Environment. Existing namespaces that follow the `pipeline-phase` pattern should be **adopted** (by adding a label), not recreated from scratch.
+3. **Users:** the bcrypt hashes are imported and rehashed to Argon2id after the first login. Legacy hashes (HMAC-SHA256) cannot be carried over and require a reset. Tokens are reissued.
+4. **Templates:** fixed passwords become generated parameters, and addons are mapped onto the new ServiceClasses (mind the licensing, section 8.8).
+5. **Side-by-side:** Kuben and the incumbent can run alongside each other on one cluster for a while, because their CRD groups differ. Migration happens app by app, and rolling back is possible if needed.
 
-| ریسک | احتمال | اثر | کاهش ریسک |
+---
+
+## 16. Risks and proposed ADRs
+
+### 16.1 Main risks
+
+| Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **Scope Creep** (Kubero قابلیت‌های زیادی دارد) | بالا | بالا | Exit Criteria سخت‌گیرانه برای هر فاز؛ قابلیت‌های فاز ۴ تا بعد از Beta ممنوع |
-| **Build System** (بزرگ‌ترین منبع هدر رفتن زمان مهندسی) | بالا | بالا | استفاده از BuildKit و Railpack به‌جای ساختن Builder اختصاصی |
-| منحنی یادگیری kube-rs و Async Rust | متوسط | متوسط | `kuben-testkit`، Snapshot Testها، و Pair Review روی Controllerها |
-| سربار K8s در مقایسه با Coolify و Dokploy روی VPS کوچک | قطعی | متوسط | پیام صادقانه + Installer بهینه‌ی k3s |
-| هزینه‌ی تست روی دو DB | متوسط | پایین | CI Matrix از روز اول |
-| لایسنس (استفاده‌ی مجدد از Templateهای GPL) | متوسط | بالا | Catalog جدا + بررسی حقوقی |
-| وابستگی پروژه به یک Maintainer (Bus Factor) | متوسط | بالا | ADRها، مستندات معماری و Good-first-issues |
+| **Scope creep** (the incumbent has a great many features) | High | High | Strict exit criteria for every phase; phase 4 features banned until after the beta |
+| **The build system** (the biggest sink of engineering time) | High | High | Use BuildKit and Railpack instead of building a bespoke builder |
+| The kube-rs and async Rust learning curve | Medium | Medium | `kuben-testkit`, snapshot tests, and pair review on the controllers |
+| K8s overhead compared with Coolify and Dokploy on a small VPS | Certain | Medium | An honest message + an optimized k3s installer |
+| The cost of testing against two databases | Medium | Low | A CI matrix from day one |
+| Licensing (reusing GPL templates) | Medium | High | A separate catalog + legal review |
+| The project depending on a single maintainer (bus factor) | Medium | High | ADRs, architecture documentation and good-first-issues |
 
-### ۱۶.۲ ADRهایی که باید قبل از نوشتن کد نوشته شوند
+### 16.2 ADRs to write before any code
 
-| ADR | عنوان |
+| ADR | Title |
 |---|---|
-| 001 | Kubernetes به‌عنوان منبع حقیقت Desired State؛ SQL برای Identity و Audit |
-| 002 | Single Binary با Roleها (Modular Monolith) |
-| 003 | Bulkhead با دو Runtime + Supervisor + `panic=unwind` |
-| 004 | Projection به‌جای Reflector خام |
-| 005 | Cookie Session از نوع Opaque + Tokenهای Opaque؛ JWT فقط برای موارد داخلی |
-| 006 | sqlx + SeaQuery با دو Backend و تست ماتریسی |
-| 007 | OpenAPI-first برای Type-sharing |
-| 008 | Gateway API به‌عنوان Networking اصلی |
-| 009 | BuildKit + Railpack/CNB؛ Deploy بر اساس Digest؛ Releaseهای Immutable |
-| 010 | CEL و ValidatingAdmissionPolicy به‌جای Admission Webhook |
-| 011 | React 19 + TanStack + shadcn؛ Astro فقط برای Docs |
-| 012 | لایسنس و مرز Clean-room |
+| 001 | Kubernetes as the source of truth for desired state; SQL for identity and audit |
+| 002 | A single binary with roles (a modular monolith) |
+| 003 | A bulkhead with two runtimes + a supervisor + `panic=unwind` |
+| 004 | Projections instead of a raw reflector |
+| 005 | Opaque cookie sessions + opaque tokens; JWT only for internal use |
+| 006 | sqlx + SeaQuery with two backends and matrix testing |
+| 007 | OpenAPI-first for type sharing |
+| 008 | Gateway API as the primary networking layer |
+| 009 | BuildKit + Railpack/CNB; deploying by digest; immutable releases |
+| 010 | CEL and ValidatingAdmissionPolicy instead of an admission webhook |
+| 011 | React 19 + TanStack + shadcn; Astro for the docs only |
+| 012 | Licensing and the clean-room boundary |
 
 ---
 
-## ۱۷. جمع‌بندی نهایی
+## 17. Final summary
 
-طرح شما **جهت درستی دارد**: Rust، Single Binary، kube-rs، SQLite embedded و React SPA، ستون‌های درستی برای یک PaaS سبک و مدرن هستند. آنچه این طرح را از «یک بازنویسی سریع‌تر Kubero» به **«بهترین PaaS Self-hosted روی Kubernetes»** تبدیل می‌کند، این هفت تغییر است:
+Your plan **points in the right direction**: Rust, a single binary, kube-rs, embedded SQLite and a React SPA are the right pillars for a light, modern PaaS. What turns this plan from "a faster rewrite of the incumbent" into **"the best self-hosted PaaS on Kubernetes"** is these seven changes:
 
-1. **مرز داده را قطعی کنید:** Desired State در CRD و Identity/Audit در SQL.
-2. **Failure Domainها را درون Process بسازید:** دو Runtime، Supervisor، و Bounded بودن همه‌چیز.
-3. **Cache را به Projection تبدیل کنید:** این کلید هم Performance است و هم هدف RAM.
-4. **Realtime را درست مهندسی کنید:** Fan-out با Drop برای لاگ، Backpressure واقعی برای Terminal، و Snapshot + Delta برای وضعیت.
-5. **امنیت را ساختاری کنید:** Cookie Session، Authorization برای هر Subscription، Build بدون دسترسی به API، و Deploy بر اساس Digest.
-6. **روی استانداردهای ۲۰۲۶ بسازید:** Gateway API، BuildKit/Railpack، CEL، OIDC/Passkeys، OpenAPI و OTel.
-7. **صادق باشید و اندازه بگیرید:** بودجه‌ها در CI، و پیام درست درباره‌ی Footprint Kubernetes.
+1. **Make the data boundary absolute:** desired state in CRDs, identity and audit in SQL.
+2. **Build failure domains inside the process:** two runtimes, a supervisor, and everything bounded.
+3. **Turn the cache into a projection:** this is the key both to performance and to the RAM target.
+4. **Engineer realtime properly:** fan-out with drop for logs, real backpressure for the terminal, and snapshot + delta for state.
+5. **Make security structural:** cookie sessions, authorization for every subscription, builds with no API access, and deploying by digest.
+6. **Build on the 2026 standards:** Gateway API, BuildKit/Railpack, CEL, OIDC/passkeys, OpenAPI and OTel.
+7. **Be honest and measure:** budgets in CI, and the right message about the Kubernetes footprint.
 
-اگر این هفت اصل رعایت شوند، Kuben نه‌تنها ضعف‌های Kubero (امنیت WebSocket، Context مشترک بین Clusterها، نشت Stream، Source of Truth دوپاره و Operator مبتنی بر Helm) را ندارد، بلکه مزیت‌هایی خواهد داشت که Coolify و Dokploy به دلیل معماری Docker-centric، و Devtron و KubeVela به دلیل پیچیدگی، به‌سختی می‌توانند به آن برسند.
+If these seven principles are respected, Kuben will not merely be free of the incumbent's weaknesses (WebSocket security, a context shared between clusters, stream leaks, a split source of truth, and a Helm-based operator) — it will also have advantages that Coolify and Dokploy, because of their Docker-centric architecture, and Devtron and KubeVela, because of their complexity, will struggle to match.
 
 ---
 
-*پیوست: مسیرهای ارجاع‌شده در بخش ۱ در زمان نگارش این سند در `kubero-main/` بررسی شده‌اند. ادعاهای مربوط به وضعیت اکوسیستم (مثل بازنشستگی ingress-nginx، آرشیو شدن Kaniko، جایگزینی Nixpacks با Railpack و تغییرات کاتالوگ Bitnami) بر اساس اطلاعات موجود تا زمان نگارش هستند و پیش از تصمیم نهایی باید با منابع رسمی تطبیق داده شوند.*
+*Appendix: the paths referenced in section 1 were checked against the incumbent's source tree at the time this document was written. Claims about the state of the ecosystem (such as the retirement of ingress-nginx, Kaniko being archived, Railpack replacing Nixpacks, and changes to the Bitnami catalog) rest on information available at the time of writing and must be verified against official sources before any final decision.*

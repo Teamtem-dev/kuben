@@ -178,7 +178,7 @@ impl Elector {
         match self.api.replace(LEASE_NAME, &PostParams::default(), &lease).await {
             Ok(_) => tracing::info!("released the controller lease"),
             Err(e) => {
-                tracing::warn!(error = %e, "could not release the controller lease; it expires on its own")
+                tracing::warn!(error = %e, "could not release the controller lease; it expires on its own");
             }
         }
     }

@@ -75,6 +75,8 @@ fmt:
 # Regenerate committed artifacts: OpenAPI spec, TS client types, CRD manifests
 [group('dev')]
 gen:
+    # Build first: a failed build must not truncate the committed files below.
+    cargo build -q --locked -p kuben-api -p kuben-crd --bin openapi --bin crdgen
     cargo run -q --locked -p kuben-api --bin openapi > packages/api-client/openapi.json
     pnpm gen
     mkdir -p charts/kuben/crds
@@ -88,3 +90,40 @@ dev:
     trap 'kill 0' EXIT
     cargo run -p kuben -- serve --roles=all --dev &
     pnpm dev
+
+# Build the SPA and enforce its size budget
+[group('build')]
+web:
+    pnpm build
+    pnpm size
+
+# Release binary with the embedded UI
+[group('build')]
+build: web
+    cargo build -p kuben --release --locked --features embed-ui
+
+# Static musl binary exactly like the release (needs zig + cargo-zigbuild)
+[group('build')]
+build-musl target="x86_64-unknown-linux-musl": web
+    cargo zigbuild -p kuben --release --locked --features embed-ui --target {{ target }}
+
+# Binary size budget on the release build
+[group('build')]
+budgets: build
+    scripts/check-budgets.sh binary target/release/kuben
+
+# Multi-arch image from source
+[group('build')]
+image tag="dev":
+    docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/teamtem-dev/kuben:{{ tag }} .
+
+# Apply the generated CRDs to the current kube context
+[group('cluster')]
+crds:
+    kubectl apply --server-side -f charts/kuben/crds/
+
+# End-to-end run against the current kube context (e.g. kind)
+[group('cluster')]
+e2e:
+    cargo build -p kuben --locked
+    scripts/e2e.sh

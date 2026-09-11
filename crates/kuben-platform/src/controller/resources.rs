@@ -1247,7 +1247,9 @@ mod tests {
             "runtime": { "processes": { "web": { "port": 8080 } } }
         }));
         assert_eq!(
-            deployments(&git, &Platform::default(), &o).unwrap_err().reason(),
+            deployments(&git, &Platform::default(), &o)
+                .expect_err("a git source without a built image must wait for the build")
+                .reason(),
             "AwaitingBuild"
         );
 

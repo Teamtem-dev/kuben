@@ -6,3 +6,17 @@
     "node": ">=22.12",
     "pnpm": ">=10"
   },
+  "scripts": {
+    "gen": "pnpm -F @kuben/api-client generate",
+    "dev": "pnpm -F @kuben/web dev",
+    "build": "pnpm -F @kuben/web build",
+    "size": "pnpm -F @kuben/web size",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "catalog:"
+  }
+}

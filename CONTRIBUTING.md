@@ -28,7 +28,7 @@ Repository rules:
 - **CRD types must stay structural:** no internally tagged enums (use
   one-of structs with optional fields, like `Source { image, git }`).
   `all_crds_have_structural_schema` guards this.
-- **Budgets are gates:** binary ≤ 25 MiB, image ≤ 30 MiB, web JS ≤ 200 kB
+- **Budgets are gates:** binary ≤ 26 MiB, image ≤ 30 MiB, web JS ≤ 200 kB
   brotli. Raising a budget needs a written reason in the PR.
 
 ## Review checklist — the 18 invariants

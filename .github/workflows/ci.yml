@@ -51,10 +51,10 @@ jobs:
         run: |
           if [[ $EVENT == pull_request ]] && git rev-parse -q --verify HEAD^1 >/dev/null; then
             git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
-            scripts/ci-changes.sh < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+            bash scripts/ci-changes.sh < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
           else
             : > "$RUNNER_TEMP/changed.txt"
-            scripts/ci-changes.sh --all | tee -a "$GITHUB_OUTPUT"
+            bash scripts/ci-changes.sh --all | tee -a "$GITHUB_OUTPUT"
           fi
           {
             echo "### Selected job groups"
@@ -259,6 +259,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Git keeps the execute bit per file; a script committed as 100644
+      # fails in CI with exit code 126 ("Permission denied").
+      - name: Scripts are executable in git
+        run: |
+          bad=$(git ls-files -s -- 'scripts/*.sh' install.sh | awk '$1 != "100755" { print $4 }')
+          if [[ -n $bad ]]; then
+            echo "::error::not executable in git (fix: git update-index --chmod=+x <file>): $bad"
+            exit 1
+          fi
       - run: shellcheck install.sh scripts/*.sh
       - name: install.sh parses under sh, dash and bash
         run: |

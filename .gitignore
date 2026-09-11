@@ -25,3 +25,13 @@ apps/web/playwright-report
 .DS_Store
 .idea
 .vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Release artifacts
+/dist

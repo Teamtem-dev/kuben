@@ -61,12 +61,19 @@ pub struct CurrentUser {
 impl<S: Send + Sync> FromRequestParts<S> for CurrentUser {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
-            .get::<Self>()
-            .cloned()
-            .ok_or(ApiError(Error::Unauthorized))
+    // Not `async fn`: the body never awaits, so returning a ready future avoids
+    // building a state machine for it (clippy::unused_async_trait_impl).
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> {
+        std::future::ready(
+            parts
+                .extensions
+                .get::<Self>()
+                .cloned()
+                .ok_or(ApiError(Error::Unauthorized)),
+        )
     }
 }
 
