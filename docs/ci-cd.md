@@ -36,7 +36,7 @@ All commands run from the root of `kuben-monorepo`.
 | **Supply chain** | `cargo-deny`: licenses, advisories, bans, sources | e.g. `openssl-sys` and `serde_yaml` are banned |
 | **Web** | biome, `tsc`, vitest, build, **size-limit** | JS budget 200 kB and CSS 25 kB (brotli) |
 | **Generated files** | `just drift` regenerates `openapi.json`, `schema.d.ts` and the CRDs and diffs them | the TS client can never fall behind the API |
-| **Shell scripts** | shellcheck, `install.sh` under `sh`/`dash`/`bash`, `helm lint --strict` and `helm template` | |
+| **Shell scripts** | execute bits in git, shellcheck, `install.sh` under `sh`/`dash`/`bash`, change-detection tests, `helm lint --strict` and `helm template` | a script committed without its execute bit fails CI with exit code 126 |
 | **Binary size budget** | static musl release build with the embedded UI (built in the same job), gated at **25 MiB** | the shipped binary is measured, not a debug build |
 | **End-to-end (kind)** | `scripts/e2e.sh` on a real kind cluster | login → project → environment → namespace with quota/NetworkPolicy → deploy → scale → logs → restart → delete and GC |
 | **CI success** | fails if any job above failed or was cancelled | **make only this job required in branch protection.** Adding or removing jobs then never requires touching repository settings |
