@@ -1,101 +1,81 @@
 # Kuben
 
-**A Kubernetes-native PaaS in a single binary.** Deploy container images into isolated environments from a web UI or a typed REST API. Kuben turns them into Deployments, Services, autoscalers and Gateway API routes, and keeps them reconciled.
+**A Kubernetes PaaS in a single binary.** Deploy container images into isolated environments from a web UI or a REST API. Kuben creates the Deployments, Services, autoscaling and HTTPS routes, and keeps them in sync.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Teamtem-dev/kuben/ci.yml?branch=main)](https://github.com/Teamtem-dev/kuben/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Teamtem-dev/kuben?include_prereleases&sort=semver)](https://github.com/Teamtem-dev/kuben/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-> **Status: alpha.** Image-based apps, environments, secrets, logs, teams, API tokens, releases and the release pipeline work end to end. With PostgreSQL, several replicas can run side by side (leader-elected controllers, rolling upgrades). Git builds, preview environments and scale-to-zero are on the roadmap.
+> **v1.0.** Deploying images, environments, secrets, logs, teams, API tokens and releases work end to end, and several replicas can run side by side on PostgreSQL. Git builds, preview environments and scale-to-zero come next (see [Roadmap](#roadmap)).
 
-## Highlights
+## Features
 
-- **One static binary** (Rust: axum, kube-rs, sqlx) with the React UI embedded. CI enforces a 26 MiB binary budget and a 200 kB JS budget.
-- **Projects → environments → apps.** Every environment gets its own namespace with Pod Security Admission, a resource quota (no LoadBalancer/NodePort services), default limits and a network policy that isolates tenants from each other.
-- **Apps from any image:** zero-downtime rolling updates with startup/readiness/liveness probes, CPU autoscaling, env vars, write-only secrets, logs and rolling restarts.
-- **Day-2 operations built in:**
-  - release history with one-click rollback
-  - staging → production promotion with a diff preview
-  - persistent volumes that survive app deletion
-  - cron jobs with "run now"
-  - custom domains with automatic HTTPS and a DNS check
-- **One-click templates:** PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more. Passwords are generated into a secret, never into the app spec.
-- **Teams and automation:** hierarchical roles, invitations with forced password change, and scoped API tokens (role cap, project or environment) for CI/CD.
-- **Kubernetes is the source of truth.** Everything is a `kuben.dev/v1alpha1` custom resource, so `kubectl` and GitOps tools work alongside the UI. Production environments are soft-deleted with a 7-day grace period.
-- **Scales out on PostgreSQL:** every replica serves the API, one holds the controller Lease, and login throttling is shared.
-- **Secure by default:**
-  - Argon2id passwords with throttled logins
-  - opaque `HttpOnly` sessions (no JWT in the browser)
-  - a CSRF guard and a strict CSP
-  - per-org authorization on every call
-  - a free, always-on audit log of every change
-  - a live event stream filtered per tenant
+- **Projects → environments → apps.** Each environment is isolated in its own namespace, with quotas and network policies.
+- **Deploy any container image** with zero-downtime rollouts, health checks, autoscaling, environment variables and write-only secrets.
+- **Day-2 operations built in:** logs, restarts, release history with one-click rollback, promotion between environments with a diff preview, persistent volumes, cron jobs, and custom domains with automatic HTTPS.
+- **One-click templates:** PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more.
+- **Teams and CI/CD:** roles, invitations, scoped API tokens, and an audit log of every change.
+- **GitOps-friendly:** everything is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
 
-See the [user guide](docs/guide.md) for ten everyday scenarios, from deploying out of GitHub Actions to promoting a release.
+## Quick start
 
-## Install
-
-**Binary** (Linux or macOS; x86_64 or arm64):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
-```
-
-The script checks every download against the release's `checksums.txt` (SHA-256) before installing. Options: `--version v0.1.0`, `--dir ~/.local/bin`, `--no-sudo`.
-
-**Kubernetes** (Helm, Kubernetes ≥ 1.29):
+You need Kubernetes 1.29 or later and Helm.
 
 ```bash
 helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace
 ```
 
-**Container image:** `ghcr.io/teamtem-dev/kuben` (linux/amd64 and linux/arm64, distroless, non-root).
-
-Every release artifact carries a build provenance attestation:
+Read the generated admin password:
 
 ```bash
-gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
+kubectl -n kuben-system get secret kuben-initial-admin -o jsonpath='{.data.password}' | base64 -d
 ```
 
-See [docs/deploy.md](docs/deploy.md) for configuration, exposing apps through a Gateway, backups and upgrades.
+Open the UI:
+
+```bash
+kubectl -n kuben-system port-forward svc/kuben 8080:80
+```
+
+Then browse to <http://localhost:8080> and sign in as `admin@kuben.local`. To publish apps on your own domain with HTTPS, follow [docs/deploy.md](docs/deploy.md).
+
+Other ways to install:
+
+- **Binary** (Linux or macOS, x86_64 or arm64). The script checks every download against the release checksums.
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+  ```
+- **Container image:** `ghcr.io/teamtem-dev/kuben` (amd64 and arm64, distroless, non-root).
 
 ## Roadmap
 
-Working today is listed under Status above. Next, roughly in order:
+- Git builds with BuildKit, without an external CI
+- Preview environments for every pull request
+- Scale-to-zero for idle apps
+- SSO (OIDC)
 
-- **Git builds** — build an image from a repository with BuildKit, no external CI required
-- **Preview environments per pull request**, with a TTL and copy-on-write database branches
-- **Scale-to-zero** with a sub-second activator, so idle apps cost nothing
-- **Template catalog** as its own validated repository, versioned separately from the binary
-- **SSO (OIDC)** and audit export, for teams that need them
+Missing something? [Open a feature request](https://github.com/Teamtem-dev/kuben/issues/new?template=feature_request.yml).
 
-Anything not on this list is worth a [feature request](https://github.com/Teamtem-dev/kuben/issues/new?template=feature_request.yml) — the list reflects what is planned, not what is welcome.
+## Documentation
+
+| Document | Covers |
+|---|---|
+| [User guide](docs/guide.md) | ten everyday scenarios, from deploying from GitHub Actions to promoting a release |
+| [Deployment](docs/deploy.md) | configuration, domains and HTTPS, multiple replicas, backups, upgrades, security model |
+| [CI/CD and releases](docs/ci-cd.md) | what CI checks and how releases are published |
+| [Architecture decisions](docs/adr/README.md) | why things are built the way they are |
 
 ## Development
 
-You need Rust (stable, MSRV 1.94), Node ≥ 22.12 with corepack, and [just](https://github.com/casey/just). The e2e suite also needs `kind`.
+You need Rust (stable; MSRV 1.94), Node 22.12 or later with corepack, and [just](https://github.com/casey/just). The end-to-end tests also need `kind`.
 
 ```bash
-just setup    # toolchain + JS dependencies
-just dev      # API on :8080 + Vite on :5173
-just ci       # everything CI gates on: fmt, clippy, tests, drift, web build and size
-just e2e      # full end-to-end run against a kind cluster
-just gen      # regenerate openapi.json, the TS client and the CRD manifests
+just setup   # toolchain and JS dependencies
+just dev     # API on :8080, UI on :5173
+just ci      # everything CI checks
 ```
 
-| Path | What it is |
-|---|---|
-| `crates/kuben` | The binary: `serve`, `migrate`, `doctor`, `reset-admin`, `backup`, `restore` |
-| `crates/kuben-api` | HTTP API (axum + utoipa), auth, SSE stream, embedded UI |
-| `crates/kuben-platform` | Controllers, informers and projections, supervisor, health |
-| `crates/kuben-store` | SQLite/PostgreSQL store (users, sessions, role bindings, audit) |
-| `crates/kuben-crd` | `kuben.dev/v1alpha1` CRD types + `crdgen` |
-| `crates/kuben-core` | Domain types, config, permissions, errors |
-| `apps/web` | React 19 + TanStack Router/Query + Tailwind v4 |
-| `packages/api-client` | Generated OpenAPI spec and TypeScript types (committed; CI fails on drift) |
-| `charts/kuben` | Helm chart (CRDs generated from the Rust types) |
-
-Architecture decisions are indexed in [docs/adr](docs/adr/README.md). The CI/CD pipeline and the release process are documented in [docs/ci-cd.md](docs/ci-cd.md). Contribution rules are in [CONTRIBUTING.md](CONTRIBUTING.md), expected conduct in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and to report a vulnerability see [SECURITY.md](SECURITY.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and see [SECURITY.md](SECURITY.md) to report a vulnerability. Participation follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
