@@ -10,7 +10,7 @@
 
 ## Highlights
 
-- **One static binary** (Rust: axum, kube-rs, sqlx) with the React UI embedded. CI enforces a 25 MiB binary budget and a 200 kB JS budget.
+- **One static binary** (Rust: axum, kube-rs, sqlx) with the React UI embedded. CI enforces a 26 MiB binary budget and a 200 kB JS budget.
 - **Projects → environments → apps.** Every environment gets its own namespace with Pod Security Admission, a resource quota (no LoadBalancer/NodePort services), default limits and a network policy that isolates tenants from each other.
 - **Apps from any image:** zero-downtime rolling updates with startup/readiness/liveness probes, CPU autoscaling, env vars, write-only secrets, logs and rolling restarts.
 - **Day-2 operations built in:**
@@ -59,6 +59,18 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 
 See [docs/deploy.md](docs/deploy.md) for configuration, exposing apps through a Gateway, backups and upgrades.
 
+## Roadmap
+
+Working today is listed under Status above. Next, roughly in order:
+
+- **Git builds** — build an image from a repository with BuildKit, no external CI required
+- **Preview environments per pull request**, with a TTL and copy-on-write database branches
+- **Scale-to-zero** with a sub-second activator, so idle apps cost nothing
+- **Template catalog** as its own validated repository, versioned separately from the binary
+- **SSO (OIDC)** and audit export, for teams that need them
+
+Anything not on this list is worth a [feature request](https://github.com/Teamtem-dev/kuben/issues/new?template=feature_request.yml) — the list reflects what is planned, not what is welcome.
+
 ## Development
 
 You need Rust (stable, MSRV 1.94), Node ≥ 22.12 with corepack, and [just](https://github.com/casey/just). The e2e suite also needs `kind`.
@@ -83,7 +95,7 @@ just gen      # regenerate openapi.json, the TS client and the CRD manifests
 | `packages/api-client` | Generated OpenAPI spec and TypeScript types (committed; CI fails on drift) |
 | `charts/kuben` | Helm chart (CRDs generated from the Rust types) |
 
-Architecture decisions are indexed in [docs/adr](docs/adr/README.md). The CI/CD pipeline and the release process are documented in [docs/ci-cd.md](docs/ci-cd.md). Contribution rules are in [CONTRIBUTING.md](CONTRIBUTING.md), and to report a vulnerability see [SECURITY.md](SECURITY.md).
+Architecture decisions are indexed in [docs/adr](docs/adr/README.md). The CI/CD pipeline and the release process are documented in [docs/ci-cd.md](docs/ci-cd.md). Contribution rules are in [CONTRIBUTING.md](CONTRIBUTING.md), expected conduct in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and to report a vulnerability see [SECURITY.md](SECURITY.md).
 
 ## License
 

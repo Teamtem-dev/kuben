@@ -1,0 +1,79 @@
+name: Bug report
+description: Something behaves differently than documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not report security vulnerabilities here — follow [SECURITY.md](https://github.com/Teamtem-dev/kuben/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. Created an environment with …
+        2. Deployed the image …
+        3. Expected the app to become ready; the pod stayed in CrashLoopBackOff.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Kuben version
+      description: Output of `kuben --version`, or the chart/image tag.
+      placeholder: v0.1.0-rc.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is installed
+      options:
+        - Helm chart
+        - Container image
+        - Binary from install.sh
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: kubernetes
+    attributes:
+      label: Kubernetes version and distribution
+      description: Output of `kubectl version --short`, plus the distribution (kind, k3s, EKS, …).
+      placeholder: v1.32.1, k3s
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite (single replica)
+        - PostgreSQL (one or more replicas)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        `kubectl logs -n kuben-system deploy/kuben`, and the output of `kuben doctor` if you can run it.
+        Redact secrets and tokens before pasting.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed secrets, tokens and customer data from anything I pasted.
+          required: true

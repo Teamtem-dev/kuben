@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a capability Kuben does not have yet
+labels: [feature]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and where does Kuben get in the way today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+      description: If you have a shape in mind — a CRD field, an API route, a screen — describe it. Rough is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+      description: The workaround you are using, or the other tool that solves it.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Fit
+      description: Kuben aims to stay one small binary with Kubernetes as the source of truth. See CONTRIBUTING.md for the invariants.
+      options:
+        - label: I read the roadmap section of the README and this is not already planned.
+          required: true
