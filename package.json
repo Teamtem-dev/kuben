@@ -4,3 +4,5 @@
   "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=22.12",
+    "pnpm": ">=10"
+  },
