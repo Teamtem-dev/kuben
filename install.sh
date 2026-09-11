@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
 #
 # Options (flag or environment variable):
-#   --version <tag>   KUBEN_VERSION=v0.1.0         release to install (default: latest)
+#   --version <tag>   KUBEN_VERSION=v1.0.0         release to install (default: latest)
 #   --dir <path>      KUBEN_INSTALL_DIR=<path>     install directory (default: /usr/local/bin)
 #   --no-sudo         KUBEN_NO_SUDO=1              never escalate; fail if <dir> is not writable
 #   -h, --help
@@ -162,7 +162,8 @@ main() {
   base="https://github.com/${REPO}/releases/download/${version}"
 
   say "installing ${BIN} ${version} for ${target}"
-  download "${base}/${archive}" "${tmp}/${archive}" || err "download failed: ${base}/${archive}"
+  download "${base}/${archive}" "${tmp}/${archive}" ||
+    err "download failed: ${base}/${archive} — release ${version} has no ${archive}; see https://github.com/${REPO}/releases/tag/${version}"
   download "${base}/checksums.txt" "${tmp}/checksums.txt" || err "download failed: ${base}/checksums.txt"
 
   expected=$(awk -v f="$archive" '{ n = $2; sub(/^\*/, "", n) } n == f { print $1; exit }' "${tmp}/checksums.txt")

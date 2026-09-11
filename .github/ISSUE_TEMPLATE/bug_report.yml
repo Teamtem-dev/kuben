@@ -24,7 +24,7 @@ body:
     attributes:
       label: Kuben version
       description: Output of `kuben --version`, or the chart/image tag.
-      placeholder: v0.1.0-rc.1
+      placeholder: v1.0.0
     validations:
       required: true
 
