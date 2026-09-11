@@ -45,6 +45,7 @@ Other ways to install:
   ```bash
   curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
   ```
+  Then run `kuben doctor`. The binary needs a cluster to manage (for example k3s, via `KUBECONFIG`); see [running the binary](docs/deploy.md#running-the-binary-on-a-server).
 - **Container image:** `ghcr.io/teamtem-dev/kuben` (amd64 and arm64, distroless, non-root).
 
 ## Roadmap

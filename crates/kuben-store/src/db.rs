@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{path::Path, str::FromStr, sync::Arc, time::Duration};
 
 use kuben_core::config::DatabaseCfg;
 use sqlx::{
@@ -15,6 +15,14 @@ pub enum StoreError {
     Migrate(#[from] sqlx::migrate::MigrateError),
     #[error("unsupported database url: {0}")]
     UnsupportedUrl(String),
+    #[error(
+        "cannot create the database directory {path}: {source}; point KUBEN_DATABASE__URL at a writable location, e.g. sqlite:///var/lib/kuben/kuben.db"
+    )]
+    Directory {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 impl From<StoreError> for kuben_core::Error {
@@ -118,6 +126,9 @@ async fn connect_sqlite(url: &str, max_readers: u32) -> Result<Db, StoreError> {
         .foreign_keys(true) // Invariant I-16: never OFF
         .pragma("temp_store", "memory")
         .pragma("cache_size", "-2000");
+    if !in_memory {
+        ensure_parent_dir(base.get_filename())?;
+    }
 
     let writer = SqlitePoolOptions::new()
         .max_connections(1)
@@ -177,3 +188,57 @@ macro_rules! with_reader {
 }
 
 pub(crate) use {with_reader, with_writer};
+
+/// SQLite creates the database file but not its directory. The default
+/// `/data/kuben.db` is a volume in the container; on a fresh server `/data`
+/// does not exist yet, so create it (owner-only) before opening.
+fn ensure_parent_dir(file: &Path) -> Result<(), StoreError> {
+    let Some(dir) = file.parent().filter(|d| !d.as_os_str().is_empty()) else {
+        return Ok(());
+    };
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir).map_err(|source| StoreError::Directory {
+        path: dir.display().to_string(),
+        source,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn sqlite_creates_missing_parent_directories() {
+        let root = std::env::temp_dir().join(format!("kuben-db-{}", uuid::Uuid::now_v7()));
+        let file = root.join("nested").join("kuben.db");
+        let store = Store::connect(&DatabaseCfg {
+            url: format!("sqlite://{}", file.display()),
+            max_connections: 1,
+        })
+        .await
+        .expect("connect creates the directory");
+        store.ping().await.expect("ping");
+        store.checkpoint_and_close().await.expect("close");
+        assert!(file.is_file());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_location_names_the_directory_and_the_fix() {
+        let err = ensure_parent_dir(Path::new("/proc/kuben-cannot-exist/kuben.db"))
+            .expect_err("/proc is not writable");
+        let msg = err.to_string();
+        assert!(msg.contains("/proc/kuben-cannot-exist"), "{msg}");
+        assert!(msg.contains("KUBEN_DATABASE__URL"), "{msg}");
+    }
+}
