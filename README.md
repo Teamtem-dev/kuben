@@ -73,3 +73,18 @@ just gen      # regenerate openapi.json, the TS client and the CRD manifests
 
 | Path | What it is |
 |---|---|
+| `crates/kuben` | The binary: `serve`, `migrate`, `doctor`, `reset-admin`, `backup`, `restore` |
+| `crates/kuben-api` | HTTP API (axum + utoipa), auth, SSE stream, embedded UI |
+| `crates/kuben-platform` | Controllers, informers and projections, supervisor, health |
+| `crates/kuben-store` | SQLite/PostgreSQL store (users, sessions, role bindings, audit) |
+| `crates/kuben-crd` | `kuben.dev/v1alpha1` CRD types + `crdgen` |
+| `crates/kuben-core` | Domain types, config, permissions, errors |
+| `apps/web` | React 19 + TanStack Router/Query + Tailwind v4 |
+| `packages/api-client` | Generated OpenAPI spec and TypeScript types (committed; CI fails on drift) |
+| `charts/kuben` | Helm chart (CRDs generated from the Rust types) |
+
+Architecture decisions are indexed in [docs/adr](docs/adr/README.md). The CI/CD pipeline and the release process are documented in [docs/ci-cd.md](docs/ci-cd.md). Contribution rules are in [CONTRIBUTING.md](CONTRIBUTING.md), and to report a vulnerability see [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache-2.0](LICENSE)
