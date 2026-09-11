@@ -67,7 +67,7 @@ sha2 = "0.10"
 rand = "0.9"
 secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
-base64 = "0.22"
+base64 = "0.23"
 
 # ---- api docs / validation ----
 utoipa = { version = "5", features = ["axum_extras", "uuid", "preserve_order"] }
