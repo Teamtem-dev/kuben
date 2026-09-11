@@ -44,7 +44,15 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
             );
             let _ = store.checkpoint_and_close().await;
         }
-        Err(e) => r.line(Level::Fail, "database", e),
+        // The URL goes through `redact_credentials` like every line.
+        Err(e) => r.line(
+            Level::Fail,
+            "database",
+            format!(
+                "{e} (url: {}; set KUBEN_DATABASE__URL to change it)",
+                cfg.database.url
+            ),
+        ),
     }
 
     // Cluster
@@ -84,7 +92,9 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
             r.line(
                 Level::Warn,
                 "kubernetes",
-                format!("no usable cluster (setup mode): {e}"),
+                format!(
+                    "no cluster found (setup mode). Install one (e.g. k3s) and set KUBECONFIG to its kubeconfig; details: {e}"
+                ),
             );
         }
         Err(e) => r.line(Level::Fail, "kubernetes", e),

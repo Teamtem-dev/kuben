@@ -57,6 +57,34 @@ With PostgreSQL, `replicaCount` can be raised:
 - Login throttling is stored in the database, so all replicas share one budget.
 - A revoked session can stay valid on another replica for up to `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` (5 s by default).
 
+### Running the binary on a server
+
+The one-line installer puts a single `kuben` binary on a machine. It manages a cluster through a kubeconfig and keeps its own data in SQLite.
+
+1. Get a cluster to manage. On a single server, k3s is the quickest:
+   ```bash
+   curl -sfL https://get.k3s.io | sh -
+   ```
+   ```bash
+   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+   ```
+2. Check the prerequisites:
+   ```bash
+   kuben doctor
+   ```
+   The database is `/data/kuben.db` by default, and the directory is created on first start. To keep it elsewhere, set `KUBEN_DATABASE__URL`, for example `sqlite:///var/lib/kuben/kuben.db`.
+3. Start Kuben. The first start prints the generated admin password once, in this terminal:
+   ```bash
+   kuben serve
+   ```
+4. The session cookie is `Secure`, so open the UI over HTTPS, or through an SSH tunnel to `localhost`:
+   ```bash
+   ssh -L 8080:localhost:8080 root@your-server
+   ```
+   Then browse to `http://localhost:8080`. Only for a quick test over plain HTTP, set `KUBEN_SECURITY__COOKIE_SECURE=false`.
+
+For production, prefer the Helm install above: it runs Kuben inside the cluster with probes, RBAC and a persistent volume.
+
 ## 3. First sign-in
 
 ```bash
