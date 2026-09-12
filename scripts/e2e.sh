@@ -12,7 +12,9 @@
 # login throttling; then deletes and garbage collection.
 set -euo pipefail
 
-BIN=${KUBEN_BIN:-target/debug/kuben}
+# Runs from any directory (`turbo run e2e` starts it in crates/kuben).
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+BIN=${KUBEN_BIN:-$ROOT/target/debug/kuben}
 PORT=${KUBEN_E2E_PORT:-18080}
 BASE="http://127.0.0.1:${PORT}/api/v1"
 PASSWORD="e2e-$(date +%s)-password"

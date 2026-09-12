@@ -33,3 +33,4 @@ also records the reasoning. New decisions get their own file here
 | 021 | Six crates in phase 0, split only for a stated reason | decided | `Cargo.toml` |
 | 022 | Threat model; Kuben's service account is treated like cluster-admin | decided, threat model pending | `charts/kuben/templates/rbac.yaml` |
 | 023 | [Lease-based leader election for the controllers](0023-controller-leader-election.md) | decided | `kuben_platform::leader` |
+| 024 | [Turborepo runs every task; Bun replaces pnpm and Node; Cargo stays the Rust build graph](0024-turborepo-bun-cargo.md) | decided | `turbo.json`, `package.json`, `bunfig.toml` |

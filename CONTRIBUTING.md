@@ -5,22 +5,27 @@ the 18 invariants every change must keep.
 
 ## Workflow
 
-1. `just setup` once, then `just dev` (API on `:8080`, Vite on `:5173`).
+1. `bun run setup` once, then `bun run dev` (API on `:8080`, Vite on `:5173`).
 2. Keep changes focused; one concern per pull request.
-3. Before pushing: `just ci` (fmt, clippy `-D warnings`, tests, drift check,
-   web lint/typecheck/test/build/size). If you touched controllers or the API,
-   also run `just e2e` against kind.
+3. Before pushing: `bun run ci` (fmt, clippy `-D warnings`, tests, drift check,
+   Biome, typecheck, web test/build/size). If you touched controllers or the API,
+   also run `bun run e2e` against kind.
 4. Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
    (`feat(api): …`, `fix(controller): …`). Label PRs (`feature`, `bug`,
    `security`, `breaking`) — release notes are grouped by label.
 
+Every task runs through Turborepo (`turbo.json`). Root `package.json` scripts
+are the entry points: `bun run build | check | lint | format | test | gen`.
+One package works too: `bun turbo run test --filter=kuben-store`. See
+[the migration plan](docs/turborepo-migration-plan.md) for the full task table.
+
 Repository rules:
 
 - **Dependencies:** Rust versions live only in `[workspace.dependencies]`;
-  JS versions only in the `catalog:` of `pnpm-workspace.yaml`
-  (`catalogMode: strict`). Every new crate must pass `cargo deny check`.
+  JS versions only in `workspaces.catalog` of the root `package.json`
+  (packages say `catalog:`). Every new crate must pass `cargo deny check`.
 - **Generated files are committed:** after changing API types or CRDs run
-  `just gen` and commit `packages/api-client/openapi.json`,
+  `bun run gen` and commit `packages/api-client/openapi.json`,
   `packages/api-client/src/schema.d.ts` and `charts/kuben/crds/`. CI fails on
   drift.
 - **Every handler gets a unique `operation_id`** in `#[utoipa::path]`; the

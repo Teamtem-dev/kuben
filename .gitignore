@@ -3,15 +3,15 @@
 **/*.rs.bk
 *.pdb
 
-# Node / pnpm
+# JS / Bun / Turborepo
 node_modules
+.turbo
 apps/web/dist
 apps/web/dist-ssr
 apps/web/.vite
 apps/web/coverage
 apps/web/test-results
 apps/web/playwright-report
-.pnpm-store
 
 # Local dev state
 /.dev

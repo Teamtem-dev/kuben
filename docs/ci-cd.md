@@ -5,7 +5,9 @@ This document describes the GitHub Actions setup of `Teamtem-dev/kuben`:
 - how a release is built and published
 - what `install.sh` guarantees
 
-All commands run from the root of `kuben-monorepo`.
+All commands run from the root of `kuben-monorepo`. Tasks in both languages
+run through Turborepo ([ADR-024](adr/0024-turborepo-bun-cargo.md)). CI jobs
+call the same `turbo` tasks developers run locally.
 
 ## 1. Files
 
@@ -13,32 +15,36 @@ All commands run from the root of `kuben-monorepo`.
 |---|---|
 | `.github/workflows/ci.yml` | Runs on every push to `main`, every PR and `merge_group`. A change-detection job, 11 check jobs and the aggregate job **CI success**. |
 | `.github/workflows/release.yml` | Runs on a pushed `v*` tag. Publishes binaries for 5 platforms, `checksums.txt`, attestations, the GitHub Release, a multi-arch GHCR image and the OCI Helm chart. |
-| `.github/dependabot.yml` | Weekly updates of Actions, crates and npm packages with a 7-day cooldown (a shield against freshly published malicious packages). |
+| `.github/actions/setup` | Composite action shared by every job. It installs Bun (version from `packageManager`), runs `bun install --frozen-lockfile`, and optionally sets up a Rust toolchain and `Swatinem/rust-cache`. |
+| `.github/dependabot.yml` | Weekly updates of Actions (workflows and the composite action), crates and Bun packages, with a 7-day cooldown (a shield against freshly published malicious packages). |
 | `.github/release.yml` | Automatic release-note categories by label. |
+| `turbo.json` (+ `apps/web/turbo.json`, `packages/api-client/turbo.json`) | The task graph for Rust and TypeScript. |
 | `install.sh` | One-line binary install on Linux and macOS. |
 | `deploy/release.Dockerfile` | The release image, built from the very musl binaries that were checksummed. |
 | `Dockerfile` | Full build from source (cross-compiled with zig, no QEMU). |
 | `scripts/check-budgets.sh` | Binary and image size gates. |
+| `scripts/check-drift.sh` | Regenerates the committed OpenAPI spec, TS types and CRDs with `turbo run gen` and fails on any difference. |
 | `scripts/ci-changes.sh` (+ `.test.sh`) | Decides which job groups a pull request needs (see below). |
-| `.config/nextest.toml` | cargo-nextest profiles (`default` locally, `ci` in CI). |
+| `scripts/ci.sh` | The local equivalent of CI (`bun run ci`). |
+| `.config/nextest.toml` | cargo-nextest profiles (`default` locally, `ci` in CI via `NEXTEST_PROFILE`). |
 | `scripts/e2e.sh` | End-to-end test on kind. |
 
 ## 2. CI jobs
 
-| Job | What it does | Why |
+| Job | What it runs | Why |
 |---|---|---|
 | **Detect changes** | `scripts/ci-changes.sh` on the PR's changed files | selects the job groups below; pushes to `main`, the merge queue and manual runs select everything |
-| **Rust format** | `cargo fmt --all --check` | |
-| **Clippy** | `cargo clippy --workspace --all-targets --locked -- -D warnings` with `clippy::pedantic`, then again for `-p kuben --features activator` | workspace lints live in `Cargo.toml` (`unwrap_used = deny`, `unsafe_code = forbid`, …); the second run keeps the activator placeholder, which default builds leave out, compiling |
-| **Test** (4-OS matrix) | `cargo nextest run --workspace --locked --profile ci` on linux-x64, linux-arm64, macos-arm64 and windows-x64, plus doctests (`cargo test --doc`) on linux-x64 | binaries ship for all 5 targets, so all of them are tested. nextest runs every test in its own process and reports all failures, not just the first |
-| **Store matrix** | `kuben-store` tests against PostgreSQL 17 (service container), via nextest | the same repositories must behave identically on SQLite and Postgres |
-| **MSRV** | `cargo +1.94 check` | `rust-version = 1.94` in `Cargo.toml` is a promise to users |
+| **Rust format** | `turbo run format --filter=kuben-cargo -- --check` (`cargo fmt --all -- --check`) | |
+| **Clippy** | `turbo run kuben-cargo#lint kuben#lint:activator`: clippy on every crate and target with `-D warnings` and `clippy::pedantic`, then again for `-p kuben --features activator` | workspace lints live in `Cargo.toml` (`unwrap_used = deny`, `unsafe_code = forbid`, …); the second run keeps the activator placeholder, which default builds leave out, compiling |
+| **Test** (4-OS matrix) | `turbo run kuben-cargo#test` (cargo-nextest, profile `ci`) on linux-x64, linux-arm64, macos-arm64 and windows-x64, plus `kuben-cargo#test:doc` on linux-x64 | binaries ship for all 5 targets, so all of them are tested. nextest runs every test in its own process and reports all failures, not just the first |
+| **Store matrix** | `turbo run kuben-store#test:postgres` against PostgreSQL 17 (service container) | the same repositories must behave identically on SQLite and Postgres |
+| **MSRV** | `RUSTUP_TOOLCHAIN=1.94 turbo run kuben-cargo#check -- --all-targets` | `rust-version = 1.94` in `Cargo.toml` is a promise to users |
 | **Supply chain** | `cargo-deny`: licenses, advisories, bans, sources | e.g. `openssl-sys` and `serde_yaml` are banned |
-| **Web** | biome, `tsc`, vitest, build, **size-limit** | JS budget 200 kB and CSS 25 kB (brotli) |
-| **Generated files** | `just drift` regenerates `openapi.json`, `schema.d.ts` and the CRDs and diffs them | the TS client can never fall behind the API |
+| **Web** | `turbo run biome:check check test build size` for the root and `@kuben/*`: Biome, `tsc`, `bun test`, Vite build, **size-limit** | JS budget 200 kB and CSS 25 kB (brotli) |
+| **Generated files** | `bun run drift` regenerates `openapi.json`, `schema.d.ts` and the CRDs and diffs them | the TS client can never fall behind the API |
 | **Shell scripts** | execute bits in git, shellcheck, `install.sh` under `sh`/`dash`/`bash`, change-detection tests, `helm lint --strict` and `helm template` | a script committed without its execute bit fails CI with exit code 126 |
-| **Binary size budget** | static musl release build with the embedded UI (built in the same job), gated at **26 MiB** | the shipped binary is measured, not a debug build |
-| **End-to-end (kind)** | `scripts/e2e.sh` on a real kind cluster | login → project → environment → namespace with quota/NetworkPolicy → deploy → scale → logs → restart → delete and GC |
+| **Binary size budget** | the SPA via `turbo run @kuben/web#build`, then a static musl release build with the embedded UI, gated at **26 MiB** | the shipped binary is measured, not a debug build |
+| **End-to-end (kind)** | `turbo run kuben#e2e` (`scripts/e2e.sh` after `kuben#build`) on a real kind cluster | login → project → environment → namespace with quota/NetworkPolicy → deploy → scale → logs → restart → delete and GC |
 | **CI success** | fails if any job above failed or was cancelled | **make only this job required in branch protection.** Adding or removing jobs then never requires touching repository settings |
 
 Which jobs a pull request runs:
@@ -47,14 +53,14 @@ Which jobs a pull request runs:
 |---|---|---|
 | `rust` | `crates/`, Cargo manifests and lockfile, toolchain and lint configs | fmt, clippy, test, store matrix, MSRV, e2e, budgets |
 | `deps` | `Cargo.toml`, `crates/*/Cargo.toml`, `Cargo.lock`, `deny.toml` | cargo-deny |
-| `web` | `apps/`, `packages/`, pnpm and biome configs | web, budgets |
+| `web` | `apps/`, `packages/`, `biome.json`, `tsconfig.base.json` | web, budgets |
 | `codegen` | any `rust` change, `packages/api-client/`, `charts/kuben/crds/` | generated files (drift) |
 | `scripts` | `scripts/`, `install.sh`, `charts/`, `deploy/`, `Dockerfile` | shell scripts and Helm, e2e |
 
 - A documentation-only PR runs just the change detection and **CI success**.
-- A change to `.github/` or the `justfile` runs everything. So does an empty or unreadable change list: detection fails open.
+- A change to `.github/` or to the task runner every job uses (`turbo.json`, the root `package.json`, `bun.lock`, `bunfig.toml`) runs everything. So does an empty or unreadable change list: detection fails open.
 - Skipped jobs count as passed in **CI success**, but a failed change-detection job fails it.
-- `just ci-changes` shows locally which groups your branch would run.
+- `git diff --name-only origin/main...HEAD | scripts/ci-changes.sh` shows locally which groups your branch would run.
 
 Details:
 
@@ -62,15 +68,17 @@ Details:
 - `permissions: contents: read` is the default. Each job requests only what it needs. `persist-credentials: false` is set on every checkout.
 - `concurrency` cancels superseded runs on PRs, never on `main`.
 - The Rust cache is saved only on `main` (`save-if`), so PRs cannot plant a poisoned cache.
+- Every `turbo` run validates the Cargo workspace (`cargo metadata`), so jobs that only touch the web UI still set up Rust.
+- Turborepo's remote cache is opt-in: set the repository variable `TURBO_TEAM` and the secret `TURBO_TOKEN`. Pushes to `main` read and write it. Pull requests only read it, following the same rule as the Rust cache.
 
 ## 3. Release process
 
 ```text
 tag v0.2.0 ─► plan (validate tag == Cargo version)
-               ├─► web (pnpm build + size-limit) ─► build ×5 ─┬─► publish (checksums + attestations + GitHub Release)
-               │                                               │        └─► verify-install ×3 (install.sh against the real release)
-               │                                               └─► image (budget ≤ 30 MiB → push amd64+arm64 + SBOM + provenance)
-               │                                                        └─► chart (helm push oci://ghcr.io/teamtem-dev/charts)
+               ├─► web (bun: vite build + size-limit) ─► build ×5 ─┬─► publish (checksums + attestations + GitHub Release)
+               │                                                    │        └─► verify-install ×3 (install.sh against the real release)
+               │                                                    └─► image (budget ≤ 30 MiB → push amd64+arm64 + SBOM + provenance)
+               │                                                             └─► chart (helm push oci://ghcr.io/teamtem-dev/charts)
 ```
 
 Steps:
@@ -101,12 +109,12 @@ Steps:
    - the image `ghcr.io/teamtem-dev/kuben:{X.Y.Z, X.Y, latest}` (`latest` and `X.Y` only for stable versions)
    - the chart at `oci://ghcr.io/teamtem-dev/charts/kuben`
 5. Tags such as `v0.2.0-rc.1` automatically become **pre-releases** and never move `latest`.
-6. To rebuild an existing tag: *Actions → Release → Run workflow* with the tag; assets are replaced with `--clobber`.
+6. To rebuild an existing tag: *Actions → Release → Run workflow* with the tag; assets are replaced with `--clobber`. For a tag from before the Turborepo/Bun migration (v1.0.1 and earlier), choose the tag itself under *Use workflow from*, so that the workflow matches the tag's pnpm-based tree.
 
 Design decisions:
 
 - **The image is built from the published binaries, not from source.** `deploy/release.Dockerfile` is a single `COPY`. The multi-arch build takes seconds, needs no QEMU, and the bytes in the image are exactly the ones that were checksummed and attested.
-- **Releases build without a cache**, so a poisoned cache can never reach a published artifact.
+- **Releases build without a cache**, so a poisoned cache can never reach a published artifact. The web job calls the package scripts with Bun directly instead of turbo, so no task cache is involved either.
 - **The image size gate runs before the push.** `linux/amd64` is loaded and measured first, then the multi-arch image is pushed.
 - **`USER 65532:65532` is numeric.** Without a numeric UID, Kubernetes cannot verify `runAsNonRoot: true` and rejects the pod.
 
@@ -149,25 +157,49 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 ## 6. Local equivalents
 
 ```bash
-just ci
+bun run ci
 ```
 
-Runs fmt, clippy, the tests, the drift check and the web build/size check. `cargo-deny` and `shellcheck` run when installed.
+Runs clippy, Biome, the tests and doctests, the TypeScript checks, the rustfmt check, the drift check and the web build/size check. `cargo-deny` and `shellcheck` run when installed.
 
 ```bash
-just e2e
+kind create cluster --config deploy/kind.yaml
 ```
-
-Starts a kind cluster and runs `scripts/e2e.sh`.
 
 ```bash
-just budgets
+bun run e2e
 ```
 
-Builds the release binary with the embedded UI and checks the binary size budget.
+Builds the binary and runs `scripts/e2e.sh` against the current kube context.
 
 ```bash
-just ci-changes
+bun turbo run kuben#size
 ```
 
-Prints which CI job groups a pull request of the current branch would run (compared with `origin/main`).
+Builds the release binary with the embedded UI (after the web build) and checks the binary size budget.
+
+```bash
+git diff --name-only origin/main...HEAD | scripts/ci-changes.sh
+```
+
+Prints which CI job groups a pull request of the current branch would run.
+
+Platform tooling outside the task graph:
+
+```bash
+cargo zigbuild -p kuben --release --locked --features embed-ui --target x86_64-unknown-linux-musl
+```
+
+Builds a static musl binary exactly like the release. It needs zig and cargo-zigbuild, and `apps/web/dist` from `bun turbo run @kuben/web#build`.
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/teamtem-dev/kuben:dev .
+```
+
+Builds a multi-arch image from source.
+
+```bash
+kubectl apply --server-side -f charts/kuben/crds/
+```
+
+Applies the generated CRDs to the current kube context.

@@ -1,5 +1,6 @@
 target
-node_modules
+**/node_modules
+**/.turbo
 apps/web/dist
 .dev
 .cache

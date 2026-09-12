@@ -1,0 +1,8 @@
+# Bun settings for the whole workspace: https://bun.com/docs/runtime/bunfig
+
+[install]
+# pnpm-style layout: a package can only import what it declares.
+linker = "isolated"
+# No `minimumReleaseAge`: on Bun 1.4.0 any re-resolution under it fails with a
+# misleading "<pkg>@catalog: is not in the catalog" error. Dependabot's 7-day
+# cooldown stays the supply-chain gate for updates (ADR-024).

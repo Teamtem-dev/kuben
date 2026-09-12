@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { ApiError, isProblem, problemMessage, toApiError } from './problem'
 
 const validation = {

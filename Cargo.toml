@@ -10,6 +10,11 @@ members = [
 ]
 default-members = ["crates/kuben"]
 
+# Turborepo's package name for the Cargo workspace as a whole: `kuben-cargo#<task>`
+# in turbo.json runs a workspace-wide Cargo command (see docs/adr/0024).
+[workspace.metadata]
+name = "kuben-cargo"
+
 [workspace.package]
 version = "1.0.1"
 edition = "2024"

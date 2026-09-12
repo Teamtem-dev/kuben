@@ -13,9 +13,11 @@
 #            types produce the OpenAPI spec and the CRDs)
 #   scripts  shell scripts, installer, Helm chart  → scripts, e2e
 #
-# Fail open: a change to CI itself (.github/, justfile), or an empty or
-# unreadable list, selects everything. Checks are never skipped by accident.
-# Portable to bash 3.2 (macOS) so it can be run locally: `just ci-changes`.
+# Fail open: a change to CI itself (.github/) or to the task runner every job
+# goes through (turbo.json, the root package.json, bun.lock, bunfig.toml), or an
+# empty or unreadable list, selects everything. Checks are never skipped by
+# accident. Portable to bash 3.2 (macOS) so it can be run locally:
+#   git diff --name-only origin/main...HEAD | scripts/ci-changes.sh
 set -euo pipefail
 
 rust=false deps=false web=false codegen=false scripts=false
@@ -29,7 +31,7 @@ else
     [[ -z $path ]] && continue
     count=$((count + 1))
     case "$path" in
-    .github/* | justfile) select_all ;;
+    .github/* | turbo.json | package.json | bun.lock | bunfig.toml) select_all ;;
     Cargo.toml | Cargo.lock | crates/*/Cargo.toml | deny.toml)
       rust=true
       deps=true
@@ -43,7 +45,7 @@ else
       codegen=true
       scripts=true
       ;;
-    apps/* | packages/* | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | biome.json | tsconfig.base.json | .nvmrc | .npmrc) web=true ;;
+    apps/* | packages/* | biome.json | tsconfig.base.json) web=true ;;
     scripts/* | install.sh | charts/* | deploy/* | Dockerfile) scripts=true ;;
     *) ;; # docs, Markdown, license: no checks needed
     esac

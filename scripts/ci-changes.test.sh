@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Table tests for scripts/ci-changes.sh (run in CI's "Shell scripts" job and
-# by `just ci`). Each case: changed paths → expected selected groups.
+# by `bun run ci`). Each case: changed paths → expected selected groups.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -30,9 +30,15 @@ check "generated crds" "codegen scripts" charts/kuben/crds/kuben.dev_all.yaml
 check "helm template" "scripts" charts/kuben/templates/rbac.yaml
 check "e2e script" "scripts" scripts/e2e.sh
 check "workflow" "rust deps web codegen scripts" .github/workflows/ci.yml
-check "justfile" "rust deps web codegen scripts" justfile
+check "turbo config" "rust deps web codegen scripts" turbo.json
+check "root manifest" "rust deps web codegen scripts" package.json
+check "bun lockfile" "rust deps web codegen scripts" bun.lock
+check "bunfig" "rust deps web codegen scripts" bunfig.toml
+check "package turbo config" "web" apps/web/turbo.json
+check "package manifest" "web" apps/web/package.json
 check "mixed" "rust web codegen" crates/kuben-api/src/routes/apps.rs apps/web/src/lib/api.ts
 check "nextest config" "rust codegen" .config/nextest.toml
+check "new script" "scripts" scripts/check-drift.sh
 
 all=$(printf '' | scripts/ci-changes.sh | grep -c '=true')
 if [[ $all == 5 ]]; then echo "ok   empty list selects everything"; else echo "FAIL empty list"; failures=$((failures + 1)); fi
