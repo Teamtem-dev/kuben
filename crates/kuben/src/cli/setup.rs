@@ -41,9 +41,10 @@ pub const DOCS: &str = "https://kuben.teamtem.com/docs/getting-started/binary/";
 
 #[derive(Debug, Args)]
 pub struct SetupOpts {
-    /// Port of the console and API.
-    #[arg(long, env = "KUBEN_PORT", default_value_t = 3000)]
-    pub port: u16,
+    /// Port of the console and API [default: 3000, or the next free port when
+    /// 3000 is taken; an existing install keeps its port].
+    #[arg(long, env = "KUBEN_PORT")]
+    pub port: Option<u16>,
     /// Manage this cluster instead of installing k3s.
     #[arg(long, env = "KUBEN_KUBECONFIG")]
     pub kubeconfig: Option<PathBuf>,
@@ -75,18 +76,143 @@ pub struct UninstallOpts {
 
 pub fn setup(opts: &SetupOpts) -> anyhow::Result<()> {
     let ui = Ui::new();
+    ui.banner(super::VERSION);
+    report_download(ui);
     let host = preflight(ui, opts)?;
     install_binary(ui)?;
     let (uid, gid) = ensure_user(ui)?;
     let kubeconfig = ensure_cluster(ui, opts, uid, gid)?;
-    let fresh_config = write_config(ui, opts, &kubeconfig)?;
+    let configured = std::fs::read_to_string(CONFIG_FILE).ok();
+    let port = choose_port(
+        ui,
+        opts.port,
+        configured.as_deref().and_then(config_port),
+        opts.yes,
+    )?;
+    let fresh_config = write_config(ui, opts, &kubeconfig, configured.as_deref(), port)?;
     let cfg = Config::load().context("reading /etc/kuben/config.toml")?;
     let port = cfg.bind_port();
-    check_port(ui, port)?;
     start_service(ui, port)?;
     open_firewall(ui, port);
+    warn_web_ports(ui);
     announce(ui, &cfg, uid, gid, fresh_config, &host)?;
     Ok(())
+}
+
+/// Port Kuben listens on when neither `--port` nor an install says otherwise.
+pub const DEFAULT_PORT: u16 = 3000;
+
+/// The port to use. A running install keeps its own. An explicit `--port`, or
+/// the port of a service that already ran, must be free: another process
+/// holding it is named. Otherwise 3000; when something else has it (the
+/// Dokploy console, a Node app…) the operator is asked, with the next free
+/// port as the answer Enter gives, and without a terminal (or with `--yes`)
+/// that port is taken, so a first install never stops on it.
+fn choose_port(ui: Ui, requested: Option<u16>, configured: Option<u16>, yes: bool) -> anyhow::Result<u16> {
+    if service_active()
+        && (requested.is_none() || requested == configured)
+        && let Some(port) = configured
+    {
+        return Ok(port); // the port is ours
+    }
+    // A service that was started once keeps its port; a first run that stopped
+    // halfway (config written, never started) may still move.
+    let settled = configured.is_some() && Path::new(UNIT_FILE).exists();
+    let wanted = requested
+        .or(if settled { configured } else { None })
+        .unwrap_or(DEFAULT_PORT);
+    let step = ui.step(format!("Checking port {wanted}"));
+    if port_free(wanted) {
+        step.done("free");
+        return Ok(wanted);
+    }
+    let owner = port_owner(wanted).unwrap_or_else(|| "another process".to_owned());
+    let suggestion = if requested.is_none() && !settled {
+        next_free_port(wanted)
+    } else {
+        None
+    };
+    let Some(suggestion) = suggestion else {
+        step.fail(format!("used by {owner}"));
+        bail!("port {wanted} is already in use by {owner}; pick another with `kuben setup --port <port>`");
+    };
+    step.warn(format!("used by {owner}"));
+    let chosen = |port: u16, why: &str| {
+        ui.done("Port", format!("{port}{why}"));
+        Ok(port)
+    };
+    if yes {
+        return chosen(suggestion, ", the next free one");
+    }
+    for _ in 0..3 {
+        let Some(answer) = ui.ask("Which port should Kuben use?", &suggestion.to_string()) else {
+            return chosen(suggestion, ", the next free one");
+        };
+        match parse_port(&answer) {
+            Some(port) if port_free(port) => return chosen(port, ""),
+            Some(port) => ui.warn(
+                &format!("Port {port}"),
+                format!(
+                    "used by {}",
+                    port_owner(port).unwrap_or_else(|| "another process".to_owned())
+                ),
+            ),
+            None => ui.warn("Port", format!("{answer:?} is not a port number (1–65535)")),
+        }
+    }
+    bail!("no usable port chosen; run `kuben setup --port <port>`")
+}
+
+fn next_free_port(after: u16) -> Option<u16> {
+    (after.saturating_add(1)..after.saturating_add(100)).find(|port| port_free(*port))
+}
+
+fn parse_port(answer: &str) -> Option<u16> {
+    answer.trim().parse::<u16>().ok().filter(|port| *port > 0)
+}
+
+/// The installer's download, reported here so that the banner comes first:
+/// install.sh passes `KUBEN_INSTALLED="<version> <target> <path> <sha256>"`
+/// when it hands over to `kuben setup`.
+fn report_download(ui: Ui) {
+    let Ok(info) = std::env::var("KUBEN_INSTALLED") else {
+        return;
+    };
+    let fields: Vec<&str> = info.split_whitespace().collect();
+    if let [version, target, path, sha] = fields.as_slice() {
+        ui.done(
+            &format!("Installed kuben {version} ({target}) to {path}"),
+            format!("sha256 {sha}"),
+        );
+    }
+}
+
+fn port_free(port: u16) -> bool {
+    TcpListener::bind(("0.0.0.0", port)).is_ok()
+}
+
+/// Apps get public addresses through the cluster's ingress on 80 and 443
+/// (Traefik on k3s). Another web server on the host (Dokploy's Traefik,
+/// nginx, Caddy) keeps them, so say so before anyone wonders why an app
+/// has no public address. The console does not depend on them.
+fn warn_web_ports(ui: Ui) {
+    let taken: Vec<String> = [80, 443]
+        .into_iter()
+        .filter(|port| !port_free(*port))
+        .map(|port| {
+            format!(
+                "{port} is used by {}",
+                port_owner(port).unwrap_or_else(|| "another process".to_owned())
+            )
+        })
+        .collect();
+    if !taken.is_empty() {
+        ui.warn("Ports 80 and 443", taken.join("; "));
+        ui.note(
+            "Apps get their public addresses through the cluster's Traefik on these ports; until that\n\
+             server moves, the console works but app routes are not reachable from outside.",
+        );
+    }
 }
 
 struct Host {
@@ -129,7 +255,8 @@ fn preflight(ui: Ui, opts: &SetupOpts) -> anyhow::Result<Host> {
     if host.mem_gb.is_some_and(|gb| gb < 1.9) {
         step.warn(detail);
         ui.note("Less than 2 GB of RAM: k3s and Kuben will run, but slowly. 2 GB or more is recommended.");
-        if !opts.yes && !confirm("Continue anyway?")? {
+        // Without a terminal (or with --yes) a warning does not stop the install.
+        if !opts.yes && ui.confirm("Continue anyway?") == Some(false) {
             bail!("aborted");
         }
     } else {
@@ -139,14 +266,13 @@ fn preflight(ui: Ui, opts: &SetupOpts) -> anyhow::Result<Host> {
 }
 
 fn install_binary(ui: Ui) -> anyhow::Result<()> {
-    let step = ui.step("Installing the kuben binary");
     let me = std::env::current_exe().context("locating the running binary")?;
     let target = Path::new(BIN);
-    let version = format!("v{}", super::VERSION);
     if same_file(&me, target) {
-        step.skip(format!("{version} at {BIN}"));
-        return Ok(());
+        return Ok(()); // the installer put it there; nothing to say
     }
+    let step = ui.step("Installing the kuben binary");
+    let version = format!("v{}", super::VERSION);
     if let Some(dir) = target.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -163,7 +289,7 @@ fn install_binary(ui: Ui) -> anyhow::Result<()> {
 fn ensure_user(ui: Ui) -> anyhow::Result<(u32, u32)> {
     let step = ui.step("Creating the kuben system user");
     let ids = if let Some(ids) = user_ids(USER) {
-        step.skip("exists");
+        step.done("exists");
         ids
     } else {
         run(&[
@@ -196,10 +322,10 @@ fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32) -> anyhow::Resul
         step.done(format!("kubeconfig {}", path.display()));
         path.clone()
     } else if Path::new(K3S_KUBECONFIG).exists() {
-        ui.skip("Installing k3s", "already installed");
+        ui.done("Installing k3s", "already installed");
         PathBuf::from(K3S_KUBECONFIG)
     } else if let Some(existing) = existing_kubeconfig() {
-        ui.skip(
+        ui.done(
             "Installing k3s",
             format!("using the cluster in {}", existing.display()),
         );
@@ -309,10 +435,24 @@ fn wait_for_nodes(kubeconfig: &Path, timeout: Duration) -> anyhow::Result<String
 }
 
 /// `true` when the file was written now (a first install).
-fn write_config(ui: Ui, opts: &SetupOpts, kubeconfig: &Path) -> anyhow::Result<bool> {
+/// `true` when the file was written now (a first install). An existing file
+/// is kept, except for its port when `port` differs from it.
+fn write_config(
+    ui: Ui,
+    opts: &SetupOpts,
+    kubeconfig: &Path,
+    existing: Option<&str>,
+    port: u16,
+) -> anyhow::Result<bool> {
     let step = ui.step(format!("Writing {CONFIG_FILE}"));
-    if Path::new(CONFIG_FILE).exists() {
-        step.skip("kept; edit it to change the port or the public URL");
+    if let Some(text) = existing {
+        match config_port(text) {
+            Some(old) if old != port => {
+                std::fs::write(CONFIG_FILE, with_port(text, old, port))?;
+                step.done(format!("port {old} → {port}, everything else kept"));
+            }
+            _ => step.done("kept; edit it to change the public URL"),
+        }
         return Ok(false);
     }
     let host = if opts.bind_local {
@@ -321,11 +461,47 @@ fn write_config(ui: Ui, opts: &SetupOpts, kubeconfig: &Path) -> anyhow::Result<b
         kuben_api::host::advertise_ip().map_or_else(|| "localhost".to_owned(), |ip| ip.to_string())
     };
     let bind_host = if opts.bind_local { "127.0.0.1" } else { "0.0.0.0" };
-    let content = config_template(bind_host, opts.port, &host, kubeconfig);
+    let content = config_template(bind_host, port, &host, kubeconfig);
     std::fs::write(CONFIG_FILE, content)?;
     set_mode(Path::new(CONFIG_FILE), 0o644)?;
-    step.done(format!("port {}", opts.port));
+    step.done(format!("port {port}"));
     Ok(true)
+}
+
+/// The port of `bind` under `[server]` in a config file.
+fn config_port(text: &str) -> Option<u16> {
+    text.lines()
+        .map(str::trim_start)
+        .find_map(|line| line.strip_prefix("bind")?.trim_start().strip_prefix('='))?
+        .trim()
+        .trim_matches('"')
+        .rsplit(':')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// `text` with the port of `bind` and `public_url` changed from `old` to
+/// `new`; every other line, comments included, stays as it is.
+fn with_port(text: &str, old: u16, new: u16) -> String {
+    let from = format!(":{old}\"");
+    let to = format!(":{new}\"");
+    let mut out: String = text
+        .lines()
+        .map(|line| {
+            let key = line.trim_start();
+            if key.starts_with("bind") || key.starts_with("public_url") {
+                line.replace(&from, &to)
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    out
 }
 
 fn config_template(bind_host: &str, port: u16, public_host: &str, kubeconfig: &Path) -> String {
@@ -347,29 +523,6 @@ fn config_template(bind_host: &str, port: u16, public_host: &str, kubeconfig: &P
          kubeconfig = \"{}\"\n",
         kubeconfig.display()
     )
-}
-
-fn check_port(ui: Ui, port: u16) -> anyhow::Result<()> {
-    if service_active() {
-        return Ok(()); // the port is ours
-    }
-    let step = ui.step(format!("Checking port {port}"));
-    match TcpListener::bind(("0.0.0.0", port)) {
-        Ok(listener) => {
-            drop(listener);
-            step.done("free");
-            Ok(())
-        }
-        Err(e) => {
-            step.fail("in use");
-            if let Some(owner) = port_owner(port) {
-                ui.note(&owner);
-            }
-            bail!(
-                "port {port} is already in use ({e}); pick another with `kuben setup --port <port>` (edit {CONFIG_FILE} on an existing install)"
-            )
-        }
-    }
 }
 
 fn start_service(ui: Ui, port: u16) -> anyhow::Result<()> {
@@ -423,7 +576,7 @@ fn open_firewall(ui: Ui, port: u16) {
         }
         return;
     }
-    ui.skip(&label, "no host firewall is active");
+    ui.done(&label, "no host firewall is active");
 }
 
 fn announce(ui: Ui, cfg: &Config, uid: u32, gid: u32, fresh_config: bool, host: &Host) -> anyhow::Result<()> {
@@ -477,7 +630,7 @@ pub fn status() -> anyhow::Result<()> {
     let ui = Ui::new();
     let version = format!("v{}", super::VERSION);
     if !Path::new(UNIT_FILE).exists() {
-        ui.skip(
+        ui.done(
             "kuben.service",
             "not installed on this machine (kuben setup installs it)",
         );
@@ -531,8 +684,10 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         } else {
             "Stop and remove kuben.service? (data and configuration stay)".to_owned()
         };
-        if !confirm(&what)? {
-            bail!("aborted");
+        match ui.confirm(&what) {
+            Some(true) => {}
+            Some(false) => bail!("aborted"),
+            None => bail!("no terminal to confirm on; pass --yes"),
         }
     }
     let step = ui.step("Stopping kuben.service");
@@ -542,7 +697,7 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         run(&["systemctl", "daemon-reload"])?;
         step.done("removed");
     } else {
-        step.skip("not installed");
+        step.done("not installed");
     }
     if opts.purge {
         let step = ui.step("Deleting data and configuration");
@@ -747,7 +902,7 @@ fn port_owner(port: u16) -> Option<String> {
         .split(',')
         .next()?
         .trim_matches(|c| c == '(' || c == '"');
-    Some(format!("port {port} is used by {process}"))
+    Some(process.to_owned())
 }
 
 /// Run a command; on failure, its last lines are the error.
@@ -778,17 +933,6 @@ fn tail(stdout: &[u8], stderr: &[u8], lines: usize) -> String {
         .copied()
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn confirm(question: &str) -> anyhow::Result<bool> {
-    use std::io::IsTerminal as _;
-    if !std::io::stdin().is_terminal() {
-        bail!("{question} — no terminal to ask; pass --yes");
-    }
-    eprint!("{question} [y/N] ");
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    Ok(matches!(answer.trim(), "y" | "Y" | "yes"))
 }
 
 /// A plain HTTP/1.1 GET on localhost, without an HTTP client dependency.
@@ -873,6 +1017,39 @@ mod tests {
         assert!(unit.contains("ExecStart=/usr/local/bin/kuben serve"));
         assert!(unit.contains("User=kuben"));
         assert!(unit.contains("StateDirectory=kuben"));
+    }
+
+    #[test]
+    fn parses_port_answers() {
+        assert_eq!(parse_port(" 3001 "), Some(3001));
+        assert_eq!(parse_port("0"), None);
+        assert_eq!(parse_port("70000"), None);
+        assert_eq!(parse_port("three"), None);
+    }
+
+    #[test]
+    fn reads_and_changes_the_configured_port() {
+        let text = config_template(
+            "0.0.0.0",
+            3000,
+            "203.0.113.7",
+            Path::new("/var/lib/kuben/kubeconfig"),
+        );
+        assert_eq!(config_port(&text), Some(3000), "bind, not metrics_bind");
+        let moved = with_port(&text, 3000, 3001);
+        assert_eq!(config_port(&moved), Some(3001));
+        assert!(
+            moved.contains("public_url = \"http://203.0.113.7:3001\""),
+            "{moved}"
+        );
+        assert!(
+            moved.contains("metrics_bind = \"127.0.0.1:9090\""),
+            "other ports stay"
+        );
+        assert!(moved.contains("# Written by `kuben setup`"), "comments stay");
+        assert!(moved.ends_with('\n'));
+        assert_eq!(config_port("[server]\nbind=\"127.0.0.1:8080\"\n"), Some(8080));
+        assert_eq!(config_port("[server]\n"), None);
     }
 
     #[test]
