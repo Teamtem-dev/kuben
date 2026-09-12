@@ -55,6 +55,7 @@ FROM=${FROM#v}
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
 for c in curl jq helm; do need "$c"; done
+helm_version=$(helm version --short 2>/dev/null || echo unknown)
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/kuben-smoke.XXXXXX")
 # A stranger has no registry credentials: Helm, and the Docker config it falls
@@ -62,9 +63,15 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/kuben-smoke.XXXXXX")
 export HELM_CONFIG_HOME="$work/helm/config" HELM_CACHE_HOME="$work/helm/cache" \
   HELM_DATA_HOME="$work/helm/data" DOCKER_CONFIG="$work/docker"
 
-# In GitHub Actions a failure also becomes an annotation on the run page.
+# In GitHub Actions a failure also becomes an annotation on the run page: the
+# public checks API shows it, while the job log needs a signed-in user.
 annotate() {
-  if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::error title=smoke: ${current:-setup}::$*"; fi
+  if [[ -n ${GITHUB_ACTIONS:-} ]]; then
+    local msg=$* pct='%' pct_enc='%25' nl=$'\n' nl_enc='%0A'
+    msg=${msg//$pct/$pct_enc}
+    msg=${msg//$nl/$nl_enc}
+    echo "::error title=smoke: ${current:-setup}::${msg}"
+  fi
 }
 step() {
   current=$*
@@ -89,6 +96,9 @@ cleanup() {
   if ((status != 0)); then
     if [[ -z ${failed:-} ]]; then annotate "exit ${status}"; fi
     if [[ -n ${cluster:-} ]]; then
+      annotate "helm ${helm_version}; pods and the latest events in ${NS}:
+$(kubectl -n "$NS" get pods -o wide 2>&1 | tail -n 5)
+$(kubectl -n "$NS" get events --sort-by=.lastTimestamp 2>&1 | tail -n 8)"
       echo "---- diagnostics ----"
       helm -n "$NS" status "$RELEASE" 2>/dev/null || true
       kubectl -n "$NS" get all,pvc 2>/dev/null || true
@@ -116,6 +126,20 @@ eventually() {
     sleep 1
   done
   fail "timed out after ${timeout}s waiting for: $what"
+}
+
+# run <description> <command...>: run a command and, when it fails, put the
+# end of its output into the failure (and so into the annotation).
+run() {
+  local what=$1
+  shift
+  if "$@" >"$work/cmd.log" 2>&1; then
+    cat "$work/cmd.log"
+    return 0
+  fi
+  cat "$work/cmd.log"
+  fail "${what} failed:
+$(tail -n 12 "$work/cmd.log")"
 }
 
 # api <method> <path> [json] → HTTP status; the body lands in $work/body.
@@ -167,7 +191,7 @@ verify() {
   helm -n "$NS" list --filter "^${RELEASE}\$" -o json >"$work/release.json"
   jq -e --arg v "$v" '.[0] | .status == "deployed" and .chart == "kuben-\($v)" and .app_version == $v' \
     "$work/release.json" >/dev/null || fail "helm release: $(cat "$work/release.json")"
-  kubectl -n "$NS" rollout status "deploy/${RELEASE}" --timeout=300s
+  run "rollout of deploy/${RELEASE}" kubectl -n "$NS" rollout status "deploy/${RELEASE}" --timeout=300s
   image=$(kubectl -n "$NS" get "deploy/${RELEASE}" -o jsonpath='{.spec.template.spec.containers[0].image}')
   [[ $image == "${REGISTRY}/${IMAGE_REPO}:${v}" ]] || fail "image ${image}, want ${REGISTRY}/${IMAGE_REPO}:${v}"
   restarts=$(kubectl -n "$NS" get pods -l "app.kubernetes.io/instance=${RELEASE}" \
@@ -265,7 +289,7 @@ args=(install "$RELEASE" "$CHART" --namespace "$NS" --create-namespace --wait --
 # The README's command has no --version: helm then picks the newest stable chart.
 if [[ -n $pinned || -n $FROM ]]; then args+=(--version "${FROM:-$VERSION}"); fi
 installed=1
-helm "${args[@]}"
+run "helm install" helm "${args[@]}"
 verify "${FROM:-$VERSION}"
 
 step "project → environment → app through the in-cluster controller"
@@ -278,7 +302,7 @@ eventually 90 "environment ready" bash -c "kubectl get environment ${P}-dev -o j
 eventually 30 "environment visible" curl -fsS -b "$work/cookies" "$BASE/projects/${P}/environments/dev"
 expect 201 POST "$APP" "{\"name\":\"web\",\"image\":\"${APP_IMAGE}\",\"port\":8080,\"health_check_path\":\"/\"}"
 eventually 60 "deployment created" kubectl -n "$APP_NS" get deployment web-web
-kubectl -n "$APP_NS" rollout status deployment/web-web --timeout=240s
+run "rollout of the test app" kubectl -n "$APP_NS" rollout status deployment/web-web --timeout=240s
 eventually 90 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e .app.ready"
 kubectl -n "$APP_NS" port-forward svc/web "${APP_PORT}:80" >"$work/app-forward.log" 2>&1 &
 app_fwd=$!
@@ -289,7 +313,7 @@ app_fwd=
 if [[ -n $FROM ]]; then
   step "helm upgrade ${FROM} → ${VERSION}"
   stop_forward
-  helm upgrade "$RELEASE" "$CHART" --namespace "$NS" --version "$VERSION" --wait --timeout 6m
+  run "helm upgrade" helm upgrade "$RELEASE" "$CHART" --namespace "$NS" --version "$VERSION" --wait --timeout 6m
   # The login inside verify already proves the database survived: a lost
   # volume would bootstrap a different admin password.
   verify "$VERSION"
@@ -310,7 +334,7 @@ if [[ ${KUBEN_SMOKE_KEEP:-} == 1 ]]; then
 else
   step "helm uninstall"
   stop_forward
-  helm uninstall "$RELEASE" --namespace "$NS" --wait --timeout 3m
+  run "helm uninstall" helm uninstall "$RELEASE" --namespace "$NS" --wait --timeout 3m
   eventually 90 "kuben pods gone" bash -c "[[ -z \$(kubectl -n $NS get pods -l app.kubernetes.io/instance=${RELEASE} -o name) ]]"
   # The chart promises that uninstalling never deletes the user and audit database.
   kubectl -n "$NS" get pvc "${RELEASE}-data" >/dev/null || fail "helm uninstall deleted the database volume"
