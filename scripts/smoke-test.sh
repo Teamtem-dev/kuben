@@ -288,6 +288,12 @@ step "helm install from ${CHART}, no registry login"
 args=(install "$RELEASE" "$CHART" --namespace "$NS" --create-namespace --wait --timeout 6m)
 # The README's command has no --version: helm then picks the newest stable chart.
 if [[ -n $pinned || -n $FROM ]]; then args+=(--version "${FROM:-$VERSION}"); fi
+# Charts up to 1.0.3 render `KubenConfig.spec: null` with default values, which
+# the API server rejects; an upgrade test starts them without the KubenConfig,
+# and the upgrade then creates it.
+if [[ -n $FROM && $(printf '%s\n' "$FROM" 1.0.3 | sort -V | head -n 1) == "$FROM" ]]; then
+  args+=(--set platform.create=false)
+fi
 installed=1
 run "helm install" helm "${args[@]}"
 verify "${FROM:-$VERSION}"

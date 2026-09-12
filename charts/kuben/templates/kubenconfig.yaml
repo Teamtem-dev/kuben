@@ -15,14 +15,12 @@ metadata:
     # controller would reconcile every App against empty platform settings
     # and remove their public routes. A re-install adopts it again.
     helm.sh/resource-policy: keep
+{{- /* Built as a map: with no platform settings an empty `spec:` would be
+  null, which the CRD rejects, so the default install must render `{}`. */}}
+{{- $spec := dict }}
+{{- with .Values.platform.baseDomain }}{{ $_ := set $spec "baseDomain" . }}{{ end }}
+{{- with .Values.platform.gateway }}{{ $_ := set $spec "gateway" . }}{{ end }}
+{{- with .Values.platform.clusterIssuer }}{{ $_ := set $spec "clusterIssuer" . }}{{ end }}
 spec:
-  {{- with .Values.platform.baseDomain }}
-  baseDomain: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.platform.gateway }}
-  gateway: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.platform.clusterIssuer }}
-  clusterIssuer: {{ . | quote }}
-  {{- end }}
+  {{- toYaml $spec | nindent 2 }}
 {{- end }}
