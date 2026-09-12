@@ -77,6 +77,9 @@
   --k-surface-strong: rgb(255 255 255 / 8%);
   --k-line: rgb(255 255 255 / 7%);
   --k-glow: rgb(246 139 18 / 22%);
+  /* Menus and sheets: nearly opaque, a step lighter than the page. */
+  --k-panel-bg: rgb(21 21 25 / 96%);
+  --k-panel-shadow: 0 24px 60px -18px rgb(0 0 0 / 70%), 0 0 0 1px rgb(255 255 255 / 3%) inset;
 
   --sl-shadow-sm: none;
   --sl-shadow-md: 0 12px 40px -20px rgb(0 0 0 / 60%);
@@ -121,6 +124,8 @@
   --k-surface-strong: rgb(20 16 8 / 8%);
   --k-line: rgb(20 16 8 / 8%);
   --k-glow: rgb(246 139 18 / 18%);
+  --k-panel-bg: rgb(255 255 255 / 96%);
+  --k-panel-shadow: 0 24px 60px -22px rgb(40 30 10 / 30%);
 
   --sl-shadow-md: 0 12px 40px -22px rgb(40 30 10 / 25%);
   --sl-shadow-lg: 0 30px 80px -30px rgb(40 30 10 / 30%);
@@ -244,13 +249,21 @@ body {
   background-clip: text;
 }
 
-/* ---------- header (glass) ---------- */
+/* ---------- header: transparent at the top, glass with a line once scrolled ---------- */
 
 .page > header.header {
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+:root[data-scrolled] .page > header.header {
   background: var(--sl-color-bg-nav);
   -webkit-backdrop-filter: blur(var(--k-glass-blur)) saturate(1.4);
   backdrop-filter: blur(var(--k-glass-blur)) saturate(1.4);
-  border-bottom: 1px solid var(--sl-color-hairline-shade);
+  border-bottom-color: var(--sl-color-hairline-shade);
 }
 
 /* Search trigger as a soft pill. */
@@ -380,6 +393,7 @@ main:has(.k-landing, .k-page) > .content-panel:first-child {
 
 main:has(.k-landing, .k-page) > .content-panel {
   border-top: 0;
+  padding-top: 0;
 }
 
 .sl-markdown-content code:not(:where(.not-content *)) {
