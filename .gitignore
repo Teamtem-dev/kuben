@@ -14,6 +14,7 @@ apps/console/test-results
 apps/console/playwright-report
 apps/site/dist
 apps/site/.astro
+apps/site/.wrangler
 
 # Local dev state
 /.dev

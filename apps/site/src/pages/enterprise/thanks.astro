@@ -1,0 +1,18 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Thank you',
+    description: 'Your message to the Kuben team has been received.',
+    template: 'splash',
+    tableOfContents: false,
+    pagefind: false,
+    head: [{ tag: 'meta', attrs: { name: 'robots', content: 'noindex' } }],
+  }}
+  hasSidebar={false}
+>
+  <p>Thank you. Your message is on its way, and we will reply to the email address you gave us.</p>
+  <p><a href="/docs/">Read the docs</a> · <a href="/">Back to the home page</a></p>
+</StarlightPage>
