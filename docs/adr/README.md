@@ -21,7 +21,7 @@ also records the reasoning. New decisions get their own file here
 | 009 | BuildKit + Railpack/CNB, deploy by digest, immutable releases | superseded by 016 | — |
 | 010 | CEL and ValidatingAdmissionPolicy instead of admission webhooks | decided | CRD schemas in `kuben-crd` |
 | 011 | React 19 + TanStack for the UI | decided | `apps/console` |
-| 012 | Licensing and a clean-room boundary to the system being replaced | decided | — |
+| 012 | [Licensing and a clean-room boundary to the system being replaced](0012-licensing-clean-room.md) | decided | `routes/templates.rs` (entries written from upstream image docs) |
 | 013 | One runtime in phase 0; a second one only behind `runtime.bulkhead` | decided | `kuben::serve` |
 | 014 | One SSE stream per browser tab; WebSocket only for terminals | decided | `kuben_api::stream` |
 | 015 | Data ownership: SQL references CRDs only by `uid` | decided | `kuben-store`, Invariant I-17 |

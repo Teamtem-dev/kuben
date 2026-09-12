@@ -19,7 +19,7 @@ use kuben_core::{Error, perm::Perm};
 use kuben_crd::{
     AppSpec, EnvVar, HealthCheck, KeyRef, Process, Protocol, Replicas, Runtime, Source, Volume, labels,
 };
-use rand::{Rng, distr::Alphanumeric};
+use rand::{RngExt, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
