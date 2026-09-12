@@ -59,27 +59,15 @@ With PostgreSQL, `replicaCount` can be raised:
 
 ### Running the binary on a server
 
-The one-line installer puts a single `kuben` binary on a machine. It manages a cluster through a kubeconfig and keeps its own data in SQLite.
+One command on a fresh Linux server, as root:
 
-1. Get a cluster to manage. On a single server, k3s is the quickest. It writes its kubeconfig for root only, so give your user a copy:
-   ```bash
-   curl -sfL https://get.k3s.io | sh -
-   ```
-   ```bash
-   sudo install -D -m 600 -o "$USER" /etc/rancher/k3s/k3s.yaml ~/.kube/config && export KUBECONFIG=~/.kube/config
-   ```
-2. Check the prerequisites:
-   ```bash
-   kuben doctor
-   ```
-   The `database` line shows where the data lives: `~/.local/state/kuben/kuben.db` by default (systemd's state directory under `StateDirectory=`), or `/data/kuben.db` on a server that already has `/data`. To keep it elsewhere, set `KUBEN_DATABASE__URL`. Running Kuben as a systemd service is described in the [binary guide](https://kuben.teamtem.com/docs/getting-started/binary/#keep-it-running).
-3. Start Kuben. The first start prints the generated admin password once, in this terminal (never in the log):
-   ```bash
-   kuben serve
-   ```
-4. Open the UI at `http://<server-ip>:8080`. With `KUBEN_SECURITY__COOKIE_SECURE=auto` (the default) the session cookie becomes `Secure` once `KUBEN_SERVER__PUBLIC_URL` is an `https://` address; put the console behind HTTPS before inviting a team.
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | sh
+```
 
-For production, prefer the Helm install above: it runs Kuben inside the cluster with probes, RBAC and a persistent volume.
+It installs the binary and runs `kuben setup`: k3s when there is no cluster, the system user `kuben`, `/etc/kuben/config.toml`, `kuben.service`, the firewall, and it prints the link to the setup page (with a token, valid 30 minutes; `kuben setup-token` prints a fresh one), where the admin account is created. The same command upgrades; `kuben status` and `kuben uninstall [--purge]` complete the set. Everything it does, the options (`--port`, `--kubeconfig`, `--no-k3s`, `--bind-local`) and the manual alternative are in the [server guide](https://kuben.teamtem.com/docs/getting-started/binary/).
+
+Until the console has an `https://` `public_url` the session cookie is not `Secure` (`cookie_secure = auto`), so `http://<ip>:3000` signs in; put the console behind TLS before inviting a team. For production inside an existing cluster, prefer the Helm install above.
 
 ## 3. First sign-in
 

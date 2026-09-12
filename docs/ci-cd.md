@@ -188,7 +188,7 @@ curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/scripts/smok
 ## 6. `install.sh`
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | sh
+curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ```
 
 On a Linux server with systemd, as root, the script ends by running `kuben setup` (k3s if needed, the service user, `/etc/kuben/config.toml`, `kuben.service`, the firewall, the setup link); `--binary-only` skips that, `--uninstall` runs `kuben uninstall`, and `--port`, `--kubeconfig`, `--no-k3s`, `--bind-local`, `--yes` go through to `kuben setup`. Elsewhere it installs the binary only.
