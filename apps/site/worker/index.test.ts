@@ -70,7 +70,11 @@ describe('POST /api/contact', () => {
     expect(entry.ttl).toBe(180 * 24 * 60 * 60)
     expect(entry.metadata).toEqual({ email: 'ada@acme.example', company: 'Acme', topic: 'rollout' })
     const record = JSON.parse(entry.value)
-    expect(record).toMatchObject({ name: 'Ada Tester', email: 'ada@acme.example', topicLabel: 'Production rollout' })
+    expect(record).toMatchObject({
+      name: 'Ada Tester',
+      email: 'ada@acme.example',
+      topicLabel: 'Production rollout',
+    })
     const everything = JSON.stringify([...kv.store.entries()])
     expect(everything).not.toContain(IP)
   })
@@ -87,7 +91,11 @@ describe('POST /api/contact', () => {
   test('rejects invalid fields with the list of fields', async () => {
     const res = await call(JSON.stringify({ name: '', email: 'nope', topic: 'x', message: 'short' }))
     expect(res.status).toBe(422)
-    expect(await res.json()).toEqual({ ok: false, error: 'invalid', fields: ['name', 'email', 'topic', 'message'] })
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: 'invalid',
+      fields: ['name', 'email', 'topic', 'message'],
+    })
     expect(kv.leads()).toHaveLength(0)
   })
 
@@ -113,7 +121,9 @@ describe('POST /api/contact', () => {
   })
 
   test('redirects an invalid form post back to the form with the reason', async () => {
-    const res = await call(new URLSearchParams({ name: 'x' }).toString(), { type: 'application/x-www-form-urlencoded' })
+    const res = await call(new URLSearchParams({ name: 'x' }).toString(), {
+      type: 'application/x-www-form-urlencoded',
+    })
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/enterprise/?error=invalid')
   })
