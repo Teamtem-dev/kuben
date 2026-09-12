@@ -31,10 +31,32 @@ for c in kubectl curl jq; do need "$c"; done
 [[ -x $BIN ]] || { echo "build the binary first: cargo build -p kuben ($BIN)" >&2; exit 2; }
 
 work=$(mktemp -d)
+
+# In GitHub Actions a failure also becomes an annotation: the PR page and the
+# public checks API show it without opening the sign-in-only job log.
+annotate() {
+  if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::error title=e2e: ${current:-setup}::$*"; fi
+}
+step() {
+  current=$*
+  printf '\n\033[1m==> %s\033[0m\n' "$*"
+}
+fail() {
+  echo "FAIL: $*" >&2
+  annotate "$*"
+  failed=1
+  exit 1
+}
+
 cleanup() {
   status=$?
   if [[ -n ${pid:-} ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   if ((status != 0)); then
+    if [[ -z ${failed:-} ]]; then
+      # A command failed under `set -e` (e.g. a rollout timeout): name the step
+      # and attach the end of the server log, newlines encoded for the annotation.
+      annotate "exit ${status}; last kuben log lines:%0A$(tail -n 15 "$work/kuben.log" 2>/dev/null | sed 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')"
+    fi
     echo "---- kuben log (last 80 lines) ----"
     tail -n 80 "$work/kuben.log" || true
     kubectl get projects,environments,apps -A 2>/dev/null || true
@@ -46,9 +68,6 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
-
-step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # eventually <seconds> <description> <command...>
 eventually() {
