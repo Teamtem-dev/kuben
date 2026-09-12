@@ -83,7 +83,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-components: rustfmt
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-components: clippy
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-key: ${{ matrix.name }}
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
@@ -177,7 +177,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: "1.94"
       # RUSTUP_TOOLCHAIN beats rust-toolchain.toml (which tracks stable) and is
@@ -211,7 +211,7 @@ jobs:
         with:
           persist-credentials: false
       # turbo reads the Cargo workspace on every run, so even web-only jobs need Rust.
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-key: web
@@ -227,7 +227,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-save: "false"
@@ -277,7 +277,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-key: e2e
@@ -300,7 +300,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-targets: x86_64-unknown-linux-musl
@@ -317,12 +317,32 @@ jobs:
       - name: Smoke test
         run: target/$TARGET/release/kuben --version
 
+  # Static analysis of the workflows and the setup action: template injection,
+  # excessive permissions, cache poisoning, impostor or unpinned actions. It
+  # takes seconds, so it runs on every change instead of joining a group.
+  zizmor:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: zizmor@1.30.1
+      # The token enables the online audits (impostor commits, known-vulnerable
+      # actions, ref confusion). Findings become annotations and fail the job.
+      - run: zizmor --format=github --no-progress .
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   # Single required check for branch protection. Jobs skipped by change
   # detection count as passed; everything else must succeed.
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

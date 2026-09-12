@@ -72,7 +72,7 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.tag }}
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
       # The package scripts directly, not turbo: a release never restores
       # anything from a cache, and the SPA needs no Rust toolchain.
       - name: Build and check the size budget
@@ -114,6 +114,8 @@ jobs:
       # poisoned cache can never reach a published artifact.
       - if: matrix.zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          use-cache: false
       - if: matrix.zig
         uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
         with:
