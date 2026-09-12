@@ -9,7 +9,8 @@
     "build": "bun --bun ./node_modules/.bin/astro build",
     "preview": "bun --bun ./node_modules/.bin/astro preview",
     "check": "bun --bun ./node_modules/.bin/astro check",
-    "og": "bun scripts/og.ts"
+    "og": "bun scripts/og.ts",
+    "deploy": "bun --bun ./node_modules/.bin/wrangler deploy"
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "catalog:",
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@astrojs/check": "catalog:",
     "starlight-links-validator": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
   }
 }

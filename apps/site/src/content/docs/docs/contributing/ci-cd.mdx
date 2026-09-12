@@ -82,5 +82,5 @@ Design decisions worth knowing:
 Advisories are published after code is merged, so a lockfile that passed yesterday can be vulnerable today. A scheduled workflow runs daily: `cargo deny check advisories` on `main`, and `trivy image` on the published `latest` image for HIGH and CRITICAL vulnerabilities with a fix available. A failure opens (or comments on) one issue, *Scheduled security check failed*. The fix is to update the dependency, merge, and cut a patch release so the image follows.
 
 <Aside type="note" title="This website">
-`apps/site` is built in the **Web** job like any other package and deployed to Cloudflare Pages from `main` by its own workflow. Internal links are validated at build time, so a renamed page fails the build instead of shipping a 404.
+`apps/site` is built in the **Web** job like any other package and deployed from `main` to a Cloudflare Worker with static assets by its own workflow. Internal links are validated at build time, so a renamed page fails the build instead of shipping a 404.
 </Aside>

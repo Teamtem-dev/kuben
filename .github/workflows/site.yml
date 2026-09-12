@@ -1,13 +1,15 @@
 name: Site
 
-# kuben.teamtem.com: apps/site (Astro + Starlight) on Cloudflare Pages.
+# kuben.teamtem.com: apps/site (Astro + Starlight) on Cloudflare Workers
+# static assets (the Worker `kuben`, configured in apps/site/wrangler.jsonc).
 # Pull requests only build (the Web job in ci.yml also builds it); pushes to
 # main deploy. The REST API reference is rendered from the committed OpenAPI
 # spec, so a change to it redeploys the site too.
 #
 # Deploying needs the repository variable CLOUDFLARE_ACCOUNT_ID and the secret
-# CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit). Until the variable is set the
-# deploy job is skipped, so main stays green before Cloudflare is configured.
+# CLOUDFLARE_API_TOKEN (the "Edit Cloudflare Workers" token template, limited to
+# this account and the teamtem.com zone). Until the variable is set the deploy
+# job is skipped, so main stays green before Cloudflare is configured.
 
 on:
   push:
@@ -58,7 +60,7 @@ jobs:
           retention-days: 7
 
   deploy:
-    name: Deploy to Cloudflare Pages
+    name: Deploy to Cloudflare Workers
     needs: build
     if: github.event_name != 'pull_request' && vars.CLOUDFLARE_ACCOUNT_ID != ''
     runs-on: ubuntu-24.04
@@ -67,14 +69,25 @@ jobs:
       name: production
       url: https://kuben.teamtem.com
     steps:
+      # For apps/site/wrangler.jsonc, the lockfile and the Bun version.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: site
-          path: dist
-      # The Pages project `kuben` must exist and have kuben.teamtem.com as a
-      # custom domain.
-      - uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=kuben --branch=main --commit-dirty=true
+          path: apps/site/dist
+      # Wrangler is a pinned devDependency of @kuben/site (bun.lock), run by
+      # path on Bun like every other tool here; no third-party action holds the
+      # API token. `deploy` uploads dist/ to the Worker `kuben` and keeps its
+      # custom domain kuben.teamtem.com in sync.
+      - run: bun install --frozen-lockfile
+      - name: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: bun run --cwd apps/site deploy
