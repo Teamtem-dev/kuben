@@ -335,3 +335,18 @@ jobs:
         run: |
           bash install.sh --dir "$RUNNER_TEMP/bin" --no-sudo
           "$RUNNER_TEMP/bin/kuben" --version | tee /dev/stderr | grep -F "$VERSION"
+
+  # The published chart and image on a real cluster, pulled the way users pull
+  # them (no registry login), upgrading from the previous stable chart.
+  smoke:
+    name: Smoke test
+    needs: [plan, publish, chart]
+    permissions:
+      contents: read
+      # Only smoke.yml's failure report uses it, and only on scheduled runs;
+      # a called workflow cannot hold more than its caller grants.
+      issues: write
+    uses: $/.github/workflows/smoke.yml
+    with:
+      version: ${{ needs.plan.outputs.version }}
+      upgrade_from: previous

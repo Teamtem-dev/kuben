@@ -1,0 +1,90 @@
+name: Smoke
+
+# What users run, on a fresh machine: the one-line installer from main, then
+# the published chart and image pulled from GHCR without logging in, on a real
+# k3s cluster (scripts/smoke-test.sh). Everything else in CI builds from
+# source; this is the only check of what was actually published, including
+# that the packages are public.
+#
+# Runs after every release (the new version, upgraded from the previous stable
+# chart), daily against the latest release (install.sh on main, the registry
+# and k3s can all change without a release), and on demand.
+
+on:
+  schedule:
+    - cron: "43 6 * * *" # daily, 06:43 UTC
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to test, e.g. 1.0.2 (empty = the latest stable, as users get it)
+        required: false
+        default: ""
+      upgrade_from:
+        description: Chart version to install first, then upgrade from (`previous` = the newest older stable; empty = no upgrade)
+        required: false
+        default: ""
+  workflow_call:
+    inputs:
+      version:
+        description: Release to test, e.g. 1.0.2
+        type: string
+        required: true
+      upgrade_from:
+        description: Chart version to install first, then upgrade from (`previous` = the newest older stable)
+        type: string
+        default: previous
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  smoke:
+    name: Smoke (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, os: ubuntu-24.04 }
+          - { arch: arm64, os: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: Installer, chart and image as published, on k3s
+        env:
+          KUBEN_SMOKE_VERSION: ${{ inputs.version }}
+          KUBEN_SMOKE_UPGRADE_FROM: ${{ inputs.upgrade_from }}
+          KUBEN_SMOKE_K3S: "1"
+        run: scripts/smoke-test.sh
+
+  # A failed scheduled run only emails whoever last edited the cron line.
+  # One open issue makes it visible to everyone; later failures comment on it.
+  report:
+    name: Report failure
+    needs: [smoke]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled smoke test failed"
+          body="The daily smoke test of the published installer, chart and image failed: ${RUN_URL}"
+          number=$(gh issue list --state open --search "\"${title}\" in:title" --json number --jq '.[0].number // empty')
+          if [[ -n $number ]]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
