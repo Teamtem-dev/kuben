@@ -182,7 +182,7 @@
     "kuben#build:release": {
       "description": "Release binary with the web UI embedded.",
       "command": ["cargo", "build", "--package=kuben", "--release", "--locked", "--features=embed-ui"],
-      "dependsOn": ["@kuben/web#build"],
+      "dependsOn": ["@kuben/console#build"],
       "cache": false
     },
     "kuben#size": {

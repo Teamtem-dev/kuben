@@ -24,7 +24,7 @@ pub async fn fallback(uri: Uri) -> Response {
 #[cfg(feature = "embed-ui")]
 fn serve_spa(path: &str) -> Response {
     #[derive(rust_embed::RustEmbed)]
-    #[folder = "../../apps/web/dist/"]
+    #[folder = "../../apps/console/dist/"]
     #[exclude = "*.map"]
     struct Assets;
 

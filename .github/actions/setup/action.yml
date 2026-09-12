@@ -35,12 +35,21 @@ runs:
     - name: Install JS dependencies
       shell: bash
       run: bun install --frozen-lockfile
+    # rustup ships with every GitHub-hosted runner: no third-party action on
+    # the toolchain path, and no branch pin (`@master`) that drifts.
     - if: inputs.rust-toolchain != ''
-      uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
-      with:
-        toolchain: ${{ inputs.rust-toolchain }}
-        components: ${{ inputs.rust-components }}
-        targets: ${{ inputs.rust-targets }}
+      name: Install Rust
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        COMPONENTS: ${{ inputs.rust-components }}
+        TARGETS: ${{ inputs.rust-targets }}
+      run: |
+        args=(--profile minimal --no-self-update)
+        if [[ -n $COMPONENTS ]]; then args+=(--component "$COMPONENTS"); fi
+        if [[ -n $TARGETS ]]; then args+=(--target "$TARGETS"); fi
+        rustup toolchain install "$TOOLCHAIN" "${args[@]}"
+        rustup default "$TOOLCHAIN"
     - if: inputs.rust-toolchain != '' && inputs.rust-cache == 'true'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:

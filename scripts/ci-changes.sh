@@ -46,7 +46,7 @@ else
       scripts=true
       ;;
     apps/* | packages/* | biome.json | tsconfig.base.json) web=true ;;
-    scripts/* | install.sh | charts/* | deploy/* | Dockerfile) scripts=true ;;
+    scripts/* | install.sh | charts/* | deploy/* | Dockerfile | .trivyignore.yaml) scripts=true ;;
     *) ;; # docs, Markdown, license: no checks needed
     esac
   done

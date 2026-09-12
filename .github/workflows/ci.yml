@@ -83,7 +83,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-components: rustfmt
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-components: clippy
@@ -126,7 +126,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-key: ${{ matrix.name }}
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
@@ -177,7 +177,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: "1.94"
       # RUSTUP_TOOLCHAIN beats rust-toolchain.toml (which tracks stable) and is
@@ -211,7 +211,7 @@ jobs:
         with:
           persist-credentials: false
       # turbo reads the Cargo workspace on every run, so even web-only jobs need Rust.
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-key: web
@@ -227,7 +227,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-save: "false"
@@ -266,6 +266,13 @@ jobs:
           helm template kuben charts/kuben --kube-version 1.32.0 \
             --set route.enabled=true --set route.hostname=kuben.example.com \
             --set route.gateway.name=gw --set platform.gateway=infra/gw >/dev/null
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: trivy@0.74.0
+      # RBAC and pod security of what users install; exceptions are justified
+      # in .trivyignore.yaml.
+      - name: Helm chart misconfigurations (Trivy)
+        run: scripts/scan-chart.sh
 
   e2e:
     name: End-to-end (kind)
@@ -277,7 +284,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-cache-key: e2e
@@ -300,29 +307,53 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup
+      - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
           rust-targets: x86_64-unknown-linux-musl
           rust-cache-key: musl-release
       # The budget is measured on the shipped binary, UI included. The SPA is
       # built here (seconds) so this job never waits for the web job.
-      - run: bun turbo run @kuben/web#build
+      - run: bun turbo run @kuben/console#build
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
         with:
-          tool: cargo-zigbuild
-      - run: cargo zigbuild -p kuben --release --locked --features embed-ui --target "$TARGET"
+          tool: cargo-zigbuild,cargo-auditable@0.7.5,trivy@0.74.0
+      # Exactly like the release: static musl, UI and dependency list embedded.
+      - run: cargo auditable zigbuild -p kuben --release --locked --features embed-ui --target "$TARGET"
       - run: scripts/check-budgets.sh binary "target/$TARGET/release/kuben"
       - name: Smoke test
         run: target/$TARGET/release/kuben --version
+      # The dependency list must be present and free of fixed HIGH/CRITICAL issues.
+      - name: Scan the shipped binary (Trivy)
+        run: scripts/scan-binary.sh "target/$TARGET/release/kuben"
+
+  # Static analysis of the workflows and the setup action: template injection,
+  # excessive permissions, cache poisoning, impostor or unpinned actions. It
+  # takes seconds, so it runs on every change instead of joining a group.
+  zizmor:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: zizmor@1.30.1
+      # The token enables the online audits (impostor commits, known-vulnerable
+      # actions, ref confusion). Findings become annotations and fail the job.
+      - run: zizmor --format=github --no-progress .
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   # Single required check for branch protection. Jobs skipped by change
   # detection count as passed; everything else must succeed.
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

@@ -10,13 +10,13 @@ WORKDIR /src
 ENV BUN_INSTALL_CACHE_DIR=/cache/bun
 # Manifests first, so the install layer is reused until a dependency changes.
 COPY package.json bun.lock bunfig.toml ./
-COPY apps/web/package.json apps/web/
+COPY apps/console/package.json apps/console/
 COPY packages/api-client/package.json packages/api-client/
 RUN --mount=type=cache,id=bun-install,target=/cache/bun bun install --frozen-lockfile
 COPY tsconfig.base.json ./
 COPY packages/api-client packages/api-client
-COPY apps/web apps/web
-RUN cd apps/web && bun run build
+COPY apps/console apps/console
+RUN cd apps/console && bun run build
 
 FROM --platform=$BUILDPLATFORM rust:1-bookworm AS chef
 WORKDIR /src
@@ -44,7 +44,7 @@ COPY --from=plan /src/recipe.json .
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     cargo chef cook --release --zigbuild --target "$(cat /target)" --recipe-path recipe.json
 COPY . .
-COPY --from=web /src/apps/web/dist apps/web/dist
+COPY --from=web /src/apps/console/dist apps/console/dist
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     cargo zigbuild -p kuben --release --locked --features embed-ui --target "$(cat /target)" \
  && cp "target/$(cat /target)/release/kuben" /kuben

@@ -21,8 +21,8 @@ is generated from a Rust binary, and the release binary embeds the web build.
   stands for the whole Cargo workspace. Cargo still schedules and caches the
   Rust compilation itself.
 - **The two cross-language edges are explicit tasks.** `kuben-api#gen` →
-  `@kuben/api-client#gen`, and `@kuben/web#build` → `kuben#build:release`.
-  `@kuben/web#dev` starts `kuben#dev` as a sidecar.
+  `@kuben/api-client#gen`, and `@kuben/console#build` → `kuben#build:release`.
+  `@kuben/console#dev` starts `kuben#dev` as a sidecar.
 - **Bun 1.4 is the package manager, the JS tool runtime and the test runner.**
   `bun.lock` replaces `pnpm-lock.yaml`. The version catalog moves to
   `workspaces.catalog` in `package.json`. The isolated linker keeps pnpm's
