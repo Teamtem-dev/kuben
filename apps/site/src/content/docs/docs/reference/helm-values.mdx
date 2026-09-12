@@ -39,7 +39,7 @@ The chart **fails to render** `replicaCount > 1` without a PostgreSQL URL. The P
 | `admin.email` | `admin@kuben.local` | initial admin |
 | `admin.existingSecret` | `""` | Secret with a `password` key. Empty: generated on first start into `kuben-initial-admin`, never logged |
 | `publicUrl` | `""` | e.g. `https://kuben.example.com` |
-| `security.cookieSecure` | `true` | keep true in production |
+| `security.cookieSecure` | `true` | keep `true` in production; `auto` follows `publicUrl` |
 
 The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits behind the Gateway), `KUBEN_KUBE__REQUIRED=true` and `KUBEN_KUBE__LEADER_ELECTION=true`.
 

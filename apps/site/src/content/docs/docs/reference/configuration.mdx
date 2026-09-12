@@ -65,7 +65,7 @@ Without a URL, the binary uses SQLite in the first of: `/data/kuben.db` when `/d
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KUBEN_SECURITY__COOKIE_SECURE` | `true` | `__Host-` cookie with `Secure`. `false` only for local development over HTTP |
+| `KUBEN_SECURITY__COOKIE_SECURE` | `auto` | `Secure` + `__Host-` on the session cookie. `auto`: only when `KUBEN_SERVER__PUBLIC_URL` is `https://`, so a plain-http install signs in and turns `Secure` once a TLS address is set. `true` behind a TLS proxy without a public URL (the chart's default); `false` only for development |
 | `KUBEN_SECURITY__SESSION_TTL_HOURS` | `12` | session lifetime |
 | `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` | `5` | upper bound for a revoked session to stay valid on another replica |
 | `KUBEN_SECURITY__PASSWORD_MIN_LENGTH` | `12` | |

@@ -44,7 +44,7 @@ The values that matter most:
 | `admin.existingSecret` | empty | Secret with a `password` key. Empty: a password is generated on first start into the Secret `kuben-initial-admin`, never logged |
 | `database.url` / `database.existingSecret` | SQLite on a PVC | PostgreSQL. Required for `replicaCount > 1` (the chart fails without it); switches to rolling updates and drops the PVC |
 | `persistence.size` | `1Gi` | the PVC carries `helm.sh/resource-policy: keep` and survives `helm uninstall` |
-| `security.cookieSecure` | `true` | `__Host-` cookie with `Secure`. Only set to false for local development over HTTP |
+| `security.cookieSecure` | `true` | `__Host-` cookie with `Secure`. `auto` follows `publicUrl` (https → Secure); `false` only for local development over HTTP |
 | `platform.*` | empty | the `KubenConfig` singleton: `baseDomain`, `gateway`, `clusterIssuer` |
 | `route.enabled` | `false` | publish Kuben's own console through an `HTTPRoute` on your Gateway |
 

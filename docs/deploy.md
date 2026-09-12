@@ -32,7 +32,7 @@ Important values (`charts/kuben/values.yaml`):
 | `admin.existingSecret` | empty | Secret with a `password` key. If empty, a password is generated on first start and stored in the Secret `kuben-initial-admin`; it is **never** written to the log |
 | `database.url` / `database.existingSecret` | SQLite on a PVC | PostgreSQL. Required for `replicaCount > 1` (the chart **fails** without it); switches to rolling updates and drops the PVC |
 | `persistence.size` | `1Gi` | the PVC carries `helm.sh/resource-policy: keep` and survives `helm uninstall` |
-| `security.cookieSecure` | `true` | `__Host-` cookie with `Secure`. Set to false only for local development over HTTP |
+| `security.cookieSecure` | `true` | `__Host-` cookie with `Secure`. `auto` follows `publicUrl` (https → Secure); `false` only for local development over HTTP |
 | `platform.*` | empty | the `KubenConfig` singleton: `baseDomain`, `gateway`, `clusterIssuer` |
 | `route.enabled` | `false` | publishes Kuben's own UI through an HTTPRoute |
 
@@ -77,11 +77,7 @@ The one-line installer puts a single `kuben` binary on a machine. It manages a c
    ```bash
    kuben serve
    ```
-4. The session cookie is `Secure`, so open the UI over HTTPS, or through an SSH tunnel to `localhost`:
-   ```bash
-   ssh -L 8080:localhost:8080 root@your-server
-   ```
-   Then browse to `http://localhost:8080`. Only for a quick test over plain HTTP, set `KUBEN_SECURITY__COOKIE_SECURE=false`.
+4. Open the UI at `http://<server-ip>:8080`. With `KUBEN_SECURITY__COOKIE_SECURE=auto` (the default) the session cookie becomes `Secure` once `KUBEN_SERVER__PUBLIC_URL` is an `https://` address; put the console behind HTTPS before inviting a team.
 
 For production, prefer the Helm install above: it runs Kuben inside the cluster with probes, RBAC and a persistent volume.
 

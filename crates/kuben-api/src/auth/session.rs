@@ -21,7 +21,7 @@ pub const COOKIE_NAME_DEV: &str = "kuben_session";
 
 #[must_use]
 pub fn cookie_name(cfg: &Config) -> &'static str {
-    if cfg.security.cookie_secure {
+    if cfg.cookie_secure() {
         COOKIE_NAME_SECURE
     } else {
         COOKIE_NAME_DEV
@@ -48,7 +48,7 @@ pub fn build_cookie(cfg: &Config, raw: String) -> Cookie<'static> {
         .http_only(true)
         .same_site(SameSite::Lax)
         .max_age(time_duration_hours(cfg.security.session_ttl_hours));
-    if cfg.security.cookie_secure {
+    if cfg.cookie_secure() {
         b = b.secure(true);
     }
     b.build()
@@ -179,12 +179,24 @@ mod tests {
 
     #[test]
     fn cookie_flags() {
-        let cfg = Config::default();
+        let mut cfg = Config::default();
+        cfg.server.public_url = Some("https://kuben.example.com".into());
         let c = build_cookie(&cfg, "abc".into());
         assert_eq!(c.name(), COOKIE_NAME_SECURE);
         assert_eq!(c.http_only(), Some(true));
         assert_eq!(c.secure(), Some(true));
         assert_eq!(c.same_site(), Some(SameSite::Lax));
         assert_eq!(c.path(), Some("/"));
+    }
+
+    #[test]
+    fn plain_http_install_gets_a_cookie_the_browser_keeps() {
+        // `auto` with no https public URL: the fresh `http://<ip>:3000` install.
+        let cfg = Config::default();
+        let c = build_cookie(&cfg, "abc".into());
+        assert_eq!(c.name(), COOKIE_NAME_DEV);
+        assert_eq!(c.secure(), None);
+        assert_eq!(c.http_only(), Some(true));
+        assert_eq!(removal_cookie(&cfg).name(), COOKIE_NAME_DEV);
     }
 }

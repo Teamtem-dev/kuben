@@ -34,6 +34,7 @@ publicUrl: ""
 
 security:
   # Keep true in production: the session cookie is then `__Host-` + `Secure`.
+  # `auto` follows publicUrl (https → Secure); false only for development.
   cookieSecure: true
 
 # Cluster-wide platform settings (the `KubenConfig` singleton).
