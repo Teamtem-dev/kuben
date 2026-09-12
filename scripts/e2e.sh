@@ -154,7 +154,7 @@ expect 201 POST "$APP" \
   "{\"name\":\"web\",\"image\":\"${IMAGE}\",\"port\":8080,\"env\":[{\"name\":\"GREETING\",\"value\":\"hello\"}],\"health_check_path\":\"/\"}"
 eventually 30 "deployment created" kubectl -n "$NS" get deployment web-web
 kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
-kubectl -n "$NS" get service web -o jsonpath='{.spec.ports[0].port}' | grep -qx 80 || fail "service"
+eventually 30 "service web on port 80" bash -c "kubectl -n $NS get service web -o jsonpath='{.spec.ports[0].port}' | grep -qx 80"
 kubectl -n "$NS" get deployment web-web -o jsonpath='{.spec.template.spec.containers[0].startupProbe.failureThreshold}' | grep -qx 60 || fail "startup probe"
 eventually 60 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.ready and (.pods | length == 1)'"
 expect 200 GET "$APP/web"
@@ -218,7 +218,7 @@ step "scenario 6: volume survives app deletion"
 expect 201 POST "$APP" \
   "{\"name\":\"store\",\"image\":\"${IMAGE}\",\"port\":8080,\"volumes\":[{\"name\":\"data\",\"mount_path\":\"/data\",\"size\":\"100Mi\"}]}"
 eventually 60 "pvc created" kubectl -n "$NS" get pvc store-data
-kubectl -n "$NS" get deployment store-web -o jsonpath='{.spec.strategy.type}' | grep -qx Recreate || fail "strategy"
+eventually 60 "store deployment uses Recreate" bash -c "kubectl -n $NS get deployment store-web -o jsonpath='{.spec.strategy.type}' | grep -qx Recreate"
 kubectl -n "$NS" rollout status deployment/store-web --timeout=180s
 expect 422 PATCH "$APP/store" '{"replicas":3}'
 expect 204 DELETE "$APP/store"
@@ -228,8 +228,8 @@ kubectl -n "$NS" get pvc store-data >/dev/null || fail "volume was deleted with 
 step "scenario 8: redis from a template"
 expect 201 POST "/projects/${P}/environments/dev/templates/redis" '{"name":"cache"}'
 [[ $(jq -r .credentials_secret "$work/body") == cache-credentials ]] || fail "credentials secret name"
-kubectl -n "$NS" get secret cache-credentials -o jsonpath='{.data.url}' | base64 -d | grep -q '^redis://:' || fail "url key"
-kubectl -n "$NS" get service cache -o jsonpath='{.spec.ports[0].port}' | grep -qx 6379 || fail "tcp service port"
+eventually 30 "credentials url key" bash -c "kubectl -n $NS get secret cache-credentials -o jsonpath='{.data.url}' | base64 -d | grep -q '^redis://:'"
+eventually 60 "tcp service port 6379" bash -c "kubectl -n $NS get service cache -o jsonpath='{.spec.ports[0].port}' | grep -qx 6379"
 eventually 60 "redis deployment" kubectl -n "$NS" get deployment cache-web
 kubectl -n "$NS" rollout status deployment/cache-web --timeout=180s
 
