@@ -1,7 +1,7 @@
 target
 **/node_modules
 **/.turbo
-apps/web/dist
+apps/console/dist
 .dev
 .cache
 .cargo-home

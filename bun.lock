@@ -9,8 +9,8 @@
         "turbo": "catalog:",
       },
     },
-    "apps/web": {
-      "name": "@kuben/web",
+    "apps/console": {
+      "name": "@kuben/console",
       "version": "0.0.0",
       "dependencies": {
         "@kuben/api-client": "workspace:*",
@@ -99,7 +99,7 @@
 
     "@kuben/api-client": ["@kuben/api-client@workspace:packages/api-client"],
 
-    "@kuben/web": ["@kuben/web@workspace:apps/web"],
+    "@kuben/console": ["@kuben/console@workspace:apps/console"],
 
     "@oxc-project/types": ["@oxc-project/types@0.149.0", "https://registry.npmmirror.com/@oxc-project/types/-/types-0.149.0.tgz", {}, "sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA=="],
 
