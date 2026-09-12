@@ -38,7 +38,7 @@ export function LoginPage() {
       >
         <header className="space-y-1">
           <h1 className="font-semibold text-2xl tracking-tight">Sign in to Kuben</h1>
-          <p className="text-slate-400 text-sm">Use the admin credentials printed on first boot.</p>
+          <p className="text-slate-400 text-sm">Enter your email and password.</p>
         </header>
 
         <div className="space-y-1.5">
