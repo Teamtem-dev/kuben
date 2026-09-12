@@ -100,7 +100,7 @@ sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [
 
 | Option | Meaning |
 |---|---|
-| `--port <n>` | console and API port (default `3000`; `KUBEN_PORT`) |
+| `--port <n>` | console and API port (`KUBEN_PORT`). Default `3000`, or the next free port when another process holds it; an install keeps its port, and `--port` moves it |
 | `--kubeconfig <file>` | manage this cluster instead of installing k3s (`KUBEN_KUBECONFIG`) |
 | `--no-k3s` | never install k3s |
 | `--bind-local` | listen on `127.0.0.1` only; reach the console through an SSH tunnel |

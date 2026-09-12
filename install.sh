@@ -227,12 +227,15 @@ main() {
 
   tar -xzf "${tmp}/${archive}" -C "$tmp" "$BIN" || err "archive does not contain '${BIN}'"
   install_binary "${tmp}/${BIN}" "$dir"
-  say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
 
   if [ "$binary_only" != 1 ] && can_setup; then
+    # `kuben setup` opens with its banner and then reports this download.
+    KUBEN_INSTALLED="${version} ${target} ${dir}/${BIN} ${actual}"
+    export KUBEN_INSTALLED
     # shellcheck disable=SC2086
     exec "${dir}/${BIN}" setup $setup_args
   fi
+  say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
 
   case ":${PATH}:" in
   *":${dir}:"*) ;;

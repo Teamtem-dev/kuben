@@ -10,6 +10,17 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: 'v1.1.1',
+    date: '2026-09-13',
+    title: 'Setup that works around a busy port',
+    highlights: [
+      'When port 3000 is taken (the Dokploy console, for one), kuben setup names who holds it and asks which port to use, with the next free one filled in; without a terminal it takes that port. --port now also moves the port of an existing install.',
+      'The config is written after the port is settled, so a run that stopped on a busy port no longer keeps failing.',
+      'A warning when another web server holds ports 80 and 443, which apps need for public addresses.',
+      'An orange KUBEN wordmark to open the install, orange spinners and prompts, ✔ for every step that is in place, and the time long steps took.',
+    ],
+  },
+  {
     version: 'v1.1.0',
     date: '2026-09-13',
     title: 'One command, one server',
