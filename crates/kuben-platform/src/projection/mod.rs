@@ -220,6 +220,22 @@ impl Projections {
         let _ = rx.wait_for(|s| *s == SYNCED_ALL).await;
     }
 
+    /// The informers that have not completed their initial LIST yet.
+    #[must_use]
+    pub fn pending_kinds(&self) -> Vec<&'static str> {
+        let synced = *self.synced.borrow();
+        [
+            (SYNCED_PODS, "pods"),
+            (SYNCED_PROJECTS, "projects"),
+            (SYNCED_ENVIRONMENTS, "environments"),
+            (SYNCED_APPS, "apps"),
+        ]
+        .into_iter()
+        .filter(|(bit, _)| synced & bit == 0)
+        .map(|(_, kind)| kind)
+        .collect()
+    }
+
     /// Current global sequence (also used as `ETag`).
     #[must_use]
     pub fn seq(&self) -> u64 {
@@ -507,6 +523,18 @@ mod tests {
             .expect("join");
         p.replace_pods(vec![]); // a later re-list keeps it synced
         assert!(p.is_synced());
+    }
+
+    #[test]
+    fn names_the_informers_still_listing() {
+        let p = Projections::new();
+        assert_eq!(p.pending_kinds(), ["pods", "projects", "environments", "apps"]);
+        p.replace_pods(vec![]);
+        p.replace_environments(vec![]);
+        assert_eq!(p.pending_kinds(), ["projects", "apps"]);
+        p.replace_projects(vec![]);
+        p.replace_apps(vec![]);
+        assert!(p.pending_kinds().is_empty());
     }
 
     #[test]

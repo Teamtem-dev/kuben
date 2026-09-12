@@ -65,12 +65,15 @@ pub fn router(state: ApiState) -> Router {
     Router::new()
         .merge(api)
         .merge(utoipa_scalar::Scalar::with_url("/api/docs", openapi))
-        .route("/livez", get(routes::health::livez))
-        .route("/readyz", get(routes::health::readyz))
         .fallback(web::fallback)
         .layer(CompressionLayer::new().br(true).gzip(true))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(TraceLayer::new_for_http())
+        // Added after the layers, so outside them: probes are polled every
+        // second or so, and a 503 from `/readyz` while the informers sync is
+        // an answer, not an error to log each time.
+        .route("/livez", get(routes::health::livez))
+        .route("/readyz", get(routes::health::readyz))
         .with_state(state)
 }

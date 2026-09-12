@@ -10,6 +10,16 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: 'v1.1.2',
+    date: '2026-09-13',
+    title: 'Ready within seconds on a cluster that has just started',
+    highlights: [
+      'One failing watch no longer restarts every informer: each kind retries on its own, so the errors of a freshly installed k3s (a CRD not there yet) cost seconds, not minutes of an unready server.',
+      'Informers that have not listed within 45 seconds start over and log which kinds they were waiting for; a subsystem that ran for a minute before it failed restarts at the shortest delay again.',
+      '/livez and /readyz are no longer logged on every poll, so the service log shows what matters; kuben setup prints the service’s latest warnings when it is not ready yet.',
+    ],
+  },
+  {
     version: 'v1.1.1',
     date: '2026-09-13',
     title: 'Setup that works around a busy port',

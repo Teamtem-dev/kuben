@@ -94,6 +94,15 @@ stop_forward() {
   fwd=
 }
 
+# The end of kuben.service's log, without the per-request lines of older
+# releases (every /readyz poll was one), and its warnings as an annotation.
+service_log() {
+  echo "---- kuben.service (last 80 lines) ----"
+  sudo journalctl -u kuben --no-pager -o cat -n 2000 2>/dev/null | grep -v tower_http | tail -n 80 || true
+  annotate "kuben.service warnings and errors:
+$(sudo journalctl -u kuben --no-pager -o cat -n 2000 2>/dev/null | grep -E ' (WARN|ERROR) ' | grep -v tower_http | tail -n 8 || true)"
+}
+
 cleanup() {
   status=$?
   stop_forward
@@ -101,8 +110,7 @@ cleanup() {
   if ((status != 0)); then
     if [[ -z ${failed:-} ]]; then annotate "exit ${status}"; fi
     if [[ $MODE == binary ]]; then
-      echo "---- kuben.service (last 40 lines) ----"
-      sudo journalctl -u kuben --no-pager -n 40 2>/dev/null || true
+      service_log
       sudo kuben status 2>/dev/null || true
     fi
     if [[ -n ${cluster:-} && $MODE == helm ]]; then
@@ -265,8 +273,11 @@ gc_flow() {
 binary_server() {
   local url token
   step "kuben.service after the installer"
-  sudo systemctl is-active --quiet kuben || { sudo journalctl -u kuben --no-pager -n 40 || true; fail "kuben.service is not active after the installer"; }
+  sudo systemctl is-active --quiet kuben || fail "kuben.service is not active after the installer"
   run "kuben status" sudo kuben status
+  # Ready means every informer has listed once; without that, the API answers
+  # 404 for objects that exist and the steps below time out on a symptom.
+  eventually 90 "kuben.service ready (/readyz)" curl -fsS http://127.0.0.1:3000/readyz
   url=$(grep -o 'http://[^ ]*/setup?token=[A-Za-z0-9_-]*' "$work/install.txt" | tail -n 1)
   [[ -n $url ]] || fail "the installer did not print the setup link"
   token=${url##*token=}
