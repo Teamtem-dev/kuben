@@ -32,7 +32,7 @@ async fn setup() -> TestApp {
 
 async fn setup_with(tweak: impl FnOnce(&mut Config)) -> TestApp {
     let mut cfg = Config::default();
-    cfg.security.cookie_secure = false;
+    cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     tweak(&mut cfg);
     let store = Store::memory().await.expect("store");
     let hasher = kuben_api::auth::password::Hasher::insecure_for_tests();

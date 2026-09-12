@@ -76,12 +76,19 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
         check_cluster(&mut r, &cfg).await;
     }
 
-    if !cfg.security.cookie_secure {
-        r.line(Level::Warn, "cookies", "Secure flag disabled — development only");
-    } else if let Some(warning) = cfg.insecure_cookie_warning(in_cluster()) {
+    if let Some(warning) = cfg.insecure_cookie_warning(in_cluster()) {
         r.line(Level::Warn, "cookies", warning);
-    } else {
+    } else if cfg.cookie_secure() {
         r.line(Level::Ok, "cookies", "Secure + HttpOnly (__Host- prefix)");
+    } else if cfg.security.cookie_secure == kuben_core::config::CookieSecure::AUTO {
+        r.line(
+            Level::Ok,
+            "cookies",
+            "HttpOnly, not Secure: the console is served over plain http (auto; becomes Secure once \
+             KUBEN_SERVER__PUBLIC_URL is https)",
+        );
+    } else {
+        r.line(Level::Warn, "cookies", "Secure flag disabled — development only");
     }
 
     if r.failed {

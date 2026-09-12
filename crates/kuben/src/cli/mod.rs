@@ -110,7 +110,7 @@ impl Cli {
                 cfg.server.roles = opts.roles.iter().copied().map(Role::from).collect();
             }
             if opts.dev {
-                cfg.security.cookie_secure = false;
+                cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
                 cfg.telemetry.log_format = "pretty".into();
                 if cfg.telemetry.log_level == "info" {
                     cfg.telemetry.log_level = "debug,hyper=info,h2=info,tower=info".into();
@@ -147,7 +147,7 @@ mod tests {
     fn dev_flag_disables_secure_cookie() {
         let cli = Cli::parse_from(["kuben", "serve", "--dev"]);
         let cfg = cli.load_config().expect("config");
-        assert!(!cfg.security.cookie_secure);
+        assert!(!cfg.cookie_secure());
         assert_eq!(cfg.telemetry.log_format, "pretty");
     }
 }

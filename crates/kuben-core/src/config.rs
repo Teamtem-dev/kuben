@@ -95,8 +95,9 @@ pub struct SecurityCfg {
     pub argon2_t: u32,
     pub argon2_p: u32,
     pub login_concurrency: usize,
-    /// Set `Secure` on the session cookie (disable only for plain-http dev).
-    pub cookie_secure: bool,
+    /// `Secure` on the session cookie: `true`, `false`, or `"auto"` (the
+    /// default), which follows `server.public_url`. See [`CookieSecure`].
+    pub cookie_secure: CookieSecure,
     /// Failed logins allowed per (email, client IP) within `login_window_secs`.
     pub login_max_failures: u32,
     /// Failed logins allowed per client IP, across all accounts.
@@ -110,6 +111,36 @@ pub struct SecurityCfg {
     /// TCP peer address is used.
     pub trust_forwarded_for: bool,
     pub password_min_length: usize,
+}
+
+/// Whether the session cookie carries `Secure` (and the `__Host-` prefix).
+///
+/// Browsers drop a `Secure` cookie over plain http, except on `localhost`, so
+/// a console reached at `http://<server-ip>:3000` could never sign in. `Auto`
+/// sets the flag exactly when the console is published over https
+/// (`server.public_url` starts with `https://`), so a fresh install works over
+/// http and becomes `Secure` the moment a TLS address is configured. Set
+/// `true` behind a TLS proxy that does not set `public_url`, and `false` only
+/// for development.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CookieSecure {
+    /// `true` or `false`, as configured.
+    Fixed(bool),
+    /// `"auto"`: `Secure` when `public_url` is https.
+    Auto(Auto),
+}
+
+/// The word `auto`, so that [`CookieSecure`] parses `"auto"` from TOML and
+/// `KUBEN_SECURITY__COOKIE_SECURE=auto`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Auto {
+    Auto,
+}
+
+impl CookieSecure {
+    pub const AUTO: Self = Self::Auto(Auto::Auto);
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -235,7 +266,7 @@ impl Default for SecurityCfg {
             argon2_t: 2,
             argon2_p: 1,
             login_concurrency: 2,
-            cookie_secure: true,
+            cookie_secure: CookieSecure::AUTO,
             login_max_failures: 5,
             login_max_failures_per_ip: 30,
             login_max_failures_per_account: 100,
@@ -296,15 +327,7 @@ impl Config {
     /// a TLS Gateway), with an https public URL, or when bound to loopback.
     #[must_use]
     pub fn insecure_cookie_warning(&self, in_cluster: bool) -> Option<String> {
-        if !self.security.cookie_secure || in_cluster {
-            return None;
-        }
-        if self
-            .server
-            .public_url
-            .as_deref()
-            .is_some_and(|url| url.starts_with("https://"))
-        {
+        if !self.cookie_secure() || in_cluster || self.public_url_is_https() {
             return None;
         }
         let bind = &self.server.bind;
@@ -319,8 +342,26 @@ impl Config {
             "the session cookie is Secure and browsers drop it over plain http, so signing in at \
              http://<this server>:{port} loops back to the login page. Serve the console over \
              HTTPS (and set KUBEN_SERVER__PUBLIC_URL), open it through an SSH tunnel to \
-             localhost, or set KUBEN_SECURITY__COOKIE_SECURE=false for a quick test"
+             localhost, or set KUBEN_SECURITY__COOKIE_SECURE=auto"
         ))
+    }
+
+    /// Whether the session cookie gets `Secure`: `security.cookie_secure`,
+    /// with `auto` resolved against `server.public_url`.
+    #[must_use]
+    pub fn cookie_secure(&self) -> bool {
+        match self.security.cookie_secure {
+            CookieSecure::Fixed(secure) => secure,
+            CookieSecure::Auto(_) => self.public_url_is_https(),
+        }
+    }
+
+    #[must_use]
+    pub fn public_url_is_https(&self) -> bool {
+        self.server
+            .public_url
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://"))
     }
 }
 
@@ -334,7 +375,7 @@ mod tests {
         assert_eq!(cfg.server.bind, "0.0.0.0:8080");
         assert!(cfg.has_role(Role::Api));
         assert!(cfg.has_role(Role::Controller));
-        assert!(cfg.security.cookie_secure);
+        assert_eq!(cfg.security.cookie_secure, CookieSecure::AUTO);
         assert!(cfg.database.url.starts_with("sqlite://"));
     }
 
@@ -396,7 +437,15 @@ mod tests {
     #[test]
     fn warns_when_the_secure_cookie_meets_plain_http() {
         let mut cfg = Config::default();
-        assert!(cfg.insecure_cookie_warning(false).is_some(), "0.0.0.0 over http");
+        assert!(
+            cfg.insecure_cookie_warning(false).is_none(),
+            "auto over http is not Secure"
+        );
+        cfg.security.cookie_secure = CookieSecure::Fixed(true);
+        assert!(
+            cfg.insecure_cookie_warning(false).is_some(),
+            "forced Secure on 0.0.0.0 over http"
+        );
         assert!(cfg.insecure_cookie_warning(true).is_none(), "in a pod");
         cfg.server.public_url = Some("https://kuben.example.com".into());
         assert!(cfg.insecure_cookie_warning(false).is_none(), "https public URL");
@@ -404,8 +453,39 @@ mod tests {
         cfg.server.bind = "127.0.0.1:8080".into();
         assert!(cfg.insecure_cookie_warning(false).is_none(), "loopback only");
         cfg.server.bind = "0.0.0.0:8080".into();
-        cfg.security.cookie_secure = false;
+        cfg.security.cookie_secure = CookieSecure::Fixed(false);
         assert!(cfg.insecure_cookie_warning(false).is_none(), "cookie not Secure");
+    }
+
+    #[test]
+    fn cookie_secure_auto_follows_the_public_url() {
+        let mut cfg = Config::default();
+        assert!(!cfg.cookie_secure(), "no public URL: plain http install");
+        cfg.server.public_url = Some("http://203.0.113.7:3000".into());
+        assert!(!cfg.cookie_secure());
+        cfg.server.public_url = Some("https://kuben.example.com".into());
+        assert!(cfg.cookie_secure());
+        cfg.security.cookie_secure = CookieSecure::Fixed(false);
+        assert!(!cfg.cookie_secure(), "an explicit value wins");
+    }
+
+    #[test]
+    #[allow(clippy::result_large_err)]
+    fn cookie_secure_parses_bools_and_auto() {
+        figment::Jail::expect_with(|jail| {
+            for (value, want) in [
+                ("true", CookieSecure::Fixed(true)),
+                ("false", CookieSecure::Fixed(false)),
+                ("auto", CookieSecure::AUTO),
+            ] {
+                jail.set_env("KUBEN_SECURITY__COOKIE_SECURE", value);
+                let cfg: Config = Config::figment().extract()?;
+                assert_eq!(cfg.security.cookie_secure, want, "{value}");
+            }
+            jail.set_env("KUBEN_SECURITY__COOKIE_SECURE", "sometimes");
+            assert!(Config::figment().extract::<Config>().is_err());
+            Ok(())
+        });
     }
 
     #[test]

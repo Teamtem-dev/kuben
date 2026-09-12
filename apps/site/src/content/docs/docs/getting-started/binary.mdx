@@ -74,13 +74,7 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
    kuben serve
    ```
 
-4. Open the console. The session cookie is `Secure`, and browsers drop it over plain HTTP except on `localhost`: signing in at `http://<server-ip>:8080` only returns to the login page, and `doctor` and `serve` warn about it. Put Kuben behind HTTPS, or tunnel to `localhost`:
-
-   ```bash
-   ssh -L 8080:localhost:8080 you@your-server
-   ```
-
-   Then browse to `http://localhost:8080`. Only for a quick test over plain HTTP, set `KUBEN_SECURITY__COOKIE_SECURE=false`.
+4. Open the console at `http://<server-ip>:8080`. The session cookie is not `Secure` until the console has an `https://` address: set `KUBEN_SERVER__PUBLIC_URL` once Kuben sits behind TLS and it becomes `Secure` on its own (`KUBEN_SECURITY__COOKIE_SECURE=auto`, the default). A plain-http console on a public address is fine for a first look, not for a team: put it behind HTTPS before inviting anyone.
 
 </Steps>
 
@@ -147,7 +141,7 @@ Run Kuben as its own system user, with its settings in `/etc/kuben/config.toml`:
 
 </Steps>
 
-Binding to `127.0.0.1` keeps the console and the metrics off the public interface. Reach the console through an SSH tunnel, or put a reverse proxy that terminates TLS in front of it and set `KUBEN_SERVER__PUBLIC_URL` to its `https://` address. On k3s, Traefik already holds ports 80 and 443 on the host, so such a proxy needs Traefik disabled (`--disable=traefik`) or other ports. When a proxy sits in front, set `trust_forwarded_for = true` under `[security]` so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/).
+Binding to `127.0.0.1` keeps the console and the metrics off the public interface. Reach the console through an SSH tunnel, or put a reverse proxy that terminates TLS in front of it and set `public_url` under `[server]` to its `https://` address, which also makes the session cookie `Secure`. On k3s, Traefik already holds ports 80 and 443 on the host, so such a proxy needs Traefik disabled (`--disable=traefik`) or other ports. When a proxy sits in front, set `trust_forwarded_for = true` under `[security]` so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/).
 
 ## Other commands
 
