@@ -1,0 +1,252 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { Icon } from 'astro-icon/components'
+import { releases } from '../data/releases'
+
+const repo = 'https://github.com/Teamtem-dev/kuben'
+const latest = releases.find((r) => !r.prerelease)?.version
+const fmt = new Intl.DateTimeFormat('en', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+})
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Changelog',
+    description: 'Every Kuben release: what changed, when, and where to read the full notes.',
+    template: 'splash',
+    tableOfContents: false,
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content k-page k-log">
+    <header class="k-log-head">
+      <div class="k-eyebrow">Changelog</div>
+      <h1>Every release, in one place.</h1>
+      <p>
+        What changed in each version of Kuben. Full notes, checksums and attestations are on{' '}
+        <a href={`${repo}/releases`}>GitHub Releases</a>; upgrade instructions are in{' '}
+        <a href="/docs/operations/upgrading/">Upgrading</a>.
+      </p>
+    </header>
+
+    <ol class="k-log-list">
+      {
+        releases.map((r) => (
+          <li class="k-log-item" id={r.version}>
+            <div class="k-log-meta">
+              <time datetime={r.date}>{fmt.format(new Date(`${r.date}T00:00:00Z`))}</time>
+            </div>
+            <div class="k-log-dot" aria-hidden="true" />
+            <article class="k-log-card">
+              <div class="k-log-tags">
+                <a class="k-log-version" href={`${repo}/releases/tag/${r.version}`}>
+                  {r.version}
+                </a>
+                {r.version === latest && <span class="k-log-tag k-log-latest">Latest</span>}
+                {r.prerelease && <span class="k-log-tag">Pre-release</span>}
+              </div>
+              <h2>{r.title}</h2>
+              <ul>
+                {r.highlights.map((h) => (
+                  <li>{h}</li>
+                ))}
+              </ul>
+              <a class="k-log-more" href={`${repo}/releases/tag/${r.version}`}>
+                Release notes <Icon name="lucide:arrow-up-right" />
+              </a>
+            </article>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</StarlightPage>
+
+<style>
+  .k-log {
+    padding-block: clamp(2rem, 5vw, 4rem);
+    max-width: 52rem;
+    margin-inline: auto;
+  }
+
+  .k-log-head {
+    display: grid;
+    gap: 0.9rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .k-log-head h1 {
+    font-size: clamp(2rem, 1.2rem + 2.6vw, 3rem);
+    font-weight: 750;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    color: var(--sl-color-white);
+  }
+
+  .k-log-head p {
+    color: var(--sl-color-gray-2);
+    line-height: 1.65;
+  }
+
+  .k-log-head a {
+    color: var(--sl-color-text-accent);
+  }
+
+  .k-log-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+  }
+
+  .k-log-item {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    scroll-margin-top: 5rem;
+  }
+
+  .k-log-meta time {
+    font-size: 0.8125rem;
+    font-family: var(--sl-font-mono);
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-log-dot {
+    display: none;
+  }
+
+  .k-log-card {
+    padding: 1.2rem 1.35rem;
+    border-radius: 1.25rem;
+    background: var(--k-surface);
+    border: 1px solid var(--k-line);
+    transition: background-color 0.2s ease;
+  }
+
+  .k-log-card:hover {
+    background: var(--k-surface-hover);
+  }
+
+  .k-log-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.55rem;
+  }
+
+  .k-log-version {
+    font-family: var(--sl-font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--sl-color-white);
+    text-decoration: none;
+  }
+
+  .k-log-tag {
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    background: var(--k-surface-strong);
+    color: var(--sl-color-gray-2);
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .k-log-latest {
+    background: color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+    color: var(--sl-color-text-accent);
+  }
+
+  .k-log-card h2 {
+    font-size: 1.15rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    color: var(--sl-color-white);
+    margin-bottom: 0.5rem;
+  }
+
+  .k-log-card ul {
+    margin: 0 0 0.75rem;
+    padding-inline-start: 1.1rem;
+    display: grid;
+    gap: 0.3rem;
+    color: var(--sl-color-gray-2);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+
+  .k-log-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+  }
+
+  .k-log-more :global(svg) {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  @media (min-width: 48rem) {
+    .k-log-item {
+      grid-template-columns: 7.5rem 1.5rem 1fr;
+      gap: 0.75rem;
+      align-items: start;
+    }
+
+    .k-log-meta {
+      padding-top: 1.35rem;
+      text-align: end;
+    }
+
+    .k-log-dot {
+      display: block;
+      position: relative;
+      height: 100%;
+    }
+
+    .k-log-dot::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: -1rem;
+      left: 50%;
+      width: 1px;
+      background: var(--k-line);
+    }
+
+    .k-log-dot::after {
+      content: '';
+      position: absolute;
+      top: 1.55rem;
+      left: 50%;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 999px;
+      translate: -50% 0;
+      background: var(--sl-color-gray-5);
+      box-shadow: 0 0 0 4px var(--sl-color-bg);
+    }
+
+    .k-log-item:first-child .k-log-dot::after {
+      background: var(--sl-color-accent);
+      box-shadow:
+        0 0 0 4px var(--sl-color-bg),
+        0 0 0 7px color-mix(in srgb, var(--sl-color-accent) 25%, transparent);
+    }
+
+    .k-log-item:last-child .k-log-dot::before {
+      bottom: auto;
+      height: 1.8rem;
+    }
+  }
+</style>

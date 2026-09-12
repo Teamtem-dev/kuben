@@ -1,0 +1,296 @@
+---
+/**
+ * Install commands as tabs, the one-line script first. Every tab copies its
+ * command (the Download tab copies the link); arrow keys move between tabs.
+ */
+import { Icon } from 'astro-icon/components'
+
+interface Props {
+  id?: string
+  class?: string
+}
+
+const { id = 'install', class: className } = Astro.props
+const repo = 'https://github.com/Teamtem-dev/kuben'
+
+const tabs = [
+  {
+    key: 'script',
+    label: 'Install script',
+    icon: 'lucide:terminal',
+    prompt: '$',
+    command: 'curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash',
+    copyLabel: 'Copy install command',
+    note: 'Linux and macOS, x86_64 and arm64. The script checks the SHA-256 checksum before it installs anything. Then run <code>kuben doctor</code>.',
+  },
+  {
+    key: 'helm',
+    label: 'Helm',
+    icon: 'simple-icons:helm',
+    prompt: '$',
+    command:
+      'helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace',
+    copyLabel: 'Copy Helm command',
+    note: 'Kubernetes 1.29+ and Helm 3.8+. The admin password is in the <code>kuben-initial-admin</code> Secret.',
+  },
+  {
+    key: 'download',
+    label: 'Download',
+    icon: 'lucide:download',
+    prompt: '↓',
+    command: `${repo}/releases/latest/download/kuben-x86_64-unknown-linux-musl.tar.gz`,
+    copyLabel: 'Copy download link',
+    href: `${repo}/releases/latest`,
+    note: 'Linux x86_64 shown; macOS, arm64 and Windows builds are on the <a href="https://github.com/Teamtem-dev/kuben/releases/latest">release page</a>. Every archive has a <code>.sha256</code> file and a build attestation.',
+  },
+]
+---
+
+<install-tabs class:list={['k-itabs not-content', className]}>
+  <div class="k-itabs-list" role="tablist" aria-label="Install Kuben">
+    {
+      tabs.map((t, i) => (
+        <button
+          type="button"
+          role="tab"
+          id={`${id}-tab-${t.key}`}
+          aria-controls={`${id}-panel-${t.key}`}
+          aria-selected={i === 0 ? 'true' : 'false'}
+          tabindex={i === 0 ? 0 : -1}
+        >
+          <Icon name={t.icon} />
+          <span>{t.label}</span>
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((t, i) => (
+      <div
+        class="k-itabs-panel"
+        role="tabpanel"
+        id={`${id}-panel-${t.key}`}
+        aria-labelledby={`${id}-tab-${t.key}`}
+        hidden={i !== 0}
+      >
+        <div class="k-itabs-cmd">
+          <span class="k-prompt" aria-hidden="true">
+            {t.prompt}
+          </span>
+          <code>{t.command}</code>
+          {t.href && (
+            <a class="k-itabs-btn" href={t.href} aria-label="Open the latest release on GitHub">
+              <Icon name="lucide:external-link" />
+            </a>
+          )}
+          <button type="button" class="k-itabs-btn" data-copy={t.command} aria-label={t.copyLabel}>
+            <Icon name="lucide:copy" class="k-ico-copy" />
+            <Icon name="lucide:check" class="k-ico-done" />
+          </button>
+        </div>
+        <p class="k-itabs-note" set:html={t.note} />
+      </div>
+    ))
+  }
+</install-tabs>
+
+<style>
+  /* minmax(0, 1fr): a long command scrolls inside its box instead of widening
+     the grid (and with it the whole page on phones). */
+  .k-itabs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .k-itabs-panel {
+    min-width: 0;
+  }
+
+  .k-itabs-list {
+    display: inline-flex;
+    justify-self: start;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 999px;
+    background: var(--k-surface);
+    border: 1px solid var(--k-line);
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  [role='tab'] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.85rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sl-color-gray-3);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  [role='tab']:hover {
+    color: var(--sl-color-white);
+  }
+
+  [role='tab'][aria-selected='true'] {
+    background: var(--k-surface-strong);
+    color: var(--sl-color-white);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 4%) inset;
+  }
+
+  [role='tab'] :global(svg) {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  [role='tab'][aria-selected='true'] :global(svg) {
+    color: var(--sl-color-accent);
+  }
+
+  [role='tab']:focus-visible,
+  .k-itabs-btn:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: 2px;
+  }
+
+  .k-itabs-cmd {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+    padding: 0.55rem 0.55rem 0.55rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid var(--k-line);
+    background: color-mix(in srgb, var(--sl-color-bg) 55%, transparent);
+    -webkit-backdrop-filter: blur(var(--k-glass-blur));
+    backdrop-filter: blur(var(--k-glass-blur));
+    font-family: var(--sl-font-mono);
+    font-size: 0.8125rem;
+  }
+
+  .k-prompt {
+    flex: none;
+    color: var(--sl-color-accent);
+  }
+
+  code {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    color: var(--sl-color-white);
+    scrollbar-width: none;
+  }
+
+  .k-itabs-btn {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.7rem;
+    border: 0;
+    background: var(--k-surface-strong);
+    color: var(--sl-color-gray-2);
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .k-itabs-btn:hover {
+    background: color-mix(in srgb, var(--sl-color-accent) 22%, transparent);
+    color: var(--sl-color-white);
+  }
+
+  .k-itabs-btn :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .k-itabs-btn :global(.k-ico-done),
+  .k-itabs-btn[data-copied] :global(.k-ico-copy) {
+    display: none;
+  }
+
+  .k-itabs-btn[data-copied] :global(.k-ico-done) {
+    display: block;
+    color: #4ade80;
+  }
+
+  .k-itabs-note {
+    margin: 0;
+    padding-inline-start: 0.4rem;
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-itabs-note :global(code) {
+    font-size: 0.95em;
+    color: var(--sl-color-gray-2);
+  }
+
+  .k-itabs-note :global(a) {
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+  }
+</style>
+
+<script>
+  class InstallTabs extends HTMLElement {
+    connectedCallback() {
+      const tabs = [...this.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      const select = (tab: HTMLButtonElement, focus = false) => {
+        for (const t of tabs) {
+          const on = t === tab
+          t.setAttribute('aria-selected', String(on))
+          t.tabIndex = on ? 0 : -1
+          const panel = this.querySelector<HTMLElement>(`#${t.getAttribute('aria-controls')}`)
+          if (panel) panel.hidden = !on
+        }
+        if (focus) tab.focus()
+      }
+      tabs.forEach((tab, i) => {
+        tab.addEventListener('click', () => select(tab))
+        tab.addEventListener('keydown', (e) => {
+          const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+          if (e.key === 'Home' || e.key === 'End') {
+            e.preventDefault()
+            const target = e.key === 'Home' ? tabs[0] : tabs[tabs.length - 1]
+            if (target) select(target, true)
+          } else if (step) {
+            e.preventDefault()
+            const target = tabs[(i + step + tabs.length) % tabs.length]
+            if (target) select(target, true)
+          }
+        })
+      })
+      for (const btn of this.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copy ?? '')
+            btn.setAttribute('data-copied', '')
+            setTimeout(() => btn.removeAttribute('data-copied'), 1600)
+          } catch {
+            /* Clipboard unavailable (insecure context): the text stays selectable. */
+          }
+        })
+      }
+    }
+  }
+  customElements.define('install-tabs', InstallTabs)
+</script>

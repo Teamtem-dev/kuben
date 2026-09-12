@@ -9,7 +9,9 @@ import LastUpdated from '@astrojs/starlight/components/LastUpdated.astro'
 import Pagination from '@astrojs/starlight/components/Pagination.astro'
 
 const year = new Date().getFullYear()
-const isLanding = Astro.url.pathname === '/'
+const path = Astro.url.pathname
+// Pages with their own layout skip the edit link, last-updated date and pagination.
+const isLanding = path === '/' || path.startsWith('/legal/')
 ---
 
 <footer class="k-footer sl-flex">
@@ -29,8 +31,11 @@ const isLanding = Astro.url.pathname === '/'
     <span class="k-links">
       <a href="/docs/">Docs</a>
       <a href="/blog/">Blog</a>
+      <a href="/changelog/">Changelog</a>
+      <a href="/enterprise/">Enterprise</a>
       <a href="https://github.com/Teamtem-dev/kuben">GitHub</a>
-      <a href="https://github.com/Teamtem-dev/kuben/security/policy">Security</a>
+      <a href="/legal/privacy/">Privacy</a>
+      <a href="/legal/terms/">Terms</a>
     </span>
   </div>
 </footer>
@@ -77,6 +82,7 @@ const isLanding = Astro.url.pathname === '/'
 
   .k-links {
     display: inline-flex;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
   }
 </style>

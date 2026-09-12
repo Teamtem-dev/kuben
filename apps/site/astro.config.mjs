@@ -114,7 +114,11 @@ export default defineConfig({
           description: 'Kuben is a Kubernetes PaaS in a single binary, built in Rust by Teamtem.',
           exclude: ['blog/**'],
         }),
-        starlightLinksValidator({ errorOnRelativeLinks: false, exclude: ['/docs/reference/api/**'] }),
+        starlightLinksValidator({
+          errorOnRelativeLinks: false,
+          // Astro pages outside the docs collection.
+          exclude: ['/docs/reference/api/**', '/enterprise/', '/enterprise/**', '/changelog/'],
+        }),
       ],
     }),
     icon({ include: { lucide: ['*'], 'simple-icons': ['github', 'kubernetes', 'rust', 'helm', 'react'] } }),
