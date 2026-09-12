@@ -51,8 +51,13 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
+      # Four jobs: each mode on each architecture. `arch` has to be a matrix
+      # axis for the `include` entries below to add the runner to it; as bare
+      # includes they were merged into every job and the last one won, so
+      # both modes silently ran on arm64 only.
       matrix:
         mode: [helm, binary]
+        arch: [amd64, arm64]
         include:
           - { arch: amd64, os: ubuntu-24.04 }
           - { arch: arm64, os: ubuntu-24.04-arm }
