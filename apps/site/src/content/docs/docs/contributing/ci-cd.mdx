@@ -1,0 +1,86 @@
+---
+title: CI/CD and releases
+description: What runs on every pull request, how a release is built, checksummed, attested and scanned, what is checked every day, and how to cut a release.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+Every CI job calls the same Turborepo task a developer runs locally. Pull requests run only the job groups their files touch; pushes to `main`, the merge queue and manual runs run everything.
+
+## On every pull request
+
+| Job | What it runs |
+|---|---|
+| **Detect changes** | selects job groups from the changed paths; a change to CI itself or to the task runner selects everything (fail open) |
+| **Rust format** | `cargo fmt --check` |
+| **Clippy** | every crate and target with `-D warnings` and `clippy::pedantic`; workspace lints deny `unwrap` and forbid `unsafe` |
+| **Test** (4-OS matrix) | cargo-nextest on linux-x64, linux-arm64, macos-arm64 and windows-x64, plus doctests. Binaries ship for all five targets, so all of them are tested |
+| **Store matrix** | the store tests against PostgreSQL 17, so both backends behave identically |
+| **MSRV** | `cargo check` on Rust 1.94, because `rust-version` is a promise |
+| **Supply chain** | `cargo-deny`: licenses, advisories, bans (`openssl-sys`, `serde_yaml`), sources |
+| **Web** | Biome, `tsc`, `bun test`, the Vite build, the Astro build, and **size-limit** (200 kB JS, 25 kB CSS, brotli) |
+| **Generated files** | regenerates `openapi.json`, `schema.d.ts` and the CRDs and fails on any diff |
+| **Shell scripts** | execute bits, shellcheck, `install.sh` under sh/dash/bash, change-detection tests, `helm lint --strict`, `helm template`, and a Trivy misconfiguration scan of the rendered chart |
+| **Binary size budget** | a static musl release build with the embedded console and dependency list, gated at 26 MiB, then a Trivy scan of the binary |
+| **End-to-end (kind)** | login → project → environment → namespace with quota and NetworkPolicy → deploy → scale → logs → restart → delete and GC |
+| **Workflow security** | [zizmor](https://docs.zizmor.sh) on the workflows and the setup action: template injection, excessive permissions, cache poisoning, unpinned actions |
+| **CI success** | fails if any job failed or was cancelled. This is the only required check in branch protection |
+
+Which groups a branch would run: `git diff --name-only origin/main...HEAD | scripts/ci-changes.sh`.
+
+Details that matter:
+
+- Every action is pinned to a **commit SHA**; Dependabot keeps them current with a 7-day cooldown.
+- Rust is installed with the runner's own `rustup`; third-party tools are installed at exact versions by a checksum-verifying installer. Trivy's own GitHub Actions are deliberately not used after their tags were hijacked in March 2026.
+- `permissions: contents: read` is the default; each job asks for what it needs; `persist-credentials: false` on every checkout.
+- The Rust cache and the Turborepo remote cache are **read** by pull requests and **written** only on `main`, so a pull request cannot plant a poisoned cache.
+
+## Releases
+
+```text
+tag v1.0.2 ─► plan (tag == Cargo version)
+               ├─► web (bun: vite build + size-limit) ─► build ×5 (cargo auditable) ─┬─► publish (checksums, attestations, GitHub Release)
+               │                                                                     │        └─► verify-install ×3 (install.sh against the real release)
+               │                                                                     └─► image (budget ≤ 30 MiB → Trivy → push amd64+arm64, SBOM, provenance)
+               │                                                                              └─► chart (helm push oci://ghcr.io/teamtem-dev/charts)
+```
+
+Artifacts of a release:
+
+| Target | File |
+|---|---|
+| `x86_64-unknown-linux-musl` | `kuben-x86_64-unknown-linux-musl.tar.gz` |
+| `aarch64-unknown-linux-musl` | `kuben-aarch64-unknown-linux-musl.tar.gz` |
+| `aarch64-apple-darwin` | `kuben-aarch64-apple-darwin.tar.gz` |
+| `x86_64-apple-darwin` | `kuben-x86_64-apple-darwin.tar.gz` |
+| `x86_64-pc-windows-msvc` | `kuben-x86_64-pc-windows-msvc.zip` |
+
+plus a `.sha256` per archive, `checksums.txt`, `install.sh`, the image `ghcr.io/teamtem-dev/kuben:{X.Y.Z, X.Y, latest}` and the chart `oci://ghcr.io/teamtem-dev/charts/kuben`. Tags like `v1.1.0-rc.1` become pre-releases and never move `latest`.
+
+Design decisions worth knowing:
+
+- **The image is built from the published binaries, not from source.** The release Dockerfile is a single `COPY`, so the bytes in the image are exactly the ones that were checksummed and attested.
+- **Every binary carries its dependency list.** `cargo auditable` embeds the exact crate list, so `trivy`, `grype`, `osv-scanner` or `cargo audit bin` can audit a deployed binary or image.
+- **Releases build without a cache.**
+- **The image gates run before the push:** size budget and Trivy on `linux/amd64` first, then the multi-arch push.
+- **`USER 65532:65532` is numeric**, so Kubernetes can verify `runAsNonRoot`.
+
+### Cutting a release
+
+1. Bump `[workspace.package] version` in `Cargo.toml`, run `cargo check` so `Cargo.lock` follows, commit.
+2. Tag and push:
+   ```bash
+   git tag -s v1.0.2 -m "v1.0.2"
+   git push origin v1.0.2
+   ```
+3. The **plan** job refuses to continue if the tag does not equal the crate version.
+
+## Every day
+
+Advisories are published after code is merged, so a lockfile that passed yesterday can be vulnerable today. A scheduled workflow runs daily: `cargo deny check advisories` on `main`, and `trivy image` on the published `latest` image for HIGH and CRITICAL vulnerabilities with a fix available. A failure opens (or comments on) one issue, *Scheduled security check failed*. The fix is to update the dependency, merge, and cut a patch release so the image follows.
+
+<Aside type="note" title="This website">
+`apps/site` is built in the **Web** job like any other package and deployed from `main` to a Cloudflare Worker with static assets by its own workflow. Internal links are validated at build time, so a renamed page fails the build instead of shipping a 404.
+</Aside>

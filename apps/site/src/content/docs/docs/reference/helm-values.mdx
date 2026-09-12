@@ -1,0 +1,85 @@
+---
+title: Helm chart values
+description: Every value of the kuben Helm chart with its default, what it renders, and the rules the chart enforces (PostgreSQL for several replicas, numeric non-root user, kept volume).
+---
+
+The chart is published as an OCI artifact:
+
+```bash
+helm show values oci://ghcr.io/teamtem-dev/charts/kuben
+```
+
+## Image
+
+| Value | Default | |
+|---|---|---|
+| `image.repository` | `ghcr.io/teamtem-dev/kuben` | multi-arch (amd64, arm64), distroless, non-root |
+| `image.tag` | the chart's `appVersion` | |
+| `image.pullPolicy` | `IfNotPresent` | |
+| `imagePullSecrets` | `[]` | |
+
+## Replicas and database
+
+| Value | Default | |
+|---|---|---|
+| `replicaCount` | `1` | SQLite supports exactly one. With PostgreSQL every replica serves the API and only the Lease holder runs the controllers |
+| `database.url` | `""` | empty: SQLite on the persistent volume (`sqlite:///data/kuben.db`) |
+| `database.existingSecret` | `""` | Secret with a `url` key (PostgreSQL credentials); wins over `database.url` |
+| `persistence.enabled` | `true` | the SQLite volume; not created with PostgreSQL |
+| `persistence.size` | `1Gi` | |
+| `persistence.storageClass` | `""` | the cluster default |
+| `persistence.accessModes` | `[ReadWriteOnce]` | |
+
+The chart **fails to render** `replicaCount > 1` without a PostgreSQL URL. The PVC carries `helm.sh/resource-policy: keep` and survives `helm uninstall`.
+
+## Admin and security
+
+| Value | Default | |
+|---|---|---|
+| `admin.email` | `admin@kuben.local` | initial admin |
+| `admin.existingSecret` | `""` | Secret with a `password` key. Empty: generated on first start into `kuben-initial-admin`, never logged |
+| `publicUrl` | `""` | e.g. `https://kuben.example.com` |
+| `security.cookieSecure` | `true` | keep true in production |
+
+The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits behind the Gateway), `KUBEN_KUBE__REQUIRED=true` and `KUBEN_KUBE__LEADER_ELECTION=true`.
+
+## Platform (`KubenConfig`)
+
+| Value | Default | |
+|---|---|---|
+| `platform.create` | `true` | write the `KubenConfig` singleton |
+| `platform.baseDomain` | `""` | apps get `<app>-<environment>.<baseDomain>` |
+| `platform.gateway` | `""` | Gateway API Gateway for app routes, as `namespace/name` |
+| `platform.clusterIssuer` | `""` | cert-manager ClusterIssuer; enables HTTPS |
+| `platform.wildcardTlsSecret` | `""` | Secret with a `*.<baseDomain>` certificate; generated hosts then share one listener |
+
+## Console route
+
+| Value | Default | |
+|---|---|---|
+| `route.enabled` | `false` | expose the console through an `HTTPRoute` |
+| `route.hostname` | `""` | |
+| `route.gateway.name` / `route.gateway.namespace` | `""` | |
+
+## Service, metrics, resources
+
+| Value | Default | |
+|---|---|---|
+| `service.type` | `ClusterIP` | |
+| `service.port` | `80` | |
+| `metrics.port` | `9090` | |
+| `logLevel` | `info` | |
+| `resources.requests` | `cpu: 50m`, `memory: 64Mi` | |
+| `resources.limits` | `memory: 256Mi` | no CPU limit |
+| `podAnnotations`, `nodeSelector`, `tolerations`, `affinity` | `{}` / `[]` | |
+
+## What the chart renders
+
+- A `Deployment` with `Recreate` (SQLite) or `RollingUpdate` with `maxUnavailable: 0` (PostgreSQL), and a `PodDisruptionBudget` for several replicas.
+- A security context: `runAsNonRoot`, UID **65532** (numeric, so Kubernetes can verify it), read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp.
+- Liveness and readiness probes on `/livez` and `/readyz`.
+- A `ServiceAccount`, a `ClusterRole` for the tenant resources it manages and a namespaced `Role` for the controller Lease. The full list is in `templates/rbac.yaml`.
+- The CRDs in `crds/`. Helm installs them once; the binary server-side-applies them again on every start so upgrades pick up new fields.
+- The `KubenConfig` singleton from `platform.*`.
+
+The chart is linted with `helm lint --strict`, rendered and scanned by Trivy for misconfigurations on every pull request; accepted findings are justified in `.trivyignore.yaml`.

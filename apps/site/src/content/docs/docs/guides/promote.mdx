@@ -1,0 +1,55 @@
+---
+title: Promote between environments
+description: Move a release from staging to production with a diff preview. What is copied, what the target keeps, and how secrets and permissions are handled.
+sidebar:
+  order: 8
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+Promotion takes what runs in one environment and applies it to the same app in another, typically `staging` → `production`. It is the "I tested this, now ship it" button.
+
+## From the console
+
+On the app page, choose the target environment under **Promote**, press **Preview changes**, review the diff, then **Promote**.
+
+## From the API
+
+A dry run reports the changes without applying them:
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api/promote" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"to_environment": "production", "dry_run": true}'
+```
+
+Drop `dry_run` (or set it to `false`) to promote. The result lists every field that changed and every warning.
+
+## What is copied, what is kept
+
+| Copied to the target | Kept on the target |
+|---|---|
+| image | its domains |
+| commands and ports | its scaling (replicas and size) |
+| health check | its volumes |
+| environment variables | |
+
+Production usually has more replicas, a bigger size preset and its own domains; promotion never touches those. If the app does not exist in the target environment yet, it is created with the source's spec and default scaling.
+
+## Secrets are never copied
+
+Environment variables that reference a secret are copied as references. The preview warns about every referenced secret that does not exist in the target environment, so you can create it there first:
+
+```bash
+curl -fsS -X PUT "$KUBEN_URL/api/v1/projects/shop/environments/production/secrets/db-credentials" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"data": {"url": "postgres://…"}}'
+```
+
+<Aside type="note">
+Secret values are written through the API and never returned by it. That is by design: promotion cannot leak a staging credential into production, and production credentials never travel through a promotion.
+</Aside>
+
+## Permissions
+
+Promotion needs the `release-promote` permission on the **target** environment, which admins and owners have. The usual split is: developers deploy to staging with their own or a scoped token; admins promote to production. A promotion creates a new [release](/docs/guides/rollbacks/) in the target and is recorded in the [audit log](/docs/guides/audit-log/) with both environments.

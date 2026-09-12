@@ -1,0 +1,85 @@
+---
+title: Security model and its limits
+description: What Kuben's service account can do and why it must be protected like cluster-admin, how tenant namespaces are isolated, how authorisation, sign-in, tokens, audit and secrets work, and where the limits are.
+sidebar:
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+This page is the honest version. It lists what Kuben protects against, how, and what it does not.
+
+## Cluster access
+
+Kuben's service account can manage namespaces, secrets, deployments, cron jobs, PVCs and similar objects **cluster-wide**, and can patch its Gateway (the exact list is in the chart's `templates/rbac.yaml`). It needs this because it creates one namespace per environment.
+
+<Aside type="danger" title="Treat it like cluster-admin">
+Whoever controls Kuben's service account can read every Secret in the cluster. Protect the `kuben-system` namespace, its RBAC and its pod like you protect cluster-admin. The only namespaced right is the controller Lease. A split into separate API and controller service accounts is planned (ADR-022).
+</Aside>
+
+## Tenant namespace isolation
+
+Every environment namespace is created with:
+
+- **Pod Security Admission:** `baseline` enforced, `restricted` warned.
+- **No `LoadBalancer` or `NodePort` services.** Apps reach the internet only through the Gateway.
+- **A `NetworkPolicy`** that closes ingress from other environments. This needs a CNI that enforces policies (Calico, Cilium); plain flannel does not.
+- **A `ResourceQuota`**, configurable per environment.
+
+## Authorisation
+
+- Every request is checked against the caller's role: `owner` > `admin` > `developer` > `viewer`.
+- Objects of other organisations answer `404`, not `403`, so their existence is not revealed.
+- Deleting a production environment requires the separate `env-delete-protected` permission (owners).
+- Environment variable values are hidden from users without `secret-read` (viewers).
+
+## Sign-in
+
+- Logins are throttled by three counters shared by all replicas; the stored buckets are hashes, not emails or addresses. See [Sign-in and throttling](/docs/guides/sign-in-security/).
+- Passwords are hashed with Argon2id. Invited users must replace their temporary password before anything else.
+- A generated admin password goes into a Kubernetes Secret (or is printed once by the binary), never into a log.
+- Sessions are opaque ids in a `__Host-`, `HttpOnly`, `Secure` cookie. No JWT reaches the browser, so an XSS cannot exfiltrate a bearer token, and a session can be revoked.
+- The console ships a strict Content Security Policy with no inline scripts.
+
+## API tokens
+
+- Only a SHA-256 hash is stored, and it is compared in constant time.
+- A token is capped at a role (`viewer`, `developer`, `admin`) and optionally scoped to a project or environment.
+- Tokens cannot manage tokens, members or passwords.
+- Lifetime is 90 days by default and 365 at most.
+
+## Audit
+
+Every mutation, denial, throttled attempt and login is recorded with actor, action, target, outcome, client address and request id, and shown under **Audit**. Request bodies are never recorded. The log is append-only through the API. See [The audit log](/docs/guides/audit-log/).
+
+## Secrets
+
+- The API only **writes** secrets. It never returns their values.
+- Kuben touches only Secrets it created itself, in the environment namespaces.
+- Template credentials are generated and referenced, never embedded in a spec.
+- Releases record secret *names and versions*, not values.
+
+## The pod
+
+- Distroless image, non-root user (UID 65532), read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp.
+- Static musl binary with mimalloc; no shell, no package manager in the image.
+- The image is built from the very binaries that were checksummed and attested, and scanned for HIGH and CRITICAL vulnerabilities before it is pushed. Every binary embeds its dependency list (`cargo auditable`), so `trivy`, `grype` or `osv-scanner` can audit a deployed binary in place.
+
+## Supply chain
+
+- Every GitHub Action is pinned to a commit SHA; workflows are audited with zizmor on every pull request.
+- Releases build without a cache, so a poisoned cache can never reach an artifact.
+- `cargo-deny` checks licenses, advisories, bans and sources on every change; RustSec advisories and the published image are re-checked daily.
+- Dependabot updates run with a 7-day cooldown against freshly published malicious packages.
+
+## Limits
+
+- **Kuben is not a sandbox for hostile tenants.** Environments isolate teams that trust each other from each other's mistakes. Untrusted code needs a stronger boundary (separate clusters, gVisor, Kata).
+- **TLS terminates at your Gateway controller.** Kuben configures it and never sees app traffic.
+- **The Gateway holds at most 64 listeners**; Kuben uses at most 60.
+- **No SSO yet.** Every member has a local password; OIDC is on the [roadmap](/docs/roadmap/).
+- **A formal threat model is pending.** The decisions above are recorded as ADRs; the threat model document will join them.
+
+## Reporting a vulnerability
+
+Please use [private vulnerability reporting on GitHub](https://github.com/Teamtem-dev/kuben/security/policy) rather than a public issue.

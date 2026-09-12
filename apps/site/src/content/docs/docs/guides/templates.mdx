@@ -1,0 +1,52 @@
+---
+title: One-click templates
+description: Start PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden or Gitea in one click, with generated credentials that never appear in a spec, a release or the audit log.
+sidebar:
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+The environment page lists the template catalogue. Pick one, give it a name, and Kuben creates the app, its volume and its credentials.
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/staging/templates/postgres" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "db"}'
+```
+
+The full list with images, ports and volumes is in the [template catalogue](/docs/reference/templates/).
+
+## Generated credentials
+
+Every template that needs a password gets one generated, 32 random characters, into the secret `<name>-credentials`. The app only *references* that secret, so:
+
+- no password appears in the app spec,
+- none appears in the release history,
+- and none appears in the audit log (request bodies are never recorded anyway).
+
+Databases also get a ready-made `url` key. Connect another app in the same environment with an environment variable that references it:
+
+```
+DATABASE_URL=@db-credentials/url
+```
+
+In the API that is a secret reference:
+
+```json
+{ "name": "DATABASE_URL", "secret": { "name": "db-credentials", "key": "url" } }
+```
+
+<Aside type="note" title="Reading the credentials yourself">
+Members with `secret-read` (developers and up) can see secret values in the console. If you need them outside Kuben, read the Kubernetes Secret directly: `kubectl -n shop-staging get secret db-credentials -o jsonpath='{.data.url}' | base64 -d`.
+</Aside>
+
+## Internal only
+
+Database templates use `protocol: tcp`. They get a cluster-internal Service named after the app (`db` above), reachable from the other apps in the environment and never from the internet. The NetworkPolicy of the environment blocks connections from other environments.
+
+HTTP templates (n8n, Uptime Kuma, Vaultwarden, Gitea, whoami) get a public route like any other web app: `https://<name>-<environment>.<baseDomain>` plus any [custom domains](/docs/guides/custom-domains/).
+
+## After deploying
+
+A template deploy is an ordinary app afterwards: it has [releases](/docs/guides/rollbacks/), [volumes](/docs/guides/volumes/), logs and the same day-2 operations. You can change its image tag to upgrade the database, which creates a new revision you can roll back from.

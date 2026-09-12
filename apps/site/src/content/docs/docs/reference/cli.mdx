@@ -1,0 +1,90 @@
+---
+title: CLI
+description: Every kuben subcommand (serve, migrate, doctor, reset-admin, backup, restore, version), its options, and how configuration is loaded.
+---
+
+The `kuben` binary is both the server and the operator's tool. Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
+
+```
+kuben [--config <file>] <command>
+```
+
+## `serve`
+
+Runs Kuben: the REST API, the embedded console and the controllers.
+
+```bash
+kuben serve [--roles api,controller] [--dev]
+```
+
+| Option | Meaning |
+|---|---|
+| `--roles` | Comma-separated roles for this process: `all` (default), `api`, `controller`, `activator`. Also `KUBEN_ROLES`. |
+| `--dev` | Development mode: pretty logs, an insecure cookie so the console works over plain HTTP, and an in-memory SQLite database when none is configured. Never use in production. |
+
+On the first start with an empty database, `serve` creates the initial admin. Inside Kubernetes the generated password goes into the Secret `kuben-initial-admin`; outside it is printed once to the terminal. `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` sets it instead.
+
+Startup order: configuration → database migrations (under a lock) → CRDs server-side-applied → informers list and sync → `/readyz` turns 200 → leader election (when enabled) → controllers. Shutdown is the reverse: readiness off → drain in-flight requests → cancel subsystems (the leader releases its Lease) → flush the audit log → checkpoint SQLite.
+
+## `migrate`
+
+Applies pending database migrations and exits. `serve` does this on every start too; `migrate` is for running it as a separate step in a pipeline.
+
+```bash
+kuben migrate
+```
+
+## `doctor`
+
+Checks the prerequisites and prints what is missing and what is optional: database reachability, cluster connection and RBAC, Gateway API CRDs, cert-manager (with Gateway support), metrics-server.
+
+```bash
+kuben doctor
+```
+
+Exit code is non-zero when a required check fails.
+
+## `reset-admin`
+
+Sets a new password for the initial admin account (`admin_email` in the bootstrap configuration).
+
+```bash
+kuben reset-admin [--password <new>]
+```
+
+Without `--password` (or `KUBEN_ADMIN_PASSWORD`), a random password is generated and printed once. Inside the chart:
+
+```bash
+kubectl -n kuben-system exec deploy/kuben -- /kuben reset-admin
+```
+
+Resetting the password revokes the account's sessions.
+
+## `backup`
+
+Exports every `Project`, `Environment` and `App` (and the `KubenConfig`) as YAML into a directory. Secret values and app volumes are deliberately **not** included; see [Backup and restore](/docs/operations/backup-restore/).
+
+```bash
+kuben backup [--out ./kuben-backup]
+```
+
+## `restore`
+
+Applies a directory produced by `backup`: CRDs first, then the objects with their `ownerReference`s re-pointed at the new `Project` uids, then the namespaces.
+
+```bash
+kuben restore --from ./kuben-backup
+```
+
+## `version`
+
+Prints the version, the git commit and the build target.
+
+```bash
+kuben version
+kuben --version
+```
+
+## Exit codes and logs
+
+All commands log to stderr as JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=pretty` for a terminal) and exit non-zero on failure. `serve` also exits non-zero when a required subsystem fails to start, for example when `KUBEN_KUBE__REQUIRED=true` and no cluster is reachable.

@@ -1,0 +1,44 @@
+---
+title: Upgrading
+description: Upgrade the Helm release or the binary. CRDs are applied by the binary at boot and migrations run automatically, so an upgrade is one command.
+sidebar:
+  order: 5
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Helm
+
+```bash
+helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values
+```
+
+Add `--version 1.2.0` to pin a chart version; the chart's `appVersion` selects the image tag.
+
+Two things that usually need care with operators are automatic here:
+
+- **CRDs.** Helm does not update the `crds/` folder on upgrade. The binary therefore **server-side-applies its own CRDs on every start**, so new fields appear as soon as the new pod runs. Downgrading leaves newer CRD fields in place; they are ignored by older binaries.
+- **Migrations.** Database migrations run at boot, under a lock, so several replicas starting together do not race.
+
+On SQLite the upgrade is a `Recreate` rollout (a few seconds of downtime for the console; apps are unaffected). On PostgreSQL it is a rolling update with `maxUnavailable: 0` and a leader hand-over; see [High availability](/docs/operations/high-availability/).
+
+## Binary
+
+Re-run the installer, optionally pinned:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash -s -- --version v1.0.2
+sudo systemctl restart kuben
+```
+
+`kuben migrate` applies pending migrations without starting the server, if you prefer to run them as a separate step.
+
+<Aside type="tip" title="Before upgrading">
+Take a [backup](/docs/operations/backup-restore/): `kuben backup` plus a snapshot of the database volume. Read the [release notes](https://github.com/Teamtem-dev/kuben/releases) for anything marked as a breaking change.
+</Aside>
+
+## Versioning
+
+Kuben follows semantic versioning. The Helm chart version, the image tag and the binary version are the same number. Pre-releases (`v1.1.0-rc.1`) are published as GitHub pre-releases and never move the `latest` image tag.
+
+Every release ships with checksums, build attestations and an image scanned before it is pushed; see [CI/CD and releases](/docs/contributing/ci-cd/).

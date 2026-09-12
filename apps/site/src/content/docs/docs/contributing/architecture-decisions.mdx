@@ -1,0 +1,45 @@
+---
+title: Architecture decisions
+description: The index of Kuben's architecture decision records (ADRs), which code comments cite as ADR-NNN, with a one-line summary and where each shows in the code.
+sidebar:
+  order: 3
+---
+
+Code comments cite decisions as `ADR-NNN`. New decisions get their own file under `docs/adr/` in the repository, with Context, Decision and Consequences. This page is the index.
+
+| ADR | Decision | Status | Where it shows |
+|---|---|---|---|
+| 001 | Kubernetes holds desired state; SQL holds identity and audit | superseded by 015 | — |
+| 002 | One binary with roles (modular monolith) | decided | `kuben serve --roles`, `kuben_core::config::Role` |
+| 003 | Two Tokio runtimes as a bulkhead, a supervisor, `panic = "unwind"` | superseded by 013 (supervisor and unwind kept) | `kuben_platform::supervise` |
+| 004 | Projections (small read models) instead of raw reflectors | decided | `kuben_platform::projection` |
+| 005 | Opaque cookie sessions and opaque API tokens; no JWT in the browser | decided | `kuben_api::auth` |
+| 006 | sqlx with two backends (SQLite, PostgreSQL) and a test matrix | decided | `kuben-store`, `tests/matrix.rs` |
+| 007 | OpenAPI-first: the TypeScript client is generated, CI fails on drift | decided | `kuben_api::openapi`, `packages/api-client` |
+| 008 | Gateway API as the networking layer | decided | `controller::gateway` |
+| 009 | BuildKit + Railpack/CNB, deploy by digest, immutable releases | superseded by 016 | — |
+| 010 | CEL and ValidatingAdmissionPolicy instead of admission webhooks | decided | CRD schemas in `kuben-crd` |
+| 011 | React 19 + TanStack for the console | decided | `apps/console` |
+| 012 | Licensing and a clean-room boundary to the system being replaced | decided | — |
+| 013 | One runtime in phase 0; a second one only behind `runtime.bulkhead` | decided | `kuben::serve` |
+| 014 | One SSE stream per browser tab; WebSocket only for terminals | decided | `kuben_api::stream` |
+| 015 | Data ownership: SQL references CRDs only by `uid` | decided | `kuben-store`, invariant I-17 |
+| 016 | Persistent buildkitd plus a light `buildctl` Job; external registry in the MVP | decided, phase 1 | — |
+| 017 | The binary applies its CRDs at boot (server-side apply) | decided | `controller::crd_apply` |
+| 018 | Environments are soft-deleted with a grace period | decided | `controller::environment` |
+| 019 | Explicit bootstrap order; polling fallback for webhooks | decided | deployment docs |
+| 020 | Append-only audit in the core; signed anchoring later | decided | `kuben_api::audit` |
+| 021 | Six crates in phase 0, split only for a stated reason | decided | `Cargo.toml` |
+| 022 | Threat model; Kuben's service account is treated like cluster-admin | decided, threat model pending | `charts/kuben/templates/rbac.yaml` |
+| 023 | Lease-based leader election for the controllers | decided | `kuben_platform::leader` |
+| 024 | Turborepo runs every task; Bun replaces pnpm and Node; Cargo stays the Rust build graph | decided | `turbo.json`, `package.json`, `bunfig.toml` |
+
+## ADR-023 in brief: leader election without trusting clocks
+
+The chart allowed several replicas on PostgreSQL, but every replica ran the full controller set and server-side-applied the same objects with `force`. The decision: only the holder of the Lease `kuben-controller` runs the controllers; every replica still serves the API from its projections. Every Lease write is a compare-and-swap on `resourceVersion`; a candidate treats the Lease as expired only after seeing it unchanged for the lease duration (15 s), never by comparing `renewTime` with its own clock, so skew cannot produce two leaders. The leader renews every 2 s and stops its controllers if renewal fails for 10 s. On shutdown it releases the Lease. Login-throttle windows moved to the database so all replicas share one budget. Read the [blog post](/blog/leader-election-without-clocks/) for the full reasoning.
+
+## ADR-024 in brief: one task runner for two languages
+
+Turborepo 2.10 added native Cargo workspace support, which removed the original objection to using it for Rust. Every crate is a Turborepo package and `kuben-cargo` stands for the whole workspace; Cargo still schedules and caches compilation. The two cross-language edges are explicit tasks: `kuben-api#gen` → `@kuben/api-client#gen`, and `@kuben/console#build` → `kuben#build:release`. Bun 1.4 is the package manager, JS runtime and test runner; Node is not needed. Releases never reuse a cache.
+
+The full texts, with context and consequences, are in the repository under [`docs/adr/`](https://github.com/Teamtem-dev/kuben/tree/main/docs/adr).

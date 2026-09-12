@@ -1,0 +1,111 @@
+---
+title: Deploy your first app
+description: Create a project and an environment, deploy a container image, watch the rollout and reach the app, from the console and from the REST API.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+
+Everything in Kuben works from the web console and from the REST API. This walkthrough shows both. The API examples assume:
+
+```bash
+export KUBEN_URL=http://localhost:8080      # or https://kuben.example.com
+export KUBEN_TOKEN=kbn_pat_…                # see below
+```
+
+<Aside type="note" title="Getting a token">
+Open **API tokens** in the console and create one with the `admin` role (it needs to create the project). Tokens are shown once. [Deploy from CI](/docs/guides/deploy-from-ci/) explains how to scope tokens down for pipelines.
+</Aside>
+
+## 1. Create a project and an environment
+
+A **project** groups related apps (a product, a customer, a team). An **environment** is where apps run: each environment is its own Kubernetes namespace with a resource quota and a NetworkPolicy, so `staging` and `production` cannot talk to each other.
+
+<Tabs syncKey="how">
+  <TabItem label="Console">
+    1. On **Projects**, press **New project** and name it `shop`.
+    2. On the project page, press **New environment** and name it `staging`.
+  </TabItem>
+  <TabItem label="API">
+    ```bash
+    curl -fsS -X POST "$KUBEN_URL/api/v1/projects" \
+      -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+      -d '{"name": "shop", "display_name": "Online Shop"}'
+
+    curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments" \
+      -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+      -d '{"name": "staging"}'
+    ```
+  </TabItem>
+</Tabs>
+
+Behind the scenes Kuben created a `Project` and an `Environment` custom resource, and the controller created the namespace:
+
+```bash
+kubectl get projects,environments -A
+kubectl get ns -l kuben.dev/environment
+```
+
+## 2. Deploy an image
+
+We will use `traefik/whoami`, a tiny HTTP server that prints its request. Any image that listens on a port works the same way.
+
+<Tabs syncKey="how">
+  <TabItem label="Console">
+    On the `staging` environment page press **Deploy**, then fill in:
+
+    - **Name:** `hello`
+    - **Image:** `traefik/whoami:v1.10`
+    - **Port:** `80`
+
+    Leave the rest at their defaults and press **Deploy**.
+  </TabItem>
+  <TabItem label="API">
+    ```bash
+    curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps" \
+      -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+      -d '{"name": "hello", "image": "traefik/whoami:v1.10", "port": 80}'
+    ```
+  </TabItem>
+</Tabs>
+
+The app page shows the rollout. New pods must pass their readiness check before old ones stop; slow starters get up to five minutes through a startup probe, and a rollout that makes no progress for ten minutes is reported as `RolloutFailed`.
+
+## 3. Reach it
+
+If you have not configured a base domain yet, the app has a cluster-internal Service only. Port-forward to it:
+
+```bash
+kubectl -n shop-staging port-forward svc/hello 8000:80
+curl localhost:8000
+```
+
+Once `platform.baseDomain` and a Gateway are set (see [Exposing apps and HTTPS](/docs/operations/exposing-apps/)), every HTTP app also gets `https://<app>-<environment>.<baseDomain>`, for example `https://hello-staging.apps.example.com`, plus any custom domains you add.
+
+## 4. Look around
+
+- **Logs** stream from every pod of the app. The stream is server-sent events, so it survives proxies that dislike WebSockets.
+- **Releases** lists every change as a numbered revision. Change an environment variable and you will see revision 2 appear; **Roll back** restores revision 1. See [Rollbacks](/docs/guides/rollbacks/).
+- **Audit** (top bar, admins and owners) shows who did what, including this deploy.
+- `kubectl get app hello -n shop-staging -o yaml` shows the same app as a custom resource, with `Ready` and `Exposed` conditions.
+
+## 5. Clean up
+
+<Tabs syncKey="how">
+  <TabItem label="Console">
+    On the app page, press **Delete**. Volumes, if any, are kept unless you tick *Also delete the app's volumes*.
+  </TabItem>
+  <TabItem label="API">
+    ```bash
+    curl -fsS -X DELETE "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/hello" \
+      -H "Authorization: Bearer $KUBEN_TOKEN"
+    ```
+  </TabItem>
+</Tabs>
+
+## Where next
+
+- [Concepts](/docs/getting-started/concepts/) explains what Kuben created on the cluster and why.
+- [Deploy from CI](/docs/guides/deploy-from-ci/) turns this into a `PATCH` from GitHub Actions.
+- [One-click templates](/docs/guides/templates/) gives the app a PostgreSQL database with generated credentials.

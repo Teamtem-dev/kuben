@@ -1,0 +1,19 @@
+// kuben.teamtem.com: the static site served by the Worker `kuben` (Workers
+// static assets). `.github/workflows/site.yml` deploys it on pushes to main:
+//   bunx wrangler@<exact version> deploy   (from apps/site, after the build)
+{
+  "name": "kuben",
+  "compatibility_date": "2026-09-12",
+  "assets": {
+    "directory": "./dist",
+    // Astro writes dist/404.html; unknown paths get it with a 404 status.
+    "not_found_handling": "404-page",
+    // Pages are dist/<path>/index.html and links end in "/" (trailingSlash: 'always').
+    "html_handling": "auto-trailing-slash"
+  },
+  "routes": [{ "pattern": "kuben.teamtem.com", "custom_domain": true }],
+  // One canonical host for search engines: no *.workers.dev or preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

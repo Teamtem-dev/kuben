@@ -1,0 +1,43 @@
+---
+title: Scheduled jobs
+description: Run an image on a cron schedule with a time zone, without overlaps, and start a run on demand.
+sidebar:
+  order: 5
+---
+
+Deploy an app with a **Schedule** such as `0 3 * * *` (or `@hourly`, `@daily`, `@weekly`, …) and, optionally, a `time_zone`. A scheduled app has no port: it runs as a Kubernetes `CronJob` instead of a `Deployment`.
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/production/apps" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{
+    "name": "nightly-report",
+    "image": "ghcr.io/acme/reports:1.8.0",
+    "command": ["report", "--yesterday"],
+    "schedule": "0 3 * * *",
+    "time_zone": "Europe/Berlin",
+    "env": [{ "name": "DATABASE_URL", "secret": { "name": "db-credentials", "key": "url" } }]
+  }'
+```
+
+## Behaviour
+
+- **No overlaps.** A run never starts while the previous one is still running.
+- **Missed starts.** A run that could not start within 5 minutes of its scheduled time (for example because the cluster was down) is skipped rather than run late.
+- **History.** The last three successful and the last three failed runs are kept for a day, so their logs stay readable from the console.
+- **Time zone.** `time_zone` takes an IANA name such as `America/New_York`. Without it, the schedule is UTC.
+
+## Run now
+
+**Run now** (`POST …/run`) starts a run immediately from the same job template. It is useful after fixing a failed run, or to test a new schedule without waiting.
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/production/apps/nightly-report/run" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' -d '{}'
+```
+
+The request returns as soon as the run is created. Follow it under **Logs**.
+
+## Turning a schedule off
+
+Send `"schedule": ""` in a `PATCH` to remove the schedule; the app then needs a port to become a web process, or `command` alone to become a one-off worker.

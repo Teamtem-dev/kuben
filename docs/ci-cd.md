@@ -17,6 +17,7 @@ call the same `turbo` tasks developers run locally.
 | `.github/workflows/ci.yml` | Runs on every push to `main`, every PR and `merge_group`. A change-detection job, 12 check jobs and the aggregate job **CI success**. |
 | `.github/workflows/release.yml` | Runs on a pushed `v*` tag. Publishes binaries for 5 platforms, `checksums.txt`, attestations, the GitHub Release, a multi-arch GHCR image and the OCI Helm chart. |
 | `.github/workflows/security.yml` | Runs daily and on demand: RustSec advisories on `main` and a Trivy scan of the published image. A failure opens one issue (later failures comment on it). |
+| `.github/workflows/site.yml` | Builds `apps/site` (kuben.teamtem.com) on pull requests that touch it; deploys it on pushes to `main` to the Cloudflare Worker `kuben` (static assets, `apps/site/wrangler.jsonc`) with `wrangler deploy`. Deploying needs the variable `CLOUDFLARE_ACCOUNT_ID` and the secret `CLOUDFLARE_API_TOKEN`; without the variable the deploy job is skipped. |
 | `.github/actions/setup` | Composite action shared by every job. It installs Bun (version from `packageManager`), runs `bun install --frozen-lockfile`, and optionally sets up a Rust toolchain and `Swatinem/rust-cache`. |
 | `.github/dependabot.yml` | Weekly updates of Actions (workflows and the composite action), crates and Bun packages, with a 7-day cooldown (a shield against freshly published malicious packages). |
 | `.github/release.yml` | Automatic release-note categories by label. |

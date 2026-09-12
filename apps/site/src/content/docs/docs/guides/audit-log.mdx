@@ -1,0 +1,51 @@
+---
+title: The audit log
+description: Every change, every denial and every login is recorded with actor, action, target, outcome and client address. Read it from the console or page through it with the API.
+sidebar:
+  order: 9
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## What is recorded
+
+Every create, update, delete, restart, rollback, promotion, invitation and token change is recorded automatically. So is every **denied** or **failed** attempt, every **throttled** login, and every login. Each record holds:
+
+| Field | Example |
+|---|---|
+| actor | a user, or an API token |
+| action | the OpenAPI operation id, e.g. `createApp`, `promoteApp`, `revokeToken` |
+| target | `shop/production/api` |
+| outcome | `success`, `denied`, `failure`, `throttled` or `error`, with the HTTP status |
+| client | the client IP and the request id |
+| when | a timestamp |
+
+**Request bodies are never recorded**, and therefore neither are secret values, passwords or tokens.
+
+## Reading it
+
+- **Console:** *Audit* in the top bar. Owners and admins can read it.
+- **API:** newest first, paged with a cursor:
+
+```bash
+curl -fsS "$KUBEN_URL/api/v1/audit?limit=100" -H "Authorization: Bearer $KUBEN_TOKEN"
+# older pages:
+curl -fsS "$KUBEN_URL/api/v1/audit?limit=100&before=<next_before from the previous page>" \
+  -H "Authorization: Bearer $KUBEN_TOKEN"
+```
+
+Because the request id is recorded, you can correlate an audit record with Kuben's structured logs (`KUBEN_TELEMETRY__LOG_FORMAT=json`) and with your gateway's access log.
+
+## Properties
+
+- **Append-only through the API.** There is no endpoint that edits or deletes audit records.
+- **Written in the request path.** The record is part of handling the request, not a best-effort side channel. When a write fails, the failure is counted in the `kuben_audit_write_errors_total` metric so you can alert on it.
+- **Shared by all replicas.** With PostgreSQL, every replica writes to the same log.
+
+<Aside type="note" title="Retention">
+Kuben does not delete audit records. The log lives in the database (SQLite on the persistent volume, or PostgreSQL); size it and back it up accordingly. Signed anchoring of the log is a planned extension.
+</Aside>
+
+## Client addresses behind a proxy
+
+By default Kuben records the address of the TCP peer. Behind a proxy that appends the client address, set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (the Helm chart does, because the Gateway sits in front). Kuben then uses the **last** `X-Forwarded-For` hop; earlier hops are client-controlled and ignored. See [Sign-in and throttling](/docs/guides/sign-in-security/).

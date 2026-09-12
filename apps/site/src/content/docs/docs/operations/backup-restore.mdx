@@ -1,0 +1,57 @@
+---
+title: Backup and restore
+description: kuben backup exports every project, environment and app as YAML; the database and app volumes are backed up as volumes. What is deliberately not exported, and how restore re-links ownership.
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+A Kuben installation is three kinds of state, backed up in three ways.
+
+| State | Where it lives | Back up with |
+|---|---|---|
+| Desired state: projects, environments, apps, releases | Kubernetes custom resources | `kuben backup` |
+| Identity and history: users, tokens, memberships, audit log | SQLite on the PVC, or PostgreSQL | a `VolumeSnapshot` of the PVC, or `pg_dump` |
+| App data | PVCs in the environment namespaces | `VolumeSnapshot`s or Velero |
+
+## Export the custom resources
+
+```bash
+kuben backup --out ./kuben-backup
+```
+
+From inside the chart:
+
+```bash
+kubectl -n kuben-system exec deploy/kuben -- /kuben backup --out /tmp/kuben-backup
+kubectl -n kuben-system cp kuben-0:/tmp/kuben-backup ./kuben-backup   # adjust the pod name
+```
+
+The directory holds every `Project`, `Environment` and `App` as YAML, plus the `KubenConfig`.
+
+<Aside type="caution" title="Deliberately not exported">
+**Secret values** are never exported by Kuben. Back them up with your secret manager (Vault, SOPS) or a cluster backup tool such as Velero. **App volumes** are not included either: they are ordinary PVCs, kept when an app is deleted.
+</Aside>
+
+## Restore
+
+```bash
+kuben restore --from ./kuben-backup
+```
+
+Restore does three things in order:
+
+1. Applies the CRDs first, so the objects have a schema to land in.
+2. Re-points old `ownerReference`s at the **new** `Project` uids. Without this the garbage collector would delete the restored environments and apps as orphans.
+3. Creates the namespaces immediately, so restored apps can be reconciled without waiting for the environment controller.
+
+After a restore, the SQL side still references the old cluster objects by `uid`. Restore the database from the same point in time as the export, or accept that release history before the restore is not linked to the restored apps.
+
+## A practical schedule
+
+- **Nightly:** `kuben backup` to object storage, and a `VolumeSnapshot` of the Kuben PVC (or `pg_dump`).
+- **Before an upgrade:** the same, by hand. See [Upgrading](/docs/operations/upgrading/).
+- **App volumes:** on the schedule your data needs, with the snapshot tooling of your storage class.
+
+The export is plain YAML, so it also works as a change log: commit it to a repository and diff between days.

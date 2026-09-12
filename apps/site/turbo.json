@@ -1,0 +1,18 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "description": "Static site into dist/ (the API reference is rendered from the committed OpenAPI spec).",
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/packages/api-client/openapi.json"],
+      "outputs": ["dist/**"]
+    },
+    "check": {
+      "description": "astro check: TypeScript in .astro files and content frontmatter.",
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+    },
+    "dev": {
+      "description": "Astro dev server on :4321."
+    }
+  }
+}

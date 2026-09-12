@@ -1,0 +1,69 @@
+---
+title: Teams and roles
+description: The four roles, what each may do, how invitations and temporary passwords work, and the rules that keep an organisation from locking itself out.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## The role ladder
+
+Roles form a strict ladder; each includes everything below it.
+
+| Role | Can |
+|---|---|
+| **viewer** | read projects, environments, apps, releases and logs |
+| **developer** | + deploy, change apps, restart, roll back, open terminals, read secrets |
+| **admin** | + create projects and environments, write secrets, promote, read the audit log, invite and manage members |
+| **owner** | + manage owners and delete protected (production) environments |
+
+Roles are per organisation. A member has the same role in every project. API tokens are capped at a role (`viewer`, `developer` or `admin`) and can additionally be scoped to a project or an environment; see [Deploy from CI](/docs/guides/deploy-from-ci/).
+
+## Inviting someone
+
+1. On **Team**, enter an email address, an optional display name and a role, then press **Invite**.
+2. The new account gets a **temporary password shown once**. Share it over a channel you trust.
+3. On first sign-in the invitee must replace the temporary password. Until they do, the API answers `403` to everything else.
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/members" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"email": "carol@example.com", "display_name": "Carol", "role": "developer"}'
+```
+
+<Aside type="note">
+Kuben does not send email. There is no SMTP to configure and no invitation link that could be intercepted; the temporary password is handed to you, and you decide how it reaches the person.
+</Aside>
+
+## The rules
+
+- **Nobody grants a role above their own.** An admin can invite viewers, developers and admins, but not owners.
+- **Only owners change or remove owners.**
+- **The last owner can be neither demoted nor removed.** An organisation can never lose all its owners.
+- **Removing a member revokes their sessions and API tokens immediately.**
+- **Changing your own password** (under **Account**) signs out your other sessions.
+
+Every one of these actions, including denied attempts, appears in the [audit log](/docs/guides/audit-log/).
+
+## Changing a role
+
+```bash
+curl -fsS -X PATCH "$KUBEN_URL/api/v1/members/<member-id>" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"role": "admin"}'
+```
+
+## Lost admin password
+
+An owner can reset any member's access by removing and re-inviting them. If the *only* owner has lost their password, reset it from the server side:
+
+```bash
+kubectl -n kuben-system exec deploy/kuben -- /kuben reset-admin
+```
+
+The command prints a new random password once, or takes one with `--password`. See the [CLI reference](/docs/reference/cli/).
+
+## What is coming
+
+Single sign-on with OIDC is on the [roadmap](/docs/roadmap/). Until then, every member has a local password with a minimum length of 12 characters (`KUBEN_SECURITY__PASSWORD_MIN_LENGTH`).

@@ -1,0 +1,81 @@
+---
+title: Troubleshooting and observability
+description: kuben doctor, the health endpoints, Prometheus metrics, app and environment conditions, and the log lines that explain the common failures.
+sidebar:
+  order: 7
+---
+
+## First stops
+
+| Tool | Use |
+|---|---|
+| `kuben doctor` | prerequisites: database, cluster, Gateway API, cert-manager, metrics-server |
+| `GET /api/v1/healthz/details` | per-subsystem status (sign-in required) |
+| `/livez`, `/readyz` | Kubernetes probes. `/readyz` stays `503` until the informers have synced |
+| `kubectl -n kuben-system get lease kuben-controller` | which pod runs the controllers (`holderIdentity`); the others report `controllers: standby` |
+| `kubectl get apps,environments -A` | conditions (`Ready`, `Exposed`) with `reason` and `message` |
+| `:9090/metrics` | Prometheus metrics |
+
+## Conditions
+
+Apps and environments explain themselves through conditions.
+
+**App `Ready`**
+
+| Reason | Meaning |
+|---|---|
+| `Progressing` | a rollout is in progress; new pods are not all ready yet |
+| `Available` | the desired number of pods is ready |
+| `RolloutFailed` | no progress for 10 minutes; the previous pods keep serving. The `message` carries the Deployment's own reason (image pull, quota, failing probe) |
+
+**App `Exposed`**
+
+| Reason | Meaning |
+|---|---|
+| `RouteApplied` | the `HTTPRoute` exists and is attached |
+| `NoGateway` | `KubenConfig.spec.gateway` is unset or the Gateway does not exist |
+| `NoHostname` | no domain and no base domain |
+| `GatewayAPIMissing` | Gateway API CRDs are not installed |
+
+**Environment `phase`:** `Pending`, `Ready`, `Terminating` or `Degraded`, with `deletionScheduledAt` for soft-deleted environments.
+
+## Metrics
+
+Kuben exposes Prometheus metrics on `KUBEN_SERVER__METRICS_BIND` (`0.0.0.0:9090`):
+
+| Metric | Watch for |
+|---|---|
+| `kuben_reconcile_errors_total` | a rising rate: a controller cannot apply something (RBAC, quota, a bad image) |
+| `kuben_audit_write_errors_total` | any increase: audit records are being lost, usually a database problem |
+| `kuben_leader` | `1` on exactly one replica |
+| `kuben_subsystem_failures_total`, `kuben_subsystem_panics_total` | a subsystem restarted by the supervisor |
+| `kuben_sse_lagged_total` | browsers falling behind the event stream |
+
+Alerting rules that pay off: `increase(kuben_audit_write_errors_total[5m]) > 0`, `sum(kuben_leader) != 1` for more than a minute, and `rate(kuben_reconcile_errors_total[10m]) > 0`.
+
+## Logs
+
+Kuben logs structured JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=json`; `pretty` for a terminal). Every request carries a request id, which the audit log records too.
+
+| Log line | Meaning |
+|---|---|
+| `gateway listener limit reached` | the Gateway has 60 Kuben listeners; use a wildcard certificate for generated hosts |
+| `hostname requested by two namespaces` | two apps in different environments claim the same domain; the first keeps it |
+| `controllers: standby` | this replica is not the leader (normal with several replicas) |
+| `migrations applied` | boot-time migrations succeeded |
+
+## Common situations
+
+**The console says an app is `Ready` but the domain does not answer.** Run **Check DNS**: `mismatch` or `unresolved` means DNS, not Kuben. If DNS is `ok`, look at the certificate: `kubectl -n kuben-system get certificates` and cert-manager's log.
+
+**`/readyz` stays 503 after start.** The informers are still listing objects, or the service account lacks `list`/`watch` on a resource. `kubectl -n kuben-system logs deploy/kuben` shows which.
+
+**Two replicas both log reconciliation.** Leader election is off. It is always on in the chart; for the binary set `KUBEN_KUBE__LEADER_ELECTION=true` when more than one process has the controller role.
+
+**Autoscaling never scales.** metrics-server is missing or not serving `metrics.k8s.io`. `kuben doctor` checks it.
+
+**Apps in staging can reach production.** The CNI does not enforce `NetworkPolicy` (flannel). Install Cilium or Calico.
+
+## Getting help
+
+Open an issue with the output of `kuben doctor`, `kuben version`, the relevant conditions and the log lines around the problem, with secrets redacted: [github.com/Teamtem-dev/kuben/issues](https://github.com/Teamtem-dev/kuben/issues).

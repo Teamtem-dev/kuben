@@ -1,0 +1,82 @@
+---
+/**
+ * Page footer inside the content column: Starlight's edit link, last-updated
+ * date and previous/next links, followed by a compact site line. The landing
+ * page renders its own, larger footer.
+ */
+import EditLink from '@astrojs/starlight/components/EditLink.astro'
+import LastUpdated from '@astrojs/starlight/components/LastUpdated.astro'
+import Pagination from '@astrojs/starlight/components/Pagination.astro'
+
+const year = new Date().getFullYear()
+const isLanding = Astro.url.pathname === '/'
+---
+
+<footer class="k-footer sl-flex">
+  {
+    !isLanding && (
+      <>
+        <div class="k-meta sl-flex">
+          <EditLink />
+          <LastUpdated />
+        </div>
+        <Pagination />
+      </>
+    )
+  }
+  <div class="k-bar">
+    <span>© {year} <a href="https://teamtem.com">Teamtem</a> · Kuben is Apache-2.0 licensed</span>
+    <span class="k-links">
+      <a href="/docs/">Docs</a>
+      <a href="/blog/">Blog</a>
+      <a href="https://github.com/Teamtem-dev/kuben">GitHub</a>
+      <a href="https://github.com/Teamtem-dev/kuben/security/policy">Security</a>
+    </span>
+  </div>
+</footer>
+
+<style>
+  .k-footer {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .k-meta {
+    gap: 0.75rem 3rem;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-top: 3rem;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-meta > :global(p:only-child) {
+    margin-inline-start: auto;
+  }
+
+  .k-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--k-line);
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-bar a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .k-bar a:hover {
+    color: var(--sl-color-white);
+  }
+
+  .k-links {
+    display: inline-flex;
+    gap: 1rem;
+  }
+</style>

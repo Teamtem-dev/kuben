@@ -1,0 +1,46 @@
+---
+title: Roadmap
+description: What Kuben 1.0 does, what comes next (Git builds, preview environments, scale-to-zero, SSO), and how to influence the order.
+---
+
+import { Badge } from '@astrojs/starlight/components'
+
+Kuben 1.0 deploys images, isolates environments, serves custom domains over HTTPS, keeps release history with rollback and promotion, runs one-click templates, and gives teams roles, scoped tokens and an audit log. Several replicas run side by side on PostgreSQL. This page lists what is next, in the order we currently expect.
+
+## Next
+
+### Git builds <Badge text="phase 1" variant="tip" />
+
+Build from a repository without an external CI: a persistent BuildKit daemon plus a light `buildctl` Job per build, Dockerfile or buildpacks, pushed by digest to your registry. Build pods never get cluster credentials; the controller watches the `BuildRun` and creates the `Release` itself. The `BuildRun` type and the `git` source already exist in the CRDs so the schema is stable.
+
+### Preview environments <Badge text="phase 1" variant="tip" />
+
+A short-lived environment per pull request, created from a webhook, with generated hostnames under the base domain and a time-to-live (`idle`, `max`) that cleans it up. `type: preview` environments and `ttl` already exist in the `Environment` resource.
+
+### Scale to zero <Badge text="phase 2" variant="note" />
+
+Idle apps stop and the first request wakes them, through the `activator` role that is reserved in the binary today. No Knative and no service mesh required.
+
+### Single sign-on <Badge text="phase 2" variant="note" />
+
+OIDC login for teams with an identity provider, alongside local accounts. Passkeys are under consideration.
+
+## Also planned
+
+- **Terminals** into a running pod, one session per tab and user, with an idle timeout; never logged.
+- **Log streaming** with a bounded, reference-counted hub per container (today logs are bounded REST reads).
+- **Four-eyes approval** for production promotions (`protection.requireApprovals` exists in the `Environment` resource).
+- **Separate service accounts** for the API and the controller roles, with narrower RBAC each.
+- **ListenerSet support** to go beyond 60 hostnames per Gateway.
+- **Signed anchoring** of the audit log.
+- **A formal threat model** document to accompany the security model.
+
+## Non-goals
+
+- Replacing Kubernetes' own tooling. Everything Kuben creates stays visible and editable with `kubectl`.
+- Multi-cluster management in the near term. One Kuben installation manages one cluster.
+- A hostile-tenant sandbox. Environments isolate teams from each other's mistakes, not adversaries.
+
+## Influence the order
+
+Vote with a thumbs-up on the [issues labelled `roadmap`](https://github.com/Teamtem-dev/kuben/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap), or [open a feature request](https://github.com/Teamtem-dev/kuben/issues/new?template=feature_request.yml) with the problem you are trying to solve.

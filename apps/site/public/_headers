@@ -1,0 +1,11 @@
+# Workers static assets headers (https://developers.cloudflare.com/workers/static-assets/headers/)
+
+# Fingerprinted build output: cache for a year.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()

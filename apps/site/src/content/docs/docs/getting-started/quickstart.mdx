@@ -1,0 +1,88 @@
+---
+title: Quickstart
+description: Install Kuben on a Kubernetes cluster with Helm, read the generated admin password and open the console. About five minutes.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+
+This page gets Kuben running inside a cluster and signs you in. Publishing apps on your own domain with HTTPS needs a Gateway and cert-manager; that is covered in [Production install](/docs/operations/production-install/).
+
+## Before you start
+
+- A Kubernetes cluster, **1.29 or later**: k3s, kind, EKS, GKE or AKS all work.
+- A StorageClass that supports `ReadWriteOnce`. Kuben keeps users, sessions, releases and the audit log on a 1 GiB volume when it runs on SQLite (the default).
+- [Helm](https://helm.sh) 3.8 or later (for OCI charts).
+
+<Aside type="tip" title="No cluster yet?">
+On a single server, [k3s](https://k3s.io) installs in under a minute and ships a StorageClass, a metrics-server and Traefik. See [Install the binary](/docs/getting-started/binary/) for the k3s route.
+</Aside>
+
+## Install
+
+<Steps>
+
+1. Install the chart. It creates the namespace, the CRDs, RBAC, a persistent volume and one Kuben pod.
+
+   ```bash
+   helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben \
+     --namespace kuben-system --create-namespace
+   ```
+
+2. Wait for the pod to become ready. A pod reports ready only after it has listed every Project, Environment, App and Pod once, so it never answers `404` for objects that exist.
+
+   ```bash
+   kubectl -n kuben-system rollout status deploy/kuben
+   ```
+
+3. Read the generated admin password. It is stored in a Secret and **never written to the log**.
+
+   ```bash
+   kubectl -n kuben-system get secret kuben-initial-admin \
+     -o jsonpath='{.data.password}' | base64 -d; echo
+   ```
+
+4. Open the console through a port-forward.
+
+   ```bash
+   kubectl -n kuben-system port-forward svc/kuben 8080:80
+   ```
+
+   Browse to `http://localhost:8080` and sign in as `admin@kuben.local` with that password. Browsers treat `localhost` as a secure context, so the `Secure` session cookie works without TLS.
+
+5. Change the password under **Account**, then delete the bootstrap Secret:
+
+   ```bash
+   kubectl -n kuben-system delete secret kuben-initial-admin
+   ```
+
+</Steps>
+
+## What you have now
+
+- A Kuben deployment in `kuben-system` running as a non-root user with a read-only root filesystem.
+- The `kuben.dev` custom resources installed: `KubenConfig`, `Project`, `Environment`, `App`, `Release`, `BuildRun`.
+- A `KubenConfig` singleton with empty platform settings. Apps get cluster-internal Services until you set a `baseDomain` and a Gateway.
+
+## Next steps
+
+<Tabs>
+  <TabItem label="Deploy something">
+    Follow [Deploy your first app](/docs/getting-started/first-app/): a project, an environment and a running container in a couple of minutes.
+  </TabItem>
+  <TabItem label="Go to production">
+    [Production install](/docs/operations/production-install/) covers the public URL, custom domains and automatic HTTPS, PostgreSQL and several replicas, backups and upgrades.
+  </TabItem>
+  <TabItem label="Invite the team">
+    [Teams and roles](/docs/guides/teams-and-roles/) explains the four roles, invitations and what an API token may do.
+  </TabItem>
+</Tabs>
+
+## Uninstall
+
+```bash
+helm uninstall kuben -n kuben-system
+```
+
+The persistent volume carries `helm.sh/resource-policy: keep` and survives `helm uninstall`, so a re-install finds its data again. Delete the PVC and the namespace yourself when you really want everything gone. Tenant namespaces created for environments are owned by their `Environment` resources and are garbage-collected when those are deleted.

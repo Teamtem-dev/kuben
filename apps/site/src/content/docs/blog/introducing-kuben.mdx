@@ -1,0 +1,62 @@
+---
+title: "Introducing Kuben: a Kubernetes PaaS in a single binary"
+description: Kuben 1.0 is out. One Rust binary turns a Kubernetes cluster into a platform your team can use, with isolated environments, automatic HTTPS, rollbacks, teams and an audit log. Here is what it is, what it is not, and why we built it this way.
+date: 2026-09-12
+authors: teamtem
+tags: [release, announcement]
+excerpt: Kuben 1.0 is out. One Rust binary turns a Kubernetes cluster into a platform your team can use. Here is what it is, what it is not, and why we built it this way.
+---
+
+Today we are releasing **Kuben 1.0**, a platform as a service that runs on your own Kubernetes cluster and ships as a single binary.
+
+You give it a container image. It gives your team an isolated environment with a public HTTPS address, zero-downtime rollouts, autoscaling, logs, a numbered release history with one-click rollback, and an audit log that records who changed what. Everything it creates is an ordinary Kubernetes object, labelled and visible, so `kubectl` and GitOps keep working next to it.
+
+```bash
+helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace
+```
+
+That is the whole install. No operator to deploy first, no message queue, no external database unless you want several replicas, no build farm.
+
+## Why another PaaS
+
+Small teams end up in one of two places. Either they run a hosted platform and pay per seat and per gigabyte for the privilege of not thinking about infrastructure, or they get a Kubernetes cluster and discover that "deploy a service" now means a Deployment, a Service, an HPA, an Ingress or HTTPRoute, a Certificate, a NetworkPolicy, a ResourceQuota, some RBAC, and a wiki page nobody updates.
+
+The self-hosted PaaS projects that fill this gap are good products, and we learned from them. But when we read their code closely, the same class of problems appeared again and again: a JWT in `localStorage`, a default secret in the repository, a build pod that carries a service-account token while running user code, log streams that leak, a "current cluster" global that races between requests. Not because the authors were careless, but because those systems grew fast in dynamic languages without a place where invariants live.
+
+Kuben is our attempt to make that class of problem **structurally impossible** rather than merely avoided. We wrote it in Rust, kept it to one process, and wrote down eighteen invariants that every change is reviewed against. The [security model](/docs/operations/security/) page says what those choices buy you and, just as important, what they do not.
+
+## What 1.0 does
+
+- **Projects → environments → apps.** Every environment is its own namespace with a resource quota, a NetworkPolicy and Pod Security labels.
+- **Deploy any image** with readiness and startup probes, CPU autoscaling, environment variables and write-only secrets.
+- **Day-2 operations built in:** logs, restarts, releases with rollback, promotion between environments with a diff preview, persistent volumes, cron jobs.
+- **Custom domains with automatic HTTPS** through Gateway API and cert-manager. One listener per hostname; a domain belongs to exactly one app.
+- **One-click templates** for PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden and Gitea, with generated credentials that never appear in a spec.
+- **Teams:** four roles, invitations, API tokens capped at a role and scoped to a project or environment, and an append-only audit log of every change and every denial.
+- **Operations:** several replicas on PostgreSQL with Lease-based leader election, backups, boot-time migrations and CRD updates, Prometheus metrics, `kuben doctor`.
+
+## What it is not, yet
+
+Kuben does not build images in 1.0. Your CI builds and pushes; Kuben rolls out with one `PATCH`. Git builds with BuildKit, preview environments per pull request, scale-to-zero and SSO are the [roadmap](/docs/roadmap/), in roughly that order. The custom resources for builds and previews already exist so that the schema is stable when the features land.
+
+Kuben is also not a sandbox for hostile tenants. Environments isolate teams from each other's mistakes; untrusted code needs a stronger boundary than a namespace.
+
+## The shape of the thing
+
+A few numbers, because footprint was a design goal and not an afterthought:
+
+| | |
+|---|---|
+| Release binary, console included | ≤ 26 MiB, and CI fails if it grows past that |
+| Container image | ≤ 30 MiB, distroless, non-root, read-only filesystem |
+| Memory requested by the pod | 64 Mi |
+| Console JavaScript | ≤ 200 kB brotli |
+| Platforms | Linux and macOS on x86_64 and arm64, Windows x86_64 |
+
+Every release is checksummed, attested with build provenance and scanned before the image is pushed, and every binary embeds its own dependency list so you can audit it in place months later.
+
+## Try it
+
+The [quickstart](/docs/getting-started/quickstart/) takes about five minutes on any cluster from 1.29 up. On a single server, `k3s` plus the [binary install](/docs/getting-started/binary/) works well. The [user guides](/docs/guides/deploy-from-ci/) walk through the everyday scenarios: deploying from CI, inviting a team, rolling back, promoting, custom domains.
+
+Kuben is Apache-2.0 and built by [Teamtem](https://teamtem.com). Issues, feature requests and pull requests are welcome on [GitHub](https://github.com/Teamtem-dev/kuben). We would love to hear what you deploy with it.

@@ -1,0 +1,115 @@
+---
+title: Deploy from CI with an API token
+description: Create a scoped API token, store it in your CI system and roll out a freshly built image with one HTTP request. Includes a complete GitHub Actions workflow.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+Kuben does not build images yet (Git builds are on the [roadmap](/docs/roadmap/)), so the usual flow is: your CI builds and pushes an image, then tells Kuben to roll it out. That second step is a single `PATCH`.
+
+## 1. Create a token
+
+<Steps>
+
+1. Open **API tokens** in the console and press **New token**:
+
+   - **Name:** `github-actions`
+   - **Role:** `developer`. It can deploy and change apps, but not administer.
+   - **Project:** `shop`
+   - **Environment:** `staging`
+   - **Lifetime:** 90 days by default, 365 at most.
+
+2. Copy the token. It is shown **once**; only its SHA-256 hash is stored.
+
+3. Store it as the repository secret `KUBEN_TOKEN`, and the console URL as the variable `KUBEN_URL`.
+
+</Steps>
+
+The same over the API:
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/tokens" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "github-actions", "role": "developer", "project": "shop", "environment": "staging", "expires_in_days": 90}'
+```
+
+<Aside type="caution" title="What a token can never do">
+A token never has more rights than its owner, and a token cannot create tokens, manage members or change passwords, whatever its role. If it leaks, the blast radius is one environment of one project, until you revoke it.
+</Aside>
+
+## 2. Roll out from the pipeline
+
+The request that deploys a new image:
+
+```bash
+curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"image": "ghcr.io/acme/shop-api:b8e2f31"}'
+```
+
+`PATCH` is a partial update: omitted fields stay as they are, and lists (`env`, `domains`, `volumes`) are replaced only when you send them. Every successful update becomes a numbered [release](/docs/guides/rollbacks/).
+
+### GitHub Actions
+
+```yaml title=".github/workflows/deploy.yml"
+name: deploy
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+      - name: Roll out on Kuben
+        env:
+          KUBEN_URL: ${{ vars.KUBEN_URL }}
+          KUBEN_TOKEN: ${{ secrets.KUBEN_TOKEN }}
+          IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+        run: |
+          curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api" \
+            -H "Authorization: Bearer $KUBEN_TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "{\"image\": \"$IMAGE\"}"
+```
+
+<Aside type="tip" title="Private registries">
+The cluster pulls the image, not Kuben. For a private registry, create an image pull secret in the environment namespace (`shop-staging`) and attach it to the namespace's default service account, or use your cloud provider's node-level registry credentials.
+</Aside>
+
+### GitLab CI
+
+```yaml title=".gitlab-ci.yml"
+deploy:
+  stage: deploy
+  image: curlimages/curl:8.10.1
+  script:
+    - >
+      curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api"
+      -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json'
+      -d "{\"image\": \"$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA\"}"
+  only: [main]
+```
+
+## 3. Promote to production
+
+Developers deploy to staging; admins promote to production. Promotion copies the image, commands, ports, health check and environment variables to the target environment and keeps the target's domains, scaling and volumes. A `dry_run` shows the diff first. See [Promote between environments](/docs/guides/promote/).
+
+## Revoking
+
+Delete the token from **API tokens** or with `DELETE /api/v1/tokens/{id}`. It stops working immediately on every replica, and the revocation is in the [audit log](/docs/guides/audit-log/).

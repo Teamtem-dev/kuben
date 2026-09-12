@@ -1,0 +1,113 @@
+---
+title: Install the binary
+description: Run Kuben as a single binary on a server, managing a k3s or any other cluster through a kubeconfig. Includes what install.sh guarantees.
+sidebar:
+  order: 4
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+The one-line installer puts a single `kuben` binary on Linux or macOS (x86_64 or arm64). The binary manages a cluster through a kubeconfig and keeps its own data in SQLite. It is the quickest way to try Kuben on one server, and a reasonable way to run it there.
+
+<Aside type="tip">
+For production inside a cluster, prefer the [Helm install](/docs/operations/production-install/): it runs Kuben with probes, RBAC, a persistent volume and the security context described in the security model.
+</Aside>
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+```
+
+Options, as flags or environment variables:
+
+| Flag | Variable | Default |
+|---|---|---|
+| `--version v1.0.2` | `KUBEN_VERSION` | latest stable release |
+| `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
+| `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
+
+On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases).
+
+### What the script guarantees
+
+- **HTTPS only**, TLS 1.2 or later, no redirects to plain HTTP.
+- **Checksum first.** The archive's SHA-256 is compared with the release's `checksums.txt` *before* anything is extracted or installed.
+- **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
+- **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
+- **No API calls.** The latest version is found through the `releases/latest` redirect, so there is no rate limit and no `jq`.
+- **Verified after every release.** CI runs the script on Ubuntu (x64 and arm64) and macOS against the real release.
+
+To go further, verify the build provenance with the GitHub CLI:
+
+```bash
+gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
+```
+
+## Run it on a server
+
+<Steps>
+
+1. Get a cluster to manage. On a single server, k3s is the quickest:
+
+   ```bash
+   curl -sfL https://get.k3s.io | sh -
+   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+   ```
+
+2. Check the prerequisites. `doctor` checks the database, the cluster connection, Gateway API, cert-manager and metrics-server, and tells you what is optional.
+
+   ```bash
+   kuben doctor
+   ```
+
+   The database is `/data/kuben.db` by default and the directory is created on first start. To keep it elsewhere:
+
+   ```bash
+   export KUBEN_DATABASE__URL=sqlite:///var/lib/kuben/kuben.db
+   ```
+
+3. Start Kuben. The first start prints the generated admin password **once**, in this terminal.
+
+   ```bash
+   kuben serve
+   ```
+
+4. Open the console. The session cookie is `Secure`, so either put Kuben behind HTTPS or tunnel to `localhost`, which browsers treat as secure:
+
+   ```bash
+   ssh -L 8080:localhost:8080 root@your-server
+   ```
+
+   Then browse to `http://localhost:8080`. Only for a quick test over plain HTTP, set `KUBEN_SECURITY__COOKIE_SECURE=false`.
+
+</Steps>
+
+## Keep it running
+
+A minimal systemd unit:
+
+```ini title="/etc/systemd/system/kuben.service"
+[Unit]
+Description=Kuben
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+Environment=KUBEN_DATABASE__URL=sqlite:///var/lib/kuben/kuben.db
+Environment=KUBEN_SERVER__BIND=127.0.0.1:8080
+ExecStart=/usr/local/bin/kuben serve
+Restart=on-failure
+User=kuben
+StateDirectory=kuben
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Binding to `127.0.0.1` and publishing the console through the cluster's own Gateway (or any reverse proxy that terminates TLS) keeps the `Secure` cookie happy. When a proxy sits in front, set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/).
+
+## Other commands
+
+`kuben migrate`, `kuben backup`, `kuben restore`, `kuben reset-admin` and `kuben version` are described in the [CLI reference](/docs/reference/cli/).

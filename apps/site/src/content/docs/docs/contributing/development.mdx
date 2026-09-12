@@ -1,0 +1,100 @@
+---
+title: Development setup
+description: Clone, install the toolchain, run the API and the console locally, run what CI runs, and the repository rules every pull request must follow.
+sidebar:
+  order: 1
+---
+
+import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
+
+## Toolchain
+
+- **Rust** stable, MSRV 1.94 (`rust-toolchain.toml` pins it)
+- **Bun** 1.4 or later: package manager, JS runtime and test runner. Node is not needed.
+- **Turborepo** runs every task in both languages from one graph (installed by `bun install`).
+- **kind** for the end-to-end tests, **Helm** for the chart.
+
+<Steps>
+
+1. Clone and set up. `setup` installs the Rust toolchain components, the JS dependencies and cargo-nextest.
+
+   ```bash
+   git clone https://github.com/Teamtem-dev/kuben.git
+   cd kuben
+   bun run setup
+   ```
+
+2. Run the API and the console. The API listens on `:8080` in dev mode (pretty logs, insecure cookie, in-memory SQLite); Vite serves the console on `:5173` and proxies `/api` to it.
+
+   ```bash
+   bun run dev
+   ```
+
+   Sign in as `admin@kuben.local`; the dev password is printed at start.
+
+3. Before pushing, run what CI runs: rustfmt, clippy with `-D warnings`, tests, doctests, the TypeScript checks, Biome, the generated-file drift check and the web build with its size budget.
+
+   ```bash
+   bun run ci
+   ```
+
+4. If you touched controllers or the API, also run the end-to-end suite against a kind cluster:
+
+   ```bash
+   kind create cluster --config deploy/kind.yaml
+   bun run e2e
+   ```
+
+</Steps>
+
+## Repository layout
+
+<FileTree>
+- crates/
+  - kuben/ the binary: CLI, serve, bootstrap, telemetry
+  - kuben-api/ Axum routes, auth, audit, OpenAPI, embedded console
+  - kuben-platform/ controllers, projections, leader election, supervisor
+  - kuben-store/ sqlx repositories for SQLite and PostgreSQL, migrations
+  - kuben-crd/ the kuben.dev types and the CRD generator
+  - kuben-core/ config, ids, authz, errors shared by all crates
+- apps/
+  - console/ React 19 + TanStack, Tailwind v4 (embedded into the binary)
+  - site/ this website: Astro + Starlight
+- packages/
+  - api-client/ openapi.json and the generated TypeScript types
+- charts/kuben/ the Helm chart and generated CRDs
+- scripts/ ci.sh, e2e.sh, budgets, scans, change detection
+- docs/ ADRs and design documents
+</FileTree>
+
+## Everyday commands
+
+| Command | Does |
+|---|---|
+| `bun run build` | debug builds of the Rust entrypoints and the web bundle |
+| `bun run check` | `cargo check` and `tsc` |
+| `bun run lint` | clippy (`-D warnings`, pedantic) and Biome |
+| `bun run format` | rustfmt and Biome fixes |
+| `bun run test` | cargo-nextest and `bun test`, plus doctests |
+| `bun run gen` | regenerate `openapi.json`, `schema.d.ts` and the CRDs |
+| `bun run drift` | regenerate and fail on any difference (what CI does) |
+| `bun turbo run test --filter=kuben-store` | one package |
+| `bun turbo run kuben#size` | release build with the embedded console, checked against the 26 MiB budget |
+
+## Rules
+
+- **Dependencies.** Rust versions live only in `[workspace.dependencies]`; JS versions only in the root `package.json` catalog (packages write `catalog:`). Every new crate must pass `cargo deny check`.
+- **Generated files are committed.** After changing API types or CRDs, run `bun run gen` and commit `packages/api-client/openapi.json`, `packages/api-client/src/schema.d.ts` and `charts/kuben/crds/`. CI fails on drift.
+- **Every handler has a unique `operation_id`** in `#[utoipa::path]`; the TypeScript types and the audit log are keyed by it.
+- **CRD types stay structural:** no internally tagged enums; use one-of structs with optional fields (`Source { image, git }`). A test guards this.
+- **Budgets are gates:** binary ≤ 26 MiB, image ≤ 30 MiB, console JS ≤ 200 kB and CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
+- **Commits** follow Conventional Commits (`feat(api): …`, `fix(controller): …`). Label pull requests (`feature`, `bug`, `security`, `breaking`); release notes are grouped by label.
+- **Every migration exists for both backends** with the same file name; a test enforces parity.
+
+## The review checklist
+
+`CONTRIBUTING.md` lists 18 invariants, each closing a class of bug found in the system Kuben replaces: opaque sessions and no JWT in the browser, Argon2id only, no injection through user strings, no global mutable cluster context, informers instead of polling, readiness only after sync, embedded migrations under a lock, one source of truth per datum, server-side apply with conditions, and more. Reviewers check the ones a change touches. Read it before opening a pull request.
+
+<Aside type="note" title="Reporting security issues">
+Please use [private vulnerability reporting](https://github.com/Teamtem-dev/kuben/security/policy), not a public issue.
+</Aside>

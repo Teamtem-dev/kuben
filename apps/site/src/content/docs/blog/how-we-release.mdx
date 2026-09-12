@@ -1,0 +1,71 @@
+---
+title: "How we release Kuben: attested, scanned, and built from the bytes we checked"
+description: A release is where supply-chain mistakes become everyone's problem. Kuben's release pipeline builds five binaries without a cache, checksums and attests them, builds the image from those exact bytes, scans it before pushing, and embeds a dependency list in every binary. Here is the pipeline and why each step is there.
+date: 2026-09-09
+authors: teamtem
+tags: [security, engineering, ci]
+excerpt: Kuben's release pipeline builds five binaries without a cache, checksums and attests them, builds the image from those exact bytes, scans it before pushing, and embeds a dependency list in every binary. Here is why each step is there.
+---
+
+A platform that deploys your software runs with a service account that can read every Secret in the cluster. Its release process should be at least as careful as the code. This post walks through Kuben's, step by step, with the reasoning for each.
+
+## The shape
+
+```text
+tag v1.0.2 ─► plan (tag == Cargo version)
+               ├─► web (bun: vite build + size-limit) ─► build ×5 (cargo auditable) ─┬─► publish (checksums, attestations, GitHub Release)
+               │                                                                     │        └─► verify-install ×3
+               │                                                                     └─► image (budget → Trivy → push, SBOM, provenance)
+               │                                                                              └─► chart (helm push)
+```
+
+A release starts with a signed git tag. Nothing else can trigger it.
+
+## 1. The tag must match the code
+
+The `plan` job checks that the tag equals `[workspace.package] version` in `Cargo.toml`. If someone tags `v1.0.3` on a commit that says `1.0.2`, nothing is built. It sounds trivial; it prevents the class of "the binary says one version and the release page another" confusion that makes incident timelines painful.
+
+## 2. Build without a cache
+
+CI uses a Rust cache and a Turborepo remote cache to stay fast, and pull requests can only **read** those caches; writes happen on `main`. Releases go further: they use no cache at all. The web bundle is built by calling the package scripts directly with Bun rather than through the task runner, and the Rust builds and the Zig toolchain run cache-free. A poisoned cache, however it got there, cannot reach a published artifact.
+
+## 3. Five targets, tested on four operating systems
+
+Binaries ship for Linux and macOS on x86_64 and arm64 and for Windows x86_64. Linux builds are static musl binaries, cross-compiled with `cargo-zigbuild` so that the arm64 build does not need QEMU. The same five targets are exercised by the test matrix on every pull request; a platform we ship is a platform we test.
+
+## 4. Every binary carries its dependency list
+
+The builds run under `cargo auditable`, which embeds the exact list of crates (about 6 KiB for Kuben's 378 crates) in a linker section of the binary. Months later, `trivy`, `grype`, `osv-scanner` or `cargo audit bin` can point at a deployed binary or image and tell you whether any of its dependencies has an advisory. We scan the Linux binaries this way before they are packaged, and fail on any HIGH or CRITICAL vulnerability with a fix available.
+
+## 5. Checksums and attestations
+
+Each archive gets a `.sha256` file, and `checksums.txt` lists all of them. The publish job also generates GitHub build provenance attestations, so `gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben` proves the archive was built by this workflow from this commit.
+
+`install.sh` reads `checksums.txt` and verifies the archive **before** extracting anything. It downloads over HTTPS only, wraps its whole body in a `main()` called on the last line so that a truncated download runs nothing, and never calls the GitHub API. After every release, a job runs the script on Ubuntu x64, Ubuntu arm64 and macOS against the real assets and checks `kuben --version`.
+
+## 6. The image is a `COPY`
+
+The release image is not built from source. `deploy/release.Dockerfile` copies the already-checksummed musl binary into `distroless/static:nonroot`. The multi-arch build takes seconds, needs no emulation, and, more to the point, the bytes in the image are the exact bytes that were checksummed, attested and scanned in the previous steps.
+
+The Dockerfile sets `USER 65532:65532` numerically. Kubernetes cannot verify `runAsNonRoot: true` against a user *name*, and rejects the pod; a number it can check.
+
+## 7. Gates before the push
+
+The `linux/amd64` image is loaded locally, measured against its 30 MiB budget and scanned by Trivy. Only if both pass is the multi-arch image pushed, with an SBOM and provenance attached. Then the Helm chart is pushed to the same OCI registry. Tags such as `v1.1.0-rc.1` become pre-releases and never move the `latest` image tag or the `X.Y` tag.
+
+## 8. Then, every day
+
+A lockfile that passed yesterday can be vulnerable today; advisories are published after code is merged. A scheduled workflow runs daily: `cargo deny check advisories` on `main`, and `trivy image` on the published `latest`. A failure opens one issue, *Scheduled security check failed*, and later failures comment on it instead of opening more. The fix is always the same: update, merge, cut a patch release so the image follows.
+
+## The CI side
+
+The release pipeline inherits the rules of the CI workflow:
+
+- Every action is pinned to a **commit SHA**, with the tag in a comment, and Dependabot keeps them current with a 7-day cooldown against freshly published malicious packages.
+- Rust is installed with the runner's own `rustup`; third-party tools are installed at exact versions by a checksum-verifying installer. We deliberately do not use Trivy's own GitHub Actions after their tags were hijacked in March 2026.
+- `permissions: contents: read` is the default; each job requests what it needs; `persist-credentials: false` on every checkout.
+- The workflows themselves are audited with zizmor on every pull request for template injection, excessive permissions and cache poisoning.
+
+## Why write this down
+
+None of this is novel. All of it is easy to skip, and each skipped step is a way for someone else's code to end up in your cluster with cluster-admin. Writing the pipeline down, in the [CI/CD page](/docs/contributing/ci-cd/) and here, is how we keep ourselves from skipping steps when a release is urgent. If you see a gap, we would like to hear about it, [privately](https://github.com/Teamtem-dev/kuben/security/policy) if it is a vulnerability.

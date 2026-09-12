@@ -1,0 +1,67 @@
+---
+title: High availability
+description: Run several Kuben replicas on PostgreSQL. How leader election picks the replica that runs the controllers, what rolls without downtime, and what stays eventually consistent.
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+SQLite supports exactly one replica. With PostgreSQL, `replicaCount` can be raised, and the chart changes how Kuben is deployed.
+
+## Switch to PostgreSQL
+
+Create a Secret with a `url` key and point the chart at it:
+
+```bash
+kubectl -n kuben-system create secret generic kuben-db \
+  --from-literal=url='postgres://kuben:…@postgres.db.svc:5432/kuben?sslmode=require'
+
+helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values \
+  --set database.existingSecret=kuben-db \
+  --set replicaCount=3
+```
+
+Migrations run at boot with a lock, so several replicas starting together do not race. The SQLite PVC is no longer created; migrate data first if you have any (see [Backup and restore](/docs/operations/backup-restore/)).
+
+<Aside type="caution">
+The chart **fails** to render `replicaCount > 1` without a PostgreSQL URL rather than silently deploying a broken setup.
+</Aside>
+
+## What each replica does
+
+- **Every replica serves the API and the console**, and keeps its own read models (projections) fed by Kubernetes watches. Reads never touch the API server.
+- **Only one replica runs the controllers:** the holder of the `coordination.k8s.io/v1` Lease `kuben-controller` in Kuben's namespace. The others report `controllers: standby`.
+- **Login throttling is stored in the database**, so all replicas share one budget.
+- **Sessions are cached** per replica for `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` (5 s by default). A revoked session can stay valid on another replica for at most that long.
+
+## Leader election
+
+The election is designed so that clock skew between nodes can never produce two leaders:
+
+- Every write to the Lease is a compare-and-swap on its `resourceVersion`.
+- A candidate treats the Lease as expired only after it has seen the record **unchanged for the lease duration** (15 s). It never compares `renewTime` with its own clock.
+- The leader renews every 2 s. If renewal fails for 10 s it stops its controllers *before* the Lease can expire for the others.
+- On graceful shutdown the leader releases the Lease, so the next replica takes over within a few seconds. After a crash, within 15 s.
+
+The Lease right is a namespaced `Role`, not part of the `ClusterRole`. Read [ADR-023](/docs/contributing/architecture-decisions/) for the reasoning.
+
+```bash
+kubectl -n kuben-system get lease kuben-controller -o jsonpath='{.spec.holderIdentity}'
+```
+
+The `kuben_leader` metric is `1` on the leader and `0` elsewhere.
+
+## Rolling upgrades
+
+With PostgreSQL the chart uses rolling updates with `maxUnavailable: 0`: a new pod must be ready before an old one stops. A `PodDisruptionBudget` stops node drains from evicting more than one pod at a time. Together with leader hand-over, an upgrade pauses the controllers for a few seconds and the API not at all.
+
+## What to expect
+
+| Event | API | Controllers |
+|---|---|---|
+| Leader stops gracefully | unaffected | resume on another replica within seconds |
+| Leader crashes | unaffected | resume within 15 s |
+| Rolling upgrade | unaffected | short pause on hand-over |
+| Session revoked | immediate on that replica, ≤ 5 s elsewhere | — |
+| PostgreSQL unavailable | logins and audited writes fail; reads from projections continue | reconciliation continues; audit writes are counted as errors |

@@ -1,0 +1,61 @@
+---
+title: Releases and rollbacks
+description: Every change to an app is a numbered revision. Roll back to any of them in one click, and understand exactly what a rollback restores and what it keeps.
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Every change is a release
+
+Each change to an app is recorded as a numbered **revision**: deploys, configuration changes, rollbacks, promotions and template deploys alike. A release snapshots the app's spec (image, processes, environment variables, health check, domains, volumes) and the names and versions of the secrets in effect, plus who or what created it (a user id, or a token).
+
+- **Console:** the *Releases* card on the app page.
+- **API:**
+
+```bash
+APP="$KUBEN_URL/api/v1/projects/shop/environments/production/apps/api"
+curl -fsS "$APP/releases" -H "Authorization: Bearer $KUBEN_TOKEN"
+```
+
+On the cluster, releases are `Release` custom resources in the environment namespace, so `kubectl get releases -n shop-production` lists them too.
+
+## Roll back
+
+Press **Roll back** next to any earlier revision, or:
+
+```bash
+curl -fsS -X POST "$APP/rollback" \
+  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"revision": 41}'
+```
+
+### What is restored, what is kept
+
+| Restored from the revision | Kept as they are today |
+|---|---|
+| image | domains |
+| commands and ports | volumes and their contents |
+| environment variables | |
+| health check | |
+
+Data never moves backwards: a rollback changes what runs, never what is stored. The rollback itself becomes a **new** revision, so the history stays linear and every rollback is visible in the [audit log](/docs/guides/audit-log/).
+
+<Aside type="caution" title="Secrets">
+A revision references secrets by name. Rolling back does not restore secret *values*; it uses the current values of the secrets it references. If a referenced secret was deleted in the meantime, the pods cannot start and the app's `Ready` condition reports the rollout as failed.
+</Aside>
+
+## Safe rollouts
+
+Rollbacks use the same rollout machinery as deploys:
+
+- New pods must pass their **readiness check** before old ones stop.
+- Slow starters get up to **5 minutes** through a startup probe.
+- A rollout that makes no progress for **10 minutes** is reported as `RolloutFailed` on the app's `Ready` condition; the previous pods keep serving.
+
+Apps with a [volume](/docs/guides/volumes/) run a single pod and use the `Recreate` strategy, so they see a few seconds of downtime on every rollout, including rollbacks.
+
+## Restart without a change
+
+**Restart** (`POST …/restart`) rolls the pods with the same revision, for example to pick up a rotated secret. It is audited but does not create a release.
