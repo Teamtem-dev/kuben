@@ -150,12 +150,14 @@ follows.
 
 Every other check builds from source. `scripts/smoke-test.sh` tests what was
 published, exactly the way the README installs it, on a machine with no
-registry credentials:
+registry credentials. `KUBEN_SMOKE_MODE=helm` (the default) takes the chart
+path; `KUBEN_SMOKE_MODE=binary` takes the server path:
 
 | Step | Checks |
 |---|---|
 | Anonymous pulls | a pull token for `charts/kuben` and `kuben` without credentials (a private package fails here with the fix spelled out), and that the chart and the image exist for the version |
-| Installer | `curl -fsSL …/main/install.sh \| bash`: exit code, the verified checksum and the installed version in its output, `kuben --version` |
+| Installer | `curl -fsSL …/main/install.sh \| sh`: exit code, the verified checksum and the installed version in its output, `kuben --version` |
+| Server (`binary`) | the one-liner as root, so `kuben setup` installs k3s, the user, the config and `kuben.service`; the printed setup link; the setup page needs its token (403 without, 200 with, 404 afterwards); project → environment → app; a second run of the installer upgrades in place and keeps the session and the app; `kuben uninstall --purge` removes the service, the data and k3s |
 | `kuben doctor`, no cluster | database OK, setup-mode warning for the cluster, exit code 0 |
 | Cluster | the current kube context, or k3s installed with `KUBEN_SMOKE_K3S=1` |
 | `helm install` | `helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace` with empty Helm and Docker configs: the chart, `app_version`, the image tag, rollout without restarts |
@@ -164,7 +166,7 @@ registry credentials:
 | Upgrade | with `KUBEN_SMOKE_UPGRADE_FROM`: `helm upgrade` to the version under test keeps the admin, the database and the app |
 | Removal | deleting the app, environment and project garbage-collects the namespace; `helm uninstall` keeps the database volume, as the chart promises |
 
-`.github/workflows/smoke.yml` runs it on ubuntu-24.04 and ubuntu-24.04-arm:
+`.github/workflows/smoke.yml` runs both modes on ubuntu-24.04 and ubuntu-24.04-arm:
 
 - **after every release**, for the new version, upgraded from the previous
   stable chart;
@@ -186,8 +188,10 @@ curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/scripts/smok
 ## 6. `install.sh`
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | sh
 ```
+
+On a Linux server with systemd, as root, the script ends by running `kuben setup` (k3s if needed, the service user, `/etc/kuben/config.toml`, `kuben.service`, the firewall, the setup link); `--binary-only` skips that, `--uninstall` runs `kuben uninstall`, and `--port`, `--kubeconfig`, `--no-k3s`, `--bind-local`, `--yes` go through to `kuben setup`. Elsewhere it installs the binary only.
 
 | Option | Environment variable | Default |
 |---|---|---|

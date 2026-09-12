@@ -17,13 +17,13 @@
 
 Kuben turns any Kubernetes cluster into a platform your team can use. Give it a container image and it gives you an isolated environment with a public HTTPS address, zero-downtime rollouts, autoscaling, logs, release history with one-click rollback, and an audit log of who changed what. It creates the Deployments, Services, autoscalers and HTTPS routes, and keeps them in sync.
 
-**Install script** (Linux and macOS, x86_64 and arm64; verifies checksums before installing):
+**One command on a fresh Linux server** (as root; verifies checksums before installing):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | sh
 ```
 
-Then run `kuben doctor`. The binary manages a cluster through a kubeconfig, for example k3s on the same server. See [Install the binary](https://kuben.teamtem.com/docs/getting-started/binary/).
+It installs k3s if there is no cluster, sets Kuben up as a service and prints the link to the setup page, where you create the admin account. Run it again to upgrade. On a workstation or without root it installs the binary only. See [Install the binary](https://kuben.teamtem.com/docs/getting-started/binary/).
 
 **Helm** (Kubernetes 1.29 or later):
 

@@ -1,33 +1,55 @@
 ---
-title: Install the binary
-description: Run Kuben as a single binary on a server, managing a k3s or any other cluster through a kubeconfig. Includes what install.sh guarantees.
+title: Install on a server
+description: One command turns a fresh Linux server into a Kuben server, k3s included. What the installer does, what it guarantees, and how to run the binary by hand.
 sidebar:
   order: 4
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components'
 
-The one-line installer puts a single `kuben` binary on Linux or macOS (x86_64 or arm64). The binary manages a cluster through a kubeconfig and keeps its own data in SQLite. It is the quickest way to try Kuben on one server, and a reasonable way to run it there.
+Kuben is a single binary. On a Linux server it runs as a service and manages a cluster through a kubeconfig, k3s on the same machine by default, and keeps its own data in SQLite. It is the quickest way to run Kuben on one server.
 
 <Aside type="tip">
-For production inside a cluster, prefer the [Helm install](/docs/operations/production-install/): it runs Kuben with probes, RBAC, a persistent volume and the security context described in the security model.
+For production inside a cluster you already have, prefer the [Helm install](/docs/operations/production-install/): it runs Kuben with probes, RBAC, a persistent volume and the security context described in the security model.
 </Aside>
 
-## Install
+## One command
+
+On a fresh server (Ubuntu, Debian, Fedora, … with systemd; x86_64 or arm64; 2 GB of RAM or more), as root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | sh
 ```
 
-Options, as flags or environment variables:
+```text
+✔ Installed kuben v1.1.0 (x86_64-unknown-linux-musl) to /usr/local/bin/kuben. sha256 3f9e…
+✔ Preflight checks. Ubuntu 24.04.4 LTS, x86_64, 4 GB RAM
+○ Installing the kuben binary. v1.1.0 at /usr/local/bin/kuben
+✔ Creating the kuben system user. kuben (uid 998)
+❯ curl -sfL https://get.k3s.io | sh -
+✔ Installing k3s. v1.36.4+k3s1
+✔ Waiting for the cluster. 1 node, Kubernetes v1.36.4+k3s1
+✔ Writing /etc/kuben/config.toml. port 3000
+✔ Checking port 3000. free
+✔ Starting kuben.service. running
+✔ Opening port 3000 in the firewall. ufw
 
-| Flag | Variable | Default |
-|---|---|---|
-| `--version v1.0.2` | `KUBEN_VERSION` | latest stable release |
-| `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
-| `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
+Kuben is running. Finish the setup in your browser:
 
-On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases).
+    http://203.0.113.7:3000/setup?token=8f2c…d1
+
+  The link is valid for 30 minutes; print a new one with `kuben setup-token`.
+```
+
+Open the link and create the admin account: organization, email, password. The token in the link is what keeps a stranger who finds the port first from doing the same; `kuben setup-token` prints a fresh link when it has expired. Nothing is seeded and nothing is written to the log.
+
+The same command **upgrades**: it installs the new binary, keeps the configuration and the data, restarts the service and reports `Kuben is up to date and running`. Everything it did is listed under [`kuben setup`](/docs/reference/cli/#setup); `kuben status` shows the state of the server, and [`kuben uninstall`](/docs/reference/cli/#uninstall) takes it away again.
+
+Options go through to `kuben setup`: `--port 8080`, `--kubeconfig /path` to manage a cluster you already have, `--no-k3s`, `--bind-local` (SSH tunnel only), `--yes`. `--binary-only` skips the setup, and `--uninstall` runs `kuben uninstall`. Without root, or on macOS, the script installs the binary only.
+
+<Aside type="caution" title="Plain http on a public address">
+Until the console has an `https://` address the session cookie is not `Secure` (`cookie_secure = auto`), so signing in over `http://<ip>:3000` works. That is fine for a first look, not for a team: put the console behind TLS before inviting anyone, and set `public_url` in `/etc/kuben/config.toml` to the `https://` address, which makes the cookie `Secure`. Behind a cloud firewall (Hetzner, AWS, GCP, …), allow the port there as well.
+</Aside>
 
 ### What the script guarantees
 
@@ -35,16 +57,39 @@ On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page]
 - **Checksum first.** The archive's SHA-256 is compared with the release's `checksums.txt` *before* anything is extracted or installed.
 - **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
 - **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
-- **No API calls.** The latest version is found through the `releases/latest` redirect, so there is no rate limit and no `jq`.
-- **Verified after every release.** CI runs the script on Ubuntu (x64 and arm64) and macOS against the real release.
+- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, `get.k3s.io`.
+- **Tested after every release, and every day.** CI runs exactly this command on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
 
-To go further, verify the build provenance with the GitHub CLI:
+Other options, as flags or environment variables:
+
+| Flag | Variable | Default |
+|---|---|---|
+| `--version v1.1.0` | `KUBEN_VERSION` | latest stable release |
+| `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
+| `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
+| `--binary-only` | `KUBEN_BINARY_ONLY=1` | run `kuben setup` on a Linux server as root |
+
+On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases). To go further, verify the build provenance with the GitHub CLI:
 
 ```bash
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
 ```
 
-## Run it on a server
+## What is on the server afterwards
+
+| Path | Purpose |
+|---|---|
+| `/usr/local/bin/kuben` | the binary |
+| `/etc/kuben/config.toml` | port, public URL, database, kubeconfig; every `kuben` command reads it, so `kuben status`, `kuben reset-admin` or `kuben backup` work on the same installation |
+| `/var/lib/kuben/` | the SQLite database, the kubeconfig copy (readable by `kuben` only) and, until the admin exists, `setup-token` |
+| `kuben.service` | runs `kuben serve` as the system user `kuben`, restarts on failure, starts after k3s |
+| k3s | when there was no cluster: `/etc/rancher/k3s/k3s.yaml`, `k3s.service`, and a marker so `kuben uninstall --purge` removes it again |
+
+Useful commands: `systemctl status kuben`, `journalctl -u kuben -f`, `sudo -u kuben kuben doctor`.
+
+## Run it by hand
+
+Without root or systemd, or to keep things manual, the binary runs anywhere with a kubeconfig.
 
 <Steps>
 
@@ -62,91 +107,24 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
    kuben doctor
    ```
 
-   The `database` line shows where the data lives. Without `KUBEN_DATABASE__URL` it is `~/.local/state/kuben/kuben.db`, or the state directory under systemd's `StateDirectory=` (for example `/var/lib/kuben`). A server that already has `/data`, the container volume and the location before 1.0.3, keeps using `/data/kuben.db`. To choose yourself:
+   The `database` line shows where the data lives. Without `KUBEN_DATABASE__URL` it is `~/.local/state/kuben/kuben.db`, or the state directory under systemd's `StateDirectory=`. A server that already has `/data`, the container volume and the location before 1.0.3, keeps using `/data/kuben.db`. To choose yourself:
 
    ```bash
    export KUBEN_DATABASE__URL=sqlite:///srv/kuben/kuben.db
    ```
 
-3. Start Kuben. The first start prints a **setup link** in this terminal:
+3. Start Kuben. The first start prints the setup link in this terminal:
 
    ```bash
    kuben serve
    ```
 
-   ```text
-     No admin account yet. Finish the setup in your browser:
-
-       http://203.0.113.7:8080/setup?token=8f2c…d1
-   ```
-
-4. Open that link and create the admin account: organization, email, password. The token in the link is what keeps a stranger who finds the port first from doing the same; it is valid for 30 minutes, and `kuben setup-token` prints a fresh link. Nothing is seeded and nothing is written to the log.
-
-   The session cookie is not `Secure` until the console has an `https://` address: set `KUBEN_SERVER__PUBLIC_URL` once Kuben sits behind TLS and it becomes `Secure` on its own (`KUBEN_SECURITY__COOKIE_SECURE=auto`, the default). A plain-http console on a public address is fine for a first look, not for a team: put it behind HTTPS before inviting anyone.
+4. Open the link, create the admin account, and you are in. The console listens on `0.0.0.0:8080` here; `KUBEN_SERVER__BIND` changes that.
 
 </Steps>
 
-## Keep it running
-
-Run Kuben as its own system user, with its settings in `/etc/kuben/config.toml`: every command reads that file, so `kuben reset-admin` or `kuben backup` work on the same database as the service.
-
-<Steps>
-
-1. Create the user and give it the kubeconfig:
-
-   ```bash
-   sudo useradd --system --home-dir /var/lib/kuben --shell /usr/sbin/nologin kuben
-   sudo install -D -m 600 -o kuben -g kuben /etc/rancher/k3s/k3s.yaml /var/lib/kuben/kubeconfig
-   ```
-
-2. Configure it:
-
-   ```toml title="/etc/kuben/config.toml"
-   [server]
-   bind = "127.0.0.1:8080"
-   metrics_bind = "127.0.0.1:9090"
-
-   [database]
-   url = "sqlite:///var/lib/kuben/kuben.db"
-
-   [kube]
-   kubeconfig = "/var/lib/kuben/kubeconfig"
-   ```
-
-3. Add the unit and start it:
-
-   ```ini title="/etc/systemd/system/kuben.service"
-   [Unit]
-   Description=Kuben
-   After=network-online.target k3s.service
-   Wants=network-online.target
-
-   [Service]
-   ExecStart=/usr/local/bin/kuben serve
-   User=kuben
-   StateDirectory=kuben
-   Restart=on-failure
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-   ```bash
-   sudo systemctl daemon-reload && sudo systemctl enable --now kuben
-   ```
-
-4. Print the setup link and create the admin account in the browser. The service has no terminal, so it only writes the token to `/var/lib/kuben/setup-token`; this command prints a fresh link with it:
-
-   ```bash
-   sudo -u kuben kuben setup-token
-   ```
-
-   Run other commands as the same user too, for example `sudo -u kuben kuben reset-admin`.
-
-</Steps>
-
-Binding to `127.0.0.1` keeps the console and the metrics off the public interface. Reach the console through an SSH tunnel, or put a reverse proxy that terminates TLS in front of it and set `public_url` under `[server]` to its `https://` address, which also makes the session cookie `Secure`. On k3s, Traefik already holds ports 80 and 443 on the host, so such a proxy needs Traefik disabled (`--disable=traefik`) or other ports. When a proxy sits in front, set `trust_forwarded_for = true` under `[security]` so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/).
+To keep a manual install running, `kuben setup` is still the easiest way to get the system user, the config file and the unit; or write the unit yourself with `User=kuben`, `StateDirectory=kuben` and the settings in `/etc/kuben/config.toml`, as `kuben setup` does. Behind a reverse proxy that terminates TLS, set `public_url` under `[server]` to its `https://` address and `trust_forwarded_for = true` under `[security]`, so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/). On k3s, Traefik already holds ports 80 and 443 on the host, so such a proxy needs Traefik disabled (`--disable=traefik`) or other ports.
 
 ## Other commands
 
-`kuben migrate`, `kuben backup`, `kuben restore`, `kuben reset-admin` and `kuben version` are described in the [CLI reference](/docs/reference/cli/).
+`kuben status`, `kuben uninstall`, `kuben migrate`, `kuben backup`, `kuben restore`, `kuben reset-admin`, `kuben setup-token` and `kuben version` are described in the [CLI reference](/docs/reference/cli/).

@@ -19,9 +19,9 @@ const tabs = [
     label: 'Install script',
     icon: 'lucide:terminal',
     prompt: '$',
-    command: 'curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash',
+    command: 'curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | sh',
     copyLabel: 'Copy install command',
-    note: 'Linux and macOS, x86_64 and arm64. The script checks the SHA-256 checksum before it installs anything. Then run <code>kuben doctor</code>.',
+    note: 'On a fresh Linux server, as root: installs k3s if needed, sets Kuben up as a service and prints the link to the setup page. Checksums are verified before anything is installed; the same command upgrades.',
   },
   {
     key: 'helm',

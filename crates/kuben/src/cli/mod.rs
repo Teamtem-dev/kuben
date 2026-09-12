@@ -1,6 +1,8 @@
 pub mod admin;
 pub mod backup;
 pub mod doctor;
+pub mod setup;
+pub mod ui;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use kuben_core::config::{Config, Role};
@@ -39,6 +41,13 @@ pub enum Command {
     ResetAdmin(ResetAdminOpts),
     /// Print a fresh link to the first-run setup page (`/setup`), with its token.
     SetupToken,
+    /// Make this Linux server a Kuben server: k3s if needed, a system user, the
+    /// config, a systemd service, the firewall. Re-run to upgrade or repair.
+    Setup(setup::SetupOpts),
+    /// Service, admin account, cluster and console address of this server.
+    Status,
+    /// Remove the service installed by `kuben setup` (with --purge: everything).
+    Uninstall(setup::UninstallOpts),
     /// Export Projects, Environments and Apps (CRDs) to a directory (secret values are never exported).
     Backup(BackupOpts),
     /// Restore a backup created by `kuben backup`.

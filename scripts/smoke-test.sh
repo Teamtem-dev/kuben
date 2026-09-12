@@ -12,6 +12,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/scripts/smoke-test.sh | KUBEN_SMOKE_K3S=1 bash
 #
 # Environment:
+#   KUBEN_SMOKE_MODE          `helm` (default): the chart and image on k3s. `binary`: the one-liner as
+#                             root, which runs `kuben setup`; then the setup page, the API, a second
+#                             run (upgrade in place) and `kuben uninstall --purge`
 #   KUBEN_SMOKE_VERSION       release under test, e.g. 1.0.2 (default: the latest stable, as users get it)
 #   KUBEN_SMOKE_UPGRADE_FROM  chart version to install first, then upgrade from; `previous` is the
 #                             newest stable chart older than the one under test (default: no upgrade)
@@ -48,13 +51,16 @@ P=smoke
 APP_NS="kb-${P}-dev"
 APP="/projects/${P}/environments/dev/apps"
 
+MODE=${KUBEN_SMOKE_MODE:-helm}
+[[ $MODE == helm || $MODE == binary ]] || { echo "KUBEN_SMOKE_MODE must be helm or binary" >&2; exit 2; }
 VERSION=${KUBEN_SMOKE_VERSION:-}
 VERSION=${VERSION#v}
 FROM=${KUBEN_SMOKE_UPGRADE_FROM:-}
 FROM=${FROM#v}
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
-for c in curl jq helm; do need "$c"; done
+for c in curl jq; do need "$c"; done
+if [[ $MODE == helm ]]; then need helm; else need sudo; fi
 helm_version=$(helm version --short 2>/dev/null || echo unknown)
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/kuben-smoke.XXXXXX")
@@ -95,7 +101,12 @@ cleanup() {
   if [[ -n ${app_fwd:-} ]]; then kill "$app_fwd" 2>/dev/null || true; fi
   if ((status != 0)); then
     if [[ -z ${failed:-} ]]; then annotate "exit ${status}"; fi
-    if [[ -n ${cluster:-} ]]; then
+    if [[ $MODE == binary ]]; then
+      echo "---- kuben.service (last 40 lines) ----"
+      sudo journalctl -u kuben --no-pager -n 40 2>/dev/null || true
+      sudo kuben status 2>/dev/null || true
+    fi
+    if [[ -n ${cluster:-} && $MODE == helm ]]; then
       annotate "helm ${helm_version}; pods and the latest events in ${NS}:
 $(kubectl -n "$NS" get pods -o wide 2>&1 | tail -n 5)
 $(kubectl -n "$NS" get events --sort-by=.lastTimestamp 2>&1 | tail -n 8)"
@@ -217,6 +228,90 @@ verify() {
   grep -q '^\[OK  \] kubernetes' "$work/doctor-pod.txt" || fail "doctor in the pod: cluster not OK"
 }
 
+# A project, an environment (namespace) and an app that answers, through the
+# API of whichever Kuben is under test ($BASE) and whatever the controller
+# creates in the cluster ($KUBECONFIG).
+app_flow() {
+  expect 201 POST /projects "{\"name\":\"${P}\",\"display_name\":\"Smoke\"}"
+  eventually 30 "project visible" curl -fsS -b "$work/cookies" "$BASE/projects/${P}"
+  eventually 60 "project ready" bash -c "kubectl get project ${P} -o jsonpath='{.status.conditions[0].status}' | grep -qx True"
+  expect 201 POST "/projects/${P}/environments" '{"name":"dev"}'
+  eventually 90 "namespace ${APP_NS}" kubectl get namespace "$APP_NS"
+  eventually 90 "environment ready" bash -c "kubectl get environment ${P}-dev -o jsonpath='{.status.phase}' | grep -qx Ready"
+  eventually 30 "environment visible" curl -fsS -b "$work/cookies" "$BASE/projects/${P}/environments/dev"
+  expect 201 POST "$APP" "{\"name\":\"web\",\"image\":\"${APP_IMAGE}\",\"port\":8080,\"health_check_path\":\"/\"}"
+  eventually 60 "deployment created" kubectl -n "$APP_NS" get deployment web-web
+  run "rollout of the test app" kubectl -n "$APP_NS" rollout status deployment/web-web --timeout=240s
+  eventually 90 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e .app.ready"
+  kubectl -n "$APP_NS" port-forward svc/web "${APP_PORT}:80" >"$work/app-forward.log" 2>&1 &
+  app_fwd=$!
+  eventually 30 "the app answers through its Service" curl -fsS "http://127.0.0.1:${APP_PORT}/"
+  kill "$app_fwd" 2>/dev/null || true
+  app_fwd=
+}
+
+gc_flow() {
+  expect 204 DELETE "$APP/web"
+  eventually 90 "deployment gone" bash -c "! kubectl -n $APP_NS get deployment web-web"
+  expect 202 DELETE "/projects/${P}/environments/dev"
+  eventually 180 "namespace ${APP_NS} gone" bash -c "! kubectl get namespace $APP_NS"
+  eventually 60 "project has no environments" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments | jq -e 'length == 0'"
+  expect 204 DELETE "/projects/${P}"
+}
+
+# The server path. The installer ran `kuben setup` as root: k3s, the service
+# user, the config, kuben.service, the firewall, and it printed the setup link.
+# Sign up through the setup page with that token, use the API, run the
+# installer again (an upgrade keeps everything), then `kuben uninstall --purge`.
+binary_server() {
+  local url token
+  step "kuben.service after the installer"
+  sudo systemctl is-active --quiet kuben || { sudo journalctl -u kuben --no-pager -n 40 || true; fail "kuben.service is not active after the installer"; }
+  run "kuben status" sudo kuben status
+  url=$(grep -o 'http://[^ ]*/setup?token=[A-Za-z0-9_-]*' "$work/install.txt" | tail -n 1)
+  [[ -n $url ]] || fail "the installer did not print the setup link"
+  token=${url##*token=}
+  [[ $(sudo cat /var/lib/kuben/setup-token) == "$token" ]] || fail "the token in the link differs from /var/lib/kuben/setup-token"
+  BASE="http://127.0.0.1:3000/api/v1"
+  # k3s writes its kubeconfig for root; kubectl in this test reads a copy.
+  sudo install -m 644 /etc/rancher/k3s/k3s.yaml "$work/kubeconfig"
+  export KUBECONFIG="$work/kubeconfig"
+  cluster=1
+
+  step "first admin through the setup page"
+  local body='{"org_name":"Smoke","email":"Owner@Smoke.test","password":"a-long-first-password"}'
+  eventually 30 "GET /setup" curl -fsS "$BASE/setup"
+  curl -fsS "$BASE/setup" | jq -e '.needed and .token_required' >/dev/null || fail "GET /setup: $(curl -fsS "$BASE/setup")"
+  rm -f "$work/cookies"
+  expect 403 POST /setup "$body"
+  expect 200 POST /setup "$(jq -c --arg t "$token" '. + {token: $t}' <<<"$body")"
+  expect 200 GET /me
+  [[ $(jq -r .email "$work/body") == owner@smoke.test ]] || fail "unexpected /me: $(cat "$work/body")"
+  expect 404 POST /setup "$body"
+  sudo test ! -e /var/lib/kuben/setup-token || fail "the setup token was not removed after the account was created"
+
+  step "project → environment → app through the host controller"
+  app_flow
+
+  step "running the installer again upgrades in place"
+  curl -fsSL "$INSTALLER" | sudo -E sh 2>&1 | tee "$work/install-again.txt"
+  grep -q "up to date and running" "$work/install-again.txt" || fail "the second run did not report an up-to-date server"
+  eventually 60 "API back after the restart" curl -fsS "$BASE/setup"
+  expect 200 GET /me
+  eventually 120 "app still ready" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e .app.ready"
+
+  step "delete app, environment, project → garbage collection"
+  gc_flow
+
+  step "kuben uninstall --purge"
+  run "kuben uninstall" sudo kuben uninstall --purge --yes
+  ! sudo systemctl is-active --quiet kuben || fail "kuben.service is still active"
+  sudo test ! -e /var/lib/kuben || fail "/var/lib/kuben still exists after --purge"
+  sudo test ! -e /etc/kuben || fail "/etc/kuben still exists after --purge"
+  sudo test ! -e /etc/rancher/k3s/k3s.yaml || fail "k3s stayed although kuben setup installed it"
+  installed=
+}
+
 step "anonymous pulls from ${REGISTRY}"
 anonymous_tags "$CHART_REPO" "$work/chart-tags"
 anonymous_tags "$IMAGE_REPO" "$work/image-tags"
@@ -240,20 +335,32 @@ echo "chart and image are public; testing ${VERSION}${FROM:+, upgraded from ${FR
 
 step "one-line installer"
 if [[ -n $pinned ]]; then export KUBEN_VERSION="$VERSION"; else unset KUBEN_VERSION; fi
-if [[ -n ${KUBEN_SMOKE_BIN_DIR:-} ]]; then
-  curl -fsSL "$INSTALLER" | bash -s -- --dir "$KUBEN_SMOKE_BIN_DIR" --no-sudo 2>&1 | tee "$work/install.txt"
+if [[ $MODE == binary ]]; then
+  # As documented for a server: as root. The installer then runs `kuben setup`.
+  curl -fsSL "$INSTALLER" | sudo -E sh 2>&1 | tee "$work/install.txt"
+  bin=/usr/local/bin/kuben
+elif [[ -n ${KUBEN_SMOKE_BIN_DIR:-} ]]; then
+  curl -fsSL "$INSTALLER" | sh -s -- --dir "$KUBEN_SMOKE_BIN_DIR" --no-sudo 2>&1 | tee "$work/install.txt"
   bin="${KUBEN_SMOKE_BIN_DIR}/kuben"
 else
-  curl -fsSL "$INSTALLER" | bash 2>&1 | tee "$work/install.txt"
+  curl -fsSL "$INSTALLER" | sh 2>&1 | tee "$work/install.txt"
   bin=$(command -v kuben) || fail "kuben is not on PATH after the install"
 fi
-# What the user sees must say so: checksum verified, then the installed version.
-grep -q '^kuben: sha256 verified: [0-9a-f]\{64\}$' "$work/install.txt" || fail "the installer did not report a verified checksum"
-grep -q "^kuben: installed kuben ${VERSION} to " "$work/install.txt" || fail "the installer did not report kuben ${VERSION} as installed"
+# What the user sees must say so: the installed version and the verified checksum.
+grep -q "Installed kuben v${VERSION} (" "$work/install.txt" || fail "the installer did not report kuben ${VERSION} as installed"
+grep -q 'sha256 [0-9a-f]\{64\}' "$work/install.txt" || fail "the installer did not report a verified checksum"
 got=$("$bin" --version)
 if [[ $got != "kuben ${VERSION}" ]]; then
   [[ -n $pinned ]] || fail "the installer's latest release (${got}) and the newest chart (${VERSION}) differ"
   fail "the installer gave '${got}', want 'kuben ${VERSION}'"
+fi
+
+if [[ $MODE == binary ]]; then
+  binary_server
+  summary="kuben ${VERSION} set up by the installer on $(sudo /usr/local/bin/k3s --version 2>/dev/null | head -n 1 || echo k3s)"
+  if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then echo "Smoke test passed: ${summary}" >>"$GITHUB_STEP_SUMMARY"; fi
+  printf '\n\033[32mSMOKE PASSED\033[0m: %s\n' "$summary"
+  exit 0
 fi
 
 step "kuben doctor without a cluster"
@@ -299,22 +406,7 @@ run "helm install" helm "${args[@]}"
 verify "${FROM:-$VERSION}"
 
 step "project → environment → app through the in-cluster controller"
-expect 201 POST /projects "{\"name\":\"${P}\",\"display_name\":\"Smoke\"}"
-eventually 30 "project visible" curl -fsS -b "$work/cookies" "$BASE/projects/${P}"
-eventually 60 "project ready" bash -c "kubectl get project ${P} -o jsonpath='{.status.conditions[0].status}' | grep -qx True"
-expect 201 POST "/projects/${P}/environments" '{"name":"dev"}'
-eventually 90 "namespace ${APP_NS}" kubectl get namespace "$APP_NS"
-eventually 90 "environment ready" bash -c "kubectl get environment ${P}-dev -o jsonpath='{.status.phase}' | grep -qx Ready"
-eventually 30 "environment visible" curl -fsS -b "$work/cookies" "$BASE/projects/${P}/environments/dev"
-expect 201 POST "$APP" "{\"name\":\"web\",\"image\":\"${APP_IMAGE}\",\"port\":8080,\"health_check_path\":\"/\"}"
-eventually 60 "deployment created" kubectl -n "$APP_NS" get deployment web-web
-run "rollout of the test app" kubectl -n "$APP_NS" rollout status deployment/web-web --timeout=240s
-eventually 90 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e .app.ready"
-kubectl -n "$APP_NS" port-forward svc/web "${APP_PORT}:80" >"$work/app-forward.log" 2>&1 &
-app_fwd=$!
-eventually 30 "the app answers through its Service" curl -fsS "http://127.0.0.1:${APP_PORT}/"
-kill "$app_fwd" 2>/dev/null || true
-app_fwd=
+app_flow
 
 if [[ -n $FROM ]]; then
   step "helm upgrade ${FROM} → ${VERSION}"
@@ -328,12 +420,7 @@ if [[ -n $FROM ]]; then
 fi
 
 step "delete app, environment, project → garbage collection"
-expect 204 DELETE "$APP/web"
-eventually 90 "deployment gone" bash -c "! kubectl -n $APP_NS get deployment web-web"
-expect 202 DELETE "/projects/${P}/environments/dev"
-eventually 180 "namespace ${APP_NS} gone" bash -c "! kubectl get namespace $APP_NS"
-eventually 60 "project has no environments" bash -c "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments | jq -e 'length == 0'"
-expect 204 DELETE "/projects/${P}"
+gc_flow
 
 if [[ ${KUBEN_SMOKE_KEEP:-} == 1 ]]; then
   echo "kept the release; remove with: helm -n ${NS} uninstall ${RELEASE} && kubectl delete namespace ${NS}"

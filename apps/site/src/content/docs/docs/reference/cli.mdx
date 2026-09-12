@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Every kuben subcommand (serve, migrate, doctor, reset-admin, backup, restore, version), its options, and how configuration is loaded.
+description: Every kuben subcommand (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, version), its options, and how configuration is loaded.
 ---
 
 The `kuben` binary is both the server and the operator's tool. Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
@@ -77,6 +77,52 @@ kuben setup-token
 ```
 
 The token lives in `setup-token` next to the database, readable by Kuben's user only, and is deleted once the account exists. After that, `/setup` answers 404 and the page redirects to the sign-in.
+
+## `setup`
+
+Makes the Linux server it runs on a Kuben server. The one-line installer runs it for you as root; it is also what you re-run to upgrade or repair, because every step checks before it acts.
+
+```bash
+sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--yes]
+```
+
+| Step | What happens |
+|---|---|
+| Preflight | root, systemd, OS, architecture and memory (a warning under 2 GB); refuses inside a container unless `--kubeconfig` names a cluster |
+| Binary | copies itself to `/usr/local/bin/kuben` when run from elsewhere |
+| User | the system user `kuben`, `/var/lib/kuben` (data) and `/etc/kuben` |
+| Cluster | uses `--kubeconfig`, an installed k3s, or the kubeconfig of the current user; otherwise installs [k3s](https://k3s.io) and waits for the node to be Ready (`--no-k3s` fails instead). A copy of the kubeconfig, readable by `kuben` only, goes to `/var/lib/kuben/kubeconfig` |
+| Config | `/etc/kuben/config.toml` (port, public URL, database, kubeconfig); an existing file is kept |
+| Port | refuses a port another process holds and names it |
+| Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz` |
+| Firewall | opens the port in ufw or firewalld when one is active |
+| Link | the setup page with its token on a first install, the console address afterwards |
+
+| Option | Meaning |
+|---|---|
+| `--port <n>` | console and API port (default `3000`; `KUBEN_PORT`) |
+| `--kubeconfig <file>` | manage this cluster instead of installing k3s (`KUBEN_KUBECONFIG`) |
+| `--no-k3s` | never install k3s |
+| `--bind-local` | listen on `127.0.0.1` only; reach the console through an SSH tunnel |
+| `--yes` | go ahead on warnings without asking |
+
+## `status`
+
+The service, the admin account, the cluster and the console address of this server.
+
+```bash
+kuben status
+```
+
+## `uninstall`
+
+Removes `kuben.service`. The data in `/var/lib/kuben`, `/etc/kuben` and the binary stay, so a later `kuben setup` finds everything again.
+
+```bash
+sudo kuben uninstall [--purge] [--yes]
+```
+
+`--purge` also deletes the data, the configuration, the binary, and k3s when `kuben setup` installed it (it leaves a k3s that was there before).
 
 ## `backup`
 

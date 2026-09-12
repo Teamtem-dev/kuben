@@ -1,13 +1,23 @@
 #!/bin/sh
 # Kuben installer — https://github.com/Teamtem-dev/kuben
 #
-#   curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
+#   curl -fsSL https://kuben.teamtem.com/install.sh | sh
+#
+# On a Linux server, as root: installs the kuben binary and runs `kuben setup`,
+# which installs k3s when there is no cluster, creates the service user, the
+# configuration and the systemd service, opens the firewall and prints the
+# link to the setup page. Run it again to upgrade. Anywhere else (a
+# workstation, a non-root shell, macOS) it installs the binary only.
 #
 # Options (flag or environment variable):
 #   --version <tag>   KUBEN_VERSION=v1.0.0         release to install (default: latest)
 #   --dir <path>      KUBEN_INSTALL_DIR=<path>     install directory (default: /usr/local/bin)
 #   --no-sudo         KUBEN_NO_SUDO=1              never escalate; fail if <dir> is not writable
+#   --binary-only     KUBEN_BINARY_ONLY=1          install the binary, do not run `kuben setup`
+#   --uninstall                                    remove the server set up by `kuben setup`
 #   -h, --help
+#   Every other option goes to `kuben setup`: --port <n>, --kubeconfig <file>,
+#   --no-k3s, --bind-local, --yes.
 #
 # Guarantees:
 #   * HTTPS only (TLS >= 1.2), no redirects to plain HTTP.
@@ -17,29 +27,36 @@
 #     truncated download cannot execute a partial script.
 #   * No shell state is left behind: everything happens in a temp dir that is
 #     removed on exit.
+#   * Nothing but GitHub (the release) and, through `kuben setup`, get.k3s.io
+#     is contacted. No telemetry.
 
 set -eu
 
 REPO="Teamtem-dev/kuben"
 BIN="kuben"
 
-if [ -t 2 ]; then BOLD=$(printf '\033[1m'); RED=$(printf '\033[31m'); RESET=$(printf '\033[0m'); else BOLD=""; RED=""; RESET=""; fi
+if [ -t 2 ]; then BOLD=$(printf '\033[1m'); RED=$(printf '\033[31m'); GREEN=$(printf '\033[32m'); DIM=$(printf '\033[2m'); RESET=$(printf '\033[0m'); else BOLD=""; RED=""; GREEN=""; DIM=""; RESET=""; fi
 
-say() { printf '%skuben:%s %s\n' "$BOLD" "$RESET" "$*" >&2; }
+say() { printf '%s✔%s %s\n' "$GREEN" "$RESET" "$*" >&2; }
+note() { printf '  %s%s%s\n' "$DIM" "$*" "$RESET" >&2; }
 err() {
-  printf '%skuben: error:%s %s\n' "$RED" "$RESET" "$*" >&2
+  printf '%s✖%s %s\n' "$RED" "$RESET" "$*" >&2
   exit 1
 }
 has() { command -v "$1" >/dev/null 2>&1; }
 
-# Not read from "$0": under `curl … | bash` that is the shell, not this file.
+# Not read from "$0": under `curl … | sh` that is the shell, not this file.
 usage() {
   cat <<'EOF'
-usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo]
+usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo] [--binary-only] [--uninstall] [setup options]
 
   --version <tag>   KUBEN_VERSION=v1.0.0       release to install (default: latest)
   --dir <path>      KUBEN_INSTALL_DIR=<path>   install directory (default: /usr/local/bin)
   --no-sudo         KUBEN_NO_SUDO=1            never escalate; fail if <dir> is not writable
+  --binary-only     KUBEN_BINARY_ONLY=1        install the binary, do not run `kuben setup`
+  --uninstall                                  remove the server set up by `kuben setup`
+
+  Other options go to `kuben setup`: --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --yes
 EOF
 }
 
@@ -118,16 +135,24 @@ install_binary() { # <src> <dir>
   if [ -n "$sudo" ]; then
     [ "$no_sudo" = "1" ] && err "$2 is not writable; re-run with --dir \"\$HOME/.local/bin\""
     has sudo || err "$2 is not writable and sudo is not available; use --dir <writable dir>"
-    say "$2 is not writable, using sudo"
+    note "$2 is not writable, using sudo"
   fi
   $sudo mkdir -p "$2"
   $sudo install -m 0755 "$1" "$2/$BIN"
+}
+
+# A Linux server with systemd, as root: `kuben setup` can do the rest.
+can_setup() {
+  [ "$(uname -s)" = Linux ] && [ "$(id -u)" = 0 ] && [ -d /run/systemd/system ]
 }
 
 main() {
   version=${KUBEN_VERSION:-}
   dir=${KUBEN_INSTALL_DIR:-/usr/local/bin}
   no_sudo=${KUBEN_NO_SUDO:-0}
+  binary_only=${KUBEN_BINARY_ONLY:-0}
+  uninstall=0
+  setup_args=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -145,13 +170,37 @@ main() {
       no_sudo=1
       shift
       ;;
+    --binary-only)
+      binary_only=1
+      shift
+      ;;
+    --uninstall)
+      uninstall=1
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
       ;;
+    --port | --kubeconfig)
+      [ $# -ge 2 ] || err "$1 needs a value"
+      setup_args="$setup_args $1 $2"
+      shift 2
+      ;;
+    --no-k3s | --bind-local | --yes | -y)
+      setup_args="$setup_args $1"
+      shift
+      ;;
     *) err "unknown option: $1 (see --help)" ;;
     esac
   done
+
+  if [ "$uninstall" = 1 ]; then
+    [ -x "${dir}/${BIN}" ] || err "${dir}/${BIN} is not installed"
+    can_setup || err "run the uninstall as root on the server"
+    # shellcheck disable=SC2086
+    exec "${dir}/${BIN}" uninstall $setup_args
+  fi
 
   for cmd in uname tar mktemp install awk; do has "$cmd" || err "required command not found: $cmd"; done
   umask 022
@@ -167,7 +216,6 @@ main() {
   archive="${BIN}-${target}.tar.gz"
   base="https://github.com/${REPO}/releases/download/${version}"
 
-  say "installing ${BIN} ${version} for ${target}"
   download "${base}/${archive}" "${tmp}/${archive}" ||
     err "download failed: ${base}/${archive} — release ${version} has no ${archive}; see https://github.com/${REPO}/releases/tag/${version}"
   download "${base}/checksums.txt" "${tmp}/checksums.txt" || err "download failed: ${base}/checksums.txt"
@@ -176,18 +224,29 @@ main() {
   [ -n "$expected" ] || err "${archive} is not listed in checksums.txt"
   actual=$(sha256_of "${tmp}/${archive}")
   [ "$expected" = "$actual" ] || err "checksum mismatch for ${archive}: expected ${expected}, got ${actual}"
-  say "sha256 verified: ${actual}"
 
   tar -xzf "${tmp}/${archive}" -C "$tmp" "$BIN" || err "archive does not contain '${BIN}'"
   install_binary "${tmp}/${BIN}" "$dir"
+  say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
 
-  say "installed $("${dir}/${BIN}" --version 2>/dev/null || echo "$BIN") to ${dir}/${BIN}"
+  if [ "$binary_only" != 1 ] && can_setup; then
+    # shellcheck disable=SC2086
+    exec "${dir}/${BIN}" setup $setup_args
+  fi
+
   case ":${PATH}:" in
   *":${dir}:"*) ;;
-  *) say "note: ${dir} is not on your PATH" ;;
+  *) note "${dir} is not on your PATH" ;;
   esac
-  say "next: ${BIN} doctor   (checks the database and the cluster connection)"
-  say "guide: https://kuben.teamtem.com/docs/getting-started/binary/"
+  if [ "$binary_only" != 1 ]; then
+    if [ "$(uname -s)" = Linux ]; then
+      note "Binary only: run as root on a server with systemd to set it up (sudo ${BIN} setup)."
+    else
+      note "Binary only: \`${BIN} setup\` sets up a Linux server; here, run \`${BIN} serve\` against a kubeconfig."
+    fi
+  fi
+  printf '%s\n' "${BOLD}Next:${RESET} ${BIN} doctor   ${DIM}(checks the database and the cluster connection)${RESET}" >&2
+  note "Guide: https://kuben.teamtem.com/docs/getting-started/binary/"
 }
 
 main "$@"

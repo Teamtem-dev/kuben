@@ -14,10 +14,20 @@ use clap::Parser;
 fn main() -> anyhow::Result<()> {
     let args = cli::Cli::parse();
     let cfg = args.load_config()?;
-    telemetry::init(&cfg)?;
+    // The operator commands print their own lines; no logger on top.
+    let quiet = matches!(
+        args.command,
+        cli::Command::Setup(_) | cli::Command::Status | cli::Command::Uninstall(_) | cli::Command::SetupToken
+    );
+    if !quiet {
+        telemetry::init(&cfg)?;
+    }
     let runtime = cfg.runtime.clone();
 
     match args.command {
+        cli::Command::Setup(opts) => cli::setup::setup(&opts),
+        cli::Command::Status => cli::setup::status(),
+        cli::Command::Uninstall(opts) => cli::setup::uninstall(&opts),
         cli::Command::Serve(opts) => serve::run(cfg, &opts),
         cli::Command::Migrate => serve::block_on(&runtime, async move {
             let store = kuben_store::Store::connect(&cfg.database).await?;
