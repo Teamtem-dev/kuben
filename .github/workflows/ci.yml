@@ -294,6 +294,12 @@ jobs:
           wait: 120s
       # Builds the debug binary first (kuben#e2e depends on kuben#build).
       - run: bun turbo run kuben#e2e
+      # The chart against the real API server, whose CRDs the e2e run applied:
+      # server-side validation catches what `helm template` cannot, like a
+      # custom resource that does not match its schema (v1.0.3 shipped
+      # `KubenConfig.spec: null`). A dry run creates no namespace, hence default.
+      - name: Helm chart validates against the cluster
+        run: helm install kuben charts/kuben --namespace default --dry-run=server >/dev/null
 
   budgets:
     name: Binary size budget (static musl)

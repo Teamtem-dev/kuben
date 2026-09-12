@@ -10,6 +10,15 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: 'v1.0.4',
+    date: '2026-09-12',
+    title: 'The Helm chart installs with default values',
+    highlights: [
+      'Charts 1.0.0 to 1.0.3 rendered KubenConfig.spec as null without platform settings, and the API server rejected the documented helm install; the chart now renders an empty spec.',
+      'CI validates the chart against a real API server before merge, and smoke-test failures report the failing command’s output.',
+    ],
+  },
+  {
     version: 'v1.0.3',
     date: '2026-09-12',
     title: 'A first run that works without root',
