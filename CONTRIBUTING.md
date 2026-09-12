@@ -64,6 +64,8 @@ Reviewers check the ones a change touches.
 
 Also check:
 
+- Templates, console text and docs are written from upstream documentation,
+  never copied from the system Kuben replaces (ADR-012).
 - Errors returned to clients never contain internal details (`Error::Internal` → no `detail`).
 - Objects in another org answer `404`, not `403`.
 - New long-running tasks run under `supervise` and report into `Health`.
