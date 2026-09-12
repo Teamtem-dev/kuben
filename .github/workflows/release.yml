@@ -106,10 +106,12 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.tag }}
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
+      # rustup ships with every GitHub-hosted runner; no third-party action
+      # touches the toolchain of a release.
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update --target "$TARGET"
+          rustup default stable
       # No build cache in release jobs: releases are built from scratch so a
       # poisoned cache can never reach a published artifact.
       - if: matrix.zig

@@ -70,7 +70,7 @@ Which jobs a pull request runs:
 Details:
 
 - Every action is pinned to a **commit SHA** (with the tag in a comment), and Dependabot keeps them current. The repository's own setup action is referenced as `$/.github/actions/setup` (self-repository syntax), so it always comes from the commit that is running.
-- Third-party tools (cargo-nextest, cargo-zigbuild, cargo-auditable, zizmor, Trivy) are installed with an exact version by `taiki-e/install-action`, which verifies every download against a checksum. Trivy's own GitHub Actions are deliberately not used: their tags were hijacked in March 2026 ([GHSA-69fq-xp46-6x23](https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23)).
+- Rust itself is installed with the runner's own `rustup`, so no third-party action touches the toolchain. Third-party tools (cargo-nextest, cargo-zigbuild, cargo-auditable, zizmor, Trivy) are installed with an exact version by `taiki-e/install-action`, which verifies every download against a checksum. Trivy's own GitHub Actions are deliberately not used: their tags were hijacked in March 2026 ([GHSA-69fq-xp46-6x23](https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23)).
 - `permissions: contents: read` is the default. Each job requests only what it needs. `persist-credentials: false` is set on every checkout.
 - `concurrency` cancels superseded runs on PRs, never on `main`.
 - The Rust cache is saved only on `main` (`save-if`), so PRs cannot plant a poisoned cache.
