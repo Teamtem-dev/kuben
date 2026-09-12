@@ -24,7 +24,7 @@ check "docs only" "" docs/guide.md README.md
 check "rust source" "rust codegen" crates/kuben-platform/src/controller/app.rs
 check "crate manifest" "rust deps codegen" crates/kuben-api/Cargo.toml
 check "lockfile" "rust deps codegen" Cargo.lock
-check "web page" "web" apps/web/src/routes/app.tsx
+check "web page" "web" apps/console/src/routes/app.tsx
 check "api client" "web codegen" packages/api-client/src/index.ts
 check "generated crds" "codegen scripts" charts/kuben/crds/kuben.dev_all.yaml
 check "helm template" "scripts" charts/kuben/templates/rbac.yaml
@@ -34,9 +34,9 @@ check "turbo config" "rust deps web codegen scripts" turbo.json
 check "root manifest" "rust deps web codegen scripts" package.json
 check "bun lockfile" "rust deps web codegen scripts" bun.lock
 check "bunfig" "rust deps web codegen scripts" bunfig.toml
-check "package turbo config" "web" apps/web/turbo.json
-check "package manifest" "web" apps/web/package.json
-check "mixed" "rust web codegen" crates/kuben-api/src/routes/apps.rs apps/web/src/lib/api.ts
+check "package turbo config" "web" apps/console/turbo.json
+check "package manifest" "web" apps/console/package.json
+check "mixed" "rust web codegen" crates/kuben-api/src/routes/apps.rs apps/console/src/lib/api.ts
 check "nextest config" "rust codegen" .config/nextest.toml
 check "new script" "scripts" scripts/check-drift.sh
 

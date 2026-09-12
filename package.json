@@ -4,7 +4,7 @@
   "packageManager": "bun@1.4.2",
   "scripts": {
     "setup": "scripts/setup.sh",
-    "dev": "turbo run dev --filter=@kuben/web",
+    "dev": "turbo run dev --filter=@kuben/console",
     "build": "turbo run build",
     "build:release": "turbo run build:release --filter=kuben",
     "check": "turbo run check",

@@ -6,12 +6,12 @@
 # JS / Bun / Turborepo
 node_modules
 .turbo
-apps/web/dist
-apps/web/dist-ssr
-apps/web/.vite
-apps/web/coverage
-apps/web/test-results
-apps/web/playwright-report
+apps/console/dist
+apps/console/dist-ssr
+apps/console/.vite
+apps/console/coverage
+apps/console/test-results
+apps/console/playwright-report
 
 # Local dev state
 /.dev

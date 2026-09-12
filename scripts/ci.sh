@@ -13,7 +13,7 @@ bun turbo run biome:check lint lint:activator test test:doc
 bun turbo run check --filter='@kuben/*'
 bun turbo run format --filter=kuben-cargo -- --check
 scripts/check-drift.sh
-bun turbo run size --filter=@kuben/web
+bun turbo run size --filter=@kuben/console
 
 if command -v cargo-deny >/dev/null; then cargo deny check; else echo "cargo-deny not installed: skipped (CI runs it)"; fi
 if command -v shellcheck >/dev/null; then shellcheck install.sh scripts/*.sh; else echo "shellcheck not installed: skipped (CI runs it)"; fi

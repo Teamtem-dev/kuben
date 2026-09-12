@@ -2,6 +2,9 @@
 
 **Status:** implemented on `chore/turborepo-bun` · **Date:** 2026-09-12 · **Decision record:** [ADR-024](adr/0024-turborepo-bun-cargo.md)
 
+> **Follow-up:** the UI moved from `apps/web` (`@kuben/web`) to `apps/console`
+> (`@kuben/console`). This plan uses the new names throughout.
+
 This plan moves the monorepo from `just` + pnpm + Node to **Turborepo 2.10** +
 **Bun 1.4** + **Cargo**. Turborepo becomes the single entry point for every
 task in both languages. Cargo still builds Rust. Bun installs, runs and tests
@@ -85,7 +88,7 @@ the design:
 |---|---|---|
 | `turbo ls` | JS packages, crates and the synthetic workspace package share one graph | ✅ |
 | `turbo run lint test` unfiltered | Runs once as `cargo clippy --workspace` / `cargo test --workspace` | ✅ no per-crate fan-out |
-| `turbo run dev` unfiltered | Also registers `dev` for crates whose only binary is not `main` (here `openapi`, `crdgen`) | `dev` is always filtered to `@kuben/web`, and the API starts as its sidecar |
+| `turbo run dev` unfiltered | Also registers `dev` for crates whose only binary is not `main` (here `openapi`, `crdgen`) | `dev` is always filtered to `@kuben/console`, and the API starts as its sidecar |
 | Custom `command` task | cwd = crate directory; `outputs` and derived Cargo inputs are **not** added | Every command task declares explicit `inputs`, and `outputs` or `cache: false`. Otherwise a cache hit could skip a compile. |
 | `"a#release": {"dependsOn": ["w#build"]}` | Works across languages | The release binary depends on the web build |
 | `$TURBO_ROOT$` in `outputs` | Works | Codegen outputs outside the crate can be cached and restored |
@@ -110,14 +113,14 @@ the design:
 
 ```text
 //  (root: biome:check, biome:fix)
-@kuben/web ──depends──► @kuben/api-client
+@kuben/console ──depends──► @kuben/api-client
 kuben-cargo  (synthetic: the whole Cargo workspace)
   ├─ kuben ─► kuben-api ─► kuben-platform ─► kuben-store ─► kuben-core
   │                                      └─► kuben-crd
 Cross-language task edges:
-  kuben-api#gen ─► @kuben/api-client#gen          (openapi.json → schema.d.ts)
-  @kuben/web#build ─► kuben#build:release         (dist embedded with rust-embed)
-  @kuben/web#dev ──with──► kuben#dev               (API sidecar for Vite's proxy)
+  kuben-api#gen ─► @kuben/api-client#gen            (openapi.json → schema.d.ts)
+  @kuben/console#build ─► kuben#build:release       (dist embedded with rust-embed)
+  @kuben/console#dev ──with──► kuben#dev            (API sidecar for Vite's proxy)
 ```
 
 The synthetic package is named **`kuben-cargo`** (`[workspace.metadata] name`). It
@@ -137,7 +140,7 @@ cannot be `kuben` because that name belongs to the binary crate.
 | `test:postgres` | `kuben-store#test:postgres`: nextest `--test matrix` against `KUBEN_TEST_PG_URL` | — | no (external DB) |
 | `gen` | `kuben-api#gen` → `packages/api-client/openapi.json`; `kuben-crd#gen` → `charts/kuben/crds/kuben.dev_all.yaml` | `@kuben/api-client#gen`: `openapi-typescript` (after `kuben-api#gen`) | yes (outputs restored) |
 | `size` | `kuben#size`: binary budget (after `build:release`) | `size-limit` (after `build`) | yes |
-| `build:release` | `kuben#build:release`: `--release --features embed-ui` (after `@kuben/web#build`) | — | no (Cargo's own cache; releases never reuse artifacts) |
+| `build:release` | `kuben#build:release`: `--release --features embed-ui` (after `@kuben/console#build`) | — | no (Cargo's own cache; releases never reuse artifacts) |
 | `dev` | `kuben#dev`: `cargo run -- serve --roles=all --dev` | `vite` with `kuben#dev` as its sidecar | no, persistent |
 | `e2e` | `kuben#e2e`: `scripts/e2e.sh` (after `kuben#build`) | — | no (needs a live cluster) |
 | `transit` | — | Hash-only node so that `check`/`test` re-run when a dependency's sources change | — |
@@ -170,7 +173,7 @@ file is overwritten even on a cache hit, and the drift check stays correct.
 | `just test-postgres` | `turbo run kuben-store#test:postgres` |
 | `just gen` | `bun run gen` |
 | `just drift` | `bun run drift` (`scripts/check-drift.sh`) |
-| `just web` | `turbo run build size --filter=@kuben/web` |
+| `just web` | `turbo run build size --filter=@kuben/console` |
 | `just build` | `bun run build:release` |
 | `just budgets` | `turbo run kuben#size` |
 | `just ci` | `bun run ci` (`scripts/ci.sh`, mirrors CI) |
@@ -226,8 +229,8 @@ file is overwritten even on a cache hit, and the drift check stays correct.
 
 ### 4.8 Files
 
-Added: `turbo.json`, `apps/web/turbo.json`, `packages/api-client/turbo.json`,
-`bunfig.toml`, `bun.lock`, `apps/web/tsconfig.test.json`,
+Added: `turbo.json`, `apps/console/turbo.json`, `packages/api-client/turbo.json`,
+`bunfig.toml`, `bun.lock`, `apps/console/tsconfig.test.json`,
 `.github/actions/setup/action.yml`, `scripts/setup.sh`, `scripts/check-drift.sh`,
 `scripts/ci.sh`, `docs/adr/0024-turborepo-bun-cargo.md`, this plan.
 
@@ -278,7 +281,7 @@ pnpm and vitest in one step. No application behaviour depends on the build tool.
 | Lockfile migration | Every resolved version identical to `pnpm-lock.yaml` (vite 8.3.0, react 19.3.0, biome 2.5.13, …); `bun install --frozen-lockfile` clean |
 | `bun run gen` | OpenAPI spec, `schema.d.ts` and CRD YAML byte-identical to the committed files |
 | `bun run drift` | "generated files are up to date" |
-| `@kuben/web#build` on Bun | Same bundle hashes as the old Node build (`index-BcSeoFDm.js`, `index-DYIvwpei.css`) |
+| `@kuben/console#build` on Bun | Same bundle hashes as the old Node build (`index-BcSeoFDm.js`, `index-DYIvwpei.css`) |
 | `size` | JS 103.11 kB / 200 kB, CSS 4.59 kB / 25 kB (brotli) |
 | `check` | `tsc` clean for the app, its tests and the API client |
 | `test` (TS) | `bun test`: 10 passed |
@@ -286,7 +289,7 @@ pnpm and vitest in one step. No application behaviour depends on the build tool.
 | `format -- --check` | clean |
 | `test:doc` | clean |
 | Rust tests | 117 passed under `cargo test --workspace`. cargo-nextest could not be built in the restricted verification environment (its `usdt` proc macro panics there). `kuben-cargo#test` runs exactly the command CI already used, and CI exercises it. |
-| Dry runs | `bun run dev` → `@kuben/web#dev` + `kuben#dev` only; `lint`, `test` and the CI web-job selections are exactly as designed |
+| Dry runs | `bun run dev` → `@kuben/console#dev` + `kuben#dev` only; `lint`, `test` and the CI web-job selections are exactly as designed |
 | `bun run dev` (live) | turbo starts the `kuben#dev` sidecar and Vite on the Bun runtime. The sandbox that ran the migration refuses every listening socket (Vite reports any port as "in use" while nothing listens), so serving pages was not observed there. Run `bun run dev` once on a normal machine. |
 | Remote cache without credentials | turbo reports it disabled and continues on the local cache, so pull requests are unaffected |
 | `scripts/ci-changes.test.sh` | 21/21 cases pass |

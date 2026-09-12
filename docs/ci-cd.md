@@ -18,7 +18,7 @@ call the same `turbo` tasks developers run locally.
 | `.github/actions/setup` | Composite action shared by every job. It installs Bun (version from `packageManager`), runs `bun install --frozen-lockfile`, and optionally sets up a Rust toolchain and `Swatinem/rust-cache`. |
 | `.github/dependabot.yml` | Weekly updates of Actions (workflows and the composite action), crates and Bun packages, with a 7-day cooldown (a shield against freshly published malicious packages). |
 | `.github/release.yml` | Automatic release-note categories by label. |
-| `turbo.json` (+ `apps/web/turbo.json`, `packages/api-client/turbo.json`) | The task graph for Rust and TypeScript. |
+| `turbo.json` (+ `apps/console/turbo.json`, `packages/api-client/turbo.json`) | The task graph for Rust and TypeScript. |
 | `install.sh` | One-line binary install on Linux and macOS. |
 | `deploy/release.Dockerfile` | The release image, built from the very musl binaries that were checksummed. |
 | `Dockerfile` | Full build from source (cross-compiled with zig, no QEMU). |
@@ -43,7 +43,7 @@ call the same `turbo` tasks developers run locally.
 | **Web** | `turbo run biome:check check test build size` for the root and `@kuben/*`: Biome, `tsc`, `bun test`, Vite build, **size-limit** | JS budget 200 kB and CSS 25 kB (brotli) |
 | **Generated files** | `bun run drift` regenerates `openapi.json`, `schema.d.ts` and the CRDs and diffs them | the TS client can never fall behind the API |
 | **Shell scripts** | execute bits in git, shellcheck, `install.sh` under `sh`/`dash`/`bash`, change-detection tests, `helm lint --strict` and `helm template` | a script committed without its execute bit fails CI with exit code 126 |
-| **Binary size budget** | the SPA via `turbo run @kuben/web#build`, then a static musl release build with the embedded UI, gated at **26 MiB** | the shipped binary is measured, not a debug build |
+| **Binary size budget** | the SPA via `turbo run @kuben/console#build`, then a static musl release build with the embedded UI, gated at **26 MiB** | the shipped binary is measured, not a debug build |
 | **End-to-end (kind)** | `turbo run kuben#e2e` (`scripts/e2e.sh` after `kuben#build`) on a real kind cluster | login → project → environment → namespace with quota/NetworkPolicy → deploy → scale → logs → restart → delete and GC |
 | **CI success** | fails if any job above failed or was cancelled | **make only this job required in branch protection.** Adding or removing jobs then never requires touching repository settings |
 
@@ -190,7 +190,7 @@ Platform tooling outside the task graph:
 cargo zigbuild -p kuben --release --locked --features embed-ui --target x86_64-unknown-linux-musl
 ```
 
-Builds a static musl binary exactly like the release. It needs zig and cargo-zigbuild, and `apps/web/dist` from `bun turbo run @kuben/web#build`.
+Builds a static musl binary exactly like the release. It needs zig and cargo-zigbuild, and `apps/console/dist` from `bun turbo run @kuben/console#build`.
 
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/teamtem-dev/kuben:dev .
