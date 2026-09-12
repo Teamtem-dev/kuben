@@ -330,14 +330,10 @@ impl Config {
         if !self.cookie_secure() || in_cluster || self.public_url_is_https() {
             return None;
         }
-        let bind = &self.server.bind;
-        let loopback = bind
-            .parse::<SocketAddr>()
-            .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback());
-        if loopback {
+        if self.bind_is_loopback() {
             return None;
         }
-        let port = bind.rsplit(':').next().unwrap_or("8080");
+        let port = self.bind_port();
         Some(format!(
             "the session cookie is Secure and browsers drop it over plain http, so signing in at \
              http://<this server>:{port} loops back to the login page. Serve the console over \
@@ -362,6 +358,59 @@ impl Config {
             .public_url
             .as_deref()
             .is_some_and(|url| url.starts_with("https://"))
+    }
+
+    /// Whether the first admin is created from the console (`/setup`)
+    /// instead of a configured or generated password: outside a cluster, when
+    /// `bootstrap.admin_password` is not set. A pod keeps the Secret flow.
+    #[must_use]
+    pub fn setup_wizard(&self) -> bool {
+        !in_cluster() && self.bootstrap.admin_password.as_deref().is_none_or(str::is_empty)
+    }
+
+    /// The console's address for links: `server.public_url`, else plain http
+    /// on `host` and the bound port.
+    #[must_use]
+    pub fn console_url_with_host(&self, host: &str) -> String {
+        if let Some(url) = self.server.public_url.as_deref().filter(|u| !u.is_empty()) {
+            return url.trim_end_matches('/').to_owned();
+        }
+        format!("http://{host}:{}", self.bind_port())
+    }
+
+    /// The port of `server.bind`.
+    #[must_use]
+    pub fn bind_port(&self) -> u16 {
+        self.server
+            .bind
+            .rsplit(':')
+            .next()
+            .and_then(|port| port.parse().ok())
+            .unwrap_or(8080)
+    }
+
+    /// Whether the API listens on loopback only.
+    #[must_use]
+    pub fn bind_is_loopback(&self) -> bool {
+        let bind = &self.server.bind;
+        bind.parse::<SocketAddr>()
+            .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback())
+    }
+
+    /// Where files that belong to this installation go: next to the SQLite
+    /// database, else systemd's `StateDirectory=`, else the working directory.
+    #[must_use]
+    pub fn state_dir(&self) -> PathBuf {
+        self.database
+            .sqlite_file()
+            .and_then(|db| db.parent().map(Path::to_path_buf))
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .or_else(|| {
+                std::env::var_os("STATE_DIRECTORY")
+                    .and_then(|dirs| dirs.to_string_lossy().split(':').next().map(PathBuf::from))
+                    .filter(|dir| !dir.as_os_str().is_empty())
+            })
+            .unwrap_or_else(|| PathBuf::from("."))
     }
 }
 
@@ -455,6 +504,35 @@ mod tests {
         cfg.server.bind = "0.0.0.0:8080".into();
         cfg.security.cookie_secure = CookieSecure::Fixed(false);
         assert!(cfg.insecure_cookie_warning(false).is_none(), "cookie not Secure");
+    }
+
+    #[test]
+    fn console_url_and_bind_helpers() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.bind_port(), 8080);
+        assert!(!cfg.bind_is_loopback());
+        cfg.server.bind = "127.0.0.1:3000".into();
+        assert_eq!(cfg.bind_port(), 3000);
+        assert!(cfg.bind_is_loopback());
+        assert_eq!(
+            cfg.console_url_with_host("203.0.113.7"),
+            "http://203.0.113.7:3000"
+        );
+        cfg.server.public_url = Some("https://kuben.example.com/".into());
+        assert_eq!(cfg.console_url_with_host("ignored"), "https://kuben.example.com");
+        cfg.database.url = "sqlite:///var/lib/kuben/kuben.db".into();
+        assert_eq!(cfg.state_dir(), PathBuf::from("/var/lib/kuben"));
+    }
+
+    #[test]
+    fn setup_wizard_only_without_a_configured_password() {
+        let mut cfg = Config::default();
+        let outside = !in_cluster();
+        assert_eq!(cfg.setup_wizard(), outside);
+        cfg.bootstrap.admin_password = Some(String::new());
+        assert_eq!(cfg.setup_wizard(), outside, "empty counts as unset");
+        cfg.bootstrap.admin_password = Some("configured".into());
+        assert!(!cfg.setup_wizard());
     }
 
     #[test]

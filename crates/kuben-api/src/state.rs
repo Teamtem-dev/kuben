@@ -25,6 +25,8 @@ pub struct ApiState {
     pub session_cache: moka::future::Cache<Vec<u8>, UserId>,
     /// Brute-force protection for `/auth/login` (scenario 1).
     pub throttle: LoginThrottle,
+    /// `POST /setup` runs one at a time: exactly one first admin.
+    pub setup_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -63,6 +65,7 @@ impl ApiState {
             login_permits,
             session_cache,
             throttle,
+            setup_lock: Arc::default(),
         }
     }
 }

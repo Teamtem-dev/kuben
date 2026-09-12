@@ -1082,3 +1082,128 @@ async fn scenario8_template_catalogue() {
         "no cluster in tests"
     );
 }
+
+// ---- first run: /setup ----
+
+/// An empty store, as on a fresh install; `bind` decides whether the setup
+/// token is required, `dir` is where the token file goes.
+async fn empty_app(bind: &str, dir: &std::path::Path) -> Router {
+    let mut cfg = Config::default();
+    cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
+    cfg.server.bind = bind.into();
+    cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
+    let store = Store::memory().await.expect("store");
+    let health = Health::new();
+    health.set_ready(true);
+    kuben_api::router(ApiState::new(
+        cfg,
+        store,
+        None,
+        Arc::new(Projections::new()),
+        health,
+        Arc::new(StaticPolicy),
+    ))
+}
+
+fn scratch_dir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("kuben-http-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    dir
+}
+
+const SETUP_BODY: &str =
+    r#"{"org_name":"ACME","email":"Owner@Example.com","password":"a-long-first-password"}"#;
+
+#[tokio::test]
+async fn setup_creates_the_admin_and_signs_in() {
+    if kuben_core::config::in_cluster() {
+        return; // the Secret flow applies inside a pod
+    }
+    let dir = scratch_dir("setup");
+    let app = empty_app("127.0.0.1:3000", &dir).await;
+
+    let (status, body) = send(&app, get("/api/v1/setup", "")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({"needed": true, "token_required": false}));
+
+    let resp = app
+        .clone()
+        .oneshot(post("/api/v1/setup", "", SETUP_BODY))
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cookie = resp.headers()[header::SET_COOKIE]
+        .to_str()
+        .expect("cookie")
+        .split(';')
+        .next()
+        .expect("pair")
+        .to_owned();
+    let (status, me) = send(&app, get("/api/v1/me", &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["email"], "owner@example.com", "signed in as the new admin");
+
+    let (_, body) = send(&app, get("/api/v1/setup", "")).await;
+    assert_eq!(body["needed"], false);
+    let (status, _) = send(&app, post("/api/v1/setup", "", SETUP_BODY)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "only ever one first admin");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
+async fn setup_on_a_public_address_needs_the_installer_token() {
+    if kuben_core::config::in_cluster() {
+        return;
+    }
+    let dir = scratch_dir("token");
+    let app = empty_app("0.0.0.0:3000", &dir).await;
+    let (_, body) = send(&app, get("/api/v1/setup", "")).await;
+    assert_eq!(body, json!({"needed": true, "token_required": true}));
+
+    let (status, _) = send(&app, post("/api/v1/setup", "", SETUP_BODY)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "no token at all");
+    let wrong = SETUP_BODY.replace('}', r#","token":"nope"}"#);
+    let (status, _) = send(&app, post("/api/v1/setup", "", &wrong)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "wrong token");
+
+    let mut cfg = Config::default();
+    cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
+    let token = kuben_api::setup::issue_token(&cfg).expect("token");
+    let right = SETUP_BODY.replace('}', &format!(r#","token":"{token}"}}"#));
+    let (status, _) = send(&app, post("/api/v1/setup", "", &right)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !kuben_api::setup::token_file(&cfg).exists(),
+        "used tokens are removed"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
+async fn setup_rejects_weak_input() {
+    if kuben_core::config::in_cluster() {
+        return;
+    }
+    let dir = scratch_dir("validate");
+    let app = empty_app("127.0.0.1:3000", &dir).await;
+    for (body, what) in [
+        (
+            r#"{"org_name":"ACME","email":"nope","password":"a-long-first-password"}"#,
+            "email",
+        ),
+        (
+            r#"{"org_name":"ACME","email":"a@b.c","password":"short"}"#,
+            "password",
+        ),
+        (
+            r#"{"org_name":"  ","email":"a@b.c","password":"a-long-first-password"}"#,
+            "org",
+        ),
+    ] {
+        let (status, _) = send(&app, post("/api/v1/setup", "", body)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{what}");
+    }
+    let (_, body) = send(&app, get("/api/v1/setup", "")).await;
+    assert_eq!(body["needed"], true, "nothing was created");
+    std::fs::remove_dir_all(&dir).ok();
+}

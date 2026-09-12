@@ -440,6 +440,24 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the first admin account still has to be created. */
+        get: operations["setupStatus"];
+        put?: never;
+        /** Create the organization and its first admin (owner), and sign in. */
+        post: operations["setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/templates": {
         parameters: {
             query?: never;
@@ -884,6 +902,22 @@ export type components = {
         SecretRef: {
             name: string;
             key: string;
+        };
+        SetupRequest: {
+            /** @example ACME */
+            org_name: string;
+            /** @example you@example.com */
+            email: string;
+            /** Format: password */
+            password: string;
+            /** @description The setup token from the installer's link, when required. */
+            token?: string | null;
+        };
+        SetupStatus: {
+            /** @description No admin account exists yet; the console shows `/setup`. */
+            needed: boolean;
+            /** @description `POST /setup` must carry the token the installer printed. */
+            token_required: boolean;
         };
         TemplateDto: {
             id: string;
@@ -2273,6 +2307,75 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Admin created and signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDto"];
+                };
+            };
+            /** @description Missing, wrong or expired setup token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Setup is already complete */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

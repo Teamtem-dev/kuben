@@ -96,14 +96,14 @@ See [Sign-in and throttling](/docs/guides/sign-in-security/).
 
 ## `bootstrap`
 
-Used on the first start with an empty database.
+Used on the first start with an empty database. Outside a cluster, when no `ADMIN_PASSWORD` is set, nothing is seeded: the console shows `/setup`, where the first admin account is created (see [`kuben setup-token`](/docs/reference/cli/#setup-token)).
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `KUBEN_BOOTSTRAP__ORG_SLUG` | `default` | |
-| `KUBEN_BOOTSTRAP__ORG_NAME` | `Default` | |
-| `KUBEN_BOOTSTRAP__ADMIN_EMAIL` | `admin@kuben.local` | |
-| `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` | generated | a generated password is stored in the Secret `kuben-initial-admin` (in Kubernetes); the binary prints it once to its terminal or, without one, writes it to `initial-admin-password` next to the database (owner-only). Never logged |
+| `KUBEN_BOOTSTRAP__ORG_NAME` | `Default` | the name the `/setup` page asks for wins over this |
+| `KUBEN_BOOTSTRAP__ADMIN_EMAIL` | `admin@kuben.local` | for a configured or generated password; `/setup` asks for the email |
+| `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` | unset | set: the admin is created with it. Unset in Kubernetes: a generated password goes into the Secret `kuben-initial-admin`. Unset outside: the `/setup` page. Never logged |
 
 <Aside type="note" title="Platform settings live in the cluster">
 `baseDomain`, `gateway`, `clusterIssuer`, `wildcardTlsSecret`, the registry and the size presets are **not** process configuration: they are the `KubenConfig` custom resource, so every replica and every `kubectl` user sees the same values. The Helm chart writes it from `platform.*`. See [Custom resources](/docs/reference/custom-resources/).

@@ -68,13 +68,21 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
    export KUBEN_DATABASE__URL=sqlite:///srv/kuben/kuben.db
    ```
 
-3. Start Kuben. The first start prints the generated admin password **once**, in this terminal. It is never written to the log.
+3. Start Kuben. The first start prints a **setup link** in this terminal:
 
    ```bash
    kuben serve
    ```
 
-4. Open the console at `http://<server-ip>:8080`. The session cookie is not `Secure` until the console has an `https://` address: set `KUBEN_SERVER__PUBLIC_URL` once Kuben sits behind TLS and it becomes `Secure` on its own (`KUBEN_SECURITY__COOKIE_SECURE=auto`, the default). A plain-http console on a public address is fine for a first look, not for a team: put it behind HTTPS before inviting anyone.
+   ```text
+     No admin account yet. Finish the setup in your browser:
+
+       http://203.0.113.7:8080/setup?token=8f2c…d1
+   ```
+
+4. Open that link and create the admin account: organization, email, password. The token in the link is what keeps a stranger who finds the port first from doing the same; it is valid for 30 minutes, and `kuben setup-token` prints a fresh link. Nothing is seeded and nothing is written to the log.
+
+   The session cookie is not `Secure` until the console has an `https://` address: set `KUBEN_SERVER__PUBLIC_URL` once Kuben sits behind TLS and it becomes `Secure` on its own (`KUBEN_SECURITY__COOKIE_SECURE=auto`, the default). A plain-http console on a public address is fine for a first look, not for a team: put it behind HTTPS before inviting anyone.
 
 </Steps>
 
@@ -127,17 +135,13 @@ Run Kuben as its own system user, with its settings in `/etc/kuben/config.toml`:
    sudo systemctl daemon-reload && sudo systemctl enable --now kuben
    ```
 
-4. Without a terminal, the first start writes the generated admin password to a file only `kuben` can read. Read it, sign in, and delete it:
+4. Print the setup link and create the admin account in the browser. The service has no terminal, so it only writes the token to `/var/lib/kuben/setup-token`; this command prints a fresh link with it:
 
    ```bash
-   sudo cat /var/lib/kuben/initial-admin-password
+   sudo -u kuben kuben setup-token
    ```
 
-   ```bash
-   sudo rm /var/lib/kuben/initial-admin-password
-   ```
-
-   Run other commands as the same user, for example `sudo -u kuben kuben reset-admin`.
+   Run other commands as the same user too, for example `sudo -u kuben kuben reset-admin`.
 
 </Steps>
 

@@ -30,7 +30,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
    bun run dev
    ```
 
-   Sign in as `admin@kuben.local`; the dev password is printed at start.
+   The first start opens the setup page, where you create the admin account (no token is needed on `localhost`).
 
 3. Before pushing, run what CI runs: rustfmt, clippy with `-D warnings`, tests, doctests, the TypeScript checks, Biome, the generated-file drift check and the web build with its size budget.
 

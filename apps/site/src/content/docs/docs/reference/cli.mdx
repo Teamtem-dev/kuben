@@ -60,6 +60,24 @@ kubectl -n kuben-system exec deploy/kuben -- /kuben reset-admin
 
 Resetting the password revokes the account's sessions.
 
+## `setup-token`
+
+On a first start outside a cluster with no `KUBEN_BOOTSTRAP__ADMIN_PASSWORD`, no admin is seeded: the console shows **/setup**, where the first admin account and the organization are created. On any address but loopback that page needs a setup token, so nobody who finds the port first can claim the installation. `serve` prints the link with the token to its terminal on that first start; this command prints a fresh one whenever you need it:
+
+```bash
+kuben setup-token
+```
+
+```text
+  No admin account yet. Finish the setup in your browser:
+
+    http://203.0.113.7:3000/setup?token=8f2c…d1
+
+  The link is valid for 30 minutes; print a new one with `kuben setup-token`.
+```
+
+The token lives in `setup-token` next to the database, readable by Kuben's user only, and is deleted once the account exists. After that, `/setup` answers 404 and the page redirects to the sign-in.
+
 ## `backup`
 
 Exports every `Project`, `Environment` and `App` (and the `KubenConfig`) as YAML into a directory. Secret values and app volumes are deliberately **not** included; see [Backup and restore](/docs/operations/backup-restore/).

@@ -1,11 +1,7 @@
 //! First-boot bootstrap: default org + admin user (Invariant I-2: nothing is
 //! ever seeded with a fixed secret; passwords are configured or generated).
 
-use std::{
-    collections::BTreeMap,
-    io::{IsTerminal as _, Write as _},
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, io::IsTerminal as _, path::PathBuf};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use k8s_openapi::{ByteString, api::core::v1::Secret};
@@ -13,7 +9,7 @@ use kube::{
     Api,
     api::{ObjectMeta, Patch, PatchParams},
 };
-use kuben_api::auth::password::Hasher;
+use kuben_api::{auth::password::Hasher, host::write_owner_only};
 use kuben_core::{config::Config, perm::Role};
 use kuben_platform::registry::{ClusterRegistry, own_namespace};
 use kuben_store::Store;
@@ -96,6 +92,57 @@ pub async fn hand_over_password(cfg: &Config, cluster: Option<&ClusterRegistry>,
     }
 }
 
+/// No admin yet and no password configured: the account is created from the
+/// console. Print the setup link (with the token, on a public address) to
+/// the terminal; without one, only say where the token is, since logs are
+/// kept. `kuben setup-token` prints the link again.
+pub fn announce_setup(cfg: &Config) {
+    use kuben_api::setup::{current_or_new_token, setup_url, token_file, token_required};
+
+    let token = if token_required(cfg) {
+        match current_or_new_token(cfg) {
+            Ok(token) => Some(token),
+            Err(e) => {
+                tracing::error!(error = %e, file = %token_file(cfg).display(), "cannot write the setup token");
+                return;
+            }
+        }
+    } else {
+        None
+    };
+    if std::io::stderr().is_terminal() {
+        eprintln!("{}", setup_banner(cfg, token.as_deref()));
+    } else {
+        tracing::warn!(
+            url = %setup_url(cfg, None),
+            "no admin account yet: finish the setup in the browser; `kuben setup-token` prints the link"
+        );
+    }
+}
+
+/// `kuben setup-token`: a fresh token and the link that carries it.
+pub fn print_setup_token(cfg: &Config) -> anyhow::Result<()> {
+    use kuben_api::setup::{issue_token, token_required};
+
+    let token = if token_required(cfg) {
+        Some(issue_token(cfg)?)
+    } else {
+        None
+    };
+    println!("{}", setup_banner(cfg, token.as_deref()));
+    Ok(())
+}
+
+fn setup_banner(cfg: &Config, token: Option<&str>) -> String {
+    let url = kuben_api::setup::setup_url(cfg, token);
+    let validity = if token.is_some() {
+        "\n\n  The link is valid for 30 minutes; print a new one with `kuben setup-token`."
+    } else {
+        ""
+    };
+    format!("\n  No admin account yet. Finish the setup in your browser:\n\n    {url}{validity}\n")
+}
+
 fn hand_over_locally(cfg: &Config, email: &str, password: &str) {
     if std::io::stderr().is_terminal() {
         eprintln!(
@@ -120,34 +167,9 @@ fn hand_over_locally(cfg: &Config, email: &str, password: &str) {
     }
 }
 
-/// [`INITIAL_ADMIN_FILE`] next to the SQLite database, else in systemd's
-/// state directory, else in the working directory.
+/// [`INITIAL_ADMIN_FILE`] in the installation's state directory.
 fn password_file(cfg: &Config) -> PathBuf {
-    let dir = cfg
-        .database
-        .sqlite_file()
-        .and_then(|db| db.parent().map(Path::to_path_buf))
-        .filter(|dir| !dir.as_os_str().is_empty())
-        .or_else(|| {
-            std::env::var_os("STATE_DIRECTORY")
-                .and_then(|dirs| dirs.to_string_lossy().split(':').next().map(PathBuf::from))
-                .filter(|dir| !dir.as_os_str().is_empty())
-        })
-        .unwrap_or_else(|| PathBuf::from("."));
-    dir.join(INITIAL_ADMIN_FILE)
-}
-
-fn write_owner_only(path: &Path, content: &str) -> std::io::Result<()> {
-    // A leftover file would keep its old mode; always start from a new one.
-    std::fs::remove_file(path).ok();
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    options.open(path)?.write_all(content.as_bytes())
+    cfg.state_dir().join(INITIAL_ADMIN_FILE)
 }
 
 async fn store_password(
@@ -229,22 +251,14 @@ mod tests {
     }
 
     #[test]
-    fn password_file_is_owner_only_and_replaced() {
-        let dir = std::env::temp_dir().join(format!("kuben-password-{}", random_password()));
-        std::fs::create_dir_all(&dir).expect("dir");
-        let file = dir.join(INITIAL_ADMIN_FILE);
-        write_owner_only(&file, "old\n").expect("first write");
-        write_owner_only(&file, "admin@kuben.local\nsecret\n").expect("second write");
-        assert_eq!(
-            std::fs::read_to_string(&file).expect("read"),
-            "admin@kuben.local\nsecret\n"
-        );
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            let mode = std::fs::metadata(&file).expect("metadata").permissions().mode();
-            assert_eq!(mode & 0o777, 0o600);
-        }
-        std::fs::remove_dir_all(&dir).ok();
+    fn setup_banner_carries_the_token_only_when_there_is_one() {
+        let mut cfg = Config::default();
+        cfg.server.public_url = Some("http://203.0.113.7:3000".into());
+        let with = setup_banner(&cfg, Some("abc"));
+        assert!(with.contains("http://203.0.113.7:3000/setup?token=abc"), "{with}");
+        assert!(with.contains("30 minutes"));
+        let without = setup_banner(&cfg, None);
+        assert!(without.contains("http://203.0.113.7:3000/setup\n"), "{without}");
+        assert!(!without.contains("token"));
     }
 }

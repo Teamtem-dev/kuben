@@ -16,6 +16,7 @@ import {
   meQuery,
   projectQuery,
   projectsQuery,
+  setupQuery,
   tokensQuery,
 } from './lib/api'
 import { problemMessage } from './lib/problem'
@@ -26,6 +27,7 @@ import { EnvironmentPage } from './routes/environment'
 import { LoginPage } from './routes/login'
 import { ProjectPage } from './routes/project'
 import { ProjectsPage } from './routes/projects'
+import { SetupPage } from './routes/setup'
 import { AppShell } from './routes/shell'
 import { TeamPage } from './routes/team'
 import { TokensPage } from './routes/tokens'
@@ -56,12 +58,33 @@ function Pending() {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()()
 
+/** Until the first admin exists every page leads to `/setup`; afterwards `/setup` leads to login. */
+async function setupNeeded(queryClient: QueryClient): Promise<boolean> {
+  const status = await queryClient.ensureQueryData(setupQuery)
+  return status.needed
+}
+
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/setup',
+  validateSearch: (search: Record<string, unknown>): { token?: string } => ({
+    token: typeof search.token === 'string' && search.token !== '' ? search.token : undefined,
+  }),
+  beforeLoad: async ({ context }) => {
+    if (!(await setupNeeded(context.queryClient))) throw redirect({ to: '/login' })
+  },
+  component: SetupPage,
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
     redirect: safeRedirect(search.redirect),
   }),
+  beforeLoad: async ({ context }) => {
+    if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
+  },
   component: LoginPage,
 })
 
@@ -71,7 +94,10 @@ const authedRoute = createRoute({
   id: '_authed',
   beforeLoad: async ({ context, location }) => {
     const me = await context.queryClient.ensureQueryData(meQuery)
-    if (!me) throw redirect({ to: '/login', search: { redirect: location.href } })
+    if (!me) {
+      if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
+      throw redirect({ to: '/login', search: { redirect: location.href } })
+    }
     // Invited users must replace their temporary password first (the API
     // enforces the same rule and answers 403 everywhere else).
     if (me.must_change_password && location.pathname !== '/account') throw redirect({ to: '/account' })
@@ -145,6 +171,7 @@ const accountRoute = createRoute({
 })
 
 const routeTree = rootRoute.addChildren([
+  setupRoute,
   loginRoute,
   authedRoute.addChildren([
     projectsRoute,

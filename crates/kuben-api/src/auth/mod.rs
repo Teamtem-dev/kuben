@@ -261,30 +261,41 @@ pub async fn login(
         return Err(ApiError(Error::Unauthorized));
     };
     state.throttle.record_success(&email, ip.as_deref()).await;
+    audit_login(&state, Some(&creds.user), true, &email, ip.clone(), "success").await;
 
+    let (cookie, dto) = start_session(&state, creds.user, &headers, ip).await?;
+    Ok((jar.add(cookie), Json(dto)))
+}
+
+/// Open a session for `user`: the cookie to set and the user as the
+/// console sees it. Shared by login and the first-run setup.
+pub(crate) async fn start_session(
+    state: &ApiState,
+    user: User,
+    headers: &HeaderMap,
+    ip: Option<String>,
+) -> Result<(axum_extra::extract::cookie::Cookie<'static>, UserDto), Error> {
     let (raw, id_hash) = session::new_session_id();
     let expires_at = kuben_core::time::plus_hours(now_ms(), state.cfg.security.session_ttl_hours);
     state
         .store
         .create_session(NewSession {
             id_hash,
-            user_id: creds.user.id,
+            user_id: user.id,
             expires_at,
-            ip: ip.clone(),
+            ip,
             ua_hash: headers
                 .get(header::USER_AGENT)
                 .map(|ua| session::sha256(ua.as_bytes())),
         })
         .await?;
-    audit_login(&state, Some(&creds.user), true, &email, ip, "success").await;
-
     let current = CurrentUser {
-        user: creds.user,
+        user,
         via: "session",
         token: None,
     };
     let dto = UserDto::from(&current);
-    Ok((jar.add(session::build_cookie(&state.cfg, raw)), Json(dto)))
+    Ok((session::build_cookie(&state.cfg, raw), dto))
 }
 
 /// Log out: revoke the current session and clear the cookie.

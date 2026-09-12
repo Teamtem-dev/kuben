@@ -70,6 +70,21 @@ export const meQuery = queryOptions({
 export const login = (email: string, password: string) =>
   unwrap(api.POST('/api/v1/auth/login', { body: { email, password } }))
 
+// ---- first run ----
+
+export type SetupStatus = Schemas['SetupStatus']
+export type SetupRequest = Schemas['SetupRequest']
+
+/** Whether the first admin account still has to be created (`/setup`). */
+export const setupQuery = queryOptions({
+  queryKey: ['setup'],
+  queryFn: (): Promise<SetupStatus> => unwrap(api.GET('/api/v1/setup')),
+  staleTime: 0,
+})
+
+/** Create the organization and its first admin; signs in on success. */
+export const completeSetup = (body: SetupRequest) => unwrap(api.POST('/api/v1/setup', { body }))
+
 export const logout = () => ok(api.POST('/api/v1/auth/logout'))
 
 export const changePassword = (current_password: string, new_password: string) =>
