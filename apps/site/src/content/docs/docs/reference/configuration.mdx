@@ -1,0 +1,110 @@
+---
+title: Configuration
+description: Every Kuben setting with its default, grouped by section, and the precedence between defaults, config files and KUBEN_* environment variables.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Precedence
+
+Lowest to highest:
+
+1. Built-in defaults
+2. `/etc/kuben/config.toml`
+3. `./kuben.toml`
+4. `--config <file>` (if given)
+5. `KUBEN_*` environment variables. Nested keys are separated by `__`: `KUBEN_SECURITY__SESSION_TTL_HOURS`.
+
+A TOML file uses the same sections:
+
+```toml title="kuben.toml"
+[server]
+bind = "127.0.0.1:8080"
+public_url = "https://kuben.example.com"
+
+[database]
+url = "sqlite:///var/lib/kuben/kuben.db"
+
+[security]
+trust_forwarded_for = true
+```
+
+## `server`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_SERVER__BIND` | `0.0.0.0:8080` | API and console |
+| `KUBEN_SERVER__METRICS_BIND` | `0.0.0.0:9090` | Prometheus `/metrics` |
+| `KUBEN_SERVER__ACTIVATOR_BIND` | `0.0.0.0:8081` | reserved for the scale-to-zero activator |
+| `KUBEN_SERVER__PUBLIC_URL` | unset | the URL users open; used for absolute links |
+| `KUBEN_ROLES` | `all` | roles of this process: `all`, `api`, `controller`, `activator` (comma-separated) |
+| `KUBEN_SERVER__REQUEST_TIMEOUT_SECS` | `30` | per-request timeout (streams excepted) |
+| `KUBEN_SERVER__MAX_BODY_BYTES` | `1048576` | request body limit (1 MiB) |
+
+## `database`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_DATABASE__URL` | `sqlite:///data/kuben.db` | `sqlite://<path>` or `postgres://user:pass@host/db` |
+| `KUBEN_DATABASE__MAX_CONNECTIONS` | `4` | pool size. SQLite uses a single writer regardless |
+
+The directory of a SQLite path is created on first start. PostgreSQL is required for more than one replica.
+
+## `kube`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_KUBE__KUBECONFIG` | unset | path to a kubeconfig; otherwise in-cluster, then `$KUBECONFIG`, then `~/.kube/config` |
+| `KUBEN_KUBE__CONTEXT` | unset | kubeconfig context to use |
+| `KUBEN_KUBE__WATCH_NAMESPACE` | unset (all) | restrict informers to one namespace |
+| `KUBEN_KUBE__REQUIRED` | `false` (`true` in the chart) | fail to start when no cluster is reachable |
+| `KUBEN_KUBE__NAMESPACE` | the pod's namespace | home of the controller Lease and of `kuben-initial-admin` |
+| `KUBEN_KUBE__LEADER_ELECTION` | `false` (`true` in the chart) | run the controllers only on the Lease holder; required when several processes have the controller role |
+
+## `security`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_SECURITY__COOKIE_SECURE` | `true` | `__Host-` cookie with `Secure`. `false` only for local development over HTTP |
+| `KUBEN_SECURITY__SESSION_TTL_HOURS` | `12` | session lifetime |
+| `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` | `5` | upper bound for a revoked session to stay valid on another replica |
+| `KUBEN_SECURITY__PASSWORD_MIN_LENGTH` | `12` | |
+| `KUBEN_SECURITY__LOGIN_CONCURRENCY` | `2` | concurrent Argon2id verifications; bounds memory under a login flood |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES` | `5` | per email + client IP, within the window |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_IP` | `30` | |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_ACCOUNT` | `100` | |
+| `KUBEN_SECURITY__LOGIN_WINDOW_SECS` | `900` | 15 minutes |
+| `KUBEN_SECURITY__TRUST_FORWARDED_FOR` | `false` (`true` in the chart) | use the last `X-Forwarded-For` hop as the client address. Only behind a proxy that appends it |
+
+See [Sign-in and throttling](/docs/guides/sign-in-security/).
+
+## `telemetry`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_TELEMETRY__LOG_FORMAT` | `json` | `json` or `pretty` |
+| `KUBEN_TELEMETRY__LOG_LEVEL` | `info` | a `tracing` filter, e.g. `info,kuben_platform=debug` |
+| `KUBEN_TELEMETRY__OTLP_ENDPOINT` | unset | OpenTelemetry trace export |
+
+## `runtime`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_RUNTIME__WORKER_THREADS` | number of CPUs | Tokio worker threads |
+| `KUBEN_RUNTIME__MAX_BLOCKING_THREADS` | `16` | |
+| `KUBEN_RUNTIME__BULKHEAD` | `false` | run the controllers on a second Tokio runtime, isolated from the API. Off in phase 0 (ADR-013) |
+
+## `bootstrap`
+
+Used on the first start with an empty database.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_BOOTSTRAP__ORG_SLUG` | `default` | |
+| `KUBEN_BOOTSTRAP__ORG_NAME` | `Default` | |
+| `KUBEN_BOOTSTRAP__ADMIN_EMAIL` | `admin@kuben.local` | |
+| `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` | generated | a generated password is stored in the Secret `kuben-initial-admin` (in Kubernetes) or printed once (binary), never logged |
+
+<Aside type="note" title="Platform settings live in the cluster">
+`baseDomain`, `gateway`, `clusterIssuer`, `wildcardTlsSecret`, the registry and the size presets are **not** process configuration: they are the `KubenConfig` custom resource, so every replica and every `kubectl` user sees the same values. The Helm chart writes it from `platform.*`. See [Custom resources](/docs/reference/custom-resources/).
+</Aside>

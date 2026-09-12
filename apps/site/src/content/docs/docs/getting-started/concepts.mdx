@@ -1,0 +1,69 @@
+---
+title: Concepts
+description: The Kuben object model (projects, environments, apps, releases), how each maps onto Kubernetes, and how the single binary is organised inside.
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## The object model
+
+```
+Project  ──▶  Environment  ──▶  App  ──▶  Release
+ shop          staging           api       #42
+               production        worker
+                                 db (template)
+```
+
+| Object | What it is | On the cluster |
+|---|---|---|
+| **Project** | A group of related apps: a product, a customer, a team. Membership and roles are per organisation, not per project. | A cluster-scoped `Project` resource |
+| **Environment** | Where apps run. `staging` and `production` are the common pair, but any number is fine. | An `Environment` resource and a namespace `<project>-<environment>` with a `ResourceQuota`, a `NetworkPolicy` and Pod Security labels |
+| **App** | One deployable unit: an image, its processes, environment variables, domains, volumes. | An `App` resource in the environment namespace, reconciled into a `Deployment` (or `CronJob`), a `Service`, an `HPA` and an `HTTPRoute` |
+| **Release** | An immutable snapshot of an app's spec, numbered per app. Deploys, configuration changes, rollbacks, promotions and template deploys all create one. | A `Release` resource; the app's status points at the current one |
+| **Secret** | Named values written through the API and never read back. Apps reference them by name. | A Kubernetes `Secret` in the environment namespace, created and owned by Kuben |
+
+Apps and environments carry **conditions** (`Ready`, `Exposed`) with a `reason` and a `message`, visible in the console and with `kubectl`.
+
+## Kubernetes holds the desired state
+
+Kuben stores what *should* exist as custom resources in the `kuben.dev` API group, and lets the controllers make the cluster match. The SQL database (SQLite on a volume, or PostgreSQL) holds only what Kubernetes has no home for: users, sessions, API tokens, memberships, login throttling and the audit log. SQL refers to cluster objects by `uid` only.
+
+Two consequences follow:
+
+- **GitOps tools work.** You can `kubectl apply` an `App`, and Argo CD or Flux can own the manifests, while the console keeps showing status, logs and releases.
+- **Backups are two things.** `kuben backup` exports the custom resources as YAML; the database volume is backed up like any other volume. Secret values are deliberately not exported. See [Backup and restore](/docs/operations/backup-restore/).
+
+## Networking
+
+For every app with an HTTP port, the controller creates an `HTTPRoute` whose hostnames are the app's custom domains plus `<app>-<environment>.<baseDomain>`. Processes with `protocol: tcp` (databases from templates) get a cluster-internal `Service` only and are never reachable from the internet.
+
+When a cert-manager `ClusterIssuer` is configured, Kuben **owns the listeners** of the Gateway named in `KubenConfig`: one HTTPS listener per hostname with its own certificate, a plain-HTTP listener that only redirects, and optionally a wildcard listener for generated hostnames. Details and limits are in [Exposing apps and HTTPS](/docs/operations/exposing-apps/).
+
+## Inside the binary
+
+`kuben serve` runs several **roles** in one process:
+
+| Role | Responsibility |
+|---|---|
+| `api` | The REST API (`/api/v1`), the embedded web console, server-sent events for logs and status |
+| `controller` | The reconcilers for projects, environments, apps, releases and the Gateway |
+| `activator` | Reserved for scale-to-zero; a placeholder today and left out of release builds |
+
+By default a process runs all of them (`--roles=all`). In the Helm chart with PostgreSQL you can run several replicas: every replica serves the API from its own **projections**, small in-memory read models fed by Kubernetes watches, while only the replica holding the `kuben-controller` Lease runs the controllers. A crashed leader is replaced within about fifteen seconds, a gracefully stopped one within a few. See [High availability](/docs/operations/high-availability/).
+
+<Aside type="note" title="Why projections?">
+Caching raw Kubernetes objects for a whole cluster costs hundreds of megabytes. Projections keep only the fields the console and the API need, which is how Kuben's pod can request 64 MiB of memory.
+</Aside>
+
+## Identity and access
+
+- **Sessions** are opaque ids in an `HttpOnly`, `Secure`, `__Host-` cookie. There is no JWT in the browser; a revoked session stops working within seconds on every replica.
+- **API tokens** (`kbn_pat_…`) are opaque too. Only their SHA-256 hash is stored and compared in constant time. A token is capped at a role and optionally scoped to one project or environment.
+- **Roles** form a strict ladder: `viewer` < `developer` < `admin` < `owner`. See [Teams and roles](/docs/guides/teams-and-roles/).
+- **Audit.** Every create, update, delete, restart, rollback, promotion, invitation and token change is recorded, as is every denial and every login. Request bodies, and therefore secret values, never are. See [The audit log](/docs/guides/audit-log/).
+
+## Generated contracts
+
+The OpenAPI document, the TypeScript client used by the console and the CRD manifests in the Helm chart are generated from the Rust code. CI regenerates them and fails on any difference, so what this site's [REST API reference](/docs/reference/api/) shows is what the binary serves.

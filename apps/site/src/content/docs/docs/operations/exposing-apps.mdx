@@ -1,0 +1,115 @@
+---
+title: Exposing apps and HTTPS
+description: How Kuben uses Gateway API and cert-manager, the Gateway it needs, a ClusterIssuer that solves HTTP-01 through that Gateway, wildcard certificates, and the honest limits.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Routes
+
+For every app with an HTTP port, the App controller creates an `HTTPRoute` in the environment namespace. Its hostnames are the app's custom domains plus `<app>-<environment>.<baseDomain>`. Processes with `protocol: tcp` (databases from templates) get a cluster-internal `Service` only.
+
+Without `platform.baseDomain` and `platform.gateway`, apps are reachable only inside the cluster.
+
+## Listeners
+
+When `clusterIssuer` is set, Kuben **owns the listeners** of the Gateway named in `KubenConfig.spec.gateway`. That Gateway must therefore be dedicated to Kuben. Kuben maintains:
+
+- **`http` (port 80):** only the platform's redirect route and cert-manager's challenge routes may attach. Every other request is redirected to HTTPS.
+- **One HTTPS listener per hostname**, named `h-<hash>`, with the certificate Secret `kuben-tls-<hash>`. A hostname admits routes only from the namespace that claimed it first.
+- **Optionally one wildcard listener** `https` for `*.<baseDomain>`, when `wildcardTlsSecret` is set. All generated hostnames then share it.
+
+The Gateway gets the annotation `cert-manager.io/cluster-issuer`, and cert-manager's gateway-shim issues a certificate for every listener.
+
+## A minimal Gateway
+
+Kuben fills in the listeners; you only create the shell:
+
+```yaml title="gateway.yaml"
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: kuben
+  namespace: kuben-system
+spec:
+  gatewayClassName: traefik   # or eg (Envoy Gateway), cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+```
+
+Then reference it in the chart: `--set platform.gateway=kuben-system/kuben`.
+
+## A ClusterIssuer that solves HTTP-01 through that Gateway
+
+```yaml title="clusterissuer.yaml"
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@example.com
+    privateKeySecretRef:
+      name: letsencrypt-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - kind: Gateway
+                name: kuben
+                namespace: kuben-system
+                sectionName: http
+```
+
+cert-manager needs its Gateway API support switched on: `helm upgrade cert-manager … --set config.enableGatewayAPI=true`.
+
+## Wildcard certificate
+
+With many apps, one listener per generated hostname runs into the listener cap. Issue a **DNS-01** `Certificate` for `*.<baseDomain>` whose **name equals the Secret name** you put in `wildcardTlsSecret`; cert-manager then leaves it alone instead of trying HTTP-01 on the wildcard listener.
+
+```yaml title="wildcard.yaml"
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apps-wildcard          # == secretName
+  namespace: kuben-system
+spec:
+  secretName: apps-wildcard
+  dnsNames: ["*.apps.example.com"]
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-dns       # a DNS-01 issuer
+```
+
+```bash
+helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values \
+  --set platform.wildcardTlsSecret=apps-wildcard
+```
+
+## Honest limits
+
+- A Gateway holds at most **64 listeners**; Kuben uses at most 60. Beyond that, use the wildcard listener for generated hosts. ListenerSet support (experimental in Gateway API) is on the roadmap.
+- TLS termination happens at your Gateway controller. Kuben only configures it; it never handles app traffic.
+- One Gateway per Kuben installation. The chart's optional `route` for the console can use the same Gateway.
+
+## Status
+
+Each app reports its exposure in the `Exposed` condition:
+
+| Reason | Meaning |
+|---|---|
+| `RouteApplied` | the HTTPRoute exists and is attached |
+| `NoGateway` | `KubenConfig.spec.gateway` is unset or the Gateway does not exist |
+| `NoHostname` | the app has no domain and no base domain is configured |
+| `GatewayAPIMissing` | the Gateway API CRDs are not installed |
+
+The **Check DNS** button (`GET …/apps/{app}/domains`) tells you whether each hostname already points at the Gateway. See [Custom domains and HTTPS](/docs/guides/custom-domains/) for the user-facing flow.
+
+<Aside type="note" title="Which Gateway controllers are tested">
+Kuben's end-to-end suite runs on kind with Traefik v3. Envoy Gateway and Cilium implement the same Gateway API surface Kuben uses (listeners, HTTPRoute, `allowedRoutes` by namespace) and are expected to work; please report differences.
+</Aside>

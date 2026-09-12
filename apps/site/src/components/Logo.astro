@@ -1,0 +1,66 @@
+---
+/**
+ * The Kuben mark (a rounded hexagon holding a cube) and, optionally, the
+ * wordmark next to it. Inline SVG, so it uses the page's own font stack and
+ * needs no extra request. `id` keeps gradient ids unique when the logo is
+ * rendered more than once on a page.
+ */
+interface Props {
+  id?: string
+  size?: number
+  wordmark?: boolean
+  class?: string
+}
+
+const { id = 'k', size = 28, wordmark = true, class: className } = Astro.props
+const gradient = `${id}-grad`
+---
+
+<span class:list={['k-logo', className]} style={`--k-logo-size:${size}px`}>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 64 64"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <defs>
+      <linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ffc25c"></stop>
+        <stop offset="1" stop-color="#f0640e"></stop>
+      </linearGradient>
+    </defs>
+    <polygon
+      points="32,6 54.5,19 54.5,45 32,58 9.5,45 9.5,19"
+      fill={`url(#${gradient})`}
+      stroke={`url(#${gradient})`}
+      stroke-width="8"
+      stroke-linejoin="round"></polygon>
+    <path d="M32 19 L43 25.5 L32 32 L21 25.5 Z" fill="#fff" fill-opacity="0.96"></path>
+    <path d="M21 25.5 L32 32 L32 45 L21 38.5 Z" fill="#fff" fill-opacity="0.5"></path>
+    <path d="M32 32 L43 25.5 L43 38.5 L32 45 Z" fill="#fff" fill-opacity="0.74"></path>
+  </svg>
+  {wordmark && <span class="k-logo-word">kuben</span>}
+</span>
+
+<style>
+  .k-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1;
+    color: var(--sl-color-white);
+  }
+
+  .k-logo svg {
+    flex: none;
+    filter: drop-shadow(0 4px 10px rgb(246 139 18 / 25%));
+  }
+
+  .k-logo-word {
+    font-weight: 700;
+    font-size: calc(var(--k-logo-size) * 0.78);
+    letter-spacing: -0.035em;
+    translate: 0 -1px;
+  }
+</style>

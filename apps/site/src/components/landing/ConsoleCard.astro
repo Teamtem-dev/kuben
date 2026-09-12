@@ -1,0 +1,249 @@
+---
+/**
+ * A stylised view of an app in the Kuben console: what a team sees after a
+ * deploy. Pure HTML/CSS so it is crisp at every size and in both themes.
+ */
+---
+
+<div class="k-console not-content" aria-hidden="true">
+  <div class="k-console-bar">
+    <span class="k-dots"><i></i><i></i><i></i></span>
+    <span class="k-crumbs">shop <b>/</b> production <b>/</b> api</span>
+    <span class="k-status"><i></i>Ready</span>
+  </div>
+
+  <div class="k-console-body">
+    <div class="k-row k-row-head">
+      <div>
+        <div class="k-label">Image</div>
+        <div class="k-mono">ghcr.io/acme/shop-api:<span class="k-hl">b8e2f31</span></div>
+      </div>
+      <div class="k-rev">
+        <div class="k-label">Release</div>
+        <div class="k-mono">#42</div>
+      </div>
+    </div>
+
+    <div class="k-grid">
+      <div class="k-tile">
+        <div class="k-label">Domain</div>
+        <div class="k-mono">api.shop.example.com <span class="k-lock">https</span></div>
+      </div>
+      <div class="k-tile">
+        <div class="k-label">Replicas</div>
+        <div class="k-mono">2 → 4 <span class="k-dim">autoscaling</span></div>
+      </div>
+      <div class="k-tile">
+        <div class="k-label">Health</div>
+        <div class="k-mono">/healthz <span class="k-ok">200</span></div>
+      </div>
+      <div class="k-tile">
+        <div class="k-label">Rollout</div>
+        <div class="k-mono">4/4 ready <span class="k-dim">zero downtime</span></div>
+      </div>
+    </div>
+
+    <div class="k-releases">
+      <div class="k-rel k-rel-current"><span>#42</span><span>deploy b8e2f31</span><span>2 min ago</span></div>
+      <div class="k-rel"><span>#41</span><span>env DATABASE_URL</span><span>Roll back</span></div>
+      <div class="k-rel"><span>#40</span><span>promote from staging</span><span>Roll back</span></div>
+    </div>
+
+    <div class="k-actions">
+      <span class="k-chip k-chip-primary">Promote → production</span>
+      <span class="k-chip">Logs</span>
+      <span class="k-chip">Restart</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  .k-console {
+    border-radius: var(--k-radius-lg);
+    border: 1px solid var(--k-line);
+    background: color-mix(in srgb, var(--sl-color-bg) 55%, transparent);
+    -webkit-backdrop-filter: blur(var(--k-glass-blur));
+    backdrop-filter: blur(var(--k-glass-blur));
+    box-shadow: var(--sl-shadow-lg);
+    overflow: hidden;
+    font-size: 0.8125rem;
+  }
+
+  .k-console-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--k-line);
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-dots {
+    display: inline-flex;
+    gap: 0.35rem;
+  }
+
+  .k-dots i {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: var(--k-surface-strong);
+  }
+
+  .k-crumbs {
+    font-family: var(--sl-font-mono);
+    color: var(--sl-color-gray-2);
+  }
+
+  .k-crumbs b {
+    color: var(--sl-color-gray-4);
+    font-weight: 400;
+    margin-inline: 0.25rem;
+  }
+
+  .k-status {
+    margin-inline-start: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: rgb(74 222 128 / 12%);
+    color: #4ade80;
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+
+  .k-status i {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 3px rgb(74 222 128 / 20%);
+  }
+
+  .k-console-body {
+    padding: 1rem;
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .k-row-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .k-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--sl-color-gray-4);
+    margin-bottom: 0.25rem;
+  }
+
+  .k-mono {
+    font-family: var(--sl-font-mono);
+    color: var(--sl-color-white);
+    overflow-wrap: anywhere;
+  }
+
+  .k-tile .k-mono {
+    font-size: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .k-hl {
+    color: var(--sl-color-accent);
+  }
+
+  .k-rev .k-mono {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .k-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+
+  .k-tile {
+    padding: 0.7rem 0.8rem;
+    border-radius: var(--k-radius);
+    background: var(--k-surface);
+  }
+
+  .k-lock,
+  .k-ok,
+  .k-dim {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    margin-inline-start: 0.35rem;
+    vertical-align: 1px;
+  }
+
+  .k-lock {
+    background: color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+    color: var(--sl-color-text-accent);
+  }
+
+  .k-ok {
+    background: rgb(74 222 128 / 14%);
+    color: #4ade80;
+  }
+
+  .k-dim {
+    background: var(--k-surface-strong);
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-releases {
+    display: grid;
+    gap: 0.25rem;
+    font-family: var(--sl-font-mono);
+  }
+
+  .k-rel {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr auto;
+    gap: 0.75rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.6rem;
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-rel span:last-child {
+    color: var(--sl-color-gray-4);
+  }
+
+  .k-rel-current {
+    background: color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+    color: var(--sl-color-white);
+  }
+
+  .k-rel-current span:first-child {
+    color: var(--sl-color-accent);
+  }
+
+  .k-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .k-chip {
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    background: var(--k-surface);
+    color: var(--sl-color-gray-2);
+    font-weight: 500;
+  }
+
+  .k-chip-primary {
+    background: var(--sl-color-bg-accent);
+    color: var(--sl-color-text-invert);
+    font-weight: 600;
+  }
+</style>

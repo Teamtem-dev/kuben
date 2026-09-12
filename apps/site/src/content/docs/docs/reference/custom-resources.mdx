@@ -1,0 +1,171 @@
+---
+title: Custom resources
+description: The kuben.dev API group. KubenConfig, Project, Environment, App, Release and BuildRun, with their spec fields, status conditions and full examples for kubectl and GitOps.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+Kuben stores desired state as custom resources in the `kuben.dev/v1alpha1` API group. The console and the API write them; the controllers reconcile them; you can read and write them with `kubectl` or a GitOps tool. Validation is done with CEL rules inside the CRD schemas, so there is no admission webhook to run.
+
+The manifests are generated from the Rust types and shipped in the Helm chart (`charts/kuben/crds/kuben.dev_all.yaml`). The binary applies them at every start.
+
+| Kind | Scope | Purpose |
+|---|---|---|
+| `KubenConfig` | cluster | platform-wide settings (singleton) |
+| `Project` | cluster | a group of environments |
+| `Environment` | cluster | one namespace with quota, policy and protection |
+| `App` | namespaced (the environment) | a deployable unit |
+| `Release` | namespaced | an immutable snapshot of an app |
+| `BuildRun` | namespaced | a build from git (roadmap) |
+
+## KubenConfig
+
+```yaml
+apiVersion: kuben.dev/v1alpha1
+kind: KubenConfig
+metadata:
+  name: kuben
+spec:
+  baseDomain: apps.example.com
+  gateway: kuben-system/kuben
+  clusterIssuer: letsencrypt
+  wildcardTlsSecret: apps-wildcard          # optional
+  registry:                                 # for builds (roadmap)
+    prefix: ghcr.io/acme
+    credentialsSecret: registry-credentials # in kuben-system
+  sizes:                                    # compute presets; these are the defaults
+    - { name: nano,   cpuRequest: 50m,  memoryRequest: 64Mi,  memoryLimit: 128Mi }
+    - { name: small,  cpuRequest: 100m, memoryRequest: 128Mi, memoryLimit: 256Mi }
+    - { name: medium, cpuRequest: 250m, memoryRequest: 512Mi, memoryLimit: 1Gi }
+    - { name: large,  cpuRequest: 1,    memoryRequest: 2Gi,   memoryLimit: 4Gi }
+```
+
+Size presets have no CPU limit by default (`cpuLimit` is optional), which avoids throttling latency-sensitive apps. Add your own presets or change the defaults; apps reference them by name.
+
+## Project
+
+```yaml
+apiVersion: kuben.dev/v1alpha1
+kind: Project
+metadata:
+  name: shop
+spec:
+  displayName: Online Shop
+  description: Storefront and its services
+```
+
+## Environment
+
+Named `<project>-<name>`; the namespace has the same name.
+
+```yaml
+apiVersion: kuben.dev/v1alpha1
+kind: Environment
+metadata:
+  name: shop-production
+spec:
+  project: shop
+  type: production            # standard | production | preview
+  deletionPolicy: Retain      # Retain | Delete (the namespace, after the grace period)
+  protection:
+    requireApprovals: 0       # distinct approvers to promote here (roadmap)
+    deletionGrace: 168h       # soft-delete grace period
+  quota:
+    cpu: "8"
+    memory: 16Gi
+    pods: 50
+status:
+  namespace: shop-production
+  phase: Ready                # Pending | Ready | Terminating | Degraded
+```
+
+`type: production` marks the environment as protected: deleting it needs the `env-delete-protected` permission (owners). `type: preview` environments accept a `ttl` (`idle`, `max`) and are the basis for pull-request previews on the roadmap.
+
+## App
+
+```yaml
+apiVersion: kuben.dev/v1alpha1
+kind: App
+metadata:
+  name: api
+  namespace: shop-production
+spec:
+  source:
+    image: ghcr.io/acme/shop-api:1.4.2
+    # git: { repo, branch, path, build: { strategy, dockerfile } }   # roadmap
+  runtime:
+    processes:
+      web:
+        command: []                 # image default
+        port: 8080
+        size: small
+        replicas: { min: 2, max: 4 }   # max > min enables CPU autoscaling
+        protocol: http              # http | tcp (cluster-internal only)
+      nightly:
+        command: ["report", "--yesterday"]
+        schedule: "0 3 * * *"       # runs as a CronJob; no port
+        timeZone: Europe/Berlin
+    healthCheck:
+      path: /healthz
+      port: 8080
+    fsGroup: 1000                   # for non-root images writing to volumes
+  env:
+    - name: LOG_LEVEL
+      value: info
+    - name: DATABASE_URL
+      fromSecret: { name: db-credentials, key: url }
+  domains:
+    - host: api.shop.example.com
+      tls: auto
+  volumes:
+    - name: data
+      mountPath: /data
+      size: 5Gi
+      storageClass: ""              # cluster default
+status:
+  currentRelease: api-42
+  url: https://api.shop.example.com
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+    - type: Exposed
+      status: "True"
+      reason: RouteApplied
+```
+
+Notes:
+
+- `source` is a one-of: exactly one of `image` or `git` (CEL-validated).
+- An app with `volumes` runs one process with at most one replica, and rolls with `Recreate`.
+- A process with `schedule` may not have a `port`.
+- `idle` (`mode`, `after`) is reserved for scale-to-zero.
+
+## Release
+
+Created by the controller for every change; not meant to be written by hand.
+
+```yaml
+apiVersion: kuben.dev/v1alpha1
+kind: Release
+metadata:
+  name: api-42
+  namespace: shop-production
+spec:
+  app: api
+  imageDigest: ghcr.io/acme/shop-api@sha256:…
+  appSpec: { … }               # snapshot of the App spec
+  secretRefs:                  # secret names and resourceVersions in effect
+    - { name: db-credentials, resourceVersion: "18231" }
+  createdBy: user:01J…         # or token:…
+```
+
+Releases are immutable. A rollback creates a new release whose `appSpec` is copied from the chosen one.
+
+## BuildRun
+
+The build resource for git sources. The controller watches for completion and creates the `Release` itself, so build pods never need cluster credentials. Part of the [roadmap](/docs/roadmap/); the type ships today so the schema is stable.
+
+<Aside type="tip" title="GitOps">
+Commit `Project`, `Environment` and `App` manifests to a repository and let Argo CD or Flux apply them. The console keeps showing status, logs and releases, and its own writes go through the same objects. Keep secrets out of git: write them through the API or with your secret manager into the environment namespace, and reference them by name.
+</Aside>

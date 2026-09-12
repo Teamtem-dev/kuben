@@ -12,10 +12,24 @@
       "!**/dist",
       "!**/.claude",
       "!**/charts",
+      "!apps/site/public",
       "!packages/api-client/openapi.json",
       "!packages/api-client/src/schema.d.ts"
     ]
   },
+  "overrides": [
+    {
+      "includes": ["**/*.astro"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    }
+  ],
   "css": {
     "parser": {
       "tailwindDirectives": true

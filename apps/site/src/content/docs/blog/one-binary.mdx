@@ -1,0 +1,56 @@
+---
+title: Why Kuben ships as one binary
+description: A PaaS is usually a fleet of services. Kuben is one process with roles. This post explains the architecture behind that choice, from projections and the single writer to what happens when you want three replicas.
+date: 2026-09-11
+authors: teamtem
+tags: [architecture, engineering]
+excerpt: A PaaS is usually a fleet of services. Kuben is one process with roles. This post explains the architecture behind that choice, and what happens when you want three replicas.
+---
+
+A platform that deploys other people's software tends to become a small distributed system of its own: an API, a controller, a worker, a scheduler, a database, a message queue, a cache, and a reverse proxy in front. Each piece is reasonable. Together they are the reason "self-hosted PaaS" usually means "a second platform to operate".
+
+Kuben is one process. This post is about how that works without becoming a monolith that falls over at the first real load, and what we gave up to get there.
+
+## Roles, not services
+
+`kuben serve` runs a set of **roles** in one process: `api`, `controller`, and (reserved) `activator`. By default a process runs all of them. Each role is a supervised subsystem with its own lifecycle and health, so a panic in a controller restarts that controller, not the API.
+
+The interesting part is that the roles talk through Kubernetes and the database, not through in-process channels. The API writes an `App` custom resource; the controller watches it and reconciles. That is the same path a `kubectl apply` takes, which means GitOps tools and the console are peers. It also means that splitting the roles across processes later requires no code change; the Helm chart already runs several API replicas next to one active controller.
+
+## Kubernetes holds desired state
+
+The first design decision, and the one everything else follows from: **Kubernetes is the source of truth for what should exist.** Projects, environments, apps and releases are custom resources in `kuben.dev`. SQL holds what Kubernetes has no home for: users, sessions, tokens, memberships, login throttling and the audit log, referring to cluster objects only by `uid`.
+
+This is the opposite of the "store everything in our database and sync to the cluster" approach. It costs us some convenience (a list of apps is a watch, not a `SELECT`), and it buys a lot: no reconciliation drift between two sources of truth, backups that are `kubectl get -o yaml`, and a console that can never show an app the cluster does not have.
+
+## Projections instead of caches
+
+If the API reads from Kubernetes, doesn't every page load hit the API server? No. Each process runs informers over the resources it cares about and keeps **projections**: small in-memory read models with only the fields the console needs. The API answers from those, and pushes deltas to browsers over server-sent events.
+
+We considered caching full objects the way `kube-rs` reflectors do. On a cluster with a few hundred pods that is hundreds of megabytes, mostly `managedFields` and status nobody reads. Projections are why the Kuben pod requests 64 Mi of memory and why the pod reports ready only after every informer has listed once: a fresh replica must never answer `404` for an app that exists.
+
+## SQLite by default, PostgreSQL when you grow
+
+SQLite on a persistent volume is the default database. It is not a toy here: WAL mode, a single-writer pool, embedded migrations under a lock, foreign keys always on, and a `Recreate` deployment strategy because a `ReadWriteOnce` volume cannot be mounted by two pods.
+
+The same repositories run on PostgreSQL through `sqlx`, and CI runs the store tests against both backends on every change so they cannot drift. The moment you set `database.url` to a PostgreSQL DSN, the chart drops the volume, switches to rolling updates with `maxUnavailable: 0`, and lets you raise `replicaCount`.
+
+## Three replicas, one controller
+
+Several replicas of one process that includes a controller would reconcile the same objects concurrently. The fix is not "run the controller elsewhere"; it is a Kubernetes `Lease`. Every replica serves the API from its own projections; only the Lease holder runs the controllers, and the rest report `controllers: standby`.
+
+The election never compares timestamps with the local clock, so skew between nodes cannot produce two leaders. That deserves its own post: [Leader election without trusting clocks](/blog/leader-election-without-clocks/).
+
+## Embedding the console
+
+The web console is a React application built with Vite and embedded into the binary at compile time, pre-compressed, served with a strict Content Security Policy and an immutable cache header. There is no Node in the image, and there is no image layer for the frontend. The `/api` the console talks to is the same one your CI uses, and its TypeScript client is generated from the OpenAPI document the binary serves; CI fails if either drifts.
+
+## What we gave up
+
+- **A second Tokio runtime as a bulkhead** between the API and the controllers was in the original design. We shipped one runtime and kept the flag (`runtime.bulkhead`) for when a measurement, not a hunch, says we need it.
+- **Builds** are not in the binary yet. When they arrive, they will run as Kubernetes Jobs against a persistent BuildKit daemon, never inside the Kuben process and never with cluster credentials.
+- **An in-process queue** for things like log fan-out was replaced, for now, by bounded REST reads and SSE. The bounded, reference-counted log hub is on the roadmap.
+
+## The result
+
+One binary you can `curl | bash` onto a server next to k3s, or one Helm release inside any cluster. A footprint you can put on a dashboard. And a platform whose every object is a Kubernetes object, which is the part we care about most. If you want to see it, the [concepts page](/docs/getting-started/concepts/) is the map, and the [architecture decisions](/docs/contributing/architecture-decisions/) are the reasons.

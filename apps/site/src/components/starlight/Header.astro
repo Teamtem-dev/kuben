@@ -1,0 +1,183 @@
+---
+/**
+ * Site header: Teamtem (the organisation) / Kuben (the product), then the
+ * primary navigation, search and the theme toggle. Replaces Starlight's
+ * default header on every page.
+ */
+import { Image } from 'astro:assets'
+import Search from '@astrojs/starlight/components/Search.astro'
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro'
+import { Icon } from 'astro-icon/components'
+import teamtem from '../../assets/teamtem.png'
+import Logo from '../Logo.astro'
+
+const path = Astro.url.pathname
+const nav = [
+  { label: 'Docs', href: '/docs/', active: path.startsWith('/docs/') },
+  { label: 'Blog', href: '/blog/', active: path.startsWith('/blog/') },
+]
+---
+
+<div class="k-header">
+  <div class="k-brand">
+    <a class="k-org" href="https://teamtem.com" aria-label="Teamtem">
+      <Image src={teamtem} alt="" width={44} height={40} loading="eager" decoding="sync" />
+    </a>
+    <span class="k-slash" aria-hidden="true">/</span>
+    <a class="k-product" href="/" aria-label="Kuben home">
+      <Logo id="hdr" size={26} />
+    </a>
+    <nav class="k-nav" aria-label="Primary">
+      {
+        nav.map((item) => (
+          <a href={item.href} aria-current={item.active ? 'page' : undefined}>
+            {item.label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+
+  <div class="k-search print:hidden">
+    <Search />
+  </div>
+
+  <div class="k-right print:hidden">
+    <a
+      class="k-github"
+      href="https://github.com/Teamtem-dev/kuben"
+      rel="me"
+      aria-label="Kuben on GitHub"
+    >
+      <Icon name="simple-icons:github" />
+      <span class="sl-hidden lg:sl-block">GitHub</span>
+    </a>
+    <ThemeSelect />
+  </div>
+</div>
+
+<style>
+  .k-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    height: 100%;
+  }
+
+  .k-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+
+  .k-org {
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.95;
+    transition: opacity 0.15s ease;
+  }
+
+  .k-org:hover {
+    opacity: 1;
+  }
+
+  .k-org img {
+    height: 24px;
+    width: auto;
+  }
+
+  .k-slash {
+    color: var(--sl-color-gray-4);
+    font-weight: 300;
+    font-size: 1.25rem;
+    translate: 0 -1px;
+  }
+
+  .k-product {
+    text-decoration: none;
+    display: inline-flex;
+  }
+
+  .k-nav {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+    margin-inline-start: 0.75rem;
+  }
+
+  .k-nav a {
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .k-nav a:hover {
+    color: var(--sl-color-white);
+    background: var(--k-surface);
+  }
+
+  .k-nav a[aria-current='page'] {
+    color: var(--sl-color-white);
+    background: var(--k-surface-strong);
+  }
+
+  .k-search {
+    display: flex;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .k-search :global(site-search) {
+    width: 100%;
+    max-width: 22rem;
+  }
+
+  .k-right {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .k-github {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    color: var(--sl-color-gray-2);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .k-github:hover {
+    color: var(--sl-color-white);
+    background: var(--k-surface);
+  }
+
+  .k-github :global(svg) {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  /* On phones the sidebar toggle (rendered by Starlight) sits at the end of
+     the header, so the right group only appears from tablet width up. */
+  @media (min-width: 50rem) {
+    .k-nav,
+    .k-right {
+      display: flex;
+    }
+  }
+</style>

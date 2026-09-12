@@ -59,6 +59,8 @@ Missing something? [Open a feature request](https://github.com/Teamtem-dev/kuben
 
 ## Documentation
 
+The website, guides, reference and blog live at [kuben.teamtem.com](https://kuben.teamtem.com) (source: [`apps/site`](apps/site)). The documents below are the in-repository originals.
+
 | Document | Covers |
 |---|---|
 | [User guide](docs/guide.md) | ten everyday scenarios, from deploying from GitHub Actions to promoting a release |

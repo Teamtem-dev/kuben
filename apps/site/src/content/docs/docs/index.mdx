@@ -1,0 +1,64 @@
+---
+title: What is Kuben?
+description: Kuben is a Kubernetes PaaS in a single binary. Deploy container images into isolated environments from a web UI or a REST API; Kuben creates the Deployments, Services, autoscaling and HTTPS routes and keeps them in sync.
+sidebar:
+  order: 0
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+Kuben is a **platform as a service that runs on your own Kubernetes cluster**. You give it a container image; it gives your team an isolated environment with a public HTTPS address, zero-downtime rollouts, autoscaling, logs, release history with rollback, and an audit log of who changed what.
+
+It ships as **one Rust binary** (or one Helm release) with no external services to operate. State that must survive a restart lives in SQLite on a volume, or in PostgreSQL when you want several replicas. Everything else, the desired state of every project, environment and app, is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
+
+## Who it is for
+
+- **Small teams on a single cluster** (k3s on one server, a managed cluster in the cloud) who want Heroku-style deploys without running a second platform next to Kubernetes.
+- **Platform engineers** who want a thin, auditable layer over Kubernetes rather than an opinionated replacement for it. Kuben never hides the cluster: every object it creates is visible and labelled.
+- **Operators who care about the boring parts**: a documented [security model](/docs/operations/security/), a threat-aware release process and honest limits.
+
+## What it does today
+
+| Area | Included in Kuben 1.0 |
+|---|---|
+| Deploy | Any container image, with health checks, autoscaling, environment variables and write-only secrets |
+| Isolation | One namespace per environment, with resource quotas and a NetworkPolicy |
+| Networking | Custom domains, automatic certificates and HTTP → HTTPS redirects through Gateway API and cert-manager |
+| Day 2 | Logs, restarts, numbered releases with rollback, promotion between environments with a diff preview, persistent volumes, cron jobs |
+| Templates | One-click PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more, with generated credentials |
+| Teams | Four roles, invitations, scoped API tokens, an append-only audit log |
+| Operations | Backups, upgrades, several replicas on PostgreSQL with leader election, Prometheus metrics, `kuben doctor` |
+
+Git builds, preview environments per pull request, scale-to-zero and SSO are on the [roadmap](/docs/roadmap/).
+
+## Start here
+
+<CardGrid>
+  <LinkCard title="Quickstart" description="Install Kuben with Helm and sign in, in about five minutes." href="/docs/getting-started/quickstart/" />
+  <LinkCard title="Deploy your first app" description="A project, an environment and an app with a public HTTPS address." href="/docs/getting-started/first-app/" />
+  <LinkCard title="Concepts" description="Projects, environments, apps, releases, and how Kuben maps them onto Kubernetes." href="/docs/getting-started/concepts/" />
+  <LinkCard title="Production install" description="Prerequisites, domains and HTTPS, several replicas, backups and upgrades." href="/docs/operations/production-install/" />
+</CardGrid>
+
+## How the pieces fit
+
+<CardGrid stagger>
+  <Card title="One process, several roles" icon="rocket">
+    `kuben serve` runs the REST API, the web console and the controllers in one process. With PostgreSQL you can run several replicas: every replica serves the API, and the holder of a Kubernetes Lease runs the controllers.
+  </Card>
+  <Card title="Kubernetes holds the desired state" icon="setting">
+    Projects, environments, apps and releases are custom resources in the `kuben.dev` API group. SQL holds identity, sessions, tokens and the audit log, and references cluster objects only by `uid`.
+  </Card>
+  <Card title="Gateway API for the edge" icon="external">
+    Kuben creates an `HTTPRoute` per app and manages the listeners of a dedicated Gateway. cert-manager issues a certificate for every listener. TLS terminates at your Gateway controller (Traefik, Envoy Gateway or Cilium).
+  </Card>
+  <Card title="Generated, drift-checked contracts" icon="document">
+    The OpenAPI spec, the TypeScript client and the CRD manifests are generated from the Rust code, and CI fails if a commit lets them drift. The [REST API reference](/docs/reference/api/) on this site is rendered from that spec.
+  </Card>
+</CardGrid>
+
+## Get help
+
+- Something missing? [Open a feature request](https://github.com/Teamtem-dev/kuben/issues/new?template=feature_request.yml).
+- Found a bug? [Report it](https://github.com/Teamtem-dev/kuben/issues).
+- Security issue? Please use [private vulnerability reporting](https://github.com/Teamtem-dev/kuben/security/policy), not a public issue.

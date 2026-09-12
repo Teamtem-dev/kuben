@@ -1,0 +1,39 @@
+{
+  "name": "@kuben/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "kuben.teamtem.com: landing page, documentation and blog (Astro + Starlight).",
+  "scripts": {
+    "dev": "bun --bun ./node_modules/.bin/astro dev",
+    "build": "bun --bun ./node_modules/.bin/astro build",
+    "preview": "bun --bun ./node_modules/.bin/astro preview",
+    "check": "bun --bun ./node_modules/.bin/astro check",
+    "og": "bun scripts/og.ts"
+  },
+  "dependencies": {
+    "@astrojs/markdown-satteri": "catalog:",
+    "@astrojs/sitemap": "catalog:",
+    "@astrojs/starlight": "catalog:",
+    "@astrojs/starlight-tailwind": "catalog:",
+    "@fontsource-variable/geist-mono": "catalog:",
+    "@fontsource-variable/inter": "catalog:",
+    "@iconify-json/lucide": "catalog:",
+    "@iconify-json/simple-icons": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "astro": "catalog:",
+    "astro-icon": "catalog:",
+    "satteri": "catalog:",
+    "sharp": "catalog:",
+    "starlight-blog": "catalog:",
+    "starlight-image-zoom": "catalog:",
+    "starlight-llms-txt": "catalog:",
+    "starlight-openapi": "catalog:",
+    "tailwindcss": "catalog:"
+  },
+  "devDependencies": {
+    "@astrojs/check": "catalog:",
+    "starlight-links-validator": "catalog:",
+    "typescript": "catalog:"
+  }
+}

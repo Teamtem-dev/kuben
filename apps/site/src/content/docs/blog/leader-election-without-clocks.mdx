@@ -1,0 +1,65 @@
+---
+title: Leader election without trusting clocks
+description: Running several Kuben replicas meant deciding which one reconciles. We built the election on a Kubernetes Lease and compare-and-swap, and made sure clock skew between nodes can never produce two leaders. The reasoning, the numbers and the failure modes.
+date: 2026-09-10
+authors: teamtem
+tags: [architecture, kubernetes, engineering]
+excerpt: Running several Kuben replicas meant deciding which one reconciles. We built the election on a Kubernetes Lease and compare-and-swap, and made sure clock skew can never produce two leaders.
+---
+
+When the Helm chart first allowed `replicaCount > 1` on PostgreSQL, every replica ran the full controller set. Two replicas reconciled the same `App`, both server-side-applied with `force`, and the objects flapped. The chart also used the `Recreate` strategy regardless of database, so every upgrade had downtime. And login throttling lived in each process's memory, so three replicas gave an attacker three times the budget.
+
+This post is about the first problem and its fix, recorded as [ADR-023](/docs/contributing/architecture-decisions/).
+
+## The requirement
+
+Exactly one replica runs the controllers at any time. Every replica keeps serving the API, because the API reads from its own projections and does not need the controllers. Failover after a crash should take seconds, not minutes, and a graceful restart should barely be noticeable.
+
+That is a leader election, and Kubernetes has a primitive for it: the `coordination.k8s.io/v1` **Lease**, an object with a holder identity, a lease duration, and a renew time. The usual implementation, in client-go and in kube-rs helpers, renews the Lease periodically and treats it as expired when `now - renewTime > leaseDuration`.
+
+## The problem with `now`
+
+"Now" on the candidate's node and `renewTime` written by the leader's node are two different clocks. Skew of a few seconds between nodes is ordinary; a paused VM or a clock step can produce much more. If a candidate's clock runs ahead, it sees a perfectly healthy Lease as expired, takes it, and for a while **two processes believe they lead**. The leader finds out only at its next renewal, when its compare-and-swap fails. In that window both reconcile.
+
+Most systems accept this window and make reconciliation idempotent enough that it rarely matters. We wanted the window to not exist.
+
+## Never compare a remote timestamp with a local clock
+
+The rule we adopted: a candidate treats the Lease as expired only after it has observed the Lease record **unchanged for the full lease duration, measured on its own clock**. It reads the Lease, remembers `resourceVersion` and `renewTime`, and starts a local timer. If the leader renews, `resourceVersion` changes and the timer restarts. If nothing changes for 15 seconds, the Lease is dead by any clock, because a live leader would have renewed it several times in that interval.
+
+Every write is a compare-and-swap on `resourceVersion`. Two candidates that both decide the Lease is dead race on that write and exactly one wins; the other reads the new version and goes back to waiting.
+
+The numbers:
+
+| | |
+|---|---|
+| Lease duration | 15 s |
+| Leader renewal interval | 2 s |
+| Leader gives up if renewal fails for | 10 s |
+
+The last row is the other half of the safety argument. If the leader cannot renew for 10 seconds, it **stops its controllers before** the 15-second mark at which a candidate could take over. The leader's own clock is enough for that decision, because it only compares its own timestamps. So the leader has always stepped down before anyone else can step up.
+
+## Graceful and ungraceful
+
+On shutdown, the leader releases the Lease by clearing the holder identity in one more compare-and-swap. Candidates notice the change immediately and the next one takes over within a couple of seconds. This is the path a rolling upgrade takes, and the chart's `maxUnavailable: 0` plus a `PodDisruptionBudget` mean that a node drain never removes more than one pod.
+
+After a crash there is nobody to release the Lease, so the controllers pause for up to 15 seconds. That is the trade: a slightly longer failover for the guarantee that there is never a second leader.
+
+## What runs under the Lease
+
+Anything that must happen exactly once per cluster runs only on the leader: the reconcilers, applying the CRDs at boot, and the Gateway listener management. Anything that must happen on every replica, informers, projections, the API, session caching, runs everywhere. The rule is written into the review checklist so that new once-per-cluster work does not end up on every replica by accident.
+
+The Lease right is a namespaced `Role` on that one object, not part of the `ClusterRole`, and the metric `kuben_leader` is `1` on exactly one pod; alert if `sum(kuben_leader) != 1` for more than a minute.
+
+## The other two fixes
+
+Since the same decision touched replica behaviour, we fixed the two related problems at once:
+
+- **Rolling updates on PostgreSQL.** `Recreate` stays for SQLite, whose volume is `ReadWriteOnce`; PostgreSQL deployments roll one pod at a time.
+- **Login throttling in the database.** The three counters (email + IP, IP, account) are rows keyed by SHA-256 hashes, shared by all replicas, so the budget is the same with one replica or ten.
+
+There is one thing that stays eventually consistent by design: a revoked session is cached per replica for up to 5 seconds (`KUBEN_SECURITY__SESSION_CACHE_TTL_SECS`). We judged that a bounded, documented window there beats a database round-trip on every request.
+
+## Try it
+
+`helm upgrade … --set database.existingSecret=kuben-db --set replicaCount=3`, then `kubectl -n kuben-system get lease kuben-controller -w` and delete the leader pod. The [high availability](/docs/operations/high-availability/) page has the full setup and the table of what to expect in each failure mode.

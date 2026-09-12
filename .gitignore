@@ -12,6 +12,8 @@ apps/console/.vite
 apps/console/coverage
 apps/console/test-results
 apps/console/playwright-report
+apps/site/dist
+apps/site/.astro
 
 # Local dev state
 /.dev

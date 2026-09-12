@@ -1,0 +1,52 @@
+---
+title: Template catalogue
+description: Every one-click template with its image, port, exposure, volume, size preset and the keys of the generated credentials secret.
+---
+
+Templates are built into the binary; `GET /api/v1/templates` lists them with the same fields. See [One-click templates](/docs/guides/templates/) for how deploying one works.
+
+## Databases
+
+Reachable only inside the environment (`protocol: tcp`). Each gets a `<name>-credentials` secret with a generated password and a ready-made `url`.
+
+| Template | Image | Port | Volume | Size | Secret keys |
+|---|---|---|---|---|---|
+| **PostgreSQL 17** (`postgres`) | `postgres:17-alpine` | 5432 | `/var/lib/postgresql/data`, 5 GiB | small | `password`, `url`, `host`, `port`, `username`, `database` |
+| **Redis 7** (`redis`) | `redis:7-alpine` | 6379 | `/data`, 1 GiB | nano | `password`, `url`, `host`, `port` |
+| **MariaDB 11** (`mariadb`) | `mariadb:11` | 3306 | `/var/lib/mysql`, 5 GiB | medium | `password`, `root-password`, `url`, `host`, `port`, `username`, `database` |
+
+PostgreSQL and MariaDB create the user `app` and the database `app`; MariaDB's `root-password` is the root account. Redis runs with append-only persistence and `requirepass` set to the generated password.
+
+## Applications
+
+Public HTTP apps: they get `https://<name>-<environment>.<baseDomain>` and accept [custom domains](/docs/guides/custom-domains/).
+
+| Template | Image | Port | Volume | Size | Generated |
+|---|---|---|---|---|---|
+| **n8n** (`n8n`) | `n8nio/n8n:stable` | 5678 | `/home/node/.n8n`, 1 GiB | small | `encryption-key` (credentials at rest) |
+| **Uptime Kuma** (`uptime-kuma`) | `louislam/uptime-kuma:1` | 3001 | `/app/data`, 1 GiB | small | — |
+| **Vaultwarden** (`vaultwarden`) | `vaultwarden/server:latest` | 80 | `/data`, 1 GiB | small | `admin-token`; sign-ups are closed, invite users from `/admin` |
+| **Gitea** (`gitea`) | `gitea/gitea:1-rootless` | 3000 | `/var/lib/gitea`, 5 GiB and `/etc/gitea`, 100 MiB | small | — ; finish the installer on first visit |
+| **whoami** (`whoami`) | `traefik/whoami:v1.10` | 8080 | — | nano | — ; echoes the request, for testing domains and TLS |
+
+## Generated values
+
+Generated secrets are alphanumeric strings of 32 characters (about 190 bits). Derived keys are assembled from the app name and the generated values; for a PostgreSQL app named `db`:
+
+| Key | Value |
+|---|---|
+| `url` | `postgres://app:<password>@db:5432/app` |
+| `host` | `db` |
+| `port` | `5432` |
+| `username` | `app` |
+| `database` | `app` |
+
+Redis derives `redis://:<password>@<name>:6379/0`, MariaDB `mysql://app:<password>@<name>:3306/app`. Everything lives in the Kubernetes Secret `<name>-credentials` in the environment namespace, referenced by the app and never embedded in its spec.
+
+## Upgrading a templated app
+
+A template deploy is an ordinary app afterwards. To move PostgreSQL from 17 to a later major, change the image tag on the app; that creates a new release. Major PostgreSQL upgrades need a data migration the image does not perform on its own, so take a volume snapshot first.
+
+## Proposing a template
+
+Templates live in `crates/kuben-api/src/routes/templates.rs` and follow one rule: **no fixed passwords**, ever. Open a pull request with the image pinned to a major tag, the volume paths the image documents, and the keys that must be generated.

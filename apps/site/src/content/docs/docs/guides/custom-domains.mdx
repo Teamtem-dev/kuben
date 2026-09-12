@@ -1,0 +1,53 @@
+---
+title: Custom domains and HTTPS
+description: Point a domain at the gateway, check DNS from the console, and let cert-manager issue the certificate. Why a domain belongs to exactly one app, and the listener limits to know about.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+This guide assumes the platform is configured with a Gateway and a `clusterIssuer`; if not, start with [Exposing apps and HTTPS](/docs/operations/exposing-apps/).
+
+<Steps>
+
+1. **Add the domain to the app.** On the app page, open the *Domains* card and add `api.shop.example.com`, or send the full list:
+
+   ```bash
+   curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/production/apps/api" \
+     -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"domains": ["api.shop.example.com"]}'
+   ```
+
+2. **Point DNS at the gateway.** Create an `A`/`AAAA` record (or a `CNAME`) for the domain pointing at the Gateway's address. `kubectl -n kuben-system get gateway kuben` shows it.
+
+3. **Check it.** Press **Check DNS** (`GET …/apps/api/domains`). For every hostname it reports:
+
+   | Status | Meaning |
+   |---|---|
+   | `ok` | resolves to the gateway |
+   | `mismatch` | resolves somewhere else |
+   | `unresolved` | no record yet, or not propagated |
+   | `unknown` | the gateway has no address to compare with |
+
+4. **Wait for the certificate.** Kuben adds an HTTPS listener for the hostname to its Gateway, and cert-manager issues the certificate through the HTTP-01 challenge. Plain HTTP requests are redirected to HTTPS. Within a minute or two `https://api.shop.example.com` answers.
+
+</Steps>
+
+## A domain belongs to one app
+
+Kuben refuses the same domain on a second app with `409 Conflict`. At the gateway, each hostname only accepts routes from the namespace that claimed it first, so one tenant cannot take over another tenant's domain by adding it to their own app.
+
+## Generated hostnames
+
+Every HTTP app also answers on `<app>-<environment>.<baseDomain>`, for example `api-production.apps.example.com`. With many apps, provide a **wildcard certificate** for `*.<baseDomain>` (a DNS-01 `Certificate`) as `wildcardTlsSecret`; all generated hostnames then share one listener instead of each taking one.
+
+## Limits to know
+
+- A Gateway holds at most **64 listeners**, and Kuben uses at most 60. Beyond that, use the wildcard listener for generated hosts. Custom domains still take a listener each; ListenerSet support (experimental in Gateway API) is on the roadmap.
+- cert-manager must run with Gateway API support (`config.enableGatewayAPI=true` in its Helm values).
+- TLS terminates at your Gateway controller (Traefik, Envoy Gateway, Cilium). Kuben configures it but never sees the traffic.
+
+<Aside type="tip" title="Something is not resolving?">
+The app's `Exposed` condition says why: `RouteApplied`, `NoGateway`, `NoHostname` or `GatewayAPIMissing`. Kuben's own log reports `gateway listener limit reached` and `hostname requested by two namespaces`. See [Troubleshooting](/docs/operations/troubleshooting/).
+</Aside>

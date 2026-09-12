@@ -1,0 +1,44 @@
+---
+title: Sign-in and login throttling
+description: How Kuben slows down password guessing with three counters, what a blocked attempt looks like, and how to tune the limits or run behind a proxy.
+sidebar:
+  order: 10
+---
+
+## Three counters
+
+Kuben throttles failed logins with three counters over a 15-minute window:
+
+| Counter | Default limit | Stops |
+|---|---|---|
+| email + client IP | 5 | guessing one account from one place |
+| client IP | 30 | one client trying many accounts |
+| email | 100 | a botnet guessing one account |
+
+A blocked attempt gets `429 Too Many Requests` with a `Retry-After` header, and is recorded in the [audit log](/docs/guides/audit-log/) with the outcome `throttled`. A correct password clears only the email + IP counter, so a legitimate user is let in while a distributed attack on the same account stays throttled.
+
+The counters live in the database, keyed by SHA-256 hashes rather than by emails or addresses, and are **shared by all replicas**: running three replicas does not give an attacker three times the budget.
+
+## Tuning
+
+| Variable | Default |
+|---|---|
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES` | `5` (email + IP) |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_IP` | `30` |
+| `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_ACCOUNT` | `100` |
+| `KUBEN_SECURITY__LOGIN_WINDOW_SECS` | `900` |
+
+## Behind a proxy
+
+Per-IP throttling is only as good as the address Kuben sees. Set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` **only** when a proxy in front of Kuben appends the client address to `X-Forwarded-For`; the Helm chart sets it, because Kuben sits behind the Gateway there. Kuben then uses the **last** hop of the header. The first hops are written by the client and ignored, so a client cannot spoof its way past the per-IP limit.
+
+If you enable it without such a proxy, every client can choose its own address and the per-IP counter becomes meaningless. Leave it off for the plain binary unless you have put a reverse proxy in front.
+
+## Sessions and passwords
+
+- The session cookie is `__Host-`, `HttpOnly`, `Secure` and `SameSite`. Sessions expire after `KUBEN_SECURITY__SESSION_TTL_HOURS` (12 by default).
+- A revoked session stops working on the replica that revoked it immediately, and on other replicas within `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` (5 seconds).
+- Passwords are hashed with Argon2id and must be at least `KUBEN_SECURITY__PASSWORD_MIN_LENGTH` characters (12).
+- Changing your password signs out your other sessions. Being removed from the team revokes all sessions and tokens.
+
+See [Configuration](/docs/reference/configuration/) for every setting and [Security model](/docs/operations/security/) for the wider picture.
