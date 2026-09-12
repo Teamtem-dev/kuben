@@ -10,6 +10,18 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: 'v1.0.3',
+    date: '2026-09-12',
+    title: 'A first run that works without root',
+    highlights: [
+      'The binary keeps its database in ~/.local/state/kuben or systemd’s state directory, so kuben doctor and kuben serve work without root; an existing /data is still used.',
+      'A generated admin password is never logged: the binary prints it to its terminal, or writes an owner-only file under systemd.',
+      'kuben doctor reports an unreadable kubeconfig, and doctor and serve warn when the Secure cookie meets plain HTTP.',
+      'The chart keeps the KubenConfig on uninstall, so apps keep their routes; the uninstall guide lists what stays behind.',
+      'A smoke test installs the published binary, chart and image anonymously on k3s after every release and every day.',
+    ],
+  },
+  {
     version: 'v1.0.3-rc.1',
     date: '2026-09-12',
     title: 'Security CI and dependency upgrades',
