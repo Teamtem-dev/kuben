@@ -13,7 +13,7 @@ use kuben_platform::{
     health::Health,
     leader::{self, Election},
     projection::Projections,
-    registry::{ClusterRegistry, own_namespace},
+    registry::{ClusterRegistry, own_namespace, redact_credentials},
     supervise::supervise,
 };
 use tokio_util::sync::CancellationToken;
@@ -56,7 +56,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     tokio::spawn(watchdog(health.clone(), shutdown.child_token()));
 
     let store = kuben_store::Store::connect(&cfg.database).await?;
-    tracing::info!(backend = store.backend(), "database ready");
+    tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 
@@ -104,6 +104,9 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
         tracing::info!(bind = %cfg.server.bind, roles = ?cfg.server.roles, version = crate::cli::VERSION, "kuben listening");
+        if let Some(warning) = cfg.insecure_cookie_warning(kuben_core::config::in_cluster()) {
+            tracing::warn!("{warning}");
+        }
         let t = shutdown.clone();
         axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
             .with_graceful_shutdown(async move { t.cancelled().await })

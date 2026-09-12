@@ -1,7 +1,11 @@
 //! First-boot bootstrap: default org + admin user (Invariant I-2: nothing is
 //! ever seeded with a fixed secret; passwords are configured or generated).
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    io::{IsTerminal as _, Write as _},
+    path::{Path, PathBuf},
+};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use k8s_openapi::{ByteString, api::core::v1::Secret};
@@ -16,6 +20,10 @@ use kuben_store::Store;
 
 /// Secret that receives a generated admin password when Kuben runs in a pod.
 pub const INITIAL_ADMIN_SECRET: &str = "kuben-initial-admin";
+
+/// File that receives a generated admin password when a binary runs without
+/// a terminal (a systemd unit), next to the SQLite database.
+pub const INITIAL_ADMIN_FILE: &str = "initial-admin-password";
 
 /// Ensure the default org and an admin user exist. Returns the generated
 /// password when one was created (so `serve` can hand it over exactly once).
@@ -62,14 +70,14 @@ pub async fn ensure_admin(cfg: &Config, store: &Store, hasher: &Hasher) -> anyho
     Ok(generated)
 }
 
-/// Deliver a generated admin password. In a pod it goes into the
-/// [`INITIAL_ADMIN_SECRET`] Secret, because pod logs are shipped to log
-/// stores and kept there; only a binary running outside the cluster prints
-/// it, to its own terminal.
+/// Deliver a generated admin password, never through the logger: logs are
+/// shipped to log stores and kept there. In a pod it goes into the
+/// [`INITIAL_ADMIN_SECRET`] Secret; a binary outside the cluster prints it to
+/// its own terminal or, without one, writes [`INITIAL_ADMIN_FILE`].
 pub async fn hand_over_password(cfg: &Config, cluster: Option<&ClusterRegistry>, password: &str) {
     let email = &cfg.bootstrap.admin_email;
     let (Some(registry), Some(namespace)) = (cluster, own_namespace(cfg.kube.namespace.as_deref())) else {
-        tracing::warn!(%email, %password, "generated initial admin password");
+        hand_over_locally(cfg, email, password);
         return;
     };
     match store_password(registry, &namespace, email, password).await {
@@ -86,6 +94,60 @@ pub async fn hand_over_password(cfg: &Config, cluster: Option<&ClusterRegistry>,
             "generated an initial admin password but could not store it in a Secret; set a new one with `kuben reset-admin`"
         ),
     }
+}
+
+fn hand_over_locally(cfg: &Config, email: &str, password: &str) {
+    if std::io::stderr().is_terminal() {
+        eprintln!(
+            "\n  Initial admin: {email}\n  Password:      {password}\n\n  Shown only now. Sign in and change it under Account.\n"
+        );
+        tracing::warn!(%email, "generated initial admin password (printed to the terminal, not logged)");
+        return;
+    }
+    let file = password_file(cfg);
+    match write_owner_only(&file, &format!("{email}\n{password}\n")) {
+        Ok(()) => tracing::warn!(
+            %email,
+            file = %file.display(),
+            "generated initial admin password (written to the file, not logged); delete the file after signing in"
+        ),
+        Err(e) => tracing::error!(
+            error = %e,
+            %email,
+            file = %file.display(),
+            "generated an initial admin password but could not write it; set a new one with `kuben reset-admin`"
+        ),
+    }
+}
+
+/// [`INITIAL_ADMIN_FILE`] next to the SQLite database, else in systemd's
+/// state directory, else in the working directory.
+fn password_file(cfg: &Config) -> PathBuf {
+    let dir = cfg
+        .database
+        .sqlite_file()
+        .and_then(|db| db.parent().map(Path::to_path_buf))
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .or_else(|| {
+            std::env::var_os("STATE_DIRECTORY")
+                .and_then(|dirs| dirs.to_string_lossy().split(':').next().map(PathBuf::from))
+                .filter(|dir| !dir.as_os_str().is_empty())
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+    dir.join(INITIAL_ADMIN_FILE)
+}
+
+fn write_owner_only(path: &Path, content: &str) -> std::io::Result<()> {
+    // A leftover file would keep its old mode; always start from a new one.
+    std::fs::remove_file(path).ok();
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    options.open(path)?.write_all(content.as_bytes())
 }
 
 async fn store_password(
@@ -154,5 +216,35 @@ mod tests {
                 .expect("again")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn password_file_sits_next_to_the_sqlite_database() {
+        let mut cfg = Config::default();
+        cfg.database.url = "sqlite:///var/lib/kuben/kuben.db".into();
+        assert_eq!(
+            password_file(&cfg),
+            PathBuf::from("/var/lib/kuben").join(INITIAL_ADMIN_FILE)
+        );
+    }
+
+    #[test]
+    fn password_file_is_owner_only_and_replaced() {
+        let dir = std::env::temp_dir().join(format!("kuben-password-{}", random_password()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let file = dir.join(INITIAL_ADMIN_FILE);
+        write_owner_only(&file, "old\n").expect("first write");
+        write_owner_only(&file, "admin@kuben.local\nsecret\n").expect("second write");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("read"),
+            "admin@kuben.local\nsecret\n"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&file).expect("metadata").permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -61,19 +61,19 @@ With PostgreSQL, `replicaCount` can be raised:
 
 The one-line installer puts a single `kuben` binary on a machine. It manages a cluster through a kubeconfig and keeps its own data in SQLite.
 
-1. Get a cluster to manage. On a single server, k3s is the quickest:
+1. Get a cluster to manage. On a single server, k3s is the quickest. It writes its kubeconfig for root only, so give your user a copy:
    ```bash
    curl -sfL https://get.k3s.io | sh -
    ```
    ```bash
-   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+   sudo install -D -m 600 -o "$USER" /etc/rancher/k3s/k3s.yaml ~/.kube/config && export KUBECONFIG=~/.kube/config
    ```
 2. Check the prerequisites:
    ```bash
    kuben doctor
    ```
-   The database is `/data/kuben.db` by default, and the directory is created on first start. To keep it elsewhere, set `KUBEN_DATABASE__URL`, for example `sqlite:///var/lib/kuben/kuben.db`.
-3. Start Kuben. The first start prints the generated admin password once, in this terminal:
+   The `database` line shows where the data lives: `~/.local/state/kuben/kuben.db` by default (systemd's state directory under `StateDirectory=`), or `/data/kuben.db` on a server that already has `/data`. To keep it elsewhere, set `KUBEN_DATABASE__URL`. Running Kuben as a systemd service is described in the [binary guide](https://kuben.teamtem.com/docs/getting-started/binary/#keep-it-running).
+3. Start Kuben. The first start prints the generated admin password once, in this terminal (never in the log):
    ```bash
    kuben serve
    ```
@@ -91,7 +91,7 @@ For production, prefer the Helm install above: it runs Kuben inside the cluster 
 kubectl -n kuben-system get secret kuben-initial-admin -o jsonpath='{.data.password}' | base64 -d
 ```
 
-Delete the `kuben-initial-admin` Secret once you have signed in and changed the password. A binary running outside Kubernetes prints the generated password to its terminal instead.
+Delete the `kuben-initial-admin` Secret once you have signed in and changed the password. A binary running outside Kubernetes prints the generated password to its terminal instead, or, without a terminal, writes it to `initial-admin-password` next to its database.
 
 ```bash
 kubectl -n kuben-system port-forward svc/kuben 8080:80
@@ -117,7 +117,7 @@ Precedence, lowest to highest:
 |---|---|
 | `KUBEN_SERVER__BIND` | `0.0.0.0:8080` |
 | `KUBEN_SERVER__METRICS_BIND` | `0.0.0.0:9090` (Prometheus) |
-| `KUBEN_DATABASE__URL` | `sqlite:///data/kuben.db` |
+| `KUBEN_DATABASE__URL` | `sqlite:///data/kuben.db` in the image and the chart; for the binary `/data/kuben.db` if `/data` exists, else `$STATE_DIRECTORY`, else `~/.local/state/kuben/kuben.db` |
 | `KUBEN_KUBE__REQUIRED` | `false` (`true` in the chart) |
 | `KUBEN_KUBE__NAMESPACE` | the pod's namespace. Home of the controller Lease and of `kuben-initial-admin` |
 | `KUBEN_KUBE__LEADER_ELECTION` | `false` (`true` in the chart). Run the controllers only on the Lease holder; required when several processes have the controller role |

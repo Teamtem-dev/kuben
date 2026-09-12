@@ -69,7 +69,7 @@ pub struct ServeOpts {
     /// Roles to run in this process (comma separated). Defaults to config.
     #[arg(long, value_delimiter = ',', env = "KUBEN_ROLES")]
     pub roles: Vec<RoleArg>,
-    /// Development mode: pretty logs, insecure cookie, in-memory SQLite if no DB configured.
+    /// Development mode: pretty logs, insecure cookie, ./.dev/kuben.db if no DB configured.
     #[arg(long)]
     pub dev: bool,
 }

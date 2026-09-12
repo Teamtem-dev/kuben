@@ -51,6 +51,9 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=build /kuben /kuben
+# SQLite on the /data volume, set explicitly: the binary's own default is
+# chosen for servers.
+ENV KUBEN_DATABASE__URL=sqlite:///data/kuben.db
 USER 65532:65532
 EXPOSE 8080 9090
 ENTRYPOINT ["/kuben"]

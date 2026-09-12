@@ -3,6 +3,12 @@
 //! environment variables (nested keys separated by `__`, e.g.
 //! `KUBEN_SERVER__BIND=0.0.0.0:9000`).
 
+use std::{
+    ffi::OsString,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
+
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
@@ -48,7 +54,8 @@ pub struct ServerCfg {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DatabaseCfg {
-    /// `sqlite:///data/kuben.db` or `postgres://user:pass@host/db`.
+    /// `sqlite://<path>` or `postgres://user:pass@host/db`; defaults to
+    /// [`default_sqlite_url`].
     pub url: String,
     pub max_connections: u32,
 }
@@ -121,8 +128,9 @@ pub struct BootstrapCfg {
     pub org_name: String,
     pub admin_email: String,
     /// Initial admin password. If unset, a random one is generated: in a pod
-    /// it is stored in the `kuben-initial-admin` Secret (never logged),
-    /// elsewhere it is printed once.
+    /// it is stored in the `kuben-initial-admin` Secret; elsewhere it is
+    /// printed once to the terminal or, without one, written to an
+    /// owner-only file next to the database. It is never logged.
     pub admin_password: Option<String>,
 }
 
@@ -143,10 +151,69 @@ impl Default for ServerCfg {
 impl Default for DatabaseCfg {
     fn default() -> Self {
         Self {
-            url: "sqlite:///data/kuben.db".into(),
+            url: default_sqlite_url(),
             max_connections: 4,
         }
     }
+}
+
+impl DatabaseCfg {
+    /// The database file, when the URL names an on-disk SQLite database.
+    #[must_use]
+    pub fn sqlite_file(&self) -> Option<PathBuf> {
+        let rest = self.url.strip_prefix("sqlite:")?;
+        let rest = rest.strip_prefix("//").unwrap_or(rest);
+        let path = rest.split('?').next().unwrap_or_default();
+        (!path.is_empty() && !path.contains(":memory:")).then(|| PathBuf::from(path))
+    }
+}
+
+/// The volume of the container image and the Helm chart, and where binaries
+/// before 1.0.3 kept their database.
+const LEGACY_DATA_DIR: &str = "/data";
+
+/// SQLite URL used when `database.url` is not configured.
+///
+/// An existing `/data` wins: it is the container volume (the image and the
+/// chart also set the URL explicitly) and where earlier binaries kept their
+/// data, so upgrading never starts over with an empty database. On a fresh
+/// server the database goes to systemd's `StateDirectory=`, else to the
+/// user's state directory (`~/.local/state/kuben`), so `kuben doctor` and
+/// `kuben serve` work without root.
+#[must_use]
+pub fn default_sqlite_url() -> String {
+    let dir = default_data_dir(Path::new(LEGACY_DATA_DIR).is_dir(), |key| std::env::var_os(key));
+    format!("sqlite://{}", dir.join("kuben.db").display())
+}
+
+fn default_data_dir(legacy_exists: bool, env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
+    if legacy_exists {
+        return PathBuf::from(LEGACY_DATA_DIR);
+    }
+    let var = |key: &str| env(key).filter(|v| !v.is_empty());
+    // systemd sets `$STATE_DIRECTORY` for `StateDirectory=`: absolute paths,
+    // colon-separated when the unit lists several.
+    if let Some(dirs) = var("STATE_DIRECTORY")
+        && let Some(first) = dirs.to_string_lossy().split(':').find(|d| !d.is_empty())
+    {
+        return PathBuf::from(first);
+    }
+    if let Some(state) = var("XDG_STATE_HOME") {
+        return PathBuf::from(state).join("kuben");
+    }
+    if let Some(home) = var("HOME") {
+        return PathBuf::from(home).join(".local").join("state").join("kuben");
+    }
+    if let Some(local) = var("LOCALAPPDATA") {
+        return PathBuf::from(local).join("kuben");
+    }
+    PathBuf::from(".")
+}
+
+/// Whether this process runs in a Kubernetes pod.
+#[must_use]
+pub fn in_cluster() -> bool {
+    std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
 }
 
 impl Default for RuntimeCfg {
@@ -221,6 +288,40 @@ impl Config {
     pub fn has_role(&self, role: Role) -> bool {
         self.server.roles.iter().any(|r| *r == Role::All || *r == role)
     }
+
+    /// Why signing in would fail, if it would: browsers drop a `Secure`
+    /// cookie over plain http (except on `localhost`), so a console reached at
+    /// `http://<server-ip>:8080` loops back to the login page without an
+    /// error. `None` in a pod (reached through a port-forward on localhost or
+    /// a TLS Gateway), with an https public URL, or when bound to loopback.
+    #[must_use]
+    pub fn insecure_cookie_warning(&self, in_cluster: bool) -> Option<String> {
+        if !self.security.cookie_secure || in_cluster {
+            return None;
+        }
+        if self
+            .server
+            .public_url
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://"))
+        {
+            return None;
+        }
+        let bind = &self.server.bind;
+        let loopback = bind
+            .parse::<SocketAddr>()
+            .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback());
+        if loopback {
+            return None;
+        }
+        let port = bind.rsplit(':').next().unwrap_or("8080");
+        Some(format!(
+            "the session cookie is Secure and browsers drop it over plain http, so signing in at \
+             http://<this server>:{port} loops back to the login page. Serve the console over \
+             HTTPS (and set KUBEN_SERVER__PUBLIC_URL), open it through an SSH tunnel to \
+             localhost, or set KUBEN_SECURITY__COOKIE_SECURE=false for a quick test"
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -234,6 +335,77 @@ mod tests {
         assert!(cfg.has_role(Role::Api));
         assert!(cfg.has_role(Role::Controller));
         assert!(cfg.security.cookie_secure);
+        assert!(cfg.database.url.starts_with("sqlite://"));
+    }
+
+    fn env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
+        move |key| {
+            vars.iter()
+                .find(|(name, _)| *name == key)
+                .map(|(_, value)| OsString::from(value))
+        }
+    }
+
+    #[test]
+    fn database_default_keeps_an_existing_data_volume() {
+        let dir = default_data_dir(
+            true,
+            env(&[("STATE_DIRECTORY", "/var/lib/kuben"), ("HOME", "/home/u")]),
+        );
+        assert_eq!(dir, PathBuf::from("/data"));
+    }
+
+    #[test]
+    fn database_default_needs_no_root_on_a_fresh_server() {
+        let systemd = env(&[
+            ("STATE_DIRECTORY", "/var/lib/kuben:/var/lib/other"),
+            ("HOME", "/root"),
+        ]);
+        assert_eq!(default_data_dir(false, systemd), PathBuf::from("/var/lib/kuben"));
+        let xdg = env(&[("XDG_STATE_HOME", "/xdg"), ("HOME", "/home/u")]);
+        assert_eq!(default_data_dir(false, xdg), PathBuf::from("/xdg/kuben"));
+        let home = env(&[("STATE_DIRECTORY", ""), ("HOME", "/home/u")]);
+        assert_eq!(
+            default_data_dir(false, home),
+            PathBuf::from("/home/u/.local/state/kuben")
+        );
+        assert_eq!(default_data_dir(false, env(&[])), PathBuf::from("."));
+    }
+
+    #[test]
+    fn sqlite_file_of_database_urls() {
+        let file = |url: &str| {
+            DatabaseCfg {
+                url: url.into(),
+                max_connections: 1,
+            }
+            .sqlite_file()
+        };
+        assert_eq!(
+            file("sqlite:///data/kuben.db"),
+            Some(PathBuf::from("/data/kuben.db"))
+        );
+        assert_eq!(
+            file("sqlite://./.dev/kuben.db?mode=rwc"),
+            Some(PathBuf::from("./.dev/kuben.db"))
+        );
+        assert_eq!(file("sqlite::memory:"), None);
+        assert_eq!(file("postgres://u:p@db/kuben"), None);
+    }
+
+    #[test]
+    fn warns_when_the_secure_cookie_meets_plain_http() {
+        let mut cfg = Config::default();
+        assert!(cfg.insecure_cookie_warning(false).is_some(), "0.0.0.0 over http");
+        assert!(cfg.insecure_cookie_warning(true).is_none(), "in a pod");
+        cfg.server.public_url = Some("https://kuben.example.com".into());
+        assert!(cfg.insecure_cookie_warning(false).is_none(), "https public URL");
+        cfg.server.public_url = None;
+        cfg.server.bind = "127.0.0.1:8080".into();
+        assert!(cfg.insecure_cookie_warning(false).is_none(), "loopback only");
+        cfg.server.bind = "0.0.0.0:8080".into();
+        cfg.security.cookie_secure = false;
+        assert!(cfg.insecure_cookie_warning(false).is_none(), "cookie not Secure");
     }
 
     #[test]
