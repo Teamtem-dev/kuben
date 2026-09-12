@@ -17,15 +17,16 @@ where
     F: FnMut(CancellationToken) -> Fut,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
 {
-    let mut backoff = ExponentialBuilder::default()
+    let builder = ExponentialBuilder::default()
         .with_min_delay(Duration::from_millis(500))
         .with_max_delay(Duration::from_mins(1))
         .with_jitter()
-        .without_max_times()
-        .build();
+        .without_max_times();
+    let mut backoff = builder.build();
 
     health.starting(name);
     loop {
+        let started = tokio::time::Instant::now();
         let handle = tokio::spawn(make(token.child_token()));
         let outcome = handle.await;
         if token.is_cancelled() {
@@ -47,6 +48,11 @@ where
                 tracing::error!(subsystem = name, "subsystem panicked; restarting");
             }
             Err(_) => return, // cancelled
+        }
+        // A subsystem that ran for a while before it failed starts over at
+        // the shortest delay; only a crash loop backs off to the maximum.
+        if started.elapsed() >= Duration::from_mins(1) {
+            backoff = builder.build();
         }
         let delay = backoff.next().unwrap_or(Duration::from_mins(1));
         tokio::select! {

@@ -541,13 +541,34 @@ fn start_service(ui: Ui, port: u16) -> anyhow::Result<()> {
             );
         }
     }
-    let ready = wait_for_http(port, "/readyz", Duration::from_secs(90)).is_ok();
-    step.done(if ready {
-        "running"
+    if wait_for_http(port, "/readyz", Duration::from_secs(90)).is_ok() {
+        step.done("running");
     } else {
-        "running, still syncing with the cluster"
-    });
+        step.warn("running, not ready yet: still syncing with the cluster");
+        ui.note(&service_problems(8));
+    }
     Ok(())
+}
+
+/// The service's latest warnings and errors, for a step that did not finish.
+fn service_problems(lines: usize) -> String {
+    let log = Command::new("journalctl")
+        .args(["-u", "kuben", "--no-pager", "-o", "cat", "-n", "400"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let problems: Vec<&str> = log
+        .lines()
+        .filter(|l| l.contains(" WARN ") || l.contains(" ERROR "))
+        .collect();
+    if problems.is_empty() {
+        return "It carries on in the background; journalctl -u kuben -f shows how far it is.".to_owned();
+    }
+    let recent = &problems[problems.len().saturating_sub(lines)..];
+    format!(
+        "Its latest warnings (journalctl -u kuben has more):\n{}",
+        recent.join("\n")
+    )
 }
 
 fn open_firewall(ui: Ui, port: u16) {
