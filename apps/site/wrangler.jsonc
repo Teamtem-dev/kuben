@@ -1,7 +1,8 @@
 // kuben.teamtem.com: the Worker `kuben`. Static assets from dist/ are served
-// without running any code; only /api/* reaches worker/index.ts (the
-// enterprise contact form). `.github/workflows/site.yml` deploys it on pushes
-// to main with `bun run --cwd apps/site deploy`.
+// without running any code; only /api/* (the enterprise contact form) and
+// /install.sh (a redirect to the installer on GitHub) reach worker/index.ts.
+// `.github/workflows/site.yml` deploys it on pushes to main with
+// `bun run --cwd apps/site deploy`.
 {
   "name": "kuben",
   "compatibility_date": "2026-09-12",
@@ -12,7 +13,7 @@
     "not_found_handling": "404-page",
     // Pages are dist/<path>/index.html and links end in "/" (trailingSlash: 'always').
     "html_handling": "auto-trailing-slash",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/install.sh", "/install"]
   },
   // Enterprise form submissions (180 days) and hashed per-client rate-limit counters (1 hour).
   "kv_namespaces": [{ "binding": "LEADS", "id": "797d53e5e2cc4428bf0bb57ebe0f312d" }],

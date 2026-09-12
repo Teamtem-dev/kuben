@@ -2,7 +2,7 @@
 // The Worker's fetch handler is called directly with an in-memory KV, so no
 // workerd or network is needed.
 import { beforeEach, describe, expect, test } from 'bun:test'
-import worker from './index'
+import worker, { INSTALLER } from './index'
 
 type Entry = { value: string; metadata?: unknown; ttl?: number }
 
@@ -171,5 +171,25 @@ describe('other routes', () => {
     expect(res.status).toBe(404)
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(await res.json()).toEqual({ ok: false, error: 'not_found' })
+  })
+})
+
+describe('GET /install.sh', () => {
+  test('redirects to the installer on the main branch, over https, cached briefly', async () => {
+    for (const path of ['/install.sh', '/install']) {
+      const res = await call(null, { method: 'GET', path, origin: null })
+      expect(res.status).toBe(302)
+      expect(res.headers.get('location')).toBe(INSTALLER)
+      expect(INSTALLER.startsWith('https://raw.githubusercontent.com/Teamtem-dev/kuben/main/')).toBe(true)
+      expect(res.headers.get('cache-control')).toBe('public, max-age=300')
+    }
+    const head = await call(null, { method: 'HEAD', path: '/install.sh', origin: null })
+    expect(head.status).toBe(302)
+  })
+
+  test('only GET and HEAD', async () => {
+    const res = await call('x', { method: 'POST', path: '/install.sh', type: 'text/plain' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD')
   })
 })
