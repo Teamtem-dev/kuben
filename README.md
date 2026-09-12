@@ -20,7 +20,7 @@ Kuben turns any Kubernetes cluster into a platform your team can use. Give it a 
 **One command on a fresh Linux server** (as root; verifies checksums before installing):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | sh
+curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ```
 
 It installs k3s if there is no cluster, sets Kuben up as a service and prints the link to the setup page, where you create the admin account. Run it again to upgrade. On a workstation or without root it installs the binary only. See [Install the binary](https://kuben.teamtem.com/docs/getting-started/binary/).

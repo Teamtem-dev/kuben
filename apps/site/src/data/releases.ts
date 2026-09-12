@@ -10,6 +10,18 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: 'v1.1.0',
+    date: '2026-09-13',
+    title: 'One command, one server',
+    highlights: [
+      'curl -fsSL https://kuben.teamtem.com/install.sh | sh on a fresh Linux server installs k3s if needed, the service user, the configuration, kuben.service and the firewall, and prints the link to the setup page; the same command upgrades (kuben setup, status, uninstall).',
+      'The first admin account is created from the console on a setup page, guarded by a token from the installer; nothing is seeded and nothing is logged.',
+      'The session cookie is Secure exactly when the console has an https public URL (cookie_secure = auto), so signing in over http://<ip>:3000 works on day one.',
+      'Installer output in the style of modern CLIs: one line per step, with a spinner while it runs.',
+      'The smoke test runs the one-liner as root on fresh runners after every release and every day: setup page, an app, an upgrade in place, uninstall.',
+    ],
+  },
+  {
     version: 'v1.0.4',
     date: '2026-09-12',
     title: 'The Helm chart installs with default values',

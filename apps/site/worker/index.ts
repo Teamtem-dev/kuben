@@ -1,7 +1,13 @@
 /**
  * The Worker behind kuben.teamtem.com. Static assets are served by Workers
- * static assets without running this code; only /api/* reaches it
- * (`assets.run_worker_first` in wrangler.jsonc).
+ * static assets without running this code; only /api/* and /install.sh reach
+ * it (`assets.run_worker_first` in wrangler.jsonc).
+ *
+ * GET /install.sh is the documented install command,
+ * `curl -fsSL https://kuben.teamtem.com/install.sh | sh`: a redirect to the
+ * script on the main branch of the repository, so it is always the current
+ * one and the site never carries a copy that could fall behind. curl's -L
+ * follows it; the script itself downloads only from GitHub releases.
  *
  * POST /api/contact receives the enterprise form (JSON from the page's script,
  * or a plain form post without JavaScript). It drops bots quietly (a honeypot
@@ -42,10 +48,19 @@ const RATE_WINDOW_SECS = 60 * 60
 const MIN_FILL_MS = 3000
 const MAX_BODY_BYTES = 16 * 1024
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/
+export const INSTALLER = 'https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh'
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname === '/install.sh' || url.pathname === '/install') {
+      if (request.method !== 'GET' && request.method !== 'HEAD')
+        return json({ ok: false, error: 'method_not_allowed' }, 405, { allow: 'GET, HEAD' })
+      return new Response(null, {
+        status: 302,
+        headers: { location: INSTALLER, 'cache-control': 'public, max-age=300' },
+      })
+    }
     if (url.pathname === '/api/contact' || url.pathname === '/api/contact/') {
       if (request.method !== 'POST')
         return json({ ok: false, error: 'method_not_allowed' }, 405, { allow: 'POST' })
