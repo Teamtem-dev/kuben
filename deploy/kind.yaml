@@ -1,4 +1,5 @@
-# Local cluster for development and the e2e suite: `just kind-up`.
+# Local cluster for development and the e2e suite:
+#   kind create cluster --config deploy/kind.yaml && bun run e2e
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: kuben

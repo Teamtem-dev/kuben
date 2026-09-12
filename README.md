@@ -68,12 +68,12 @@ Missing something? [Open a feature request](https://github.com/Teamtem-dev/kuben
 
 ## Development
 
-You need Rust (stable; MSRV 1.94), Node 22.12 or later with corepack, and [just](https://github.com/casey/just). The end-to-end tests also need `kind`.
+You need Rust (stable; MSRV 1.94) and [Bun](https://bun.com) 1.4 or later. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph. The end-to-end tests also need `kind`.
 
 ```bash
-just setup   # toolchain and JS dependencies
-just dev     # API on :8080, UI on :5173
-just ci      # everything CI checks
+bun run setup   # toolchain, JS dependencies, cargo-nextest
+bun run dev     # API on :8080, UI on :5173
+bun run ci      # everything CI checks
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and see [SECURITY.md](SECURITY.md) to report a vulnerability. Participation follows the [Code of Conduct](CODE_OF_CONDUCT.md).

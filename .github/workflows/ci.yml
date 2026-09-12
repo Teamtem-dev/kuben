@@ -20,11 +20,20 @@ env:
   CARGO_NET_RETRY: "10"
   RUSTUP_MAX_RETRIES: "10"
   RUST_BACKTRACE: short
+  NEXTEST_PROFILE: ci
+  TURBO_TELEMETRY_DISABLED: "1"
+  # Turborepo remote cache, opt-in (repository variable TURBO_TEAM, secret
+  # TURBO_TOKEN). Like the Rust cache, pull requests read it but never write it.
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_CACHE: ${{ github.ref == 'refs/heads/main' && 'local:rw,remote:rw' || 'local:rw,remote:r' }}
 
 defaults:
   run:
     shell: bash
 
+# Every job runs the turbo task a developer runs locally (turbo.json, ADR-024);
+# .github/actions/setup installs Bun, the JS dependencies and, when asked, Rust.
 jobs:
   # Pull requests run only the job groups their files touch
   # (scripts/ci-changes.sh). Pushes to main, the merge queue and manual runs
@@ -69,16 +78,17 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: stable
-          components: rustfmt
-      - run: cargo fmt --all --check
+          rust-toolchain: stable
+          rust-components: rustfmt
+          rust-cache-key: fmt
+      - run: bun turbo run format --filter=kuben-cargo -- --check
 
   clippy:
     name: Clippy
@@ -90,16 +100,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: stable
-          components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      # The activator placeholder is not in default builds; keep it compiling.
-      - run: cargo clippy -p kuben --features activator --all-targets --locked -- -D warnings
+          rust-toolchain: stable
+          rust-components: clippy
+      # The whole workspace, then the activator placeholder that default
+      # builds leave out.
+      - run: bun turbo run kuben-cargo#lint kuben#lint:activator
 
   test:
     name: Test (${{ matrix.name }})
@@ -119,21 +126,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: ${{ matrix.name }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          rust-toolchain: stable
+          rust-cache-key: ${{ matrix.name }}
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
         with:
           tool: cargo-nextest
-      - run: cargo nextest run --workspace --locked --profile ci
+      - run: bun turbo run kuben-cargo#test
       # nextest does not run doctests; they are platform-independent.
       - name: Doctests
         if: matrix.name == 'linux-x64'
-        run: cargo test --workspace --doc --locked
+        run: bun turbo run kuben-cargo#test:doc
 
   postgres:
     name: Store matrix (PostgreSQL 17)
@@ -155,16 +159,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          rust-toolchain: stable
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
         with:
           tool: cargo-nextest
-      - run: cargo nextest run -p kuben-store --locked --profile ci --test matrix
+      - run: bun turbo run kuben-store#test:postgres
 
   msrv:
     name: MSRV (1.94)
@@ -176,14 +177,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: "1.94"
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      # `+1.94` beats rust-toolchain.toml (which tracks stable).
-      - run: cargo +1.94 check --workspace --all-targets --locked
+          rust-toolchain: "1.94"
+      # RUSTUP_TOOLCHAIN beats rust-toolchain.toml (which tracks stable) and is
+      # part of the task hash.
+      - run: bun turbo run kuben-cargo#check -- --all-targets
+        env:
+          RUSTUP_TOOLCHAIN: "1.94"
 
   deny:
     name: Supply chain (cargo-deny)
@@ -200,7 +201,7 @@ jobs:
           command: check
 
   web:
-    name: Web (lint, typecheck, test, build, size)
+    name: Web (Biome, typecheck, test, build, size)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
@@ -209,18 +210,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      # turbo reads the Cargo workspace on every run, so even web-only jobs need Rust.
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
-      - name: Bundle size budget
-        run: pnpm size
+          rust-toolchain: stable
+          rust-cache-key: web
+      - run: bun turbo run biome:check check test build size --filter=// --filter='@kuben/*'
 
   drift:
     name: Generated files up to date
@@ -232,22 +227,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          save-if: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
-        with:
-          tool: just
-      - run: pnpm install --frozen-lockfile
-      - run: just drift
+          rust-toolchain: stable
+          rust-cache-save: "false"
+      - run: bun run drift
 
   scripts:
     name: Shell scripts
@@ -293,19 +277,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      - uses: ./.github/actions/setup
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: e2e
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          rust-toolchain: stable
+          rust-cache-key: e2e
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           cluster_name: kuben-e2e
           wait: 120s
-      - run: cargo build -p kuben --locked
-      - run: scripts/e2e.sh
+      # Builds the debug binary first (kuben#e2e depends on kuben#build).
+      - run: bun turbo run kuben#e2e
 
   budgets:
     name: Binary size budget (static musl)
@@ -319,22 +300,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          rust-toolchain: stable
+          rust-targets: x86_64-unknown-linux-musl
+          rust-cache-key: musl-release
       # The budget is measured on the shipped binary, UI included. The SPA is
       # built here (seconds) so this job never waits for the web job.
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile && pnpm build
-      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
-        with:
-          toolchain: stable
-          targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: musl-release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: bun turbo run @kuben/web#build
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
         with:

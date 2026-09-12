@@ -1,22 +1,51 @@
 {
   "name": "kuben-monorepo",
   "private": true,
-  "packageManager": "pnpm@10.34.5",
-  "engines": {
-    "node": ">=22.12",
-    "pnpm": ">=10"
-  },
+  "packageManager": "bun@1.4.2",
   "scripts": {
-    "gen": "pnpm -F @kuben/api-client generate",
-    "dev": "pnpm -F @kuben/web dev",
-    "build": "pnpm -F @kuben/web build",
-    "size": "pnpm -F @kuben/web size",
-    "typecheck": "pnpm -r typecheck",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "test": "pnpm -r test"
+    "setup": "scripts/setup.sh",
+    "dev": "turbo run dev --filter=@kuben/web",
+    "build": "turbo run build",
+    "build:release": "turbo run build:release --filter=kuben",
+    "check": "turbo run check",
+    "lint": "turbo run lint lint:activator biome:check",
+    "format": "turbo run format biome:fix",
+    "test": "turbo run test test:doc",
+    "gen": "turbo run gen",
+    "drift": "scripts/check-drift.sh",
+    "e2e": "turbo run e2e --filter=kuben",
+    "ci": "scripts/ci.sh",
+    "biome:check": "bun --bun ./node_modules/.bin/biome ci .",
+    "biome:fix": "bun --bun ./node_modules/.bin/biome check --write ."
   },
   "devDependencies": {
-    "@biomejs/biome": "catalog:"
+    "@biomejs/biome": "catalog:",
+    "turbo": "catalog:"
+  },
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "@biomejs/biome": "2.5.13",
+      "@size-limit/file": "^12.1.0",
+      "@tailwindcss/vite": "^4.3.3",
+      "@tanstack/react-query": "^5.102.8",
+      "@tanstack/react-router": "^1.170.35",
+      "@types/bun": "^1.4.0",
+      "@types/react": "^19.3.0",
+      "@types/react-dom": "^19.3.0",
+      "@vitejs/plugin-react": "^6.1.1",
+      "openapi-fetch": "^0.17.0",
+      "openapi-typescript": "^7.13.0",
+      "react": "^19.3.0",
+      "react-dom": "^19.3.0",
+      "size-limit": "^12.1.0",
+      "tailwindcss": "^4.3.3",
+      "turbo": "2.10.12",
+      "typescript": "^5.9.3",
+      "vite": "^8.3.0"
+    }
   }
 }

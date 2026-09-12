@@ -4,5 +4,8 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run under `bun test`; tsconfig.test.json checks them with Bun's types,
+  // which the browser code must not see.
+  "exclude": ["src/**/*.test.ts"]
 }

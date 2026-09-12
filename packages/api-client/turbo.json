@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "gen": {
+      "dependsOn": ["kuben-api#gen"],
+      "inputs": ["openapi.json"],
+      "outputs": ["src/schema.d.ts"]
+    },
+    "check": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+    }
+  }
+}

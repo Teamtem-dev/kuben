@@ -10,8 +10,13 @@ members = [
 ]
 default-members = ["crates/kuben"]
 
+# Turborepo's package name for the Cargo workspace as a whole: `kuben-cargo#<task>`
+# in turbo.json runs a workspace-wide Cargo command (see docs/adr/0024).
+[workspace.metadata]
+name = "kuben-cargo"
+
 [workspace.package]
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"
@@ -21,11 +26,11 @@ authors = ["Kuben Contributors"]
 
 [workspace.dependencies]
 # ---- internal ----
-kuben-core = { path = "crates/kuben-core", version = "1.0.1" }
-kuben-crd = { path = "crates/kuben-crd", version = "1.0.1" }
-kuben-store = { path = "crates/kuben-store", version = "1.0.1" }
-kuben-platform = { path = "crates/kuben-platform", version = "1.0.1" }
-kuben-api = { path = "crates/kuben-api", version = "1.0.1" }
+kuben-core = { path = "crates/kuben-core", version = "1.0.2" }
+kuben-crd = { path = "crates/kuben-crd", version = "1.0.2" }
+kuben-store = { path = "crates/kuben-store", version = "1.0.2" }
+kuben-platform = { path = "crates/kuben-platform", version = "1.0.2" }
+kuben-api = { path = "crates/kuben-api", version = "1.0.2" }
 
 # ---- runtime / http ----
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-util", "net", "fs"] }

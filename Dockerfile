@@ -5,17 +5,18 @@
 #   docker buildx build --platform linux/amd64,linux/arm64 -t kuben:dev .
 # Releases use deploy/release.Dockerfile with the prebuilt, checksummed binaries.
 
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.2-alpine AS web
 WORKDIR /src
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+ENV BUN_INSTALL_CACHE_DIR=/cache/bun
+# Manifests first, so the install layer is reused until a dependency changes.
+COPY package.json bun.lock bunfig.toml ./
 COPY apps/web/package.json apps/web/
 COPY packages/api-client/package.json packages/api-client/
-RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=bun-install,target=/cache/bun bun install --frozen-lockfile
 COPY tsconfig.base.json ./
 COPY packages/api-client packages/api-client
 COPY apps/web apps/web
-RUN pnpm -F @kuben/web build
+RUN cd apps/web && bun run build
 
 FROM --platform=$BUILDPLATFORM rust:1-bookworm AS chef
 WORKDIR /src

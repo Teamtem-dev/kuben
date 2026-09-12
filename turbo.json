@@ -1,0 +1,201 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "futureFlags": {
+    "experimentalCargoWorkspaces": true,
+    "experimentalTaskCommand": true
+  },
+  "envMode": "loose",
+  "cacheMaxAge": "14d",
+  "cacheMaxSize": "5GB",
+  "tasks": {
+    "transit": {
+      "description": "Hash-only node: re-runs check and test when a dependency's sources change.",
+      "dependsOn": ["^transit"]
+    },
+    "build": {
+      "description": "Debug builds of the Rust entrypoints; the web bundle.",
+      "dependsOn": ["^build"]
+    },
+    "check": {
+      "description": "cargo check and tsc.",
+      "dependsOn": ["transit"]
+    },
+    "lint": {
+      "description": "clippy -D warnings (Biome is the root task biome:check)."
+    },
+    "format": {
+      "description": "rustfmt (Biome is the root task biome:fix). `-- --check` only verifies.",
+      "cache": false
+    },
+    "test": {
+      "description": "cargo-nextest and bun test.",
+      "dependsOn": ["transit"]
+    },
+    "gen": {
+      "description": "Regenerates the committed OpenAPI spec, TS client types and CRD manifests."
+    },
+    "size": {
+      "description": "Size budgets: web bundle (size-limit) and release binary."
+    },
+    "dev": {
+      "description": "API on :8080 and Vite on :5173.",
+      "cache": false,
+      "persistent": true
+    },
+
+    "//#biome:check": {
+      "description": "Biome lint and format check over the whole repository.",
+      "inputs": ["**/*.{js,jsx,mjs,cjs,ts,tsx,json,jsonc,css}", "biome.json"]
+    },
+    "//#biome:fix": {
+      "description": "Biome format, organize imports and safe fixes.",
+      "cache": false
+    },
+
+    "kuben-cargo#lint": {
+      "description": "clippy on every crate and target; warnings fail.",
+      "command": ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
+      "inputs": [
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/.cargo/config.toml",
+        "$TURBO_ROOT$/clippy.toml"
+      ],
+      "env": ["RUSTFLAGS", "RUSTUP_TOOLCHAIN", "RUSTC_WRAPPER", "CARGO_BUILD_*", "CARGO_TARGET_*"]
+    },
+    "kuben#lint:activator": {
+      "description": "clippy with the activator placeholder, which default builds leave out.",
+      "command": [
+        "cargo",
+        "clippy",
+        "--package=kuben",
+        "--features=activator",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/.cargo/config.toml",
+        "$TURBO_ROOT$/clippy.toml"
+      ],
+      "env": ["RUSTFLAGS", "RUSTUP_TOOLCHAIN", "RUSTC_WRAPPER", "CARGO_BUILD_*", "CARGO_TARGET_*"]
+    },
+    "kuben-cargo#test": {
+      "description": "Every Rust test under cargo-nextest (profile via NEXTEST_PROFILE).",
+      "command": ["cargo", "nextest", "run", "--workspace", "--locked"],
+      "dependsOn": [],
+      "inputs": [
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/.cargo/config.toml",
+        "$TURBO_ROOT$/.config/nextest.toml"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "RUSTC_WRAPPER",
+        "CARGO_BUILD_*",
+        "CARGO_TARGET_*",
+        "NEXTEST_PROFILE"
+      ]
+    },
+    "kuben-cargo#test:doc": {
+      "description": "Doctests (nextest does not run them).",
+      "command": ["cargo", "test", "--workspace", "--doc", "--locked"],
+      "inputs": [
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/.cargo/config.toml"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "RUSTC_WRAPPER",
+        "CARGO_BUILD_*",
+        "CARGO_TARGET_*"
+      ]
+    },
+    "kuben-store#test:postgres": {
+      "description": "Store tests against PostgreSQL (set KUBEN_TEST_PG_URL=postgres://...).",
+      "command": ["cargo", "nextest", "run", "--package=kuben-store", "--locked", "--test", "matrix"],
+      "cache": false
+    },
+    "kuben-api#gen": {
+      "description": "OpenAPI spec for the TypeScript client.",
+      "command": [
+        "cargo",
+        "run",
+        "--quiet",
+        "--locked",
+        "--package=kuben-api",
+        "--bin=openapi",
+        "--",
+        "../../packages/api-client/openapi.json"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml"
+      ],
+      "outputs": ["$TURBO_ROOT$/packages/api-client/openapi.json"]
+    },
+    "kuben-crd#gen": {
+      "description": "CRD manifests for the Helm chart.",
+      "command": [
+        "cargo",
+        "run",
+        "--quiet",
+        "--locked",
+        "--package=kuben-crd",
+        "--bin=crdgen",
+        "--",
+        "../../charts/kuben/crds/kuben.dev_all.yaml"
+      ],
+      "inputs": [
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml"
+      ],
+      "outputs": ["$TURBO_ROOT$/charts/kuben/crds/kuben.dev_all.yaml"]
+    },
+    "kuben#dev": {
+      "description": "The API with every role, in dev mode (Vite proxies /api to it).",
+      "command": ["cargo", "run", "--package=kuben", "--locked", "--", "serve", "--roles=all", "--dev"],
+      "cache": false,
+      "persistent": true
+    },
+    "kuben#build:release": {
+      "description": "Release binary with the web UI embedded.",
+      "command": ["cargo", "build", "--package=kuben", "--release", "--locked", "--features=embed-ui"],
+      "dependsOn": ["@kuben/web#build"],
+      "cache": false
+    },
+    "kuben#size": {
+      "description": "Binary size budget on the release build.",
+      "command": ["../../scripts/check-budgets.sh", "binary", "../../target/release/kuben"],
+      "dependsOn": ["build:release"],
+      "cache": false
+    },
+    "kuben#e2e": {
+      "description": "End-to-end suite against the current kube context (e.g. kind).",
+      "command": ["../../scripts/e2e.sh"],
+      "dependsOn": ["build"],
+      "cache": false
+    }
+  }
+}

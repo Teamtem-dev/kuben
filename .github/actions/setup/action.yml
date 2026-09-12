@@ -1,0 +1,48 @@
+name: Setup
+description: >-
+  Bun (version from package.json `packageManager`) and the JS dependencies,
+  plus an optional Rust toolchain and cache. Every turbo run reads the Cargo
+  workspace, so any job that calls turbo also needs Rust.
+
+inputs:
+  rust-toolchain:
+    description: Rust toolchain to install; empty skips Rust.
+    default: ""
+  rust-components:
+    description: Extra rustup components, comma-separated.
+    default: ""
+  rust-targets:
+    description: Extra rustup targets, comma-separated.
+    default: ""
+  rust-cache:
+    description: Restore the Rust cache (Swatinem/rust-cache).
+    default: "true"
+  rust-cache-key:
+    description: Extra key that separates this job's Rust cache.
+    default: ""
+  rust-cache-save:
+    description: >-
+      `main` saves only on refs/heads/main, so pull requests can never plant
+      a poisoned cache; `false` never saves.
+    default: main
+
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version-file: package.json
+    - name: Install JS dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
+    - if: inputs.rust-toolchain != ''
+      uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+        components: ${{ inputs.rust-components }}
+        targets: ${{ inputs.rust-targets }}
+    - if: inputs.rust-toolchain != '' && inputs.rust-cache == 'true'
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        key: ${{ inputs.rust-cache-key }}
+        save-if: ${{ inputs.rust-cache-save == 'main' && github.ref == 'refs/heads/main' }}

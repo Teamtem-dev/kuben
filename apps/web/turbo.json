@@ -1,0 +1,19 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": ["$TURBO_DEFAULT$", "!src/**/*.test.ts"],
+      "outputs": ["dist/**"]
+    },
+    "check": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+    },
+    "size": {
+      "dependsOn": ["build"]
+    },
+    "dev": {
+      "with": ["kuben#dev"]
+    }
+  }
+}

@@ -13,16 +13,16 @@ CONTRIBUTING.md: fix(api): reject an empty promotion target
 
 ## How it was verified
 
-<!-- Name the commands you ran and what they reported. "just ci" alone is enough for
+<!-- Name the commands you ran and what they reported. "bun run ci" alone is enough for
      most changes; say so if you could not run part of it. -->
 
-- [ ] `just ci` passes (fmt, clippy with `-D warnings`, tests, drift, web build and budgets)
+- [ ] `bun run ci` passes (fmt, clippy with `-D warnings`, tests, drift, Biome, typecheck, web build and budgets)
 - [ ] New behaviour has a test that fails without the change
-- [ ] `just e2e` run, if this touches controllers, CRDs or the Helm chart
+- [ ] `bun run e2e` run, if this touches controllers, CRDs or the Helm chart
 
 ## Checklist
 
 - [ ] The invariants in [CONTRIBUTING.md](../CONTRIBUTING.md) still hold
 - [ ] Docs updated (`docs/`, README) if behaviour or configuration changed
-- [ ] Generated files committed if the API or CRD types changed (`just gen`)
+- [ ] Generated files committed if the API or CRD types changed (`bun run gen`)
 - [ ] Breaking changes are labelled `breaking` and explained above
