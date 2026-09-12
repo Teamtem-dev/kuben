@@ -42,13 +42,17 @@ defaults:
     shell: bash
 
 jobs:
+  # Two ways in, both on a fresh runner: `helm` installs the published chart
+  # and image on k3s; `binary` runs the one-liner as root, which sets up the
+  # whole server (`kuben setup`), and signs up through the setup page.
   smoke:
-    name: Smoke (${{ matrix.arch }})
+    name: Smoke (${{ matrix.mode }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
+        mode: [helm, binary]
         include:
           - { arch: amd64, os: ubuntu-24.04 }
           - { arch: arm64, os: ubuntu-24.04-arm }
@@ -57,11 +61,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        if: matrix.mode == 'helm'
       - name: Installer, chart and image as published, on k3s
         env:
+          KUBEN_SMOKE_MODE: ${{ matrix.mode }}
           KUBEN_SMOKE_VERSION: ${{ inputs.version }}
           KUBEN_SMOKE_UPGRADE_FROM: ${{ inputs.upgrade_from }}
-          KUBEN_SMOKE_K3S: "1"
+          KUBEN_SMOKE_K3S: ${{ matrix.mode == 'helm' && '1' || '' }}
         run: scripts/smoke-test.sh
 
   # A failed scheduled run only emails whoever last edited the cron line.
