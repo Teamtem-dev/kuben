@@ -34,6 +34,7 @@ export default defineConfig({
       components: {
         Header: './src/components/starlight/Header.astro',
         Footer: './src/components/starlight/Footer.astro',
+        Sidebar: './src/components/starlight/Sidebar.astro',
       },
       head: [
         { tag: 'meta', attrs: { name: 'theme-color', content: '#0b0b0d' } },
