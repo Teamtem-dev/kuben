@@ -16,7 +16,7 @@ pub enum StoreError {
     #[error("unsupported database url: {0}")]
     UnsupportedUrl(String),
     #[error(
-        "cannot create the database directory {path}: {source}; point KUBEN_DATABASE__URL at a writable location, e.g. sqlite:///var/lib/kuben/kuben.db"
+        "cannot create the database directory {path}: {source}; point KUBEN_DATABASE__URL at a directory this user can write, e.g. sqlite://$HOME/.local/state/kuben/kuben.db"
     )]
     Directory {
         path: String,
@@ -189,9 +189,9 @@ macro_rules! with_reader {
 
 pub(crate) use {with_reader, with_writer};
 
-/// SQLite creates the database file but not its directory. The default
-/// `/data/kuben.db` is a volume in the container; on a fresh server `/data`
-/// does not exist yet, so create it (owner-only) before opening.
+/// SQLite creates the database file but not its directory, and the default
+/// location (`~/.local/state/kuben`, systemd's state directory) may not exist
+/// yet, so create it (owner-only) before opening.
 fn ensure_parent_dir(file: &Path) -> Result<(), StoreError> {
     let Some(dir) = file.parent().filter(|d| !d.as_os_str().is_empty()) else {
         return Ok(());

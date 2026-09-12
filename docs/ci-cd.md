@@ -17,6 +17,7 @@ call the same `turbo` tasks developers run locally.
 | `.github/workflows/ci.yml` | Runs on every push to `main`, every PR and `merge_group`. A change-detection job, 12 check jobs and the aggregate job **CI success**. |
 | `.github/workflows/release.yml` | Runs on a pushed `v*` tag. Publishes binaries for 5 platforms, `checksums.txt`, attestations, the GitHub Release, a multi-arch GHCR image and the OCI Helm chart. |
 | `.github/workflows/security.yml` | Runs daily and on demand: RustSec advisories on `main` and a Trivy scan of the published image. A failure opens one issue (later failures comment on it). |
+| `.github/workflows/smoke.yml` | Runs after every release, daily and on demand: `scripts/smoke-test.sh` on fresh ubuntu runners (amd64 and arm64). A failed scheduled run opens one issue. |
 | `.github/workflows/site.yml` | Builds `apps/site` (kuben.teamtem.com) on pull requests that touch it; deploys it on pushes to `main` to the Cloudflare Worker `kuben` (static assets, `apps/site/wrangler.jsonc`) with `wrangler deploy`. The same Worker serves `/api/contact` (the enterprise form, leads in Workers KV; `apps/site/worker/`, tested by `bun test worker`). Deploying needs the variable `CLOUDFLARE_ACCOUNT_ID` and the secret `CLOUDFLARE_API_TOKEN`; without the variable the deploy job is skipped. |
 | `.github/actions/setup` | Composite action shared by every job. It installs Bun (version from `packageManager`), runs `bun install --frozen-lockfile`, and optionally sets up a Rust toolchain and `Swatinem/rust-cache`. |
 | `.github/dependabot.yml` | Weekly updates of Actions (workflows and the composite action), crates and Bun packages, with a 7-day cooldown (a shield against freshly published malicious packages). |
@@ -33,6 +34,7 @@ call the same `turbo` tasks developers run locally.
 | `scripts/ci.sh` | The local equivalent of CI (`bun run ci`). |
 | `.config/nextest.toml` | cargo-nextest profiles (`default` locally, `ci` in CI via `NEXTEST_PROFILE`). |
 | `scripts/e2e.sh` | End-to-end test on kind. |
+| `scripts/smoke-test.sh` | Smoke test of what was published: the public installer, then the OCI chart and image pulled anonymously, on k3s. |
 
 ## 2. CI jobs
 
@@ -87,6 +89,7 @@ tag v0.2.0 ─► plan (validate tag == Cargo version)
                │                                                                     │        └─► verify-install ×3 (install.sh against the real release)
                │                                                                     └─► image (budget ≤ 30 MiB → Trivy → push amd64+arm64 + SBOM + provenance)
                │                                                                              └─► chart (helm push oci://ghcr.io/teamtem-dev/charts)
+               │                                                                                     └─► smoke ×2 (smoke.yml: installer + chart + image on k3s, after publish)
 ```
 
 Steps:
@@ -143,7 +146,44 @@ To act on a failure: update the affected dependency (or add a justified
 `ignore` entry to `deny.toml`), merge, and cut a patch release so the image
 follows.
 
-## 5. `install.sh`
+## 5. Smoke test of what users install
+
+Every other check builds from source. `scripts/smoke-test.sh` tests what was
+published, exactly the way the README installs it, on a machine with no
+registry credentials:
+
+| Step | Checks |
+|---|---|
+| Anonymous pulls | a pull token for `charts/kuben` and `kuben` without credentials (a private package fails here with the fix spelled out), and that the chart and the image exist for the version |
+| Installer | `curl -fsSL …/main/install.sh \| bash`: exit code, the verified checksum and the installed version in its output, `kuben --version` |
+| `kuben doctor`, no cluster | database OK, setup-mode warning for the cluster, exit code 0 |
+| Cluster | the current kube context, or k3s installed with `KUBEN_SMOKE_K3S=1` |
+| `helm install` | `helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace` with empty Helm and Docker configs: the chart, `app_version`, the image tag, rollout without restarts |
+| Running release | `/livez`, `/readyz`, the generated `kuben-initial-admin` password, login and `/me`, then `kuben doctor` inside the pod |
+| Controllers | project → environment → app through the API, under the chart's own RBAC; the app answers through its Service |
+| Upgrade | with `KUBEN_SMOKE_UPGRADE_FROM`: `helm upgrade` to the version under test keeps the admin, the database and the app |
+| Removal | deleting the app, environment and project garbage-collects the namespace; `helm uninstall` keeps the database volume, as the chart promises |
+
+`.github/workflows/smoke.yml` runs it on ubuntu-24.04 and ubuntu-24.04-arm:
+
+- **after every release**, for the new version, upgraded from the previous
+  stable chart;
+- **daily** at 06:43 UTC, for the latest release without `--version`, as a
+  new user gets it: `install.sh` on `main`, package visibility and k3s can
+  all break without a release. A failure opens the issue *Scheduled smoke
+  test failed*, or comments on it;
+- **on demand** from *Actions → Smoke*, with an optional version and upgrade
+  source.
+
+The script is self-contained, so it also runs on a throwaway server. It
+installs kuben, and k3s when asked, and it refuses to replace an existing
+`kuben` release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/scripts/smoke-test.sh | KUBEN_SMOKE_K3S=1 bash
+```
+
+## 6. `install.sh`
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash
@@ -162,7 +202,7 @@ Guarantees:
 - **No partial execution.** All logic lives in `main()`, called on the last line, so a truncated download executes nothing.
 - **Architecture detection.** It detects the architecture (`x86_64`/`aarch64`, Linux/macOS). An x86_64 shell under Rosetta on Apple Silicon gets the native ARM binary.
 - **No API calls.** It finds the latest version through the `releases/latest` redirect, so there is no API rate limit and no `jq`.
-- **Verified after every release.** The **verify-install** job runs the script on ubuntu (x64 and arm64) and macOS and checks `kuben --version`.
+- **Verified after every release.** The **verify-install** job runs the script on ubuntu (x64 and arm64) and macOS and checks `kuben --version`. The smoke test (section 5) also runs the public one-liner from `main` every day.
 
 For more assurance, verify the provenance:
 
@@ -170,16 +210,16 @@ For more assurance, verify the provenance:
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
 ```
 
-## 6. First-push checklist
+## 7. First-push checklist
 
 1. Create `Teamtem-dev/kuben` and push the contents of `kuben-monorepo/` as its root.
 2. In *Settings → Branches*, protect `main` and make **CI success** required.
 3. In *Settings → Actions → General*, set *Workflow permissions* to **Read**; each workflow declares what it needs.
-4. After the first release, make the `kuben` and `charts/kuben` packages **Public** under *Packages*. GHCR creates new packages as private.
+4. After the first release, make the `kuben` and `charts/kuben` packages **Public** under *Packages*. GHCR creates new packages as private, and every anonymous `helm install` then fails; the smoke test fails on it too.
 5. `ubuntu-24.04-arm` runners are free for public repositories. For a private repository, use a paid plan or cross-compile arm64 with zigbuild on x64.
 6. In *Settings → Code security*, enable *Private vulnerability reporting* (referenced by `SECURITY.md`) and Dependabot alerts.
 
-## 7. Local equivalents
+## 8. Local equivalents
 
 ```bash
 bun run ci
@@ -196,6 +236,12 @@ bun run e2e
 ```
 
 Builds the binary and runs `scripts/e2e.sh` against the current kube context.
+
+```bash
+KUBEN_SMOKE_VERSION=1.0.2 KUBEN_SMOKE_UPGRADE_FROM=previous scripts/smoke-test.sh
+```
+
+Runs the smoke test (section 5) against the current kube context. It installs a Helm release, so use a throwaway cluster.
 
 ```bash
 bun turbo run kuben#size

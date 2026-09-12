@@ -10,6 +10,11 @@ metadata:
   name: kuben
   labels:
     {{- include "kuben.labels" . | nindent 4 }}
+  annotations:
+    # Kept by `helm uninstall`: deleted while the pod is still stopping, the
+    # controller would reconcile every App against empty platform settings
+    # and remove their public routes. A re-install adopts it again.
+    helm.sh/resource-policy: keep
 spec:
   {{- with .Values.platform.baseDomain }}
   baseDomain: {{ . | quote }}

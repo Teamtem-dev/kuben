@@ -16,12 +16,12 @@ import { Aside, Steps } from '@astrojs/starlight/components'
 | Gateway API CRDs and a Gateway controller | for public app access | Traefik v3, Envoy Gateway or Cilium |
 | cert-manager | for HTTPS | run with Gateway API support: `--set config.enableGatewayAPI=true` |
 | metrics-server | for autoscaling | the HPA does not work without it; k3s ships it |
-| A CNI that enforces `NetworkPolicy` | for tenant isolation | Calico and Cilium do; plain flannel does not |
+| A CNI that enforces `NetworkPolicy` | for tenant isolation | Calico and Cilium do, and k3s does with its built-in policy controller; plain flannel elsewhere does not |
 
 `kuben doctor` checks all of the above from inside the pod or from a workstation with a kubeconfig.
 
 <Aside type="caution" title="flannel and isolation">
-k3s ships flannel by default, which does **not** enforce NetworkPolicy. Environments are still separate namespaces with quotas, but apps in one environment can reach apps in another. For real tenant isolation install k3s with `--flannel-backend=none` and add Cilium or Calico.
+flannel alone does **not** enforce NetworkPolicy. k3s pairs it with an embedded network-policy controller, so isolation works there unless k3s was started with `--disable-network-policy`. On other clusters with plain flannel, environments are still separate namespaces with quotas, but apps in one environment can reach apps in another: add Cilium or Calico for real tenant isolation.
 </Aside>
 
 ## Install with Helm

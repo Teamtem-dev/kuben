@@ -32,9 +32,15 @@ err() {
 }
 has() { command -v "$1" >/dev/null 2>&1; }
 
+# Not read from "$0": under `curl … | bash` that is the shell, not this file.
 usage() {
-  sed -n '2,12p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//' ||
-    echo "usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo]"
+  cat <<'EOF'
+usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo]
+
+  --version <tag>   KUBEN_VERSION=v1.0.0       release to install (default: latest)
+  --dir <path>      KUBEN_INSTALL_DIR=<path>   install directory (default: /usr/local/bin)
+  --no-sudo         KUBEN_NO_SUDO=1            never escalate; fail if <dir> is not writable
+EOF
 }
 
 detect_target() {
@@ -180,7 +186,8 @@ main() {
   *":${dir}:"*) ;;
   *) say "note: ${dir} is not on your PATH" ;;
   esac
-  say "next: ${BIN} doctor   (preflight checks against your cluster)"
+  say "next: ${BIN} doctor   (checks the database and the cluster connection)"
+  say "guide: https://kuben.teamtem.com/docs/getting-started/binary/"
 }
 
 main "$@"

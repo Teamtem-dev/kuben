@@ -37,7 +37,7 @@ Every environment namespace is created with:
 
 - Logins are throttled by three counters shared by all replicas; the stored buckets are hashes, not emails or addresses. See [Sign-in and throttling](/docs/guides/sign-in-security/).
 - Passwords are hashed with Argon2id. Invited users must replace their temporary password before anything else.
-- A generated admin password goes into a Kubernetes Secret (or is printed once by the binary), never into a log.
+- A generated admin password goes into a Kubernetes Secret (the binary prints it once to its terminal, or writes an owner-only file when it has none), never into a log.
 - Sessions are opaque ids in a `__Host-`, `HttpOnly`, `Secure` cookie. No JWT reaches the browser, so an XSS cannot exfiltrate a bearer token, and a session can be revoked.
 - The console ships a strict Content Security Policy with no inline scripts.
 

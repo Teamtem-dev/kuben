@@ -45,10 +45,10 @@ trust_forwarded_for = true
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KUBEN_DATABASE__URL` | `sqlite:///data/kuben.db` | `sqlite://<path>` or `postgres://user:pass@host/db` |
+| `KUBEN_DATABASE__URL` | see below | `sqlite://<path>` or `postgres://user:pass@host/db` |
 | `KUBEN_DATABASE__MAX_CONNECTIONS` | `4` | pool size. SQLite uses a single writer regardless |
 
-The directory of a SQLite path is created on first start. PostgreSQL is required for more than one replica.
+Without a URL, the binary uses SQLite in the first of: `/data/kuben.db` when `/data` exists (the container volume, and the location before 1.0.3), `$STATE_DIRECTORY/kuben.db` (systemd's `StateDirectory=`), `$XDG_STATE_HOME/kuben/kuben.db`, `~/.local/state/kuben/kuben.db`. The image and the Helm chart set `sqlite:///data/kuben.db` explicitly. `kuben doctor` prints the database in use. The directory of a SQLite path is created on first start. PostgreSQL is required for more than one replica.
 
 ## `kube`
 
@@ -103,7 +103,7 @@ Used on the first start with an empty database.
 | `KUBEN_BOOTSTRAP__ORG_SLUG` | `default` | |
 | `KUBEN_BOOTSTRAP__ORG_NAME` | `Default` | |
 | `KUBEN_BOOTSTRAP__ADMIN_EMAIL` | `admin@kuben.local` | |
-| `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` | generated | a generated password is stored in the Secret `kuben-initial-admin` (in Kubernetes) or printed once (binary), never logged |
+| `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` | generated | a generated password is stored in the Secret `kuben-initial-admin` (in Kubernetes); the binary prints it once to its terminal or, without one, writes it to `initial-admin-password` next to the database (owner-only). Never logged |
 
 <Aside type="note" title="Platform settings live in the cluster">
 `baseDomain`, `gateway`, `clusterIssuer`, `wildcardTlsSecret`, the registry and the size presets are **not** process configuration: they are the `KubenConfig` custom resource, so every replica and every `kubectl` user sees the same values. The Helm chart writes it from `platform.*`. See [Custom resources](/docs/reference/custom-resources/).

@@ -24,7 +24,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
    bun run setup
    ```
 
-2. Run the API and the console. The API listens on `:8080` in dev mode (pretty logs, insecure cookie, in-memory SQLite); Vite serves the console on `:5173` and proxies `/api` to it.
+2. Run the API and the console. The API listens on `:8080` in dev mode (pretty logs, insecure cookie, SQLite in `./.dev/kuben.db`); Vite serves the console on `:5173` and proxies `/api` to it.
 
    ```bash
    bun run dev

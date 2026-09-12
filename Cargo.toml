@@ -16,7 +16,7 @@ default-members = ["crates/kuben"]
 name = "kuben-cargo"
 
 [workspace.package]
-version = "1.0.3-rc.1"
+version = "1.0.3"
 edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"
@@ -26,11 +26,11 @@ authors = ["Kuben Contributors"]
 
 [workspace.dependencies]
 # ---- internal ----
-kuben-core = { path = "crates/kuben-core", version = "1.0.3-rc.1" }
-kuben-crd = { path = "crates/kuben-crd", version = "1.0.3-rc.1" }
-kuben-store = { path = "crates/kuben-store", version = "1.0.3-rc.1" }
-kuben-platform = { path = "crates/kuben-platform", version = "1.0.3-rc.1" }
-kuben-api = { path = "crates/kuben-api", version = "1.0.3-rc.1" }
+kuben-core = { path = "crates/kuben-core", version = "1.0.3" }
+kuben-crd = { path = "crates/kuben-crd", version = "1.0.3" }
+kuben-store = { path = "crates/kuben-store", version = "1.0.3" }
+kuben-platform = { path = "crates/kuben-platform", version = "1.0.3" }
+kuben-api = { path = "crates/kuben-api", version = "1.0.3" }
 
 # ---- runtime / http ----
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-util", "net", "fs"] }

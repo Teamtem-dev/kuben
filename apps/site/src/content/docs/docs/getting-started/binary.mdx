@@ -48,11 +48,12 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 
 <Steps>
 
-1. Get a cluster to manage. On a single server, k3s is the quickest:
+1. Get a cluster to manage. On a single server, k3s is the quickest. It writes its kubeconfig for root only, so give your user a copy:
 
    ```bash
    curl -sfL https://get.k3s.io | sh -
-   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+   sudo install -D -m 600 -o "$USER" /etc/rancher/k3s/k3s.yaml ~/.kube/config
+   export KUBECONFIG=~/.kube/config
    ```
 
 2. Check the prerequisites. `doctor` checks the database, the cluster connection, Gateway API, cert-manager and metrics-server, and tells you what is optional.
@@ -61,22 +62,22 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
    kuben doctor
    ```
 
-   The database is `/data/kuben.db` by default and the directory is created on first start. To keep it elsewhere:
+   The `database` line shows where the data lives. Without `KUBEN_DATABASE__URL` it is `~/.local/state/kuben/kuben.db`, or the state directory under systemd's `StateDirectory=` (for example `/var/lib/kuben`). A server that already has `/data`, the container volume and the location before 1.0.3, keeps using `/data/kuben.db`. To choose yourself:
 
    ```bash
-   export KUBEN_DATABASE__URL=sqlite:///var/lib/kuben/kuben.db
+   export KUBEN_DATABASE__URL=sqlite:///srv/kuben/kuben.db
    ```
 
-3. Start Kuben. The first start prints the generated admin password **once**, in this terminal.
+3. Start Kuben. The first start prints the generated admin password **once**, in this terminal. It is never written to the log.
 
    ```bash
    kuben serve
    ```
 
-4. Open the console. The session cookie is `Secure`, so either put Kuben behind HTTPS or tunnel to `localhost`, which browsers treat as secure:
+4. Open the console. The session cookie is `Secure`, and browsers drop it over plain HTTP except on `localhost`: signing in at `http://<server-ip>:8080` only returns to the login page, and `doctor` and `serve` warn about it. Put Kuben behind HTTPS, or tunnel to `localhost`:
 
    ```bash
-   ssh -L 8080:localhost:8080 root@your-server
+   ssh -L 8080:localhost:8080 you@your-server
    ```
 
    Then browse to `http://localhost:8080`. Only for a quick test over plain HTTP, set `KUBEN_SECURITY__COOKIE_SECURE=false`.
@@ -85,28 +86,68 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 
 ## Keep it running
 
-A minimal systemd unit:
+Run Kuben as its own system user, with its settings in `/etc/kuben/config.toml`: every command reads that file, so `kuben reset-admin` or `kuben backup` work on the same database as the service.
 
-```ini title="/etc/systemd/system/kuben.service"
-[Unit]
-Description=Kuben
-After=network-online.target k3s.service
-Wants=network-online.target
+<Steps>
 
-[Service]
-Environment=KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-Environment=KUBEN_DATABASE__URL=sqlite:///var/lib/kuben/kuben.db
-Environment=KUBEN_SERVER__BIND=127.0.0.1:8080
-ExecStart=/usr/local/bin/kuben serve
-Restart=on-failure
-User=kuben
-StateDirectory=kuben
+1. Create the user and give it the kubeconfig:
 
-[Install]
-WantedBy=multi-user.target
-```
+   ```bash
+   sudo useradd --system --home-dir /var/lib/kuben --shell /usr/sbin/nologin kuben
+   sudo install -D -m 600 -o kuben -g kuben /etc/rancher/k3s/k3s.yaml /var/lib/kuben/kubeconfig
+   ```
 
-Binding to `127.0.0.1` and publishing the console through the cluster's own Gateway (or any reverse proxy that terminates TLS) keeps the `Secure` cookie happy. When a proxy sits in front, set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/).
+2. Configure it:
+
+   ```toml title="/etc/kuben/config.toml"
+   [server]
+   bind = "127.0.0.1:8080"
+   metrics_bind = "127.0.0.1:9090"
+
+   [database]
+   url = "sqlite:///var/lib/kuben/kuben.db"
+
+   [kube]
+   kubeconfig = "/var/lib/kuben/kubeconfig"
+   ```
+
+3. Add the unit and start it:
+
+   ```ini title="/etc/systemd/system/kuben.service"
+   [Unit]
+   Description=Kuben
+   After=network-online.target k3s.service
+   Wants=network-online.target
+
+   [Service]
+   ExecStart=/usr/local/bin/kuben serve
+   User=kuben
+   StateDirectory=kuben
+   Restart=on-failure
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   ```bash
+   sudo systemctl daemon-reload && sudo systemctl enable --now kuben
+   ```
+
+4. Without a terminal, the first start writes the generated admin password to a file only `kuben` can read. Read it, sign in, and delete it:
+
+   ```bash
+   sudo cat /var/lib/kuben/initial-admin-password
+   ```
+
+   ```bash
+   sudo rm /var/lib/kuben/initial-admin-password
+   ```
+
+   Run other commands as the same user, for example `sudo -u kuben kuben reset-admin`.
+
+</Steps>
+
+Binding to `127.0.0.1` keeps the console and the metrics off the public interface. Reach the console through an SSH tunnel, or put a reverse proxy that terminates TLS in front of it and set `KUBEN_SERVER__PUBLIC_URL` to its `https://` address. On k3s, Traefik already holds ports 80 and 443 on the host, so such a proxy needs Traefik disabled (`--disable=traefik`) or other ports. When a proxy sits in front, set `trust_forwarded_for = true` under `[security]` so login throttling sees real client addresses; see [Configuration](/docs/reference/configuration/).
 
 ## Other commands
 

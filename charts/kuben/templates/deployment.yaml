@@ -96,6 +96,10 @@ spec:
             {{- else if .Values.database.url }}
             - name: KUBEN_DATABASE__URL
               value: {{ .Values.database.url | quote }}
+            {{- else }}
+            # SQLite on the volume, never the binary's server default.
+            - name: KUBEN_DATABASE__URL
+              value: "sqlite:///data/kuben.db"
             {{- end }}
             {{- with .Values.publicUrl }}
             - name: KUBEN_SERVER__PUBLIC_URL

@@ -20,9 +20,9 @@ kuben serve [--roles api,controller] [--dev]
 | Option | Meaning |
 |---|---|
 | `--roles` | Comma-separated roles for this process: `all` (default), `api`, `controller`, `activator`. Also `KUBEN_ROLES`. |
-| `--dev` | Development mode: pretty logs, an insecure cookie so the console works over plain HTTP, and an in-memory SQLite database when none is configured. Never use in production. |
+| `--dev` | Development mode: pretty logs, an insecure cookie so the console works over plain HTTP, and `./.dev/kuben.db` when no database is configured. Never use in production. |
 
-On the first start with an empty database, `serve` creates the initial admin. Inside Kubernetes the generated password goes into the Secret `kuben-initial-admin`; outside it is printed once to the terminal. `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` sets it instead.
+On the first start with an empty database, `serve` creates the initial admin. Inside Kubernetes the generated password goes into the Secret `kuben-initial-admin`; outside it is printed once to the terminal, or, without a terminal (systemd), written to `initial-admin-password` next to the database, readable only by its user. It never goes to the log. `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` sets it instead.
 
 Startup order: configuration → database migrations (under a lock) → CRDs server-side-applied → informers list and sync → `/readyz` turns 200 → leader election (when enabled) → controllers. Shutdown is the reverse: readiness off → drain in-flight requests → cancel subsystems (the leader releases its Lease) → flush the audit log → checkpoint SQLite.
 

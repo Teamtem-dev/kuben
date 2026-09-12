@@ -81,8 +81,39 @@ On a single server, [k3s](https://k3s.io) installs in under a minute and ships a
 
 ## Uninstall
 
+Delete your environments first, while Kuben is still running: its controller then removes their namespaces (`kb-<project>-<environment>`) and the apps in them. After the uninstall nothing would.
+
+```bash
+kubectl delete environments.kuben.dev --all
+```
+
 ```bash
 helm uninstall kuben -n kuben-system
 ```
 
-The persistent volume carries `helm.sh/resource-policy: keep` and survives `helm uninstall`, so a re-install finds its data again. Delete the PVC and the namespace yourself when you really want everything gone. Tenant namespaces created for environments are owned by their `Environment` resources and are garbage-collected when those are deleted.
+Kept on purpose, so that a re-install finds everything again:
+
+- the PersistentVolumeClaim `kuben-data`, with the users and the audit log (`helm.sh/resource-policy: keep`);
+- the `KubenConfig` named `kuben`, so apps keep their routes while Kuben stops (also `keep`, since 1.0.3);
+- the Secret `kuben-initial-admin` and the Lease `kuben-controller`, which Kuben creates itself;
+- the CRDs, which Helm never deletes.
+
+To remove everything:
+
+```bash
+kubectl delete namespace kuben-system
+```
+
+```bash
+kubectl delete projects.kuben.dev,kubenconfigs.kuben.dev --all
+```
+
+```bash
+kubectl delete crd kubenconfigs.kuben.dev projects.kuben.dev environments.kuben.dev apps.kuben.dev releases.kuben.dev buildruns.kuben.dev
+```
+
+An environment deleted after the uninstall waits forever on its `kuben.dev/environment` finalizer, and its namespace keeps running. Remove the finalizer, then delete the namespace yourself:
+
+```bash
+kubectl patch environment <name> --type=merge -p '{"metadata":{"finalizers":null}}'
+```
