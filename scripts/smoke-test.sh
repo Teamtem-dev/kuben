@@ -35,7 +35,6 @@
 # run it on a throwaway server or a CI runner.
 set -euo pipefail
 
-REPO=Teamtem-dev/kuben
 INSTALLER="https://kuben.teamtem.com/install.sh"
 REGISTRY=ghcr.io
 CHART_REPO=teamtem-dev/charts/kuben
