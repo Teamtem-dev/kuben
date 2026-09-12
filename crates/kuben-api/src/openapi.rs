@@ -38,6 +38,7 @@ pub struct ApiDoc;
 pub fn api_router() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .merge(auth::openapi_router())
+        .routes(routes!(crate::setup::status, crate::setup::complete))
         .routes(routes!(projects::list, projects::create))
         .routes(routes!(projects::get, projects::delete))
         .routes(routes!(environments::list, environments::create))

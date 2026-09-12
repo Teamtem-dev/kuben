@@ -1983,6 +1983,86 @@
         }
       }
     },
+    "/api/v1/setup": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Whether the first admin account still has to be created.",
+        "operationId": "setupStatus",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create the organization and its first admin (owner), and sign in.",
+        "operationId": "setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Admin created and signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing, wrong or expired setup token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Setup is already complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/templates": {
       "get": {
         "tags": [
@@ -3309,6 +3389,52 @@
           },
           "key": {
             "type": "string"
+          }
+        }
+      },
+      "SetupRequest": {
+        "type": "object",
+        "required": [
+          "org_name",
+          "email",
+          "password"
+        ],
+        "properties": {
+          "org_name": {
+            "type": "string",
+            "example": "ACME"
+          },
+          "email": {
+            "type": "string",
+            "example": "you@example.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The setup token from the installer's link, when required."
+          }
+        }
+      },
+      "SetupStatus": {
+        "type": "object",
+        "required": [
+          "needed",
+          "token_required"
+        ],
+        "properties": {
+          "needed": {
+            "type": "boolean",
+            "description": "No admin account exists yet; the console shows `/setup`."
+          },
+          "token_required": {
+            "type": "boolean",
+            "description": "`POST /setup` must carry the token the installer printed."
           }
         }
       },

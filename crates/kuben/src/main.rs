@@ -27,6 +27,7 @@ fn main() -> anyhow::Result<()> {
         }),
         cli::Command::Doctor => serve::block_on(&runtime, cli::doctor::run(cfg)),
         cli::Command::ResetAdmin(opts) => serve::block_on(&runtime, cli::admin::reset(cfg, opts)),
+        cli::Command::SetupToken => bootstrap::print_setup_token(&cfg),
         cli::Command::Backup(opts) => serve::block_on(&runtime, cli::backup::run(cfg, opts)),
         cli::Command::Restore(opts) => serve::block_on(&runtime, cli::backup::restore(cfg, opts)),
         cli::Command::Version => {

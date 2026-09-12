@@ -61,7 +61,12 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     let election = election(&cfg)?;
 
     let hasher = Arc::new(kuben_api::auth::password::Hasher::from_config(&cfg.security));
-    if let Some(password) = crate::bootstrap::ensure_admin(&cfg, &store, &hasher).await? {
+    if cfg.setup_wizard() {
+        // The first admin is created from the console; nothing is seeded.
+        if store.count_users().await? == 0 {
+            crate::bootstrap::announce_setup(&cfg);
+        }
+    } else if let Some(password) = crate::bootstrap::ensure_admin(&cfg, &store, &hasher).await? {
         crate::bootstrap::hand_over_password(&cfg, cluster.as_ref(), &password).await;
     }
 

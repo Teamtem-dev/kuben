@@ -37,6 +37,8 @@ pub enum Command {
     Doctor,
     /// Reset (or create) the admin user's password.
     ResetAdmin(ResetAdminOpts),
+    /// Print a fresh link to the first-run setup page (`/setup`), with its token.
+    SetupToken,
     /// Export Projects, Environments and Apps (CRDs) to a directory (secret values are never exported).
     Backup(BackupOpts),
     /// Restore a backup created by `kuben backup`.
