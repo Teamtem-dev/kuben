@@ -77,9 +77,13 @@
   --k-surface-strong: rgb(255 255 255 / 8%);
   --k-line: rgb(255 255 255 / 7%);
   --k-glow: rgb(246 139 18 / 22%);
-  /* Menus and sheets: nearly opaque, a step lighter than the page. */
-  --k-panel-bg: rgb(21 21 25 / 96%);
-  --k-panel-shadow: 0 24px 60px -18px rgb(0 0 0 / 70%), 0 0 0 1px rgb(255 255 255 / 3%) inset;
+  /* Menus and sheets: frosted glass a step lighter than the page. The blur
+     keeps text readable; without it they fall back to the solid colour. */
+  --k-panel-solid: rgb(21 21 25);
+  --k-panel-bg: rgb(24 24 29 / 72%);
+  --k-panel-edge: rgb(255 255 255 / 10%);
+  --k-panel-sheen: linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 40%);
+  --k-panel-shadow: 0 24px 60px -18px rgb(0 0 0 / 70%), inset 0 1px 0 rgb(255 255 255 / 8%);
 
   --sl-shadow-sm: none;
   --sl-shadow-md: 0 12px 40px -20px rgb(0 0 0 / 60%);
@@ -124,13 +128,32 @@
   --k-surface-strong: rgb(20 16 8 / 8%);
   --k-line: rgb(20 16 8 / 8%);
   --k-glow: rgb(246 139 18 / 18%);
-  --k-panel-bg: rgb(255 255 255 / 96%);
-  --k-panel-shadow: 0 24px 60px -22px rgb(40 30 10 / 30%);
+  --k-panel-solid: rgb(255 255 255);
+  --k-panel-bg: rgb(255 255 255 / 68%);
+  --k-panel-edge: rgb(20 16 8 / 9%);
+  --k-panel-sheen: linear-gradient(180deg, rgb(255 255 255 / 60%), transparent 45%);
+  --k-panel-shadow: 0 24px 60px -22px rgb(40 30 10 / 30%), inset 0 1px 0 rgb(255 255 255 / 80%);
 
   --sl-shadow-md: 0 12px 40px -22px rgb(40 30 10 / 25%);
   --sl-shadow-lg: 0 30px 80px -30px rgb(40 30 10 / 30%);
 
   color-scheme: light;
+}
+
+/* A translucent menu without backdrop blur would show the page through its
+   text, and some viewers ask for less transparency: both get solid panels. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root,
+  :root[data-theme="light"] {
+    --k-panel-bg: var(--k-panel-solid);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  :root[data-theme="light"] {
+    --k-panel-bg: var(--k-panel-solid);
+  }
 }
 
 /* ---------- base ---------- */
