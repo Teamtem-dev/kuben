@@ -368,10 +368,13 @@ const roadmap = [
     display: grid;
     gap: 3rem;
     align-items: center;
-    padding-block: clamp(2.5rem, 6vw, 5.5rem) clamp(2rem, 5vw, 4rem);
+    padding-block: clamp(1rem, 2.5vw, 2.5rem) clamp(2rem, 5vw, 4rem);
   }
 
+  /* The glow starts behind the transparent header, so no dark band sits
+     between the header and the hero. */
   .k-hero::before {
+    top: calc(-1 * var(--sl-nav-height) - 2rem);
     background:
       radial-gradient(60% 50% at 30% 0%, var(--k-glow), transparent 70%),
       radial-gradient(40% 40% at 90% 20%, rgb(246 139 18 / 8%), transparent 70%);

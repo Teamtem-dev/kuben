@@ -21,7 +21,7 @@ const product: Card[] = [
     title: 'Features',
     body: 'Environments, rollouts, HTTPS, teams',
     href: '/#features',
-    icon: 'lucide:sparkles',
+    icon: 'lucide:layers',
   },
   {
     title: 'Templates',
@@ -120,7 +120,7 @@ const active = {
           aria-controls="k-dd-resources"
           data-active={active.resources ? '' : undefined}
         >
-          <Icon name="lucide:library" />
+          <Icon name="lucide:newspaper" />
           <span>Resources</span>
           <Icon name="lucide:chevron-down" class="k-chev" />
         </button>
@@ -339,10 +339,10 @@ const active = {
     padding: 0.45rem;
     border-radius: 1.35rem;
     border: 1px solid var(--k-line);
-    background: color-mix(in srgb, var(--sl-color-bg) 82%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(1.5);
-    backdrop-filter: blur(18px) saturate(1.5);
-    box-shadow: var(--sl-shadow-lg);
+    background: var(--k-panel-bg);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    backdrop-filter: blur(24px) saturate(1.6);
+    box-shadow: var(--k-panel-shadow);
     opacity: 0;
     visibility: hidden;
     translate: -50% -6px;
@@ -541,10 +541,10 @@ const active = {
     padding: 0.5rem;
     border-radius: 1.25rem;
     border: 1px solid var(--k-line);
-    background: color-mix(in srgb, var(--sl-color-bg) 88%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(1.5);
-    backdrop-filter: blur(18px) saturate(1.5);
-    box-shadow: var(--sl-shadow-lg);
+    background: var(--k-panel-bg);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    backdrop-filter: blur(24px) saturate(1.6);
+    box-shadow: var(--k-panel-shadow);
   }
 
   .k-sheet[hidden] {
@@ -620,6 +620,13 @@ const active = {
 </style>
 
 <script>
+  // The header is transparent at the top of the page and turns into glass with
+  // a bottom line once the page scrolls (styles in global.css).
+  const root = document.documentElement
+  const onScroll = () => root.toggleAttribute('data-scrolled', window.scrollY > 4)
+  window.addEventListener('scroll', onScroll, { passive: true })
+  onScroll()
+
   // Dropdowns: click or Enter/Space toggles, hover opens on devices with a
   // fine pointer, Escape and outside clicks close. The menu sheet works the same.
   const dropdowns = [...document.querySelectorAll<HTMLElement>('[data-dd]')]
