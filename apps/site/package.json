@@ -10,7 +10,8 @@
     "preview": "bun --bun ./node_modules/.bin/astro preview",
     "check": "bun --bun ./node_modules/.bin/astro check",
     "og": "bun scripts/og.ts",
-    "deploy": "bun --bun ./node_modules/.bin/wrangler deploy"
+    "deploy": "bun --bun ./node_modules/.bin/wrangler deploy",
+    "test": "bun test worker"
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "catalog:",

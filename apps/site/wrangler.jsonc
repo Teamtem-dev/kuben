@@ -1,16 +1,21 @@
-// kuben.teamtem.com: the static site served by the Worker `kuben` (Workers
-// static assets). `.github/workflows/site.yml` deploys it on pushes to main:
-//   bunx wrangler@<exact version> deploy   (from apps/site, after the build)
+// kuben.teamtem.com: the Worker `kuben`. Static assets from dist/ are served
+// without running any code; only /api/* reaches worker/index.ts (the
+// enterprise contact form). `.github/workflows/site.yml` deploys it on pushes
+// to main with `bun run --cwd apps/site deploy`.
 {
   "name": "kuben",
   "compatibility_date": "2026-09-12",
+  "main": "./worker/index.ts",
   "assets": {
     "directory": "./dist",
     // Astro writes dist/404.html; unknown paths get it with a 404 status.
     "not_found_handling": "404-page",
     // Pages are dist/<path>/index.html and links end in "/" (trailingSlash: 'always').
-    "html_handling": "auto-trailing-slash"
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": ["/api/*"]
   },
+  // Enterprise form submissions (180 days) and hashed per-client rate-limit counters (1 hour).
+  "kv_namespaces": [{ "binding": "LEADS", "id": "797d53e5e2cc4428bf0bb57ebe0f312d" }],
   "routes": [{ "pattern": "kuben.teamtem.com", "custom_domain": true }],
   // One canonical host for search engines: no *.workers.dev or preview URLs.
   "workers_dev": false,

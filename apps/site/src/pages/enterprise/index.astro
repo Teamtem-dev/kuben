@@ -1,0 +1,501 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { Icon } from 'astro-icon/components'
+
+const offers = [
+  {
+    icon: 'lucide:rocket',
+    title: 'Production rollout',
+    body: 'Architecture and Helm values reviewed with you: PostgreSQL and several replicas, the Gateway and certificates, backups and upgrades.',
+  },
+  {
+    icon: 'lucide:shield-check',
+    title: 'Security and compliance review',
+    body: 'Your RBAC, network policies and tenant isolation checked against Kuben’s documented security model.',
+  },
+  {
+    icon: 'lucide:puzzle',
+    title: 'Custom features and integrations',
+    body: 'Templates, integrations and roadmap items built or prioritised for your platform.',
+  },
+  {
+    icon: 'lucide:graduation-cap',
+    title: 'Training and onboarding',
+    body: 'Sessions for platform engineers and for the application teams who deploy with Kuben.',
+  },
+]
+
+const topics = [
+  ['rollout', 'Production rollout'],
+  ['security', 'Security and compliance review'],
+  ['custom', 'Custom features and integrations'],
+  ['training', 'Training and onboarding'],
+  ['partnership', 'Partnership'],
+  ['other', 'Something else'],
+]
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Kuben for enterprise',
+    description:
+      'Run Kuben in production with help from the team that builds it: rollout, security review, custom features and training. Get in touch with Teamtem.',
+    template: 'splash',
+    tableOfContents: false,
+    pagefind: false,
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content k-page k-ent">
+    <section class="k-ent-grid">
+      <div class="k-ent-copy">
+        <div class="k-eyebrow">Enterprise</div>
+        <h1>Run Kuben in production, <span class="k-gradient-text">with the people who build it.</span></h1>
+        <p class="k-ent-lead">
+          Kuben is Apache-2.0 and stays that way. When your platform depends on it, Teamtem can help you roll it
+          out, review your installation and build what you need next.
+        </p>
+        <ul class="k-ent-list">
+          {
+            offers.map((o) => (
+              <li>
+                <span class="k-ent-icon">
+                  <Icon name={o.icon} />
+                </span>
+                <span>
+                  <strong>{o.title}</strong>
+                  <span>{o.body}</span>
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <div class="k-ent-formwrap">
+        <form class="k-form" id="k-contact" action="/api/contact" method="post" novalidate>
+          <div class="k-form-head">
+            <div class="k-eyebrow">Get in touch</div>
+            <p>Tell us about your platform. We reply to the address you give us.</p>
+          </div>
+          <div class="k-form-row">
+            <label class="k-field">
+              <span>Your name</span>
+              <input name="name" required maxlength="100" autocomplete="name" placeholder="Your name" />
+            </label>
+            <label class="k-field">
+              <span>Company</span>
+              <input name="company" maxlength="120" autocomplete="organization" placeholder="Company name" />
+            </label>
+          </div>
+          <label class="k-field">
+            <span>Work email</span>
+            <input
+              type="email"
+              name="email"
+              required
+              maxlength="200"
+              autocomplete="email"
+              placeholder="name@company.com"
+            />
+          </label>
+          <label class="k-field">
+            <span>What can we help with?</span>
+            <select name="topic" required>
+              <option value="" disabled selected>Select</option>
+              {topics.map(([value, label]) => <option value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label class="k-field">
+            <span>Project and requirements</span>
+            <textarea
+              name="message"
+              required
+              minlength="10"
+              maxlength="5000"
+              rows="5"
+              placeholder="Tell us about your project and requirements..."></textarea>
+          </label>
+          <div class="k-hp" aria-hidden="true">
+            <label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+          </div>
+          <input type="hidden" name="t" value="" />
+          <button class="k-btn k-btn-primary k-send" type="submit">
+            <span class="k-send-label">Send</span>
+            <Icon name="lucide:send" class="k-send-icon" />
+            <Icon name="lucide:loader-circle" class="k-send-spin" />
+          </button>
+          <p class="k-form-status" role="status" aria-live="polite"></p>
+          <p class="k-form-legal">
+            By submitting, you agree to our <a href="/legal/terms/">Terms of Service</a> and{' '}
+            <a href="/legal/privacy/">Privacy Policy</a>.
+          </p>
+        </form>
+
+        <div class="k-form-done" hidden>
+          <span class="k-done-icon"><Icon name="lucide:circle-check" /></span>
+          <h2>Thank you. Your message is on its way.</h2>
+          <p>We will reply to the email address you gave us. In the meantime, the docs cover installation, operations and security in depth.</p>
+          <a class="k-btn k-btn-ghost" href="/docs/">Read the docs</a>
+        </div>
+      </div>
+    </section>
+  </div>
+</StarlightPage>
+
+<style>
+  .k-ent {
+    padding-block: clamp(2rem, 5vw, 4.5rem) clamp(3rem, 6vw, 5rem);
+  }
+
+  .k-ent-grid {
+    display: grid;
+    gap: 2.5rem;
+    align-items: start;
+  }
+
+  .k-ent-copy {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .k-ent h1 {
+    font-size: clamp(2.1rem, 1.2rem + 3vw, 3.4rem);
+    font-weight: 750;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    color: var(--sl-color-white);
+  }
+
+  .k-ent-lead {
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    color: var(--sl-color-gray-2);
+    max-width: 34rem;
+  }
+
+  .k-ent-list {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .k-ent-list li {
+    display: flex;
+    gap: 0.9rem;
+    padding: 1rem 1.1rem;
+    border-radius: 1.1rem;
+    background: var(--k-surface);
+  }
+
+  .k-ent-list strong {
+    display: block;
+    color: var(--sl-color-white);
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+  }
+
+  .k-ent-list li > span:last-child > span {
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-ent-icon {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 2.3rem;
+    height: 2.3rem;
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, var(--sl-color-accent) 14%, transparent);
+    color: var(--sl-color-accent);
+  }
+
+  .k-ent-icon :global(svg) {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  /* form */
+  .k-ent-formwrap {
+    position: relative;
+  }
+
+  .k-ent-formwrap::before {
+    content: '';
+    position: absolute;
+    inset: 8% 6% -4% 6%;
+    z-index: -1;
+    background: radial-gradient(closest-side, var(--k-glow), transparent);
+    filter: blur(32px);
+  }
+
+  .k-form,
+  .k-form-done {
+    display: grid;
+    gap: 0.9rem;
+    padding: clamp(1.25rem, 3vw, 1.9rem);
+    border-radius: 1.5rem;
+    border: 1px solid var(--k-line);
+    background: color-mix(in srgb, var(--sl-color-bg) 60%, transparent);
+    -webkit-backdrop-filter: blur(var(--k-glass-blur)) saturate(1.4);
+    backdrop-filter: blur(var(--k-glass-blur)) saturate(1.4);
+    box-shadow: var(--sl-shadow-lg);
+  }
+
+  .k-form[hidden],
+  .k-form-done[hidden] {
+    display: none;
+  }
+
+  .k-form-head p {
+    margin: 0.35rem 0 0.2rem;
+    font-size: 0.9rem;
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-form-row {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .k-field {
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--sl-color-gray-2);
+  }
+
+  .k-field input,
+  .k-field select,
+  .k-field textarea {
+    width: 100%;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--k-line);
+    background: var(--k-surface);
+    color: var(--sl-color-white);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 400;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .k-field textarea {
+    resize: vertical;
+    min-height: 8rem;
+    line-height: 1.55;
+  }
+
+  .k-field select {
+    appearance: none;
+    padding-inline-end: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    cursor: pointer;
+  }
+
+  .k-field select:invalid {
+    color: var(--sl-color-gray-4);
+  }
+
+  .k-field option {
+    color: initial;
+  }
+
+  .k-field ::placeholder {
+    color: var(--sl-color-gray-4);
+  }
+
+  .k-field input:hover,
+  .k-field select:hover,
+  .k-field textarea:hover {
+    background: var(--k-surface-hover);
+  }
+
+  .k-field input:focus,
+  .k-field select:focus,
+  .k-field textarea:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--sl-color-accent) 70%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+  }
+
+  .k-field [aria-invalid='true'] {
+    border-color: #f87171;
+  }
+
+  .k-hp {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+
+  .k-send {
+    justify-self: stretch;
+    padding-block: 0.85rem;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .k-send :global(svg) {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .k-send :global(.k-send-spin),
+  .k-send[data-busy] :global(.k-send-icon) {
+    display: none;
+  }
+
+  .k-send[data-busy] :global(.k-send-spin) {
+    display: block;
+    animation: k-spin 0.8s linear infinite;
+  }
+
+  .k-send[disabled] {
+    opacity: 0.75;
+    cursor: progress;
+  }
+
+  @keyframes k-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .k-form-status {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 0.875rem;
+    color: #f87171;
+  }
+
+  .k-form-status:empty {
+    display: none;
+  }
+
+  .k-form-legal {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--sl-color-gray-4);
+  }
+
+  .k-form-legal a {
+    color: var(--sl-color-gray-2);
+  }
+
+  .k-form-done {
+    justify-items: start;
+    gap: 0.8rem;
+  }
+
+  .k-done-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    background: rgb(74 222 128 / 14%);
+    color: #4ade80;
+  }
+
+  .k-done-icon :global(svg) {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .k-form-done h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--sl-color-white);
+  }
+
+  .k-form-done p {
+    margin: 0 0 0.4rem;
+    color: var(--sl-color-gray-2);
+    line-height: 1.6;
+  }
+
+  @media (min-width: 40rem) {
+    .k-form-row {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (min-width: 60rem) {
+    .k-ent-grid {
+      grid-template-columns: 1fr 1.05fr;
+      gap: 4rem;
+    }
+  }
+</style>
+
+<script>
+  const form = document.getElementById('k-contact') as HTMLFormElement | null
+  const done = document.querySelector<HTMLElement>('.k-form-done')
+  const status = form?.querySelector<HTMLElement>('.k-form-status')
+  const send = form?.querySelector<HTMLButtonElement>('.k-send')
+  const started = form?.querySelector<HTMLInputElement>('input[name="t"]')
+  if (started) started.value = String(Date.now())
+
+  const messages: Record<string, string> = {
+    invalid: 'Please check the highlighted fields.',
+    rate_limited: 'Too many messages from this network. Please try again in an hour.',
+    too_large: 'That message is too long.',
+  }
+  const params = new URLSearchParams(location.search)
+  const initialError = params.get('error')
+  if (status && initialError) status.textContent = messages[initialError] ?? 'Something went wrong. Please try again.'
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (!status || !send) return
+    status.textContent = ''
+    for (const el of form.querySelectorAll('[aria-invalid]')) el.removeAttribute('aria-invalid')
+    if (!form.checkValidity()) {
+      for (const el of form.querySelectorAll<HTMLInputElement>(':invalid')) el.setAttribute('aria-invalid', 'true')
+      form.querySelector<HTMLElement>(':invalid')?.focus()
+      status.textContent = messages.invalid ?? ''
+      return
+    }
+    send.disabled = true
+    send.setAttribute('data-busy', '')
+    try {
+      const body = JSON.stringify(Object.fromEntries(new FormData(form)))
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; fields?: string[] }
+      if (res.ok && data.ok) {
+        form.hidden = true
+        if (done) {
+          done.hidden = false
+          done.querySelector<HTMLElement>('h2')?.focus()
+        }
+        return
+      }
+      for (const name of data.fields ?? []) form.elements.namedItem(name) instanceof Element && (form.elements.namedItem(name) as Element).setAttribute('aria-invalid', 'true')
+      status.textContent = messages[data.error ?? ''] ?? 'Something went wrong. Please try again in a moment.'
+    } catch {
+      status.textContent = 'Could not reach the server. Please check your connection and try again.'
+    } finally {
+      send.disabled = false
+      send.removeAttribute('data-busy')
+    }
+  })
+</script>

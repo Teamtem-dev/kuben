@@ -1,8 +1,9 @@
 ---
 /**
- * Site header: Teamtem (the organisation) / Kuben (the product), then the
- * primary navigation, search and the theme toggle. Replaces Starlight's
- * default header on every page.
+ * Site header: Teamtem (the organisation) / Kuben (the product), the primary
+ * navigation with icons and two dropdowns, search, GitHub and the theme
+ * toggle. Below 64rem the navigation moves into a menu sheet. Replaces
+ * Starlight's default header on every page.
  */
 import { Image } from 'astro:assets'
 import Search from '@astrojs/starlight/components/Search.astro'
@@ -12,10 +13,66 @@ import teamtem from '../../assets/teamtem.png'
 import Logo from '../Logo.astro'
 
 const path = Astro.url.pathname
-const nav = [
-  { label: 'Docs', href: '/docs/', active: path.startsWith('/docs/') },
-  { label: 'Blog', href: '/blog/', active: path.startsWith('/blog/') },
+const repo = 'https://github.com/Teamtem-dev/kuben'
+
+type Card = { title: string; body: string; href: string; icon: string; art?: 'wave' | 'timeline' }
+const product: Card[] = [
+  {
+    title: 'Features',
+    body: 'Environments, rollouts, HTTPS, teams',
+    href: '/#features',
+    icon: 'lucide:sparkles',
+  },
+  {
+    title: 'Templates',
+    body: 'One-click databases and tools',
+    href: '/docs/reference/templates/',
+    icon: 'lucide:layout-template',
+  },
+  {
+    title: 'Security',
+    body: 'The model, and its honest limits',
+    href: '/docs/operations/security/',
+    icon: 'lucide:shield-check',
+  },
+  {
+    title: 'Roadmap',
+    body: 'Git builds, previews, scale to zero',
+    href: '/docs/roadmap/',
+    icon: 'lucide:map',
+  },
 ]
+const resources: Card[] = [
+  {
+    title: 'Blog',
+    body: 'Engineering, product and updates',
+    href: '/blog/',
+    icon: 'lucide:pen-line',
+    art: 'wave',
+  },
+  {
+    title: 'Changelog',
+    body: 'Latest releases and improvements',
+    href: '/changelog/',
+    icon: 'lucide:history',
+    art: 'timeline',
+  },
+  {
+    title: 'API reference',
+    body: 'Every endpoint, from the OpenAPI spec',
+    href: '/docs/reference/api/',
+    icon: 'lucide:braces',
+  },
+  { title: 'GitHub', body: 'Source, issues and releases', href: repo, icon: 'simple-icons:github' },
+]
+
+const active = {
+  docs: path.startsWith('/docs/') && !path.startsWith('/docs/reference/api/'),
+  product: false,
+  resources:
+    path.startsWith('/blog/') || path.startsWith('/changelog/') || path.startsWith('/docs/reference/api/'),
+  enterprise: path.startsWith('/enterprise/'),
+}
 ---
 
 <div class="k-header">
@@ -27,14 +84,80 @@ const nav = [
     <a class="k-product" href="/" aria-label="Kuben home">
       <Logo id="hdr" size={26} />
     </a>
+
     <nav class="k-nav" aria-label="Primary">
-      {
-        nav.map((item) => (
-          <a href={item.href} aria-current={item.active ? 'page' : undefined}>
-            {item.label}
-          </a>
-        ))
-      }
+      <a class="k-nav-item" href="/docs/" aria-current={active.docs ? 'page' : undefined}>
+        <Icon name="lucide:book-open" />
+        <span>Docs</span>
+      </a>
+
+      <div class="k-dd" data-dd>
+        <button type="button" class="k-nav-item" aria-expanded="false" aria-controls="k-dd-product">
+          <Icon name="lucide:boxes" />
+          <span>Product</span>
+          <Icon name="lucide:chevron-down" class="k-chev" />
+        </button>
+        <div class="k-panel" id="k-dd-product">
+          {
+            product.map((c) => (
+              <a class="k-panel-card" href={c.href}>
+                <span class="k-panel-icon">
+                  <Icon name={c.icon} />
+                </span>
+                <span class="k-panel-title">{c.title}</span>
+                <span class="k-panel-body">{c.body}</span>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+
+      <div class="k-dd" data-dd>
+        <button
+          type="button"
+          class="k-nav-item"
+          aria-expanded="false"
+          aria-controls="k-dd-resources"
+          data-active={active.resources ? '' : undefined}
+        >
+          <Icon name="lucide:library" />
+          <span>Resources</span>
+          <Icon name="lucide:chevron-down" class="k-chev" />
+        </button>
+        <div class="k-panel" id="k-dd-resources">
+          {
+            resources.map((c) => (
+              <a class="k-panel-card" href={c.href}>
+                <span class="k-panel-icon">
+                  <Icon name={c.icon} />
+                </span>
+                {c.art === 'wave' && (
+                  <svg class="k-panel-art" viewBox="0 0 120 44" aria-hidden="true">
+                    <path d="M2 30c14 0 14-24 28-24s14 32 28 32 14-28 28-28 14 20 30 20" />
+                    <path d="M2 36c20-4 34 4 54 0s38-4 62 0" opacity=".5" />
+                  </svg>
+                )}
+                {c.art === 'timeline' && (
+                  <svg class="k-panel-art" viewBox="0 0 96 44" aria-hidden="true">
+                    <path d="M8 2v40" />
+                    <circle cx="8" cy="8" r="2.5" />
+                    <circle cx="8" cy="22" r="2.5" />
+                    <circle cx="8" cy="36" r="2.5" />
+                    <path d="M18 8h70M18 22h52M18 36h36" />
+                  </svg>
+                )}
+                <span class="k-panel-title">{c.title}</span>
+                <span class="k-panel-body">{c.body}</span>
+              </a>
+            ))
+          }
+        </div>
+      </div>
+
+      <a class="k-nav-item" href="/enterprise/" aria-current={active.enterprise ? 'page' : undefined}>
+        <Icon name="lucide:building-2" />
+        <span>Enterprise</span>
+      </a>
     </nav>
   </div>
 
@@ -43,21 +166,43 @@ const nav = [
   </div>
 
   <div class="k-right print:hidden">
-    <a
-      class="k-github"
-      href="https://github.com/Teamtem-dev/kuben"
-      rel="me"
-      aria-label="Kuben on GitHub"
-    >
+    <a class="k-github" href={repo} rel="me" aria-label="Kuben on GitHub">
       <Icon name="simple-icons:github" />
-      <span class="sl-hidden lg:sl-block">GitHub</span>
+      <span class="k-github-label">GitHub</span>
     </a>
     <ThemeSelect />
+  </div>
+
+  <button type="button" class="k-menu-btn print:hidden" aria-expanded="false" aria-controls="k-sheet" aria-label="Site menu">
+    <Icon name="lucide:layout-grid" class="k-menu-open" />
+    <Icon name="lucide:x" class="k-menu-close" />
+  </button>
+  <div class="k-sheet" id="k-sheet" hidden>
+    <a class="k-sheet-link" href="/docs/"><Icon name="lucide:book-open" /> Docs</a>
+    <a class="k-sheet-link" href="/enterprise/"><Icon name="lucide:building-2" /> Enterprise</a>
+    <div class="k-sheet-group">Product</div>
+    {
+      product.map((c) => (
+        <a class="k-sheet-link" href={c.href}>
+          <Icon name={c.icon} /> {c.title}
+        </a>
+      ))
+    }
+    <div class="k-sheet-group">Resources</div>
+    {
+      resources.map((c) => (
+        <a class="k-sheet-link" href={c.href}>
+          <Icon name={c.icon} /> {c.title}
+        </a>
+      ))
+    }
+    <div class="k-sheet-theme"><ThemeSelect /></div>
   </div>
 </div>
 
 <style>
   .k-header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -100,34 +245,212 @@ const nav = [
     display: inline-flex;
   }
 
+  /* ---- primary navigation ---- */
+
   .k-nav {
     display: none;
     align-items: center;
-    gap: 0.25rem;
-    margin-inline-start: 0.75rem;
+    gap: 0.15rem;
+    margin-inline-start: 0.9rem;
   }
 
-  .k-nav a {
-    padding: 0.4rem 0.75rem;
+  .k-nav-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.75rem;
+    border: 0;
     border-radius: 999px;
-    font-size: 0.9rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.875rem;
     font-weight: 500;
     color: var(--sl-color-gray-2);
     text-decoration: none;
+    cursor: pointer;
     transition:
       background-color 0.15s ease,
       color 0.15s ease;
   }
 
-  .k-nav a:hover {
+  .k-nav-item :global(svg) {
+    width: 1rem;
+    height: 1rem;
+    color: var(--sl-color-gray-3);
+    transition: color 0.15s ease;
+  }
+
+  .k-nav-item :global(.k-chev) {
+    width: 0.85rem;
+    height: 0.85rem;
+    margin-inline-start: -0.1rem;
+    transition: transform 0.2s ease;
+  }
+
+  .k-nav-item:hover,
+  .k-dd[data-open] > .k-nav-item {
     color: var(--sl-color-white);
     background: var(--k-surface);
   }
 
-  .k-nav a[aria-current='page'] {
+  .k-nav-item:hover :global(svg:first-child),
+  .k-dd[data-open] > .k-nav-item :global(svg:first-child) {
+    color: var(--sl-color-accent);
+  }
+
+  .k-nav-item[aria-current='page'],
+  .k-nav-item[data-active] {
     color: var(--sl-color-white);
     background: var(--k-surface-strong);
   }
+
+  .k-nav-item[aria-current='page'] :global(svg),
+  .k-nav-item[data-active] :global(svg:first-child) {
+    color: var(--sl-color-accent);
+  }
+
+  .k-dd[data-open] :global(.k-chev) {
+    transform: rotate(180deg);
+  }
+
+  .k-nav-item:focus-visible,
+  .k-panel-card:focus-visible,
+  .k-menu-btn:focus-visible,
+  .k-sheet-link:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: 2px;
+  }
+
+  /* ---- dropdown panels ---- */
+
+  .k-dd {
+    position: relative;
+  }
+
+  .k-panel {
+    position: absolute;
+    top: calc(100% + 0.85rem);
+    left: 50%;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem;
+    width: 32rem;
+    padding: 0.45rem;
+    border-radius: 1.35rem;
+    border: 1px solid var(--k-line);
+    background: color-mix(in srgb, var(--sl-color-bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    box-shadow: var(--sl-shadow-lg);
+    opacity: 0;
+    visibility: hidden;
+    translate: -50% -6px;
+    transition:
+      opacity 0.18s ease,
+      translate 0.18s ease,
+      visibility 0s linear 0.18s;
+  }
+
+  /* Invisible bridge so the pointer can travel from the button to the panel. */
+  .k-panel::before {
+    content: '';
+    position: absolute;
+    inset: -0.9rem 0 auto;
+    height: 0.9rem;
+  }
+
+  .k-dd[data-open] > .k-panel {
+    opacity: 1;
+    visibility: visible;
+    translate: -50% 0;
+    transition:
+      opacity 0.18s ease,
+      translate 0.18s ease;
+  }
+
+  .k-panel-card {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: 0.2rem;
+    min-height: 7.25rem;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    color: inherit;
+    text-decoration: none;
+    overflow: hidden;
+    transition: background-color 0.15s ease;
+  }
+
+  .k-panel-card:hover {
+    background: var(--k-surface-hover);
+  }
+
+  .k-panel-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    margin-bottom: 0.7rem;
+    border-radius: 0.8rem;
+    background: var(--k-surface-strong);
+    color: var(--sl-color-gray-2);
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .k-panel-card:hover .k-panel-icon {
+    background: color-mix(in srgb, var(--sl-color-accent) 16%, transparent);
+    color: var(--sl-color-accent);
+  }
+
+  .k-panel-icon :global(svg) {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .k-panel-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+
+  .k-panel-body {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--sl-color-gray-3);
+  }
+
+  .k-panel-art {
+    position: absolute;
+    top: 0.9rem;
+    right: 0.9rem;
+    width: 5.5rem;
+    height: 2.25rem;
+    fill: none;
+    stroke: var(--sl-color-gray-4);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    transition: stroke 0.15s ease;
+  }
+
+  .k-panel-art circle {
+    fill: var(--sl-color-gray-4);
+    stroke: none;
+    transition: fill 0.15s ease;
+  }
+
+  .k-panel-card:hover .k-panel-art {
+    stroke: color-mix(in srgb, var(--sl-color-accent) 70%, transparent);
+  }
+
+  .k-panel-card:hover .k-panel-art circle {
+    fill: var(--sl-color-accent);
+  }
+
+  /* ---- search, right group ---- */
 
   .k-search {
     display: flex;
@@ -138,7 +461,7 @@ const nav = [
 
   .k-search :global(site-search) {
     width: 100%;
-    max-width: 22rem;
+    max-width: 20rem;
   }
 
   .k-right {
@@ -172,12 +495,185 @@ const nav = [
     height: 1.1rem;
   }
 
-  /* On phones the sidebar toggle (rendered by Starlight) sits at the end of
-     the header, so the right group only appears from tablet width up. */
+  .k-github-label {
+    display: none;
+  }
+
+  /* ---- menu sheet (below 64rem) ---- */
+
+  .k-menu-btn {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    border: 1px solid var(--k-line);
+    background: var(--k-surface);
+    color: var(--sl-color-gray-2);
+    cursor: pointer;
+  }
+
+  .k-menu-btn :global(svg) {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  .k-menu-btn :global(.k-menu-close),
+  .k-menu-btn[aria-expanded='true'] :global(.k-menu-open) {
+    display: none;
+  }
+
+  .k-menu-btn[aria-expanded='true'] :global(.k-menu-close) {
+    display: block;
+  }
+
+  .k-sheet {
+    position: absolute;
+    top: calc(100% + 0.6rem);
+    right: 0;
+    z-index: 40;
+    display: grid;
+    gap: 0.15rem;
+    width: min(20rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 6rem);
+    overflow-y: auto;
+    padding: 0.5rem;
+    border-radius: 1.25rem;
+    border: 1px solid var(--k-line);
+    background: color-mix(in srgb, var(--sl-color-bg) 88%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    box-shadow: var(--sl-shadow-lg);
+  }
+
+  .k-sheet[hidden] {
+    display: none;
+  }
+
+  .k-sheet-group {
+    padding: 0.7rem 0.75rem 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--sl-color-gray-4);
+  }
+
+  .k-sheet-link {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.8rem;
+    color: var(--sl-color-white);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .k-sheet-link:hover {
+    background: var(--k-surface-hover);
+  }
+
+  .k-sheet-link :global(svg) {
+    width: 1.05rem;
+    height: 1.05rem;
+    color: var(--sl-color-accent);
+  }
+
+  .k-sheet-theme {
+    padding: 0.6rem 0.75rem 0.3rem;
+    border-top: 1px solid var(--k-line);
+    margin-top: 0.4rem;
+  }
+
   @media (min-width: 50rem) {
-    .k-nav,
     .k-right {
       display: flex;
     }
   }
+
+  @media (min-width: 64rem) {
+    .k-nav {
+      display: flex;
+    }
+
+    .k-menu-btn,
+    .k-sheet {
+      display: none;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    .k-github-label {
+      display: inline;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .k-panel,
+    .k-dd[data-open] > .k-panel {
+      transition: none;
+    }
+  }
 </style>
+
+<script>
+  // Dropdowns: click or Enter/Space toggles, hover opens on devices with a
+  // fine pointer, Escape and outside clicks close. The menu sheet works the same.
+  const dropdowns = [...document.querySelectorAll<HTMLElement>('[data-dd]')]
+  const close = (dd: HTMLElement) => {
+    dd.removeAttribute('data-open')
+    dd.querySelector('button')?.setAttribute('aria-expanded', 'false')
+  }
+  const open = (dd: HTMLElement) => {
+    for (const other of dropdowns) if (other !== dd) close(other)
+    dd.setAttribute('data-open', '')
+    dd.querySelector('button')?.setAttribute('aria-expanded', 'true')
+  }
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)')
+  for (const dd of dropdowns) {
+    const button = dd.querySelector('button')
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // With a mouse, hover has already opened the panel, so a click must not close
+    // it again; keyboard activation (detail 0) and touch still toggle.
+    button?.addEventListener('click', (e) => {
+      if (e.detail > 0 && finePointer.matches) open(dd)
+      else if (dd.hasAttribute('data-open')) close(dd)
+      else open(dd)
+    })
+    dd.addEventListener('mouseenter', () => {
+      if (!finePointer.matches) return
+      clearTimeout(timer)
+      open(dd)
+    })
+    dd.addEventListener('mouseleave', () => {
+      if (!finePointer.matches) return
+      timer = setTimeout(() => close(dd), 120)
+    })
+    dd.addEventListener('focusout', (e) => {
+      if (!dd.contains(e.relatedTarget as Node | null)) close(dd)
+    })
+  }
+
+  const menuBtn = document.querySelector<HTMLButtonElement>('.k-menu-btn')
+  const sheet = document.getElementById('k-sheet')
+  const setSheet = (on: boolean) => {
+    if (!menuBtn || !sheet) return
+    sheet.hidden = !on
+    menuBtn.setAttribute('aria-expanded', String(on))
+  }
+  menuBtn?.addEventListener('click', () => setSheet(sheet?.hidden ?? false))
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return
+    for (const dd of dropdowns) close(dd)
+    setSheet(false)
+  })
+  document.addEventListener('click', (e) => {
+    const target = e.target as Node
+    for (const dd of dropdowns) if (!dd.contains(target)) close(dd)
+    if (sheet && menuBtn && !sheet.contains(target) && !menuBtn.contains(target)) setSheet(false)
+  })
+</script>

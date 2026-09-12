@@ -3,11 +3,7 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import { Icon } from 'astro-icon/components'
 import Logo from '../components/Logo.astro'
 import ConsoleCard from '../components/landing/ConsoleCard.astro'
-import CopyCommand from '../components/landing/CopyCommand.astro'
-
-const helm =
-  'helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben --namespace kuben-system --create-namespace'
-const curl = 'curl -fsSL https://raw.githubusercontent.com/Teamtem-dev/kuben/main/install.sh | bash'
+import InstallTabs from '../components/landing/InstallTabs.astro'
 
 const features = [
   {
@@ -116,8 +112,7 @@ const roadmap = [
           </a>
         </div>
         <div class="k-install k-rise" data-delay="3">
-          <CopyCommand command={helm} />
-          <span class="k-install-note">Kubernetes 1.29+ and Helm. Or <a href="/docs/getting-started/binary/">install the binary</a> on any server.</span>
+          <InstallTabs id="hero-install" />
         </div>
       </div>
       <div class="k-hero-visual k-rise" data-delay="2">
@@ -286,7 +281,7 @@ const roadmap = [
         </a>
       </div>
       <div class="k-install k-install-center">
-        <CopyCommand command={curl} />
+        <InstallTabs id="cta-install" />
       </div>
     </section>
 
@@ -302,7 +297,9 @@ const roadmap = [
           <a href="/docs/">Documentation</a>
           <a href="/docs/getting-started/quickstart/">Quickstart</a>
           <a href="/blog/">Blog</a>
+          <a href="/changelog/">Changelog</a>
           <a href="/docs/roadmap/">Roadmap</a>
+          <a href="/enterprise/">Enterprise</a>
         </div>
         <div>
           <h4>Reference</h4>
@@ -317,6 +314,8 @@ const roadmap = [
           <a href="https://github.com/Teamtem-dev/kuben/releases">Releases</a>
           <a href="https://github.com/Teamtem-dev/kuben/security/policy">Security policy</a>
           <a href="/docs/contributing/development/">Contributing</a>
+          <a href="/legal/privacy/">Privacy</a>
+          <a href="/legal/terms/">Terms</a>
         </div>
       </div>
     </footer>
@@ -380,6 +379,7 @@ const roadmap = [
 
   .k-hero-copy {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.4rem;
     justify-items: start;
     min-width: 0;
@@ -428,6 +428,7 @@ const roadmap = [
 
   .k-install {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
     width: 100%;
     max-width: 36rem;
@@ -450,8 +451,9 @@ const roadmap = [
   }
 
   .k-install-center {
-    justify-items: center;
-    max-width: 34rem;
+    justify-items: stretch;
+    max-width: 40rem;
+    text-align: start;
   }
 
   .k-hero-visual {

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Kuben">
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc25c"/>
+      <stop offset="1" stop-color="#f0640e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.38" r="0.62">
+      <stop offset="0" stop-color="#f68b12" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#f68b12" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="64" fill="#0b0b0e"/>
+  <circle cx="64" cy="64" r="64" fill="url(#glow)"/>
+  <circle cx="64" cy="64" r="63.25" fill="none" stroke="url(#ring)" stroke-width="1.5"/>
+  <g transform="translate(26.8 26.8) scale(1.1625)">
+    <polygon points="32,6 54.5,19 54.5,45 32,58 9.5,45 9.5,19" fill="url(#mark)" stroke="url(#mark)" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M32 19 L43 25.5 L32 32 L21 25.5 Z" fill="#fff" fill-opacity="0.96"/>
+    <path d="M21 25.5 L32 32 L32 45 L21 38.5 Z" fill="#fff" fill-opacity="0.5"/>
+    <path d="M32 32 L43 25.5 L43 38.5 L32 45 Z" fill="#fff" fill-opacity="0.74"/>
+  </g>
+</svg>
