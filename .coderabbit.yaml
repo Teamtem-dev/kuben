@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews pull requests as a second pair of eyes. It is advisory:
+# it never blocks a merge ("CI success" stays the only required check).
+language: en-US
+tone_instructions: >-
+  Be concise and specific. Skip praise, and skip style points that rustfmt,
+  clippy or Biome already enforce.
+early_access: false
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+  # Generated and lock files are reviewed through their sources.
+  path_filters:
+    - "!bun.lock"
+    - "!Cargo.lock"
+    - "!packages/api-client/openapi.json"
+    - "!packages/api-client/src/schema.d.ts"
+    - "!charts/kuben/crds/**"
+  path_instructions:
+    - path: "crates/**/*.rs"
+      instructions: >-
+        Check the invariants in CONTRIBUTING.md that the change touches, in
+        particular: mutations need an AuthzProof (I-1); errors returned to
+        clients carry no internal details; objects in another org answer 404,
+        not 403; channels and streams stay bounded; controllers use
+        server-side apply with the `kuben` field manager.
+    - path: "crates/kuben-store/**"
+      instructions: >-
+        Every migration must exist for both SQLite and PostgreSQL with the
+        same file name, and foreign keys stay on.
+    - path: ".github/**"
+      instructions: >-
+        Actions must be pinned to a full commit SHA. Untrusted input reaches
+        `run:` only through `env:`, never through `${{ }}` inside the script.
+        Jobs request the least `permissions` they need.
+    - path: "charts/kuben/**"
+      instructions: >-
+        RBAC stays least-privilege: a new permission needs a reason in the
+        template comment and, if Trivy flags it, in .trivyignore.yaml.
+
+chat:
+  auto_reply: true
