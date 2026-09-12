@@ -266,6 +266,13 @@ jobs:
           helm template kuben charts/kuben --kube-version 1.32.0 \
             --set route.enabled=true --set route.hostname=kuben.example.com \
             --set route.gateway.name=gw --set platform.gateway=infra/gw >/dev/null
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: trivy@0.74.0
+      # RBAC and pod security of what users install; exceptions are justified
+      # in .trivyignore.yaml.
+      - name: Helm chart misconfigurations (Trivy)
+        run: scripts/scan-chart.sh
 
   e2e:
     name: End-to-end (kind)
@@ -311,11 +318,15 @@ jobs:
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
       - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
         with:
-          tool: cargo-zigbuild
-      - run: cargo zigbuild -p kuben --release --locked --features embed-ui --target "$TARGET"
+          tool: cargo-zigbuild,cargo-auditable@0.7.5,trivy@0.74.0
+      # Exactly like the release: static musl, UI and dependency list embedded.
+      - run: cargo auditable zigbuild -p kuben --release --locked --features embed-ui --target "$TARGET"
       - run: scripts/check-budgets.sh binary "target/$TARGET/release/kuben"
       - name: Smoke test
         run: target/$TARGET/release/kuben --version
+      # The dependency list must be present and free of fixed HIGH/CRITICAL issues.
+      - name: Scan the shipped binary (Trivy)
+        run: scripts/scan-binary.sh "target/$TARGET/release/kuben"
 
   # Static analysis of the workflows and the setup action: template injection,
   # excessive permissions, cache poisoning, impostor or unpinned actions. It

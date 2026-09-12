@@ -29,11 +29,30 @@ jobs:
         with:
           command: check advisories
 
+  image:
+    name: Published image (Trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+        with:
+          tool: trivy@0.74.0
+      # The image is distroless plus the static binary. Release binaries are
+      # built with cargo-auditable, so the Rust crates inside are scanned too.
+      - name: Scan ghcr.io/teamtem-dev/kuben:latest
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 ghcr.io/teamtem-dev/kuben:latest
+
   # A failed scheduled run only emails whoever last edited the cron line.
   # One open issue makes it visible to everyone; later failures comment on it.
   report:
     name: Report failure
-    needs: [advisories]
+    needs: [advisories, image]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -39,6 +39,7 @@ check "package manifest" "web" apps/console/package.json
 check "mixed" "rust web codegen" crates/kuben-api/src/routes/apps.rs apps/console/src/lib/api.ts
 check "nextest config" "rust codegen" .config/nextest.toml
 check "new script" "scripts" scripts/check-drift.sh
+check "trivy exceptions" "scripts" .trivyignore.yaml
 
 all=$(printf '' | scripts/ci-changes.sh | grep -c '=true')
 if [[ $all == 5 ]]; then echo "ok   empty list selects everything"; else echo "FAIL empty list"; failures=$((failures + 1)); fi

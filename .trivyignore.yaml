@@ -1,0 +1,21 @@
+# Justified exceptions for scripts/scan-chart.sh (Trivy misconfiguration scan
+# of charts/kuben). Each entry says why Kuben needs the permission. Review this
+# list whenever charts/kuben/templates/rbac.yaml changes.
+misconfigurations:
+  - id: KSV041
+    paths: ["templates/rbac.yaml"]
+    statement: >-
+      Manage secrets: Kuben writes app secrets (write-only) and template
+      credentials into each environment's namespace.
+  - id: KSV046
+    paths: ["templates/rbac.yaml"]
+    statement: >-
+      Manage all resources: the only wildcard is `resources: ["*"]` in Kuben's
+      own API group kuben.dev (its CRDs and their status subresources). No core
+      or third-party group is granted a wildcard.
+  - id: KSV056
+    paths: ["templates/rbac.yaml"]
+    statement: >-
+      Manage networking: environment isolation (NetworkPolicy), app Services,
+      and HTTPS routes (Gateway API HTTPRoutes and the listeners of Kuben's own
+      Gateway).
