@@ -32,7 +32,9 @@ CERT_MANAGER_VERSION=${CERT_MANAGER_VERSION:-v1.21.0}
 work=$(mktemp -d)
 pf_pid=""
 cleanup() {
-  [[ -n $pf_pid ]] && kill "$pf_pid" 2>/dev/null || true
+  if [[ -n $pf_pid ]]; then
+    kill "$pf_pid" 2>/dev/null || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -49,6 +51,26 @@ k() { kubectl -n "$NS" "$@"; }
 
 wait_job() { # <job> <condition: Complete|Failed> <timeout>
   kubectl -n "$NS" wait "job/$1" --for="condition=$2" --timeout="$3" >/dev/null
+}
+
+# A brand-new Deployment has no conditions yet; wait for Available itself,
+# not for `rollout status`, which can return before the pods serve.
+wait_available() { # <deployment> <timeout>
+  kubectl -n "$NS" wait "deploy/$1" --for=condition=Available --timeout="$2" >/dev/null
+}
+
+# Retry a command until it succeeds: NodePort rules and EndpointSlices lag
+# a ready Pod by a moment.
+retry() { # <attempts> <command...>
+  local attempts=$1
+  shift
+  for _ in $(seq 1 "$attempts"); do
+    if "$@" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
 }
 
 say "Namespace and node access"
@@ -143,7 +165,7 @@ spec:
   selector: { app: zot }
   ports: [{ port: 5000, targetPort: 5000, nodePort: $REG_PORT }]
 YAML
-k rollout status deploy/zot --timeout=180s >/dev/null || fail "registry did not become ready"
+wait_available zot 180s || fail "registry did not become ready"
 
 # The node's container runtime (not the Pod network) must resolve and trust
 # the registry: node-level DNS plus a containerd hosts.toml with the CA.
@@ -159,6 +181,8 @@ reg_curl() { # <user:pass> <path> [extra curl args...]
   shift 2
   curl -sS --cacert "$work/ca.crt" --resolve "$REG:$node_ip" -u "$cred" "$@" "https://$REG$path"
 }
+retry 30 reg_curl "pull-a:$pull_a" /v2/ --fail -o /dev/null ||
+  fail "registry NodePort $REG_PORT on $node_ip never answered /v2/ with valid credentials"
 code=$(reg_curl "pull-a:$pull_a" /v2/ -o /dev/null -w '%{http_code}')
 [[ $code == 200 ]] || fail "registry /v2/ with valid credentials answered $code"
 code=$(curl -sS --cacert "$work/ca.crt" --resolve "$REG:$node_ip" -o /dev/null -w '%{http_code}' "https://$REG/v2/")
@@ -277,7 +301,7 @@ spec:
   selector: { app: m0-app }
   ports: [{ port: 80, targetPort: 8080 }]
 YAML
-k rollout status deploy/app --timeout=180s >/dev/null || fail "the node could not pull by digest"
+wait_available app 180s || fail "the node could not pull by digest"
 pass "the node pulled $REG/tenant-a/app@$digest with a namespace pull secret"
 
 say "4. A pull credential for one repository cannot read another"
@@ -296,7 +320,7 @@ else
   fail "the over-limit build neither failed nor finished"
 fi
 kubectl wait node --all --for=condition=Ready --timeout=60s >/dev/null || fail "a node is not Ready after the OOM build"
-k rollout status deploy/zot --timeout=30s >/dev/null || fail "the registry did not survive the OOM build"
+wait_available zot 30s || fail "the registry did not survive the OOM build"
 pass "node and registry stayed healthy"
 
 say "6. Gateway API + Traefik + cert-manager serve the app over TLS"
