@@ -252,7 +252,7 @@ jobs:
             echo "::error::not executable in git (fix: git update-index --chmod=+x <file>): $bad"
             exit 1
           fi
-      - run: shellcheck install.sh scripts/*.sh
+      - run: shellcheck install.sh scripts/*.sh scripts/spikes/*.sh
       - name: install.sh parses under sh, dash and bash
         run: |
           sudo apt-get install -y --no-install-recommends dash >/dev/null
