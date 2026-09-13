@@ -294,6 +294,12 @@ jobs:
           wait: 120s
       # Builds the debug binary first (kuben#e2e depends on kuben#build).
       - run: bun turbo run kuben#e2e
+      # ADR-027 spike: stale resourceVersion writes, server-side apply with a
+      # stale precondition, and racing writers against the real API server.
+      - name: Two writers against the API server (M0 spike)
+        run: bun turbo run kuben-platform#test:cluster
+        env:
+          KUBEN_E2E_CLUSTER: "1"
       # The chart against the real API server, whose CRDs the e2e run applied:
       # server-side validation catches what `helm template` cannot, like a
       # custom resource that does not match its schema (v1.0.3 shipped

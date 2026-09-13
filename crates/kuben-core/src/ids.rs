@@ -74,6 +74,22 @@ id_type!(
     /// An API token.
     TokenId
 );
+id_type!(
+    /// One application on one environment placement (ADR-026).
+    TargetId
+);
+id_type!(
+    /// An immutable, portable release: artifact digests plus portable config.
+    ReleaseId
+);
+id_type!(
+    /// One attempt to make a release effective on one target.
+    DeploymentRunId
+);
+id_type!(
+    /// One build attempt; an infrastructure retry is a new attempt.
+    BuildAttemptId
+);
 
 #[cfg(test)]
 mod tests {
