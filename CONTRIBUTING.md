@@ -17,7 +17,7 @@ the 18 invariants every change must keep.
 Every task runs through Turborepo (`turbo.json`). Root `package.json` scripts
 are the entry points: `bun run build | check | lint | format | test | gen`.
 One package works too: `bun turbo run test --filter=kuben-store`. See
-[the migration plan](docs/turborepo-migration-plan.md) for the full task table.
+[ADR-024](docs/adr/0024-turborepo-bun-cargo.md) for how the task graph is organised.
 
 Repository rules:
 
