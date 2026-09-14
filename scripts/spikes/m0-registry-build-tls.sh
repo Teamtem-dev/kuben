@@ -324,6 +324,25 @@ wait_available zot 30s || fail "the registry did not survive the OOM build"
 pass "node and registry stayed healthy"
 
 say "6. Gateway API + Traefik + cert-manager serve the app over TLS"
+
+# What a stuck release is doing. `helm --wait` only ever says "context
+# deadline exceeded", so releases are installed without it and waited on here.
+dump_ns() { # <namespace, equal to the release name>
+  {
+    printf -- '--- %s\n' "$1"
+    helm -n "$1" status "$1" 2>&1 | head -20 || true
+    kubectl -n "$1" get deploy,pods,jobs -o wide || true
+    kubectl -n "$1" get events --sort-by=.lastTimestamp | tail -40 || true
+    for d in $(kubectl -n "$1" get deploy -o name); do
+      kubectl -n "$1" logs "$d" --all-containers --tail=40 || true
+    done
+  } >&2
+}
+wait_release() { # <namespace> <timeout>
+  kubectl -n "$1" wait deploy --all --for=condition=Available --timeout="$2" >/dev/null ||
+    { dump_ns "$1"; fail "the $1 release was not Available within $2"; }
+}
+
 kubectl apply --server-side -f \
   "https://github.com/kubernetes-sigs/gateway-api/releases/download/${GATEWAY_API_VERSION}/standard-install.yaml" >/dev/null
 helm repo add traefik https://traefik.github.io/charts >/dev/null
@@ -331,11 +350,17 @@ helm repo add jetstack https://charts.jetstack.io >/dev/null
 helm repo update >/dev/null
 helm upgrade --install traefik traefik/traefik --namespace traefik --create-namespace \
   --set providers.kubernetesGateway.enabled=true --set gateway.enabled=false \
-  --set service.type=ClusterIP --wait --timeout 5m >/dev/null
+  --set service.type=ClusterIP --timeout 5m >/dev/null
+# startupapicheck is a post-install hook Job that helm blocks on; the retried
+# apply below checks the same thing (the webhook answers) with a visible error.
 helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace \
-  --version "$CERT_MANAGER_VERSION" --set crds.enabled=true --wait --timeout 5m >/dev/null
+  --version "$CERT_MANAGER_VERSION" --set crds.enabled=true --set startupapicheck.enabled=false \
+  --timeout 5m >/dev/null
+wait_release traefik 5m
+wait_release cert-manager 5m
+pass "Traefik (Gateway provider) and cert-manager are Available"
 
-k apply -f - >/dev/null <<YAML
+cat >"$work/tls.yaml" <<YAML
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata: { name: selfsigned }
@@ -384,11 +409,19 @@ spec:
   hostnames: ["$APP_HOST"]
   rules: [{ backendRefs: [{ name: app, port: 80 }] }]
 YAML
-k wait certificate/app-tls --for=condition=Ready --timeout=120s >/dev/null || fail "cert-manager did not issue app-tls"
-k wait gateway/kuben --for=condition=Programmed --timeout=120s >/dev/null || fail "the Gateway was not programmed"
+# The cert-manager webhook answers a moment after its Deployment is Available.
+if ! retry 30 k apply -f "$work/tls.yaml"; then
+  k apply -f "$work/tls.yaml" >&2 || true
+  dump_ns cert-manager
+  fail "the TLS and Gateway resources were not accepted"
+fi
+k wait certificate/app-tls --for=condition=Ready --timeout=120s >/dev/null ||
+  { dump_ns cert-manager; fail "cert-manager did not issue app-tls"; }
+k wait gateway/kuben --for=condition=Programmed --timeout=120s >/dev/null ||
+  { k get gateway kuben -o yaml >&2 || true; dump_ns traefik; fail "the Gateway was not programmed"; }
 k wait httproute/app --timeout=120s \
   --for=jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}'=True >/dev/null ||
-  fail "the HTTPRoute was not accepted"
+  { k get httproute app -o yaml >&2 || true; dump_ns traefik; fail "the HTTPRoute was not accepted"; }
 k get secret app-tls -o jsonpath='{.data.ca\.crt}' | base64 -d >"$work/gateway-ca.crt"
 
 kubectl -n traefik port-forward svc/traefik 18443:443 >/dev/null 2>&1 &
