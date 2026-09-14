@@ -22,6 +22,7 @@ tokio-util.workspace = true
 futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 dashmap.workspace = true
 backon.workspace = true
 thiserror.workspace = true
@@ -30,6 +31,7 @@ tracing.workspace = true
 metrics.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 # The materializer's cluster tests keep their rows in a schema of their own.
 kuben-store = { workspace = true, features = ["testing"] }
 rcgen.workspace = true

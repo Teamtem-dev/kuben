@@ -1,0 +1,352 @@
+---
+source: crates/kuben-platform/src/render/mod.rs
+expression: pretty(&plan)
+---
+[
+  {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "labels": {
+        "app.kubernetes.io/managed-by": "kuben",
+        "kuben.dev/app": "api",
+        "kuben.dev/environment": "shop-prod",
+        "kuben.dev/process": "web",
+        "kuben.dev/project": "shop"
+      },
+      "name": "api-web",
+      "namespace": "kb-shop-prod"
+    },
+    "spec": {
+      "progressDeadlineSeconds": 600,
+      "revisionHistoryLimit": 5,
+      "selector": {
+        "matchLabels": {
+          "kuben.dev/app": "api",
+          "kuben.dev/process": "web"
+        }
+      },
+      "strategy": {
+        "rollingUpdate": {
+          "maxSurge": 1,
+          "maxUnavailable": 0
+        },
+        "type": "RollingUpdate"
+      },
+      "template": {
+        "metadata": {
+          "labels": {
+            "app.kubernetes.io/managed-by": "kuben",
+            "kuben.dev/app": "api",
+            "kuben.dev/environment": "shop-prod",
+            "kuben.dev/process": "web",
+            "kuben.dev/project": "shop"
+          }
+        },
+        "spec": {
+          "automountServiceAccountToken": false,
+          "containers": [
+            {
+              "env": [
+                {
+                  "name": "LOG_LEVEL",
+                  "value": "info"
+                },
+                {
+                  "name": "DATABASE_URL",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "url",
+                      "name": "db"
+                    }
+                  }
+                },
+                {
+                  "name": "PORT",
+                  "value": "3000"
+                }
+              ],
+              "image": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "livenessProbe": {
+                "failureThreshold": 3,
+                "httpGet": {
+                  "path": "/healthz",
+                  "port": 3000
+                },
+                "periodSeconds": 20,
+                "timeoutSeconds": 5
+              },
+              "name": "web",
+              "ports": [
+                {
+                  "containerPort": 3000,
+                  "name": "http",
+                  "protocol": "TCP"
+                }
+              ],
+              "readinessProbe": {
+                "failureThreshold": 3,
+                "httpGet": {
+                  "path": "/healthz",
+                  "port": 3000
+                },
+                "periodSeconds": 10,
+                "timeoutSeconds": 3
+              },
+              "resources": {
+                "limits": {
+                  "memory": "256Mi"
+                },
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "128Mi"
+                }
+              },
+              "securityContext": {
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "NET_RAW"
+                  ]
+                },
+                "seccompProfile": {
+                  "type": "RuntimeDefault"
+                }
+              },
+              "startupProbe": {
+                "failureThreshold": 60,
+                "httpGet": {
+                  "path": "/healthz",
+                  "port": 3000
+                },
+                "periodSeconds": 5,
+                "timeoutSeconds": 3
+              }
+            }
+          ],
+          "enableServiceLinks": false,
+          "securityContext": {
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    }
+  },
+  {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "labels": {
+        "app.kubernetes.io/managed-by": "kuben",
+        "kuben.dev/app": "api",
+        "kuben.dev/environment": "shop-prod",
+        "kuben.dev/process": "worker",
+        "kuben.dev/project": "shop"
+      },
+      "name": "api-worker",
+      "namespace": "kb-shop-prod"
+    },
+    "spec": {
+      "progressDeadlineSeconds": 600,
+      "replicas": 1,
+      "revisionHistoryLimit": 5,
+      "selector": {
+        "matchLabels": {
+          "kuben.dev/app": "api",
+          "kuben.dev/process": "worker"
+        }
+      },
+      "strategy": {
+        "rollingUpdate": {
+          "maxSurge": 1,
+          "maxUnavailable": 0
+        },
+        "type": "RollingUpdate"
+      },
+      "template": {
+        "metadata": {
+          "labels": {
+            "app.kubernetes.io/managed-by": "kuben",
+            "kuben.dev/app": "api",
+            "kuben.dev/environment": "shop-prod",
+            "kuben.dev/process": "worker",
+            "kuben.dev/project": "shop"
+          }
+        },
+        "spec": {
+          "automountServiceAccountToken": false,
+          "containers": [
+            {
+              "command": [
+                "bin/worker"
+              ],
+              "env": [
+                {
+                  "name": "LOG_LEVEL",
+                  "value": "info"
+                },
+                {
+                  "name": "DATABASE_URL",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "url",
+                      "name": "db"
+                    }
+                  }
+                }
+              ],
+              "image": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "name": "worker",
+              "resources": {
+                "limits": {
+                  "memory": "128Mi"
+                },
+                "requests": {
+                  "cpu": "50m",
+                  "memory": "64Mi"
+                }
+              },
+              "securityContext": {
+                "allowPrivilegeEscalation": false,
+                "capabilities": {
+                  "drop": [
+                    "NET_RAW"
+                  ]
+                },
+                "seccompProfile": {
+                  "type": "RuntimeDefault"
+                }
+              }
+            }
+          ],
+          "enableServiceLinks": false,
+          "securityContext": {
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          },
+          "terminationGracePeriodSeconds": 30
+        }
+      }
+    }
+  },
+  {
+    "apiVersion": "autoscaling/v2",
+    "kind": "HorizontalPodAutoscaler",
+    "metadata": {
+      "labels": {
+        "app.kubernetes.io/managed-by": "kuben",
+        "kuben.dev/app": "api",
+        "kuben.dev/environment": "shop-prod",
+        "kuben.dev/process": "web",
+        "kuben.dev/project": "shop"
+      },
+      "name": "api-web",
+      "namespace": "kb-shop-prod"
+    },
+    "spec": {
+      "maxReplicas": 4,
+      "metrics": [
+        {
+          "resource": {
+            "name": "cpu",
+            "target": {
+              "averageUtilization": 80,
+              "type": "Utilization"
+            }
+          },
+          "type": "Resource"
+        }
+      ],
+      "minReplicas": 2,
+      "scaleTargetRef": {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "api-web"
+      }
+    }
+  },
+  {
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+      "labels": {
+        "app.kubernetes.io/managed-by": "kuben",
+        "kuben.dev/app": "api",
+        "kuben.dev/environment": "shop-prod",
+        "kuben.dev/project": "shop"
+      },
+      "name": "api",
+      "namespace": "kb-shop-prod"
+    },
+    "spec": {
+      "ports": [
+        {
+          "appProtocol": "http",
+          "name": "http",
+          "port": 80,
+          "protocol": "TCP",
+          "targetPort": 3000
+        }
+      ],
+      "selector": {
+        "kuben.dev/app": "api",
+        "kuben.dev/process": "web"
+      },
+      "type": "ClusterIP"
+    }
+  },
+  {
+    "apiVersion": "gateway.networking.k8s.io/v1",
+    "kind": "HTTPRoute",
+    "metadata": {
+      "labels": {
+        "app.kubernetes.io/managed-by": "kuben",
+        "kuben.dev/app": "api",
+        "kuben.dev/environment": "shop-prod",
+        "kuben.dev/project": "shop"
+      },
+      "name": "api",
+      "namespace": "kb-shop-prod"
+    },
+    "spec": {
+      "hostnames": [
+        "api.acme.com",
+        "api-shop-prod.apps.example.com"
+      ],
+      "parentRefs": [
+        {
+          "name": "kuben",
+          "namespace": "kuben-system",
+          "sectionName": "h-20550d4a0e0f"
+        },
+        {
+          "name": "kuben",
+          "namespace": "kuben-system",
+          "sectionName": "h-7ddbda499ebe"
+        }
+      ],
+      "rules": [
+        {
+          "backendRefs": [
+            {
+              "name": "api",
+              "port": 80
+            }
+          ],
+          "matches": [
+            {
+              "path": {
+                "type": "PathPrefix",
+                "value": "/"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

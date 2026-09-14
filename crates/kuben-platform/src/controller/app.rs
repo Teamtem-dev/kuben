@@ -50,18 +50,20 @@ pub async fn run(
     Ok(())
 }
 
-struct Desired {
-    deployments: Vec<Deployment>,
-    autoscalers: Vec<HorizontalPodAutoscaler>,
-    cron_jobs: Vec<CronJob>,
-    volumes: Vec<PersistentVolumeClaim>,
-    service: Option<Service>,
-    route: Option<serde_json::Value>,
+/// Everything an App's spec makes, before it is applied. The renderer
+/// (`crate::render`) freezes the same objects into a RenderPlan.
+pub(crate) struct Desired {
+    pub(crate) deployments: Vec<Deployment>,
+    pub(crate) autoscalers: Vec<HorizontalPodAutoscaler>,
+    pub(crate) cron_jobs: Vec<CronJob>,
+    pub(crate) volumes: Vec<PersistentVolumeClaim>,
+    pub(crate) service: Option<Service>,
+    pub(crate) route: Option<serde_json::Value>,
     /// The web process is HTTP and should be reachable through the gateway.
-    exposes_http: bool,
+    pub(crate) exposes_http: bool,
 }
 
-fn build(app: &App, platform: &Platform, owner: &OwnerReference) -> Result<Desired, BuildError> {
+pub(crate) fn build(app: &App, platform: &Platform, owner: &OwnerReference) -> Result<Desired, BuildError> {
     resources::validate(app)?;
     Ok(Desired {
         deployments: resources::deployments(app, platform, owner)?,

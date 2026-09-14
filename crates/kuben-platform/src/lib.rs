@@ -18,6 +18,7 @@ pub mod leader;
 pub mod materializer;
 pub mod projection;
 pub mod registry;
+pub mod render;
 pub mod supervise;
 
 #[cfg(feature = "activator")]
