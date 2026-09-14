@@ -82,7 +82,7 @@ impl Error {
 
 /// Why the work on a claim stopped.
 #[derive(Debug)]
-enum Stop {
+pub(super) enum Stop {
     /// Another worker holds the operation now: drop everything.
     Fenced,
     /// Shutting down: the lease runs out and another worker resumes.
@@ -122,8 +122,8 @@ fn refused(code: &str) -> Stop {
 /// The materializer of one process.
 #[derive(Clone)]
 pub struct Worker {
-    store: Store,
-    client: Client,
+    pub(super) store: Store,
+    pub(super) client: Client,
     id: String,
     verify_deadline: Duration,
 }
@@ -321,7 +321,7 @@ impl Worker {
     }
 
     /// Write the App object under the generation fence.
-    async fn write_app(&self, m: &Materialization, desired: &App) -> Result<App, Stop> {
+    pub(super) async fn write_app(&self, m: &Materialization, desired: &App) -> Result<App, Stop> {
         let api = Api::<App>::namespaced(self.client.clone(), &m.namespace);
         for _ in 0..MAX_CONFLICTS {
             let live = api.get_opt(&m.application_slug).await?;

@@ -21,7 +21,7 @@ use kuben_core::{
 use kuben_crd::{App, AppSpec, Environment, PreviewPolicy, Project, ProjectSpec, labels};
 use kuben_platform::{
     controller::crd_apply,
-    materializer::{Worker, render::annotations},
+    materializer::{Worker, drift::Finding, render::annotations},
 };
 use kuben_store::{
     Store,
@@ -381,5 +381,82 @@ async fn a_name_another_organization_holds_is_never_taken() {
             .display_name,
         "Theirs"
     );
+    w.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs a Kubernetes cluster and PostgreSQL; run with --ignored"]
+async fn drift_is_recorded_and_replaced() {
+    let w = World::new().await;
+    let (operation, _) = w.deploy(0).await;
+    let worker = w.worker().with_verify_deadline(Duration::from_mins(2));
+    let task = {
+        let worker = worker.clone();
+        tokio::spawn(async move { worker.work_once(&CancellationToken::new()).await })
+    };
+    let apps = w.apps();
+    let app = wait_for_app(&apps).await;
+    report_ready(&apps, &app).await;
+    assert_eq!(task.await.expect("join").expect("work"), Some(operation));
+    assert_eq!(
+        worker.check_drift(&app).await.expect("check"),
+        Finding::Clean,
+        "a status update is not drift"
+    );
+
+    // Someone edits the image with kubectl.
+    let edit = PatchParams {
+        field_manager: Some("kubectl-edit".into()),
+        ..PatchParams::default()
+    };
+    let body = json!({ "spec": { "source": { "image": "evil.example.com/web:latest" } } });
+    let edited = apps
+        .patch("web", &edit, &Patch::Merge(&body))
+        .await
+        .expect("edit");
+    let Finding::Drifted(drift) = worker.check_drift(&edited).await.expect("check") else {
+        panic!("an edit is drift");
+    };
+    assert!(drift.spec_changed && !drift.deleted);
+    assert_eq!(drift.managers, vec!["kubectl-edit".to_owned()]);
+    let replaced = apps.get("web").await.expect("app");
+    assert_eq!(
+        replaced.spec.source.image.as_deref(),
+        Some(format!("{REPOSITORY}@{DIGEST}").as_str()),
+        "SQL's rendering is written again"
+    );
+    assert_eq!(
+        worker.check_drift(&replaced).await.expect("check"),
+        Finding::Clean,
+        "the replacement is not drift"
+    );
+
+    // Someone deletes it: it is written again, as a new object.
+    apps.delete("web", &DeleteParams::default())
+        .await
+        .expect("delete");
+    for _ in 0..50 {
+        if apps.get_opt("web").await.expect("read").is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    let Finding::Drifted(drift) = worker.check_drift(&replaced).await.expect("check") else {
+        panic!("a deletion is drift");
+    };
+    assert!(drift.deleted);
+    let recreated = apps.get("web").await.expect("written again");
+    assert_ne!(recreated.uid(), replaced.uid());
+
+    let mut t = w.store.tenant(w.org).await.expect("tenant");
+    let record = t.materialized(w.target).await.expect("read").expect("recorded");
+    drop(t);
+    assert_eq!(record.drift_count, 2);
+    assert_eq!(
+        Some(record.resource_uid.as_str()),
+        recreated.metadata.uid.as_deref()
+    );
+    assert_eq!(Some(record.resource_generation), recreated.metadata.generation);
+    assert_eq!(record.drift.expect("described")["deleted"], true);
     w.cleanup().await;
 }

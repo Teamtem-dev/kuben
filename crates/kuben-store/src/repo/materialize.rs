@@ -56,8 +56,8 @@ const MATERIALIZED_RESOURCE: &str = "SELECT target_id, org_id, project_id, gener
      resource_uid, resource_generation, drift_count, drift_detected_at, drift::text AS drift \
      FROM target_materializations WHERE resource_uid = $1";
 const RECORD_DRIFT: &str = "UPDATE target_materializations \
-     SET resource_generation = COALESCE($3, resource_generation), drift_count = drift_count + 1, \
-         drift_detected_at = kuben_now_ms(), drift = $4::jsonb \
+     SET resource_uid = COALESCE($3, resource_uid), resource_generation = COALESCE($4, resource_generation), \
+         drift_count = drift_count + 1, drift_detected_at = kuben_now_ms(), drift = $5::jsonb \
      WHERE target_id = $1 AND generation = $2";
 
 /// Everything a deployment run is rendered from.
@@ -301,19 +301,21 @@ impl Store {
         Ok(row.map(MaterializedRow::into_materialized).transpose()?)
     }
 
-    /// Record `drift` found on the App object of `m`, and the object's
-    /// `metadata.generation` after it was replaced, if it was. False when the
-    /// target has moved on to another generation since `m` was read.
+    /// Record `drift` found on the App object of `m`, and the UID and
+    /// `metadata.generation` of the object that replaced it, if one did (a
+    /// deleted object comes back with a new UID). False when the target has
+    /// moved on to another generation since `m` was read.
     pub async fn record_drift(
         &self,
         m: &Materialized,
-        replaced_generation: Option<i64>,
+        replaced: Option<(&str, i64)>,
         drift: &Value,
     ) -> Result<bool, StoreError> {
         let rows = sqlx::query(RECORD_DRIFT)
             .bind(*m.target.as_uuid())
             .bind(signed(m.generation.0)?)
-            .bind(replaced_generation)
+            .bind(replaced.map(|(uid, _)| uid))
+            .bind(replaced.map(|(_, generation)| generation))
             .bind(drift.to_string())
             .execute(self.pool())
             .await?
@@ -577,7 +579,7 @@ mod tests {
         let drift = json!({ "managers": ["kubectl-edit"] });
         assert!(
             store
-                .record_drift(&written, Some(5), &drift)
+                .record_drift(&written, Some(("uid-2", 5)), &drift)
                 .await
                 .expect("drift")
         );
@@ -589,11 +591,16 @@ mod tests {
             !store.record_drift(&stale, None, &drift).await.expect("drift"),
             "drift of another generation"
         );
+        assert_eq!(
+            store.materialized_resource("uid-1").await.expect("read"),
+            None,
+            "the object that replaced the drifted one has a new UID"
+        );
         let now = store
-            .materialized_resource("uid-1")
+            .materialized_resource("uid-2")
             .await
             .expect("read")
-            .expect("found");
+            .expect("found by the replacement's UID");
         assert_eq!((now.drift_count, now.resource_generation), (1, 5));
         assert_eq!(now.drift, Some(drift));
         assert!(now.drift_detected_at.is_some());

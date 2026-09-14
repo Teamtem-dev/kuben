@@ -128,10 +128,27 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// What runs on one replica at a time: the controllers and the materializer's
+/// drift watch.
+async fn leading(
+    registry: ClusterRegistry,
+    projections: Arc<Projections>,
+    health: Health,
+    worker: kuben_platform::materializer::Worker,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    tokio::try_join!(
+        kuben_platform::controller::run_all(registry, projections, health, token.clone()),
+        kuben_platform::materializer::drift::watch(worker, token),
+    )?;
+    Ok(())
+}
+
 /// Cluster-backed subsystems: informers, the readiness gate on their first
-/// sync, controllers (behind leader election when enabled), the materializer
-/// (whose claims are fenced in SQL, so every replica runs one) and, with the
-/// `activator` feature, the activator.
+/// sync, controllers and the materializer's drift watch (behind leader
+/// election when enabled), the materializer's worker (whose claims are
+/// fenced in SQL, so every replica runs one) and, with the `activator`
+/// feature, the activator.
 fn spawn_cluster_tasks(
     cfg: &Config,
     store: &kuben_store::Store,
@@ -167,33 +184,36 @@ fn spawn_cluster_tasks(
     });
 
     if cfg.has_role(Role::Controller) {
-        let (r, p, h, t) = (
+        // SQL is the only desired-state writer; the materializer writes its
+        // resources (ADR-032).
+        let worker =
+            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
+        let (r, p, h, watcher, t) = (
             registry.clone(),
             projections.clone(),
             health.clone(),
+            worker.clone(),
             shutdown.child_token(),
         );
         let election = election.cloned();
         tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
-            let (r, p, h, election) = (r.clone(), p.clone(), h.clone(), election.clone());
+            let (r, p, h, watcher, election) =
+                (r.clone(), p.clone(), h.clone(), watcher.clone(), election.clone());
             async move {
                 match election {
                     // Several replicas: reconcile only while holding the Lease.
                     Some(election) => {
                         let client = r.primary();
                         leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
-                            kuben_platform::controller::run_all(r, p, h, tok)
+                            leading(r, p, h, watcher, tok)
                         })
                         .await
                     }
-                    None => kuben_platform::controller::run_all(r, p, h, tok).await,
+                    None => Box::pin(leading(r, p, h, watcher, tok)).await,
                 }
             }
         })));
 
-        // SQL is the only desired-state writer; this writes its resources (ADR-032).
-        let worker =
-            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
         let (h, t) = (health.clone(), shutdown.child_token());
         tasks.push(tokio::spawn(supervise(
             "materializer",

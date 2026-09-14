@@ -9,7 +9,10 @@
 //! * [`progress`] — the App controller's status as run progress.
 //! * [`worker`] — claims `deployment` operations and carries their runs from
 //!   `planned` to `succeeded` or `failed`.
+//! * [`drift`] — reports changes someone else made to a materialized App
+//!   object and writes it again.
 
+pub mod drift;
 pub mod fence;
 pub mod progress;
 pub mod render;
