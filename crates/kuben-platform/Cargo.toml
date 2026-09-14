@@ -28,5 +28,11 @@ anyhow.workspace = true
 tracing.workspace = true
 metrics.workspace = true
 
+[dev-dependencies]
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+uuid.workspace = true
+
 [lints]
 workspace = true

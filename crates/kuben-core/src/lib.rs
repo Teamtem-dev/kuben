@@ -7,6 +7,7 @@ pub mod config;
 pub mod error;
 pub mod ids;
 pub mod model;
+pub mod ops;
 pub mod perm;
 pub mod time;
 pub mod traits;

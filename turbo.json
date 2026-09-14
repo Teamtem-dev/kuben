@@ -129,8 +129,23 @@
       ]
     },
     "kuben-store#test:postgres": {
-      "description": "Store tests against PostgreSQL (set KUBEN_TEST_PG_URL=postgres://...).",
-      "command": ["cargo", "nextest", "run", "--package=kuben-store", "--locked", "--test", "matrix"],
+      "description": "Store tests and the M0 operation-store spike against PostgreSQL (set KUBEN_TEST_PG_URL=postgres://...).",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--package=kuben-store",
+        "--locked",
+        "--test",
+        "matrix",
+        "--test",
+        "ops_store_pg"
+      ],
+      "cache": false
+    },
+    "kuben-platform#test:cluster": {
+      "description": "M0 spike: two writers against the current kube context (set KUBEN_E2E_CLUSTER=1).",
+      "command": ["cargo", "test", "--package=kuben-platform", "--locked", "--test", "two_writer_cas"],
       "cache": false
     },
     "kuben-api#gen": {
