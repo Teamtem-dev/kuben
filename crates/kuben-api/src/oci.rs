@@ -7,19 +7,27 @@
 //! already `repository@sha256:…` needs no registry at all.
 //!
 //! Registries that refuse anonymous pulls are not supported yet; the caller
-//! gives a digest instead.
+//! gives a digest instead. Registries are reached through the proxy the
+//! environment names (`HTTPS_PROXY`, `NO_PROXY`), as curl does.
 
-use std::{collections::BTreeMap, fmt, fmt::Write as _, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt, fmt::Write as _, future::Future, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use http::{HeaderMap, Method, Request, StatusCode, header};
 use http_body_util::{BodyExt, Empty, Limited};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
-    client::legacy::{Client, connect::HttpConnector},
+    client::{
+        legacy::{
+            Client,
+            connect::{HttpConnector, proxy::Tunnel},
+        },
+        proxy::matcher::{Intercept, Matcher},
+    },
     rt::TokioExecutor,
 };
 use kuben_core::artifact::Digest;
+use rustls::crypto::CryptoProvider;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 
@@ -231,19 +239,23 @@ impl ImageResolver for FixedImages {
     }
 }
 
-type HttpClient = Client<HttpsConnector<HttpConnector>, Empty<Bytes>>;
+type Direct = Client<HttpsConnector<HttpConnector>, Empty<Bytes>>;
+type Tunneled = Client<HttpsConnector<Tunnel<HttpConnector>>, Empty<Bytes>>;
 
-/// Asks the image's registry over HTTPS (OCI distribution API).
+/// Asks the image's registry over HTTPS (OCI distribution API). Like curl,
+/// it goes through the proxy `HTTPS_PROXY` (or `ALL_PROXY`) names, unless
+/// `NO_PROXY` exempts the registry.
 #[derive(Clone)]
 pub struct RegistryResolver {
-    client: Result<HttpClient, Arc<str>>,
+    direct: Result<Direct, Arc<str>>,
+    proxies: Arc<Matcher>,
 }
 
 impl fmt::Debug for RegistryResolver {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RegistryResolver")
-            .field("ready", &self.client.is_ok())
-            .finish()
+            .field("ready", &self.direct.is_ok())
+            .finish_non_exhaustive()
     }
 }
 
@@ -259,18 +271,65 @@ struct TokenResponse {
     access_token: Option<String>,
 }
 
+fn no_roots(e: impl fmt::Display) -> Arc<str> {
+    Arc::from(format!("no root certificates: {e}"))
+}
+
+fn crypto() -> Arc<CryptoProvider> {
+    Arc::new(rustls::crypto::ring::default_provider())
+}
+
+fn direct() -> Result<Direct, Arc<str>> {
+    let connector = hyper_rustls::HttpsConnectorBuilder::new()
+        .with_provider_and_native_roots(crypto())
+        .map_err(no_roots)?
+        .https_only()
+        .enable_http1()
+        .build();
+    Ok(Client::builder(TokioExecutor::new()).build(connector))
+}
+
+/// A client whose connections are tunnelled through `proxy` (HTTP CONNECT).
+fn tunneled(proxy: &Intercept) -> Result<Tunneled, Arc<str>> {
+    let mut tunnel = Tunnel::new(proxy.uri().clone(), HttpConnector::new());
+    if let Some(auth) = proxy.basic_auth() {
+        tunnel = tunnel.with_auth(auth.clone());
+    }
+    let connector = hyper_rustls::HttpsConnectorBuilder::new()
+        .with_provider_and_native_roots(crypto())
+        .map_err(no_roots)?
+        .https_only()
+        .enable_http1()
+        .wrap_connector(tunnel);
+    Ok(Client::builder(TokioExecutor::new()).build(connector))
+}
+
+/// `future` within the timeout, its error told with its sources.
+async fn within<T, E>(future: impl Future<Output = Result<T, E>>) -> Result<T, String>
+where
+    E: std::error::Error + 'static,
+{
+    tokio::time::timeout(TIMEOUT, future)
+        .await
+        .map_err(|_| "timed out".to_owned())?
+        .map_err(|e| chain(&e))
+}
+
 impl RegistryResolver {
-    /// A resolver trusting the system's root certificates. When they cannot
-    /// be loaded, every resolution fails as unreachable, with the reason.
+    /// A resolver trusting the system's root certificates, with the proxy
+    /// rules of the environment. When the certificates cannot be loaded,
+    /// every resolution fails as unreachable, with the reason.
     #[must_use]
     pub fn new() -> Self {
-        let connector = hyper_rustls::HttpsConnectorBuilder::new()
-            .with_provider_and_native_roots(Arc::new(rustls::crypto::ring::default_provider()))
-            .map(|b| b.https_only().enable_http1().build());
+        Self::with_proxies(Matcher::from_env())
+    }
+
+    /// A resolver with these proxy rules instead of the environment's.
+    #[must_use]
+    pub fn with_proxies(proxies: Matcher) -> Self {
         Self {
-            client: connector
-                .map(|c| Client::builder(TokioExecutor::new()).build(c))
-                .map_err(|e| Arc::from(format!("no root certificates: {e}"))),
+            direct: direct(),
+            proxies: Arc::new(proxies),
         }
     }
 
@@ -285,7 +344,6 @@ impl RegistryResolver {
             image: image.to_owned(),
             reason,
         };
-        let client = self.client.as_ref().map_err(|e| unreachable(e.to_string()))?;
         let mut request = Request::builder()
             .method(method)
             .uri(url)
@@ -297,10 +355,17 @@ impl RegistryResolver {
         let request = request
             .body(Empty::new())
             .map_err(|e| unreachable(e.to_string()))?;
-        let response = tokio::time::timeout(TIMEOUT, client.request(request))
-            .await
-            .map_err(|_| unreachable("timed out".into()))?
-            .map_err(|e| unreachable(chain(&e)))?;
+        let response = match self.proxies.intercept(request.uri()) {
+            None => {
+                let client = self.direct.as_ref().map_err(|e| unreachable(e.to_string()))?;
+                within(client.request(request)).await
+            }
+            Some(proxy) => {
+                let client = tunneled(&proxy).map_err(|e| unreachable(e.to_string()))?;
+                within(client.request(request)).await
+            }
+        }
+        .map_err(unreachable)?;
         let (parts, body) = response.into_parts();
         let body = tokio::time::timeout(TIMEOUT, Limited::new(body, MAX_BODY).collect())
             .await

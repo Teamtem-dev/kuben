@@ -46,7 +46,7 @@ http = "1"
 bytes = "1"
 # The registry client of `kuben_api::oci`: the same crates and features kube's
 # client already builds, so no second TLS stack.
-hyper-util = { version = "0.1", default-features = false, features = ["client", "client-legacy", "http1", "tokio"] }
+hyper-util = { version = "0.1", default-features = false, features = ["client", "client-legacy", "client-proxy", "http1", "tokio"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "native-tokio", "tls12"] }
 
 # ---- kubernetes ----
