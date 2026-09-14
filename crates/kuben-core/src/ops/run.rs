@@ -96,6 +96,34 @@ impl RunPhase {
         }
     }
 
+    /// Every phase, in declaration order.
+    pub const ALL: [Self; 18] = [
+        Self::Planned,
+        Self::AwaitingApproval,
+        Self::PendingDelivery,
+        Self::AcceptedByCluster,
+        Self::Preflight,
+        Self::Blocked,
+        Self::Applying,
+        Self::Verifying,
+        Self::Succeeded,
+        Self::Failed,
+        Self::Superseded,
+        Self::CancelRequested,
+        Self::Cancelled,
+        Self::RecoveryRequested,
+        Self::Recovering,
+        Self::Recovered,
+        Self::RecoveryFailed,
+        Self::ManualActionRequired,
+    ];
+
+    /// The phase named by [`RunPhase::as_str`], as stored.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+
     /// Absorbing phases: no event changes them.
     #[must_use]
     pub const fn is_final(self) -> bool {
@@ -253,6 +281,40 @@ mod tests {
     use proptest::prelude::*;
 
     use super::{RunEvent as E, RunPhase as P, *};
+
+    #[test]
+    fn all_holds_every_phase_once_and_parse_inverts_as_str() {
+        // Exhaustive: adding a phase fails to compile until it has an index,
+        // and the assertions below then fail until `ALL` lists it.
+        const fn index(p: RunPhase) -> usize {
+            match p {
+                P::Planned => 0,
+                P::AwaitingApproval => 1,
+                P::PendingDelivery => 2,
+                P::AcceptedByCluster => 3,
+                P::Preflight => 4,
+                P::Blocked => 5,
+                P::Applying => 6,
+                P::Verifying => 7,
+                P::Succeeded => 8,
+                P::Failed => 9,
+                P::Superseded => 10,
+                P::CancelRequested => 11,
+                P::Cancelled => 12,
+                P::RecoveryRequested => 13,
+                P::Recovering => 14,
+                P::Recovered => 15,
+                P::RecoveryFailed => 16,
+                P::ManualActionRequired => 17,
+            }
+        }
+        assert_eq!(RunPhase::ALL.len(), index(P::ManualActionRequired) + 1);
+        for (i, phase) in RunPhase::ALL.into_iter().enumerate() {
+            assert_eq!(index(phase), i);
+            assert_eq!(RunPhase::parse(phase.as_str()), Some(phase));
+        }
+        assert_eq!(RunPhase::parse("finished"), None);
+    }
 
     fn run(events: &[RunEvent]) -> Result<RunPhase, IllegalTransition> {
         events.iter().try_fold(P::Planned, |p, e| p.apply(*e))

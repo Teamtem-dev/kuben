@@ -254,11 +254,11 @@ impl Tenant {
 
 /// A counter column: `CHECK (>= 0)` in the schema, so a negative value is
 /// corruption, not something to clamp.
-fn counter(value: i64) -> Result<u64, sqlx::Error> {
+pub(super) fn counter(value: i64) -> Result<u64, sqlx::Error> {
     u64::try_from(value).map_err(|e| sqlx::Error::Decode(e.into()))
 }
 
-fn deploy_policy(value: &str) -> Result<DeployPolicy, sqlx::Error> {
+pub(super) fn deploy_policy(value: &str) -> Result<DeployPolicy, sqlx::Error> {
     match value {
         "auto" => Ok(DeployPolicy::Auto),
         "manual" => Ok(DeployPolicy::Manual),

@@ -114,6 +114,14 @@ id_type!(
     /// A durable operation: one accepted request and its execution (plan §9.2).
     OperationId
 );
+id_type!(
+    /// One immutable configuration revision of a target (ADR-026).
+    ConfigRevisionId
+);
+id_type!(
+    /// A frozen, content-addressed render plan (ADR-026, I22).
+    RenderPlanId
+);
 
 #[cfg(test)]
 mod tests {
