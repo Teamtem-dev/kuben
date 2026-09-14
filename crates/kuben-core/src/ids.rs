@@ -90,6 +90,26 @@ id_type!(
     /// One build attempt; an infrastructure retry is a new attempt.
     BuildAttemptId
 );
+id_type!(
+    /// A project: owns applications and environments.
+    ProjectId
+);
+id_type!(
+    /// A logical environment such as staging or production (ADR-026).
+    EnvironmentId
+);
+id_type!(
+    /// A Kubernetes cluster registered with Kuben.
+    ClusterId
+);
+id_type!(
+    /// An environment's binding to one cluster and namespace (ADR-026).
+    PlacementId
+);
+id_type!(
+    /// An application definition in a project.
+    ApplicationId
+);
 
 #[cfg(test)]
 mod tests {
