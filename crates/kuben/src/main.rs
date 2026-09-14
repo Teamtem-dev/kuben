@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
         cli::Command::Migrate => serve::block_on(&runtime, async move {
             let store = kuben_store::Store::connect(&cfg.database).await?;
             tracing::info!(backend = store.backend(), "migrations applied");
-            store.checkpoint_and_close().await?;
+            store.close().await?;
             Ok(())
         }),
         cli::Command::Doctor => serve::block_on(&runtime, cli::doctor::run(cfg)),

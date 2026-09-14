@@ -48,7 +48,7 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
                     cfg.database.url
                 ),
             );
-            let _ = store.checkpoint_and_close().await;
+            let _ = store.close().await;
         }
         // The URL goes through `redact_credentials` like every line.
         Err(e) => r.line(

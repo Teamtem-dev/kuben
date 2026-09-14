@@ -1,16 +1,13 @@
-//! Persistence layer. Owns *identity and audit* data only — desired state
-//! lives in Kubernetes CRDs (ADR-015).
+//! Persistence layer on PostgreSQL (ADR-025). Owns *identity and audit* data
+//! only today — desired state lives in Kubernetes CRDs (ADR-015) until the
+//! product schema moves here.
 //!
-//! Two backends behind one [`Store`]:
-//! * **SQLite (WAL)** for single-replica installs — a single writer pool
-//!   (`max_connections = 1`) plus a small read pool, so `SQLITE_BUSY` from
-//!   transaction upgrades can never happen.
-//! * **Postgres** for HA installs.
-//!
-//! SQL is written in the portable subset shared by both engines and every
-//! repository test runs against both (`KUBEN_TEST_PG_URL`).
+//! Every repository test runs against a real PostgreSQL in a schema of its
+//! own (`KUBEN_TEST_PG_URL`, see [`testing`] with the `testing` feature).
+//! [`legacy`] reads the SQLite database of an older installation, read-only.
 
 mod db;
+pub mod legacy;
 pub mod repo;
 
 pub use db::{Store, StoreError};

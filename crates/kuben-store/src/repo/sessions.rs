@@ -1,9 +1,6 @@
 use kuben_core::{ids::UserId, model::Session, time::now_ms};
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 /// Input for creating a session. `id_hash` is `sha256(session_id)`; the raw
 /// id only ever lives in the browser cookie (Invariant I-3).
@@ -56,85 +53,73 @@ const DELETE_EXPIRED: &str = "DELETE FROM sessions WHERE expires_at < $1";
 impl Store {
     pub async fn create_session(&self, s: NewSession) -> Result<(), StoreError> {
         let now = now_ms();
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_SESSION)
-                .bind(&s.id_hash)
-                .bind(s.user_id.to_string())
-                .bind(now)
-                .bind(s.expires_at)
-                .bind(now)
-                .bind(&s.ip)
-                .bind(&s.ua_hash)
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_SESSION)
+            .bind(&s.id_hash)
+            .bind(s.user_id.to_string())
+            .bind(now)
+            .bind(s.expires_at)
+            .bind(now)
+            .bind(&s.ip)
+            .bind(&s.ua_hash)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
     pub async fn find_session(&self, id_hash: &[u8]) -> Result<Option<Session>, StoreError> {
-        let row: Option<SessionRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_SESSION)
+        let row: Option<SessionRow> = sqlx::query_as(SELECT_SESSION)
             .bind(id_hash)
-            .fetch_optional(pool)
-            .await?);
+            .fetch_optional(self.pool())
+            .await?;
         row.map(Session::try_from).transpose()
     }
 
     pub async fn touch_session(&self, id_hash: &[u8]) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(TOUCH_SESSION)
-                .bind(id_hash)
-                .bind(now_ms())
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(TOUCH_SESSION)
+            .bind(id_hash)
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
     pub async fn revoke_session(&self, id_hash: &[u8]) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(REVOKE_SESSION)
-                .bind(id_hash)
-                .bind(now_ms())
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(REVOKE_SESSION)
+            .bind(id_hash)
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
     pub async fn revoke_all_sessions(&self, user: UserId) -> Result<u64, StoreError> {
-        let n = with_writer!(self, |pool| {
-            sqlx::query(REVOKE_ALL_FOR_USER)
-                .bind(user.to_string())
-                .bind(now_ms())
-                .execute(pool)
-                .await?
-                .rows_affected()
-        });
+        let n = sqlx::query(REVOKE_ALL_FOR_USER)
+            .bind(user.to_string())
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?
+            .rows_affected();
         Ok(n)
     }
 
     /// Revoke every session of `user` except `keep` (after a password change).
     pub async fn revoke_other_sessions(&self, user: UserId, keep: &[u8]) -> Result<u64, StoreError> {
-        let n = with_writer!(self, |pool| {
-            sqlx::query(REVOKE_OTHERS_FOR_USER)
-                .bind(user.to_string())
-                .bind(keep)
-                .bind(now_ms())
-                .execute(pool)
-                .await?
-                .rows_affected()
-        });
+        let n = sqlx::query(REVOKE_OTHERS_FOR_USER)
+            .bind(user.to_string())
+            .bind(keep)
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?
+            .rows_affected();
         Ok(n)
     }
 
     pub async fn purge_expired_sessions(&self) -> Result<u64, StoreError> {
-        let n = with_writer!(self, |pool| {
-            sqlx::query(DELETE_EXPIRED)
-                .bind(now_ms())
-                .execute(pool)
-                .await?
-                .rows_affected()
-        });
+        let n = sqlx::query(DELETE_EXPIRED)
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?
+            .rows_affected();
         Ok(n)
     }
 }

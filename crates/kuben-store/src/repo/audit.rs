@@ -4,10 +4,7 @@ use kuben_core::{
     time::now_ms,
 };
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 /// Input for an audit record. Append-only: there is no update or delete API.
 #[derive(Debug, Default)]
@@ -77,23 +74,21 @@ impl Store {
     pub async fn append_audit(&self, a: NewAudit) -> Result<AuditId, StoreError> {
         let id = AuditId::new();
         let data = a.data.as_ref().map(serde_json::Value::to_string);
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_AUDIT)
-                .bind(id.to_string())
-                .bind(a.org_id.map(|o| o.to_string()))
-                .bind(&a.actor_kind)
-                .bind(&a.actor_id)
-                .bind(&a.action)
-                .bind(&a.target_kind)
-                .bind(&a.target_ref)
-                .bind(&a.outcome)
-                .bind(&a.ip)
-                .bind(&a.request_id)
-                .bind(&data)
-                .bind(now_ms())
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_AUDIT)
+            .bind(id.to_string())
+            .bind(a.org_id.map(|o| o.to_string()))
+            .bind(&a.actor_kind)
+            .bind(&a.actor_id)
+            .bind(&a.action)
+            .bind(&a.target_kind)
+            .bind(&a.target_ref)
+            .bind(&a.outcome)
+            .bind(&a.ip)
+            .bind(&a.request_id)
+            .bind(&data)
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?;
         Ok(id)
     }
 
@@ -105,20 +100,20 @@ impl Store {
         before: Option<i64>,
         limit: i64,
     ) -> Result<Vec<AuditEvent>, StoreError> {
-        let rows: Vec<AuditRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_ORG_PAGE)
+        let rows: Vec<AuditRow> = sqlx::query_as(SELECT_ORG_PAGE)
             .bind(org.to_string())
             .bind(before.unwrap_or(i64::MAX))
             .bind(limit)
-            .fetch_all(pool)
-            .await?);
+            .fetch_all(self.pool())
+            .await?;
         rows.into_iter().map(AuditEvent::try_from).collect()
     }
 
     pub async fn recent_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError> {
-        let rows: Vec<AuditRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_RECENT)
+        let rows: Vec<AuditRow> = sqlx::query_as(SELECT_RECENT)
             .bind(limit)
-            .fetch_all(pool)
-            .await?);
+            .fetch_all(self.pool())
+            .await?;
         rows.into_iter().map(AuditEvent::try_from).collect()
     }
 }

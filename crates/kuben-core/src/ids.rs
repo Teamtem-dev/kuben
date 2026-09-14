@@ -1,5 +1,5 @@
 //! Strongly typed identifiers. All IDs are UUIDv7 (time-ordered) so they
-//! index well in both SQLite and Postgres.
+//! index well in PostgreSQL B-trees.
 
 use std::{fmt, str::FromStr};
 

@@ -1,5 +1,5 @@
-//! Time helpers. Kuben stores all timestamps as unix milliseconds (`i64`) so
-//! the schema is identical on SQLite and Postgres.
+//! Time helpers. Kuben stores all timestamps as unix milliseconds (`i64`), so
+//! rows sort and compare without time-zone conversion.
 
 /// Current time as unix milliseconds.
 #[must_use]

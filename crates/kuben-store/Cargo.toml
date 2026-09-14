@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Kuben persistence: sqlx (SQLite WAL / Postgres) with embedded migrations"
+description = "Kuben persistence: PostgreSQL through sqlx, with embedded migrations"
 
 [features]
 # Test support: an isolated PostgreSQL schema per test (`testing::pg_store`).

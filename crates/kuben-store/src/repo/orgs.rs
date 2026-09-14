@@ -5,10 +5,7 @@ use kuben_core::{
     time::now_ms,
 };
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 #[derive(Debug, sqlx::FromRow)]
 struct OrgRow {
@@ -87,64 +84,54 @@ impl Store {
             name: name.into(),
             created_at: now_ms(),
         };
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_ORG)
-                .bind(org.id.to_string())
-                .bind(&org.slug)
-                .bind(&org.name)
-                .bind(org.created_at)
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_ORG)
+            .bind(org.id.to_string())
+            .bind(&org.slug)
+            .bind(&org.name)
+            .bind(org.created_at)
+            .execute(self.pool())
+            .await?;
         Ok(org)
     }
 
     pub async fn find_org_by_slug(&self, slug: &str) -> Result<Option<Organization>, StoreError> {
-        let row: Option<OrgRow> = with_reader!(self, |pool| {
-            sqlx::query_as(SELECT_ORG_BY_SLUG)
-                .bind(slug)
-                .fetch_optional(pool)
-                .await?
-        });
+        let row: Option<OrgRow> = sqlx::query_as(SELECT_ORG_BY_SLUG)
+            .bind(slug)
+            .fetch_optional(self.pool())
+            .await?;
         row.map(Organization::try_from).transpose()
     }
 
     pub async fn add_membership(&self, org: OrgId, user: UserId) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_MEMBERSHIP)
-                .bind(org.to_string())
-                .bind(user.to_string())
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_MEMBERSHIP)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
     /// Bind `role` for `user` at org scope.
     pub async fn bind_org_role(&self, org: OrgId, user: UserId, role: Role) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_BINDING)
-                .bind(uuid::Uuid::now_v7().to_string())
-                .bind(org.to_string())
-                .bind(SubjectKind::User.as_str())
-                .bind(user.to_string())
-                .bind(role.to_string())
-                .bind(ScopeKind::Org.as_str())
-                .bind(Option::<String>::None)
-                .bind(now_ms())
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_BINDING)
+            .bind(uuid::Uuid::now_v7().to_string())
+            .bind(org.to_string())
+            .bind(SubjectKind::User.as_str())
+            .bind(user.to_string())
+            .bind(role.to_string())
+            .bind(ScopeKind::Org.as_str())
+            .bind(Option::<String>::None)
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
     pub async fn bindings_for_user(&self, user: UserId) -> Result<Vec<RoleBinding>, StoreError> {
-        let rows: Vec<BindingRow> = with_reader!(self, |pool| {
-            sqlx::query_as(SELECT_BINDINGS_FOR_USER)
-                .bind(user.to_string())
-                .fetch_all(pool)
-                .await?
-        });
+        let rows: Vec<BindingRow> = sqlx::query_as(SELECT_BINDINGS_FOR_USER)
+            .bind(user.to_string())
+            .fetch_all(self.pool())
+            .await?;
         rows.into_iter()
             .map(|r| {
                 Ok(RoleBinding {
@@ -176,10 +163,10 @@ impl Store {
 
     /// Members of an org with their org-level role, ordered by email.
     pub async fn list_members(&self, org: OrgId) -> Result<Vec<Member>, StoreError> {
-        let rows: Vec<MemberRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_MEMBERS)
+        let rows: Vec<MemberRow> = sqlx::query_as(SELECT_MEMBERS)
             .bind(org.to_string())
-            .fetch_all(pool)
-            .await?);
+            .fetch_all(self.pool())
+            .await?;
         rows.into_iter()
             .map(|r| {
                 Ok(Member {
@@ -202,13 +189,13 @@ impl Store {
 
     /// Change a member's org-level role (creates the binding if missing).
     pub async fn set_org_role(&self, org: OrgId, user: UserId, role: Role) -> Result<(), StoreError> {
-        let updated = with_writer!(self, |pool| sqlx::query(UPDATE_ORG_ROLE)
+        let updated = sqlx::query(UPDATE_ORG_ROLE)
             .bind(org.to_string())
             .bind(user.to_string())
             .bind(role.to_string())
-            .execute(pool)
+            .execute(self.pool())
             .await?
-            .rows_affected());
+            .rows_affected();
         if updated == 0 {
             self.bind_org_role(org, user, role).await?;
         }
@@ -217,28 +204,26 @@ impl Store {
 
     /// Remove every binding and the membership of `user` in `org`, atomically.
     pub async fn remove_member(&self, org: OrgId, user: UserId) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            let mut tx = pool.begin().await?;
-            sqlx::query(DELETE_USER_BINDINGS)
-                .bind(org.to_string())
-                .bind(user.to_string())
-                .execute(&mut *tx)
-                .await?;
-            sqlx::query(DELETE_MEMBERSHIP)
-                .bind(org.to_string())
-                .bind(user.to_string())
-                .execute(&mut *tx)
-                .await?;
-            tx.commit().await?;
-        });
+        let mut tx = self.pool().begin().await?;
+        sqlx::query(DELETE_USER_BINDINGS)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(DELETE_MEMBERSHIP)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(())
     }
 
     pub async fn count_owners(&self, org: OrgId) -> Result<i64, StoreError> {
-        let (n,): (i64,) = with_reader!(self, |pool| sqlx::query_as(COUNT_OWNERS)
+        let (n,): (i64,) = sqlx::query_as(COUNT_OWNERS)
             .bind(org.to_string())
-            .fetch_one(pool)
-            .await?);
+            .fetch_one(self.pool())
+            .await?;
         Ok(n)
     }
 }

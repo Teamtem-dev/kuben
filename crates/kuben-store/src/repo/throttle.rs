@@ -2,10 +2,7 @@
 //! opaque keys chosen by the caller, which hashes them: no email address or
 //! client IP is stored.
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 /// A fixed window: `failures` counted since `started_at` (unix ms).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,10 +23,10 @@ const PURGE: &str = "DELETE FROM login_throttle WHERE started_at <= $1";
 
 impl Store {
     pub async fn throttle_window(&self, bucket: &str) -> Result<Option<ThrottleWindow>, StoreError> {
-        let row: Option<(i64, i64)> = with_reader!(self, |pool| sqlx::query_as(SELECT_WINDOW)
+        let row: Option<(i64, i64)> = sqlx::query_as(SELECT_WINDOW)
             .bind(bucket)
-            .fetch_optional(pool)
-            .await?);
+            .fetch_optional(self.pool())
+            .await?;
         Ok(row.map(|(failures, started_at)| ThrottleWindow { failures, started_at }))
     }
 
@@ -41,31 +38,27 @@ impl Store {
         now: i64,
         window_start: i64,
     ) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(RECORD_FAILURE)
-                .bind(bucket)
-                .bind(now)
-                .bind(window_start)
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(RECORD_FAILURE)
+            .bind(bucket)
+            .bind(now)
+            .bind(window_start)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 
     pub async fn throttle_clear(&self, bucket: &str) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(CLEAR).bind(bucket).execute(pool).await?;
-        });
+        sqlx::query(CLEAR).bind(bucket).execute(self.pool()).await?;
         Ok(())
     }
 
     /// Drop windows that started at or before `window_start` (expired).
     pub async fn throttle_purge(&self, window_start: i64) -> Result<u64, StoreError> {
-        let done = with_writer!(self, |pool| sqlx::query(PURGE)
+        let done = sqlx::query(PURGE)
             .bind(window_start)
-            .execute(pool)
+            .execute(self.pool())
             .await?
-            .rows_affected());
+            .rows_affected();
         Ok(done)
     }
 }

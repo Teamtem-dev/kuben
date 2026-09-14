@@ -122,7 +122,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     for t in tasks {
         let _ = tokio::time::timeout(Duration::from_secs(10), t).await;
     }
-    store.checkpoint_and_close().await?;
+    store.close().await?;
     tracing::info!("bye");
     Ok(())
 }
