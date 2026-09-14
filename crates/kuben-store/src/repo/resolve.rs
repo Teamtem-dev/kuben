@@ -12,17 +12,18 @@ use super::Tenant;
 use crate::StoreError;
 
 const FIND_PROJECT: &str = "SELECT id FROM projects \
-     WHERE org_id = $1 AND (legacy_uid = $2 OR slug = $3) \
+     WHERE org_id = $1 AND deleted_at IS NULL AND (legacy_uid = $2 OR slug = $3) \
      ORDER BY legacy_uid = $2 DESC NULLS LAST \
      LIMIT 1";
 const FIND_ENVIRONMENT: &str = "SELECT id FROM environments \
-     WHERE org_id = $1 AND project_id = $2 AND (legacy_uid = $3 OR slug = $4) \
+     WHERE org_id = $1 AND project_id = $2 AND deleted_at IS NULL AND (legacy_uid = $3 OR slug = $4) \
      ORDER BY legacy_uid = $3 DESC NULLS LAST \
      LIMIT 1";
 const FIND_TARGET: &str = "SELECT t.id, t.application_id FROM application_targets t \
      JOIN applications a ON a.id = t.application_id \
      JOIN environment_placements p ON p.id = t.placement_id \
      WHERE t.org_id = $1 AND t.project_id = $2 AND p.environment_id = $3 \
+       AND t.deleted_at IS NULL AND a.deleted_at IS NULL \
        AND (t.legacy_uid = $4 OR a.slug = $5) \
      ORDER BY t.legacy_uid = $4 DESC NULLS LAST, t.created_at \
      LIMIT 1";

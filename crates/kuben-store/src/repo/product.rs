@@ -22,11 +22,19 @@ use crate::{Store, StoreError};
 const SET_TENANT: &str = "SELECT set_config('kuben.org_id', $1, true)";
 const INSERT_PROJECT: &str =
     "INSERT INTO projects (id, org_id, slug, name, created_at) VALUES ($1, $2, $3, $4, $5)";
-const SELECT_PROJECTS: &str =
-    "SELECT id, slug, name, created_at FROM projects WHERE org_id = $1 ORDER BY slug";
-const INSERT_ENVIRONMENT: &str = "INSERT INTO environments (id, org_id, project_id, slug, name, protected, created_at) \
-     VALUES ($1, $2, $3, $4, $5, $6, $7)";
+const INSERT_PROJECT_DESCRIBED: &str = "INSERT INTO projects (id, org_id, slug, name, description, created_at) \
+     VALUES ($1, $2, $3, $4, $5, $6)";
+const SELECT_PROJECTS: &str = "SELECT p.id, p.slug, p.name, p.description, p.created_at, p.legacy_uid, p.deleting, \
+     (SELECT count(*) FROM environments e WHERE e.project_id = p.id AND e.deleted_at IS NULL) AS environments \
+     FROM projects p \
+     WHERE p.org_id = $1 AND p.deleted_at IS NULL AND ($2::text IS NULL OR p.slug = $2) \
+     ORDER BY p.slug";
+const INSERT_ENVIRONMENT: &str = "INSERT INTO environments \
+     (id, org_id, project_id, slug, name, protected, env_type, quota, created_at) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)";
 const INSERT_CLUSTER: &str = "INSERT INTO clusters (id, org_id, name, created_at) VALUES ($1, $2, $3, $4)";
+const ENSURE_CLUSTER: &str = "INSERT INTO clusters (id, org_id, name, created_at) VALUES ($1, $2, $3, $4) \
+     ON CONFLICT (org_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id";
 const INSERT_PLACEMENT: &str = "INSERT INTO environment_placements \
      (id, org_id, project_id, environment_id, cluster_id, namespace, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)";
 const INSERT_APPLICATION: &str = "INSERT INTO applications (id, org_id, project_id, slug, name, created_at) \
@@ -37,13 +45,18 @@ const INSERT_TARGET: &str = "INSERT INTO application_targets \
 const SELECT_TARGET_STATE: &str = "SELECT lifecycle_uid, deleting, desired_generation, source_epoch, \
      build_config_revision, deploy_policy FROM application_targets WHERE id = $1 AND org_id = $2";
 
-/// A project of the current organization.
+/// A live project of the current organization.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Project {
     pub id: ProjectId,
     pub slug: String,
     pub name: String,
+    pub description: Option<String>,
     pub created_at: i64,
+    pub legacy_uid: Option<Uuid>,
+    pub deleting: bool,
+    /// Its live environments.
+    pub environments: u32,
 }
 
 #[derive(sqlx::FromRow)]
@@ -51,7 +64,37 @@ struct ProjectRow {
     id: Uuid,
     slug: String,
     name: String,
+    description: Option<String>,
     created_at: i64,
+    legacy_uid: Option<Uuid>,
+    deleting: bool,
+    environments: i64,
+}
+
+/// What an environment is for; production is protected.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EnvironmentKind {
+    #[default]
+    Standard,
+    Production,
+    Preview,
+}
+
+impl EnvironmentKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Production => "production",
+            Self::Preview => "preview",
+        }
+    }
+}
+
+/// A placement id read back from SQL, for callers that only hold the UUID.
+#[must_use]
+pub const fn placement_id(id: Uuid) -> PlacementId {
+    PlacementId::from_uuid(id)
 }
 
 #[derive(sqlx::FromRow)]
@@ -116,10 +159,29 @@ impl Tenant {
         Ok(id)
     }
 
-    /// The organization's projects, ordered by slug.
-    pub async fn projects(&mut self) -> Result<Vec<Project>, StoreError> {
+    pub async fn create_project_described(
+        &mut self,
+        slug: &str,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<ProjectId, StoreError> {
+        let id = ProjectId::new();
+        sqlx::query(INSERT_PROJECT_DESCRIBED)
+            .bind(*id.as_uuid())
+            .bind(self.org.to_string())
+            .bind(slug)
+            .bind(name)
+            .bind(description)
+            .bind(now_ms())
+            .execute(&mut *self.tx)
+            .await?;
+        Ok(id)
+    }
+
+    async fn project_rows(&mut self, slug: Option<&str>) -> Result<Vec<Project>, StoreError> {
         let rows: Vec<ProjectRow> = sqlx::query_as(SELECT_PROJECTS)
             .bind(self.org.to_string())
+            .bind(slug)
             .fetch_all(&mut *self.tx)
             .await?;
         Ok(rows
@@ -128,9 +190,23 @@ impl Tenant {
                 id: ProjectId::from_uuid(r.id),
                 slug: r.slug,
                 name: r.name,
+                description: r.description,
                 created_at: r.created_at,
+                legacy_uid: r.legacy_uid,
+                deleting: r.deleting,
+                environments: u32::try_from(r.environments).unwrap_or(u32::MAX),
             })
             .collect())
+    }
+
+    /// The organization's live projects, ordered by slug.
+    pub async fn projects(&mut self) -> Result<Vec<Project>, StoreError> {
+        self.project_rows(None).await
+    }
+
+    /// The organization's live project `slug`.
+    pub async fn project(&mut self, slug: &str) -> Result<Option<Project>, StoreError> {
+        Ok(self.project_rows(Some(slug)).await?.pop())
     }
 
     pub async fn create_environment(
@@ -140,6 +216,24 @@ impl Tenant {
         name: &str,
         protected: bool,
     ) -> Result<EnvironmentId, StoreError> {
+        let kind = if protected {
+            EnvironmentKind::Production
+        } else {
+            EnvironmentKind::Standard
+        };
+        self.create_environment_typed(project, slug, name, kind, None)
+            .await
+    }
+
+    /// Create an environment of `kind`; production environments are protected.
+    pub async fn create_environment_typed(
+        &mut self,
+        project: ProjectId,
+        slug: &str,
+        name: &str,
+        kind: EnvironmentKind,
+        quota: Option<&serde_json::Value>,
+    ) -> Result<EnvironmentId, StoreError> {
         let id = EnvironmentId::new();
         sqlx::query(INSERT_ENVIRONMENT)
             .bind(*id.as_uuid())
@@ -147,11 +241,25 @@ impl Tenant {
             .bind(*project.as_uuid())
             .bind(slug)
             .bind(name)
-            .bind(protected)
+            .bind(kind == EnvironmentKind::Production)
+            .bind(kind.as_str())
+            .bind(quota.map(ToString::to_string))
             .bind(now_ms())
             .execute(&mut *self.tx)
             .await?;
         Ok(id)
+    }
+
+    /// The organization's cluster `name`, created on first use.
+    pub async fn ensure_cluster(&mut self, name: &str) -> Result<ClusterId, StoreError> {
+        let id: Uuid = sqlx::query_scalar(ENSURE_CLUSTER)
+            .bind(*ClusterId::new().as_uuid())
+            .bind(self.org.to_string())
+            .bind(name)
+            .bind(now_ms())
+            .fetch_one(&mut *self.tx)
+            .await?;
+        Ok(ClusterId::from_uuid(id))
     }
 
     pub async fn create_cluster(&mut self, name: &str) -> Result<ClusterId, StoreError> {

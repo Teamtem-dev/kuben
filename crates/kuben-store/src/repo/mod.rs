@@ -2,6 +2,7 @@
 //! magic (Drizzle philosophy) — with PostgreSQL's `$n` placeholders.
 
 mod audit;
+mod catalog;
 mod deployments;
 mod materialize;
 mod operations;
@@ -15,10 +16,11 @@ mod tokens;
 mod users;
 
 pub use audit::NewAudit;
+pub use catalog::{AppRecord, EnvironmentRecord};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use materialize::{Materialization, Materialized};
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
-pub use product::{Project, Tenant};
+pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};
 pub use sessions::NewSession;
