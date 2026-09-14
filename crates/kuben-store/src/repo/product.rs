@@ -67,8 +67,8 @@ struct TargetRow {
 /// A transaction scoped to one organization. Row-level security shows it only
 /// that organization's rows; dropping it without [`Tenant::commit`] rolls back.
 pub struct Tenant {
-    org: OrgId,
-    tx: Transaction<'static, Postgres>,
+    pub(super) org: OrgId,
+    pub(super) tx: Transaction<'static, Postgres>,
 }
 
 impl fmt::Debug for Tenant {

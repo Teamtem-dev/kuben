@@ -70,26 +70,37 @@ const SELECT_ORG_PAGE: &str = "SELECT seq, id, org_id, actor_kind, actor_id, act
      outcome, ip, request_id, data, created_at FROM audit_events WHERE org_id = $1 AND seq < $2 \
      ORDER BY seq DESC LIMIT $3";
 
-impl Store {
-    pub async fn append_audit(&self, a: NewAudit) -> Result<AuditId, StoreError> {
+impl NewAudit {
+    /// Append on `executor`: the pool, or the transaction of an accepted
+    /// request, so the record commits with it (I01).
+    pub(crate) async fn insert<'e, E>(&self, executor: E) -> Result<AuditId, StoreError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
         let id = AuditId::new();
-        let data = a.data.as_ref().map(serde_json::Value::to_string);
+        let data = self.data.as_ref().map(serde_json::Value::to_string);
         sqlx::query(INSERT_AUDIT)
             .bind(id.to_string())
-            .bind(a.org_id.map(|o| o.to_string()))
-            .bind(&a.actor_kind)
-            .bind(&a.actor_id)
-            .bind(&a.action)
-            .bind(&a.target_kind)
-            .bind(&a.target_ref)
-            .bind(&a.outcome)
-            .bind(&a.ip)
-            .bind(&a.request_id)
+            .bind(self.org_id.map(|o| o.to_string()))
+            .bind(&self.actor_kind)
+            .bind(&self.actor_id)
+            .bind(&self.action)
+            .bind(&self.target_kind)
+            .bind(&self.target_ref)
+            .bind(&self.outcome)
+            .bind(&self.ip)
+            .bind(&self.request_id)
             .bind(&data)
             .bind(now_ms())
-            .execute(self.pool())
+            .execute(executor)
             .await?;
         Ok(id)
+    }
+}
+
+impl Store {
+    pub async fn append_audit(&self, a: NewAudit) -> Result<AuditId, StoreError> {
+        a.insert(self.pool()).await
     }
 
     /// One page of an org's audit log, newest first. `before` is the `seq`

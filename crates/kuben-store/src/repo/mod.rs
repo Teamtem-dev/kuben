@@ -2,6 +2,7 @@
 //! magic (Drizzle philosophy) — with PostgreSQL's `$n` placeholders.
 
 mod audit;
+mod operations;
 mod orgs;
 mod product;
 mod releases;
@@ -11,6 +12,7 @@ mod tokens;
 mod users;
 
 pub use audit::NewAudit;
+pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use product::{Project, Tenant};
 pub use releases::NewRelease;
 pub use sessions::NewSession;

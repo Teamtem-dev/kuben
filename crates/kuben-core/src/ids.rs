@@ -110,6 +110,10 @@ id_type!(
     /// An application definition in a project.
     ApplicationId
 );
+id_type!(
+    /// A durable operation: one accepted request and its execution (plan §9.2).
+    OperationId
+);
 
 #[cfg(test)]
 mod tests {
