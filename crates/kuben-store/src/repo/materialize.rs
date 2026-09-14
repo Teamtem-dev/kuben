@@ -26,9 +26,12 @@ use crate::{Store, StoreError};
 
 const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.lifecycle_uid, \
      pr.id AS project_id, pr.slug AS project_slug, pr.name AS project_name, \
+     pr.description AS project_description, \
      e.id AS environment_id, e.slug AS environment_slug, e.name AS environment_name, e.protected, \
+     COALESCE(e.env_type, CASE WHEN e.protected THEN 'production' ELSE 'standard' END) AS env_type, \
+     e.quota::text AS quota, \
      p.namespace, a.id AS application_id, a.slug AS application_slug, a.name AS application_name, \
-     t.id AS target_id, t.desired_generation, t.deleting, \
+     t.id AS target_id, t.desired_generation, (t.deleting OR e.deleting OR pr.deleting) AS deleting, \
      rel.id AS release_id, rel.artifacts::text AS artifacts, rel.source::text AS source, \
      c.id AS config_revision_id, c.revision AS config_revision, c.config::text AS config \
      FROM deployment_runs r \
@@ -73,10 +76,14 @@ pub struct Materialization {
     pub project: ProjectId,
     pub project_slug: String,
     pub project_name: String,
+    pub project_description: Option<String>,
     pub environment: EnvironmentId,
     pub environment_slug: String,
     pub environment_name: String,
     pub protected: bool,
+    /// `standard`, `production` or `preview`.
+    pub env_type: String,
+    pub quota: Option<Value>,
     /// The namespace of the target's placement.
     pub namespace: String,
     pub application: ApplicationId,
@@ -86,6 +93,7 @@ pub struct Materialization {
     /// The target's generation now. A live object that claims a higher one
     /// was not written by Kuben.
     pub desired_generation: Generation,
+    /// The target, its environment or its project is being deleted.
     pub deleting: bool,
     pub release: ReleaseId,
     /// Process name → digest.
@@ -124,10 +132,13 @@ struct MaterializationRow {
     project_id: Uuid,
     project_slug: String,
     project_name: String,
+    project_description: Option<String>,
     environment_id: Uuid,
     environment_slug: String,
     environment_name: String,
     protected: bool,
+    env_type: String,
+    quota: Option<String>,
     namespace: String,
     application_id: Uuid,
     application_slug: String,
@@ -193,10 +204,13 @@ impl MaterializationRow {
             project: ProjectId::from_uuid(self.project_id),
             project_slug: self.project_slug,
             project_name: self.project_name,
+            project_description: self.project_description,
             environment: EnvironmentId::from_uuid(self.environment_id),
             environment_slug: self.environment_slug,
             environment_name: self.environment_name,
             protected: self.protected,
+            env_type: self.env_type,
+            quota: self.quota.as_deref().map(json).transpose()?,
             namespace: self.namespace,
             application: ApplicationId::from_uuid(self.application_id),
             application_slug: self.application_slug,

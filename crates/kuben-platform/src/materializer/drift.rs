@@ -159,6 +159,10 @@ impl Worker {
         let (Some(m), Some(current)) = (m, current) else {
             return Ok(Finding::Clean);
         };
+        if m.deleting {
+            // Its deletion removes the object; nothing to put back.
+            return Ok(Finding::Clean);
+        }
         if current.desired_generation.0 != written.generation.0 {
             // A newer run is in flight; its delivery writes the object.
             return Ok(Finding::Clean);

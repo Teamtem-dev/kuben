@@ -8,24 +8,34 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use k8s_openapi::api::core::v1::Namespace;
+use k8s_openapi::{
+    api::core::v1::{
+        Namespace, PersistentVolumeClaim, PersistentVolumeClaimSpec, VolumeResourceRequirements,
+    },
+    apimachinery::pkg::api::resource::Quantity,
+};
 use kube::{
     Api, Client, ResourceExt,
     api::{DeleteParams, ObjectMeta, Patch, PatchParams, PostParams},
 };
 use kuben_core::{
     artifact::Digest,
-    ids::{ConfigRevisionId, DeploymentRunId, OperationId, OrgId, ProjectId, ReleaseId, TargetId},
+    ids::{
+        ConfigRevisionId, DeploymentRunId, EnvironmentId, OperationId, OrgId, ProjectId, ReleaseId, TargetId,
+    },
     ops::{Generation, RunPhase},
 };
 use kuben_crd::{App, AppSpec, Environment, PreviewPolicy, Project, ProjectSpec, labels};
 use kuben_platform::{
-    controller::crd_apply,
+    controller::{crd_apply, resources::RETAIN},
     materializer::{Worker, drift::Finding, render::annotations},
 };
 use kuben_store::{
     Store,
-    repo::{NewAudit, PortableRelease, RunReason, StartDeployment, Started},
+    repo::{
+        ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, NewAudit, PROJECT_DELETE, PortableRelease, RunReason,
+        StartDeployment, Started, Subject, TARGET_DELETE,
+    },
     testing::pg_store,
 };
 use serde_json::json;
@@ -43,6 +53,7 @@ struct World {
     client: Client,
     org: OrgId,
     project: ProjectId,
+    environment: EnvironmentId,
     target: TargetId,
     lifecycle_uid: Uuid,
     release: ReleaseId,
@@ -125,6 +136,7 @@ impl World {
             client,
             org,
             project,
+            environment: env,
             target,
             lifecycle_uid,
             release,
@@ -458,5 +470,151 @@ async fn drift_is_recorded_and_replaced() {
     );
     assert_eq!(Some(record.resource_generation), recreated.metadata.generation);
     assert_eq!(record.drift.expect("described")["deleted"], true);
+    w.cleanup().await;
+}
+
+impl World {
+    /// Record `kind` on `subject` the way the API does: a deletion marks its
+    /// subject deleting in the same transaction.
+    async fn request(&self, kind: &str, subject: Subject) -> OperationId {
+        let mut t = self.store.tenant(self.org).await.expect("tenant");
+        let marked = match kind {
+            TARGET_DELETE => t.mark_target_deleting(self.target).await,
+            ENVIRONMENT_DELETE => t.mark_environment_deleting(self.environment).await,
+            PROJECT_DELETE => t.mark_project_deleting(self.project).await,
+            _ => Ok(true),
+        };
+        assert!(marked.expect("mark"), "{kind}: marked deleting once");
+        let audit = NewAudit {
+            actor_kind: "user".into(),
+            action: kind.into(),
+            outcome: "accepted".into(),
+            ..NewAudit::default()
+        };
+        let operation = t
+            .request(kind, subject, "user:test", audit)
+            .await
+            .expect("request");
+        t.commit().await.expect("commit");
+        operation
+    }
+
+    /// A volume of the app `web` that its deletion keeps unless asked.
+    fn retained_volume() -> PersistentVolumeClaim {
+        PersistentVolumeClaim {
+            metadata: ObjectMeta {
+                name: Some("web-data".into()),
+                labels: Some(BTreeMap::from([(labels::APP.to_owned(), "web".to_owned())])),
+                annotations: Some(BTreeMap::from([(RETAIN.to_owned(), "true".to_owned())])),
+                ..ObjectMeta::default()
+            },
+            spec: Some(PersistentVolumeClaimSpec {
+                access_modes: Some(vec!["ReadWriteOnce".into()]),
+                resources: Some(VolumeResourceRequirements {
+                    requests: Some(BTreeMap::from([("storage".to_owned(), Quantity("1Mi".into()))])),
+                    ..VolumeResourceRequirements::default()
+                }),
+                ..PersistentVolumeClaimSpec::default()
+            }),
+            ..PersistentVolumeClaim::default()
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs a Kubernetes cluster and PostgreSQL; run with --ignored"]
+async fn lifecycle_operations_write_and_remove_resources() {
+    let w = World::new().await;
+    let worker = w
+        .worker()
+        .with_verify_deadline(Duration::from_mins(2))
+        .with_deletion_check(Duration::ZERO);
+    let token = CancellationToken::new();
+    let environments = Api::<Environment>::all(w.client.clone());
+    let env_name = format!("{}-prod", w.slug);
+
+    // An environment is written as soon as it exists.
+    let apply = w
+        .request(ENVIRONMENT_APPLY, Subject::environment(w.project, w.environment))
+        .await;
+    assert_eq!(worker.work_once(&token).await.expect("work"), Some(apply));
+    let env = environments.get(&env_name).await.expect("environment");
+    assert_eq!(env.spec.project, w.slug);
+    assert_eq!(
+        env.annotations().get(annotations::OPERATION),
+        Some(&apply.to_string())
+    );
+    Api::<Project>::all(w.client.clone())
+        .get(&w.slug)
+        .await
+        .expect("project");
+
+    // An app is deployed, then deleted with the volume it would keep.
+    let (deployed, _) = w.deploy(0).await;
+    let task = {
+        let worker = worker.clone();
+        tokio::spawn(async move { worker.work_once(&CancellationToken::new()).await })
+    };
+    let apps = w.apps();
+    let app = wait_for_app(&apps).await;
+    report_ready(&apps, &app).await;
+    assert_eq!(task.await.expect("join").expect("work"), Some(deployed));
+    let claims = Api::<PersistentVolumeClaim>::namespaced(w.client.clone(), &w.namespace);
+    claims
+        .create(&PostParams::default(), &World::retained_volume())
+        .await
+        .expect("volume");
+    let delete = w
+        .request(
+            TARGET_DELETE,
+            Subject::target(w.project, w.environment, w.target, true),
+        )
+        .await;
+    assert_eq!(worker.work_once(&token).await.expect("work"), Some(delete));
+    assert!(
+        apps.get_opt("web").await.expect("read").is_none(),
+        "the app is gone"
+    );
+    assert!(
+        claims
+            .get_opt("web-data")
+            .await
+            .expect("read")
+            .is_none_or(|v| v.metadata.deletion_timestamp.is_some()),
+        "the volume is deleted, as asked"
+    );
+    let mut t = w.store.tenant(w.org).await.expect("tenant");
+    assert!(t.app(w.environment, "web").await.expect("read").is_none());
+    drop(t);
+
+    // The environment: its object goes first, then its rows.
+    w.request(ENVIRONMENT_DELETE, Subject::environment(w.project, w.environment))
+        .await;
+    for round in 0.. {
+        let mut t = w.store.tenant(w.org).await.expect("tenant");
+        if t.environment(w.project, "prod").await.expect("read").is_none() {
+            break;
+        }
+        drop(t);
+        assert!(round < 20, "the environment deletion never finished");
+        worker.work_once(&token).await.expect("work");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert!(environments.get_opt(&env_name).await.expect("read").is_none());
+
+    // The project, now empty.
+    let delete = w.request(PROJECT_DELETE, Subject::project(w.project)).await;
+    assert_eq!(worker.work_once(&token).await.expect("work"), Some(delete));
+    let mut t = w.store.tenant(w.org).await.expect("tenant");
+    assert!(t.project(&w.slug).await.expect("read").is_none());
+    drop(t);
+    assert!(
+        Api::<Project>::all(w.client.clone())
+            .get_opt(&w.slug)
+            .await
+            .expect("read")
+            .is_none_or(|p| p.metadata.deletion_timestamp.is_some()),
+        "the project object is deleted"
+    );
     w.cleanup().await;
 }

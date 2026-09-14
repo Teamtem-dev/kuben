@@ -1,5 +1,6 @@
 //! The materializer's worker (ADR-032): claims `deployment` operations and
-//! carries each run through delivery and verification.
+//! carries each run through delivery and verification, and claims the
+//! lifecycle operations of [`super::lifecycle`].
 //!
 //! Delivery renders the run's objects and writes them, the App under the
 //! generation fence, then records the write and moves the run to
@@ -12,13 +13,16 @@ use std::{convert::Infallible, fmt, fmt::Debug, time::Duration};
 use k8s_openapi::api::core::v1::Namespace;
 use kube::{Api, Client, Resource};
 use kuben_core::{
-    ids::OperationId,
+    ids::{OperationId, OrgId},
     ops::{Generation, RunEvent, RunPhase},
 };
 use kuben_crd::{App, Environment, Project};
 use kuben_store::{
     Store, StoreError,
-    repo::{Advance, Claim, Materialization, RUN_KIND},
+    repo::{
+        Advance, Claim, ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, Materialization, PROJECT_APPLY,
+        PROJECT_DELETE, RUN_KIND, TARGET_DELETE,
+    },
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::time::Instant;
@@ -42,8 +46,20 @@ const POLL: Duration = Duration::from_secs(3);
 /// How long delivery waits for the environment controller's namespace.
 const NAMESPACE_WAIT: Duration = Duration::from_mins(1);
 const VERIFY_DEADLINE: Duration = Duration::from_mins(15);
-/// Claims of one operation before its run fails for good.
+/// How long an environment deletion waits before it checks again.
+const DELETION_CHECK: Duration = Duration::from_secs(20);
+/// Claims of one deployment operation before its run fails for good.
+/// Lifecycle operations are idempotent and never give up.
 const MAX_ATTEMPTS: i32 = 20;
+/// Every operation kind a worker claims.
+const KINDS: [&str; 6] = [
+    RUN_KIND,
+    PROJECT_APPLY,
+    ENVIRONMENT_APPLY,
+    TARGET_DELETE,
+    ENVIRONMENT_DELETE,
+    PROJECT_DELETE,
+];
 
 /// A failure a later attempt may not repeat.
 #[derive(Debug, thiserror::Error)]
@@ -95,6 +111,8 @@ pub(super) enum Stop {
     Superseded,
     /// Try again later.
     Retry(Error),
+    /// Check again after this long: waiting is not a failure.
+    Wait(Duration, &'static str),
 }
 
 impl From<Error> for Stop {
@@ -115,7 +133,7 @@ impl From<StoreError> for Stop {
     }
 }
 
-fn refused(code: &str) -> Stop {
+pub(super) fn refused(code: &str) -> Stop {
     Stop::Refused(code.to_owned())
 }
 
@@ -126,6 +144,7 @@ pub struct Worker {
     pub(super) client: Client,
     id: String,
     verify_deadline: Duration,
+    pub(super) deletion_check: Duration,
 }
 
 impl Debug for Worker {
@@ -160,7 +179,16 @@ impl Worker {
             client,
             id: id.into(),
             verify_deadline: VERIFY_DEADLINE,
+            deletion_check: DELETION_CHECK,
         }
+    }
+
+    /// How long an environment deletion waits before it checks again; 20
+    /// seconds unless set.
+    #[must_use]
+    pub const fn with_deletion_check(mut self, after: Duration) -> Self {
+        self.deletion_check = after;
+        self
     }
 
     /// How long verification waits for the App to become ready; 15 minutes
@@ -171,13 +199,17 @@ impl Worker {
         self
     }
 
-    /// Claim one due deployment operation and carry its run as far as it
-    /// goes. `None` when nothing was due.
+    /// Claim one due operation and carry it as far as it goes. `None` when
+    /// nothing was due.
     pub async fn work_once(&self, token: &CancellationToken) -> Result<Option<OperationId>, Error> {
-        let Some(claim) = self.store.claim_operation(&self.id, &[RUN_KIND], LEASE).await? else {
+        let Some(claim) = self.store.claim_operation(&self.id, &KINDS, LEASE).await? else {
             return Ok(None);
         };
-        let stop = self.carry(&claim, token).await;
+        let stop = if claim.kind == RUN_KIND {
+            self.carry(&claim, token).await
+        } else {
+            self.carry_lifecycle(&claim).await
+        };
         self.settle(&claim, stop).await?;
         Ok(Some(claim.id))
     }
@@ -215,6 +247,10 @@ impl Worker {
                 let delay = backoff(u32::try_from(claim.attempt).unwrap_or(u32::MAX));
                 tracing::warn!(operation = %claim.id, error = %e, retry_in_s = delay.as_secs(), "materialization will be retried");
                 self.store.retry_operation(claim, delay, e.code()).await?;
+                return Ok(());
+            }
+            Stop::Wait(after, code) => {
+                self.store.retry_operation(claim, after, code).await?;
                 return Ok(());
             }
             Stop::Settled(phase, code) => (phase.as_str(), code),
@@ -275,13 +311,13 @@ impl Worker {
     ) -> Result<i64, Stop> {
         let rendered = render(m).map_err(|e| refused(e.code()))?;
         let project = self
-            .ensure(Api::<Project>::all(self.client.clone()), &rendered.project, m)
+            .ensure(Api::<Project>::all(self.client.clone()), &rendered.project, m.org)
             .await?;
         let mut environment = rendered.environment;
         if !render::set_owner(&mut environment, &project) {
             return Err(Error::Incomplete(format!("Project/{}", m.project_slug)).into());
         }
-        self.ensure(Api::<Environment>::all(self.client.clone()), &environment, m)
+        self.ensure(Api::<Environment>::all(self.client.clone()), &environment, m.org)
             .await?;
         self.wait_namespace(&m.namespace, token).await?;
         let app = self.write_app(m, &rendered.app).await?;
@@ -301,14 +337,14 @@ impl Worker {
 
     /// Write a project or environment object, which many targets share: only
     /// an object of the same organization is taken over.
-    async fn ensure<K>(&self, api: Api<K>, desired: &K, m: &Materialization) -> Result<K, Stop>
+    pub(super) async fn ensure<K>(&self, api: Api<K>, desired: &K, org: OrgId) -> Result<K, Stop>
     where
         K: Resource + Clone + Serialize + DeserializeOwned + Debug,
     {
         let name = desired.meta().name.clone().unwrap_or_default();
         for _ in 0..MAX_CONFLICTS {
             let live = api.get_opt(&name).await?;
-            if live.as_ref().is_some_and(|l| !write::belongs_to(l.meta(), m.org)) {
+            if live.as_ref().is_some_and(|l| !write::belongs_to(l.meta(), org)) {
                 return Err(refused("NameTaken"));
             }
             match write::put(&api, desired, live.as_ref()).await {

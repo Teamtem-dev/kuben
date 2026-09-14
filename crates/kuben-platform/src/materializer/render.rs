@@ -1,21 +1,25 @@
-//! Rendering (ADR-032): the `Project`, `Environment` and `App` objects of an
-//! accepted deployment run, from its SQL rows alone.
+//! Rendering (ADR-032): the `Project`, `Environment` and `App` objects of
+//! SQL rows alone.
 //!
 //! The objects keep the names, labels and shape the API has always given
-//! them, so the existing controllers reconcile them unchanged. The release
-//! decides the image: `spec.source` becomes `<image repository>@<digest>`,
-//! whatever the configuration revision says about the source.
+//! them, so the existing controllers reconcile them unchanged. Projects and
+//! environments are rendered the same way for a deployment run and for the
+//! lifecycle operations that write them as soon as they exist. The release
+//! decides an App's image: `spec.source` becomes
+//! `<image repository>@<digest>`, whatever the configuration revision says
+//! about the source.
 
 use std::collections::BTreeMap;
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::ObjectMeta;
+use kuben_core::ids::{EnvironmentId, OperationId, OrgId, ProjectId};
 use kuben_crd::{
     App, AppSpec, DeletionPolicy, Environment, EnvironmentSpec, EnvironmentType, PreviewPolicy, Project,
-    ProjectSpec, Protection, labels,
+    ProjectSpec, Protection, Quota, labels,
 };
 use kuben_store::repo::Materialization;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::controller::resources::{self, BuildError};
 
@@ -26,7 +30,7 @@ pub const FIELD_MANAGER: &str = "kuben-materializer";
 pub mod annotations {
     /// The target generation an App object was written for: the fence.
     pub const GENERATION: &str = "kuben.dev/generation";
-    /// The operation whose run wrote the object last.
+    /// The operation that wrote the object last.
     pub const OPERATION: &str = "kuben.dev/operation";
     /// The target's lifecycle UID: a recreated target is another App.
     pub const LIFECYCLE_UID: &str = "kuben.dev/lifecycle-uid";
@@ -50,7 +54,58 @@ pub struct Rendered {
     pub app: App,
 }
 
-/// Why a run cannot be rendered. The run fails with [`RenderError::code`].
+/// What a `Project` object is rendered from.
+#[derive(Clone, Copy, Debug)]
+pub struct ProjectMaterial<'a> {
+    pub org: OrgId,
+    pub id: ProjectId,
+    pub slug: &'a str,
+    pub name: &'a str,
+    pub description: Option<&'a str>,
+}
+
+/// What an `Environment` object is rendered from.
+#[derive(Clone, Copy, Debug)]
+pub struct EnvironmentMaterial<'a> {
+    pub id: EnvironmentId,
+    pub slug: &'a str,
+    pub name: &'a str,
+    /// `standard`, `production` or `preview`.
+    pub env_type: &'a str,
+    pub quota: Option<&'a Value>,
+    /// The namespace of its placement, when it has one.
+    pub namespace: Option<&'a str>,
+}
+
+impl<'a> ProjectMaterial<'a> {
+    #[must_use]
+    pub fn of(m: &'a Materialization) -> Self {
+        Self {
+            org: m.org,
+            id: m.project,
+            slug: &m.project_slug,
+            name: &m.project_name,
+            description: m.project_description.as_deref(),
+        }
+    }
+}
+
+impl<'a> EnvironmentMaterial<'a> {
+    #[must_use]
+    pub fn of(m: &'a Materialization) -> Self {
+        Self {
+            id: m.environment,
+            slug: &m.environment_slug,
+            name: &m.environment_name,
+            env_type: &m.env_type,
+            quota: m.quota.as_ref(),
+            namespace: Some(&m.namespace),
+        }
+    }
+}
+
+/// Why an object cannot be rendered. The operation fails with
+/// [`RenderError::code`].
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum RenderError {
     #[error("release {0} has no image repository to pull its digest from")]
@@ -65,6 +120,8 @@ pub enum RenderError {
     Namespace { placement: String, expected: String },
     #[error("`{0}` is too long for a Kubernetes name")]
     NameTooLong(String),
+    #[error("the environment quota is not valid: {0}")]
+    InvalidQuota(String),
 }
 
 impl RenderError {
@@ -78,40 +135,34 @@ impl RenderError {
             Self::Invalid(e) => e.reason(),
             Self::Namespace { .. } => "PlacementNamespace",
             Self::NameTooLong(_) => "NameTooLong",
+            Self::InvalidQuota(_) => "InvalidQuota",
         }
     }
 }
 
-/// Kubernetes name of the run's environment: `<project>-<environment>`, as
-/// the API names it.
+/// Kubernetes name of an environment: `<project>-<environment>`, as the API
+/// names it.
 #[must_use]
-pub fn environment_name(m: &Materialization) -> String {
-    format!("{}-{}", m.project_slug, m.environment_slug)
+pub fn environment_name(project_slug: &str, environment_slug: &str) -> String {
+    format!("{project_slug}-{environment_slug}")
 }
 
-/// Render the objects of `m`. Only one placement per environment exists until
-/// M1.9, so the placement's namespace must be the one the environment
-/// controller creates.
+/// Render the objects of the run `m`. Only one placement per environment
+/// exists until M1.9, so the placement's namespace must be the one the
+/// environment controller creates.
 pub fn render(m: &Materialization) -> Result<Rendered, RenderError> {
-    let environment = environment_name(m);
-    let namespace = resources::namespace_name(&environment);
-    for name in [&namespace, &m.application_slug] {
-        if name.len() > MAX_NAME {
-            return Err(RenderError::NameTooLong(name.clone()));
-        }
+    let project = ProjectMaterial::of(m);
+    let environment = environment_object(&project, &EnvironmentMaterial::of(m), m.operation)?;
+    if m.application_slug.len() > MAX_NAME {
+        return Err(RenderError::NameTooLong(m.application_slug.clone()));
     }
-    if m.namespace != namespace {
-        return Err(RenderError::Namespace {
-            placement: m.namespace.clone(),
-            expected: namespace,
-        });
-    }
-    let mut app_labels = scope_labels(m);
-    app_labels.insert(labels::ENVIRONMENT.to_owned(), environment.clone());
+    let environment_name = environment_name(&m.project_slug, &m.environment_slug);
+    let mut app_labels = scope_labels(m.org, &m.project_slug);
+    app_labels.insert(labels::ENVIRONMENT.to_owned(), environment_name);
     let app = App {
         metadata: ObjectMeta {
             name: Some(m.application_slug.clone()),
-            namespace: Some(namespace),
+            namespace: Some(m.namespace.clone()),
             labels: Some(app_labels),
             annotations: Some(BTreeMap::from([
                 (annotations::GENERATION.to_owned(), m.generation.0.to_string()),
@@ -126,9 +177,82 @@ pub fn render(m: &Materialization) -> Result<Rendered, RenderError> {
     };
     resources::validate(&app)?;
     Ok(Rendered {
-        project: project(m),
-        environment: environment_object(m, environment),
+        project: project_object(&project, m.operation),
+        environment,
         app,
+    })
+}
+
+/// The `Project` object of `p`, written by `operation`.
+#[must_use]
+pub fn project_object(p: &ProjectMaterial<'_>, operation: OperationId) -> Project {
+    Project {
+        metadata: ObjectMeta {
+            name: Some(p.slug.to_owned()),
+            labels: Some(managed_labels(p.org)),
+            annotations: Some(written_by(operation, p.id.to_string())),
+            ..ObjectMeta::default()
+        },
+        spec: ProjectSpec {
+            display_name: p.name.to_owned(),
+            description: p.description.map(str::to_owned),
+            previews: PreviewPolicy::default(),
+        },
+        status: None,
+    }
+}
+
+/// The `Environment` object of `e` in project `p`, written by `operation`.
+pub fn environment_object(
+    p: &ProjectMaterial<'_>,
+    e: &EnvironmentMaterial<'_>,
+    operation: OperationId,
+) -> Result<Environment, RenderError> {
+    let name = environment_name(p.slug, e.slug);
+    let namespace = resources::namespace_name(&name);
+    if namespace.len() > MAX_NAME {
+        return Err(RenderError::NameTooLong(namespace));
+    }
+    if let Some(placement) = e.namespace
+        && placement != namespace
+    {
+        return Err(RenderError::Namespace {
+            placement: placement.to_owned(),
+            expected: namespace,
+        });
+    }
+    let (type_, protection) = match e.env_type {
+        "production" => (
+            EnvironmentType::Production,
+            Some(Protection {
+                require_approvals: 0,
+                deletion_grace: PRODUCTION_DELETION_GRACE.into(),
+            }),
+        ),
+        "preview" => (EnvironmentType::Preview, None),
+        _ => (EnvironmentType::Standard, None),
+    };
+    let quota = e
+        .quota
+        .map(|q| serde_json::from_value::<Quota>(q.clone()))
+        .transpose()
+        .map_err(|err| RenderError::InvalidQuota(err.to_string()))?;
+    Ok(Environment {
+        metadata: ObjectMeta {
+            name: Some(name),
+            labels: Some(scope_labels(p.org, p.slug)),
+            annotations: Some(written_by(operation, e.id.to_string())),
+            ..ObjectMeta::default()
+        },
+        spec: EnvironmentSpec {
+            project: p.slug.to_owned(),
+            type_,
+            deletion_policy: DeletionPolicy::Delete,
+            protection,
+            quota,
+            ttl: None,
+        },
+        status: None,
     })
 }
 
@@ -149,74 +273,24 @@ pub fn set_owner(environment: &mut Environment, project: &Project) -> bool {
     true
 }
 
-fn managed_labels(m: &Materialization) -> BTreeMap<String, String> {
+fn managed_labels(org: OrgId) -> BTreeMap<String, String> {
     BTreeMap::from([
         (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
-        (labels::ORG.to_owned(), m.org.to_string()),
+        (labels::ORG.to_owned(), org.to_string()),
     ])
 }
 
-fn scope_labels(m: &Materialization) -> BTreeMap<String, String> {
-    let mut l = managed_labels(m);
-    l.insert(labels::PROJECT.to_owned(), m.project_slug.clone());
+fn scope_labels(org: OrgId, project_slug: &str) -> BTreeMap<String, String> {
+    let mut l = managed_labels(org);
+    l.insert(labels::PROJECT.to_owned(), project_slug.to_owned());
     l
 }
 
-fn written_by(m: &Materialization, id: String) -> BTreeMap<String, String> {
+fn written_by(operation: OperationId, id: String) -> BTreeMap<String, String> {
     BTreeMap::from([
-        (annotations::OPERATION.to_owned(), m.operation.to_string()),
+        (annotations::OPERATION.to_owned(), operation.to_string()),
         (annotations::ID.to_owned(), id),
     ])
-}
-
-fn project(m: &Materialization) -> Project {
-    Project {
-        metadata: ObjectMeta {
-            name: Some(m.project_slug.clone()),
-            labels: Some(managed_labels(m)),
-            annotations: Some(written_by(m, m.project.to_string())),
-            ..ObjectMeta::default()
-        },
-        spec: ProjectSpec {
-            display_name: m.project_name.clone(),
-            description: None,
-            previews: PreviewPolicy::default(),
-        },
-        status: None,
-    }
-}
-
-fn environment_object(m: &Materialization, name: String) -> Environment {
-    // Protection is policy in SQL; production is the environment type that
-    // carries it on the resource.
-    let (type_, protection) = if m.protected {
-        (
-            EnvironmentType::Production,
-            Some(Protection {
-                require_approvals: 0,
-                deletion_grace: PRODUCTION_DELETION_GRACE.into(),
-            }),
-        )
-    } else {
-        (EnvironmentType::Standard, None)
-    };
-    Environment {
-        metadata: ObjectMeta {
-            name: Some(name),
-            labels: Some(scope_labels(m)),
-            annotations: Some(written_by(m, m.environment.to_string())),
-            ..ObjectMeta::default()
-        },
-        spec: EnvironmentSpec {
-            project: m.project_slug.clone(),
-            type_,
-            deletion_policy: DeletionPolicy::Delete,
-            protection,
-            quota: None,
-            ttl: None,
-        },
-        status: None,
-    }
 }
 
 /// The configuration revision with the release's image as its source.
@@ -255,14 +329,10 @@ fn app_spec(m: &Materialization) -> Result<AppSpec, RenderError> {
 #[cfg(test)]
 mod tests {
     use kuben_core::{
-        ids::{
-            ApplicationId, ConfigRevisionId, DeploymentRunId, EnvironmentId, OperationId, OrgId, ProjectId,
-            ReleaseId, TargetId,
-        },
+        ids::{ApplicationId, ConfigRevisionId, DeploymentRunId, ReleaseId, TargetId},
         ops::{Generation, RunPhase},
     };
     use kuben_crd::Source;
-    use serde_json::Value;
 
     use super::*;
 
@@ -279,10 +349,13 @@ mod tests {
             project: ProjectId::new(),
             project_slug: "shop".into(),
             project_name: "Shop".into(),
+            project_description: Some("The online shop".into()),
             environment: EnvironmentId::new(),
             environment_slug: "production".into(),
             environment_name: "Production".into(),
             protected: true,
+            env_type: "production".into(),
+            quota: None,
             namespace: "kb-shop-production".into(),
             application: ApplicationId::new(),
             application_slug: "web".into(),
@@ -313,6 +386,7 @@ mod tests {
 
         assert_eq!(r.project.metadata.name.as_deref(), Some("shop"));
         assert_eq!(r.project.spec.display_name, "Shop");
+        assert_eq!(r.project.spec.description.as_deref(), Some("The online shop"));
         assert_eq!(r.environment.metadata.name.as_deref(), Some("shop-production"));
         assert_eq!(r.environment.spec.project, "shop");
         assert_eq!(r.environment.spec.type_, EnvironmentType::Production);
@@ -367,18 +441,53 @@ mod tests {
             render(&only).is_ok(),
             "a release with one artifact names its image"
         );
-
-        let unprotected = Materialization {
-            protected: false,
-            ..sample()
-        };
-        let r = render(&unprotected).expect("render");
-        assert_eq!(r.environment.spec.type_, EnvironmentType::Standard);
-        assert!(r.environment.spec.protection.is_none());
     }
 
     #[test]
-    fn a_run_that_cannot_be_rendered_says_why() {
+    fn environments_carry_their_type_and_quota() {
+        let m = sample();
+        let project = ProjectMaterial::of(&m);
+        let operation = OperationId::new();
+        let preview = EnvironmentMaterial {
+            env_type: "preview",
+            namespace: None,
+            quota: Some(&json!({ "cpu": "4", "memory": "4Gi", "pods": 30 })),
+            ..EnvironmentMaterial::of(&m)
+        };
+        let env = environment_object(&project, &preview, operation).expect("render");
+        assert_eq!(env.spec.type_, EnvironmentType::Preview);
+        assert!(env.spec.protection.is_none());
+        let quota = env.spec.quota.expect("quota");
+        assert_eq!(
+            (quota.cpu.as_deref(), quota.memory.as_deref(), quota.pods),
+            (Some("4"), Some("4Gi"), Some(30))
+        );
+        assert_eq!(
+            env.metadata.annotations.expect("annotations")[annotations::OPERATION],
+            operation.to_string()
+        );
+
+        let standard = EnvironmentMaterial {
+            env_type: "standard",
+            ..EnvironmentMaterial::of(&m)
+        };
+        let env = environment_object(&project, &standard, operation).expect("render");
+        assert_eq!(env.spec.type_, EnvironmentType::Standard);
+
+        let broken = EnvironmentMaterial {
+            quota: Some(&json!({ "pods": "many" })),
+            ..EnvironmentMaterial::of(&m)
+        };
+        assert_eq!(
+            environment_object(&project, &broken, operation)
+                .expect_err("quota")
+                .code(),
+            "InvalidQuota"
+        );
+    }
+
+    #[test]
+    fn an_object_that_cannot_be_rendered_says_why() {
         let codes = [
             (
                 Materialization {
