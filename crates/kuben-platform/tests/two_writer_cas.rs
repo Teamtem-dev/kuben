@@ -7,8 +7,10 @@
 //! 3. Does "re-read, compare generation, conditional replace" keep the highest
 //!    generation when two writers race with different generations?
 //!
-//! Needs a cluster: runs only with `KUBEN_E2E_CLUSTER=1` (the kind job in CI),
-//! and uses its own throwaway namespace.
+//! Needs a cluster: the tests are ignored by default and run with
+//! `cargo test -- --ignored` against the current kube context (the kind job in
+//! CI), each in its own throwaway namespace. An unreachable cluster fails the
+//! run instead of skipping it.
 
 use std::collections::BTreeMap;
 
@@ -19,10 +21,6 @@ use kube::{
 };
 
 const GEN_KEY: &str = "generation";
-
-fn enabled() -> bool {
-    std::env::var("KUBEN_E2E_CLUSTER").is_ok_and(|v| v == "1")
-}
 
 fn cm(name: &str, generation: u64) -> ConfigMap {
     ConfigMap {
@@ -101,11 +99,8 @@ async fn write_if_newer(api: &Api<ConfigMap>, name: &str, generation: u64) -> bo
 }
 
 #[tokio::test]
+#[ignore = "needs a Kubernetes cluster; run with --ignored"]
 async fn stale_resource_version_replace_is_rejected() {
-    if !enabled() {
-        eprintln!("skipped: set KUBEN_E2E_CLUSTER=1 to run against a cluster");
-        return;
-    }
     let ns = TestNs::new().await;
     let api = ns.api();
     api.create(&PostParams::default(), &cm("target", 1))
@@ -133,11 +128,8 @@ async fn stale_resource_version_replace_is_rejected() {
 }
 
 #[tokio::test]
+#[ignore = "needs a Kubernetes cluster; run with --ignored"]
 async fn server_side_apply_with_a_stale_resource_version_is_rejected() {
-    if !enabled() {
-        eprintln!("skipped: set KUBEN_E2E_CLUSTER=1 to run against a cluster");
-        return;
-    }
     let ns = TestNs::new().await;
     let api = ns.api();
     let pp = PatchParams::apply("kuben-m0").force();
@@ -170,11 +162,8 @@ async fn server_side_apply_with_a_stale_resource_version_is_rejected() {
 }
 
 #[tokio::test]
+#[ignore = "needs a Kubernetes cluster; run with --ignored"]
 async fn racing_writers_keep_the_highest_generation() {
-    if !enabled() {
-        eprintln!("skipped: set KUBEN_E2E_CLUSTER=1 to run against a cluster");
-        return;
-    }
     let ns = TestNs::new().await;
     let api = ns.api();
     api.create(&PostParams::default(), &cm("target", 1))

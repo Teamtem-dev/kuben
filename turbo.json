@@ -142,8 +142,18 @@
       "cache": false
     },
     "kuben-platform#test:cluster": {
-      "description": "M0 spike: two writers against the current kube context (set KUBEN_E2E_CLUSTER=1).",
-      "command": ["cargo", "test", "--package=kuben-platform", "--locked", "--test", "two_writer_cas"],
+      "description": "M0 spike: two writers against the current kube context. The tests are #[ignore]d elsewhere; --nocapture keeps the SSA answer in the log.",
+      "command": [
+        "cargo",
+        "test",
+        "--package=kuben-platform",
+        "--locked",
+        "--test",
+        "two_writer_cas",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
       "cache": false
     },
     "kuben-api#gen": {
