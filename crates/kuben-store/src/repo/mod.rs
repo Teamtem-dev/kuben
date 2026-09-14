@@ -3,6 +3,7 @@
 
 mod audit;
 mod deployments;
+mod materialize;
 mod operations;
 mod orgs;
 mod product;
@@ -15,6 +16,7 @@ mod users;
 
 pub use audit::NewAudit;
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
+pub use materialize::{Materialization, Materialized};
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use product::{Project, Tenant};
 pub use releases::NewRelease;
