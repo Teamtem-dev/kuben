@@ -142,7 +142,7 @@
       "cache": false
     },
     "kuben-platform#test:cluster": {
-      "description": "Tests against the current kube context: the M0 two-writer spike and the materializer (which also needs KUBEN_TEST_PG_URL). The tests are #[ignore]d elsewhere; --nocapture keeps the SSA answer in the log.",
+      "description": "Tests against the current kube context: the M0 two-writer spike, the materializer (which also needs KUBEN_TEST_PG_URL) and the execution CRDs' CEL rules. The tests are #[ignore]d elsewhere; --nocapture keeps the SSA answer in the log.",
       "command": [
         "cargo",
         "test",
@@ -152,6 +152,8 @@
         "two_writer_cas",
         "--test",
         "materializer",
+        "--test",
+        "execution_crds",
         "--",
         "--ignored",
         "--nocapture"

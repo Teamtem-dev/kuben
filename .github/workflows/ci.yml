@@ -315,7 +315,7 @@ jobs:
       # ADR-032: the materializer writes, fences and verifies runs from SQL.
       # The tests are #[ignore]d everywhere else; this step runs them with
       # --ignored, so an unreachable cluster fails instead of skipping.
-      - name: Cluster tests (two writers, materializer)
+      - name: Cluster tests (two writers, materializer, execution CRDs)
         run: bun turbo run kuben-platform#test:cluster
         env:
           KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
