@@ -273,8 +273,21 @@ async fn a_run_is_written_verified_and_recorded() {
 
     let mut t = w.store.tenant(w.org).await.expect("tenant");
     let written = t.materialized(w.target).await.expect("read").expect("recorded");
+    let plan = t
+        .run_render_plan(run)
+        .await
+        .expect("read")
+        .expect("a frozen plan");
     drop(t);
     assert_eq!(written.generation, Generation(1));
+    assert_eq!(plan.renderer_version, kuben_platform::render::RENDERER_VERSION);
+    assert!(
+        plan.resources.as_array().is_some_and(|objects| objects
+            .iter()
+            .any(|o| o["kind"] == "Deployment" && o["metadata"]["name"] == "web-web")),
+        "the plan holds the web Deployment: {}",
+        plan.resources
+    );
     assert_eq!(Some(written.resource_uid.as_str()), app.metadata.uid.as_deref());
 
     let env = Api::<Environment>::all(w.client.clone())

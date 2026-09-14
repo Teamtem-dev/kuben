@@ -2,7 +2,8 @@
 //! carries each run through delivery and verification, and claims the
 //! lifecycle operations of [`super::lifecycle`].
 //!
-//! Delivery renders the run's objects and writes them, the App under the
+//! Delivery renders the run's objects, freezes the run's RenderPlan before
+//! the first write (never again on a retry), and writes them, the App under the
 //! generation fence, then records the write and moves the run to
 //! `acceptedByCluster`. Verification follows the App controller's status
 //! ([`progress`]) to `succeeded` or `failed`. Claims are fenced in SQL, so
@@ -11,12 +12,12 @@
 use std::{convert::Infallible, fmt, fmt::Debug, time::Duration};
 
 use k8s_openapi::api::core::v1::Namespace;
-use kube::{Api, Client, Resource};
+use kube::{Api, Client, Resource, api::ListParams};
 use kuben_core::{
     ids::{OperationId, OrgId},
     ops::{Generation, RunEvent, RunPhase},
 };
-use kuben_crd::{App, Environment, Project};
+use kuben_crd::{App, Environment, KubenConfig, Project};
 use kuben_store::{
     Store, StoreError,
     repo::{
@@ -34,7 +35,11 @@ use super::{
     render::{self, render},
     write::{self, MAX_CONFLICTS},
 };
-use crate::{controller::backoff, health::Health};
+use crate::{
+    controller::{backoff, platform_of},
+    health::Health,
+    render::{self as plans, Capabilities, RenderPlanError},
+};
 
 /// Health registry name of the worker loop.
 const HEALTH: &str = "materializer";
@@ -135,6 +140,15 @@ impl From<StoreError> for Stop {
 
 pub(super) fn refused(code: &str) -> Stop {
     Stop::Refused(code.to_owned())
+}
+
+/// The failure code of a run whose plan cannot be rendered.
+fn plan_refusal(e: &RenderPlanError) -> &'static str {
+    match e {
+        RenderPlanError::Build(b) => b.reason(),
+        RenderPlanError::TooLarge { .. } => "PlanTooLarge",
+        RenderPlanError::Incomplete(_) | RenderPlanError::Serialize(_) => "RenderFailed",
+    }
 }
 
 /// The materializer of one process.
@@ -310,6 +324,9 @@ impl Worker {
         token: &CancellationToken,
     ) -> Result<i64, Stop> {
         let rendered = render(m).map_err(|e| refused(e.code()))?;
+        if m.render_plan.is_none() {
+            self.freeze(claim, m, &rendered.app).await?;
+        }
         let project = self
             .ensure(Api::<Project>::all(self.client.clone()), &rendered.project, m.org)
             .await?;
@@ -333,6 +350,30 @@ impl Worker {
             return Err(Stop::Superseded);
         }
         Ok(generation)
+    }
+
+    /// Freeze the run's RenderPlan before its first write (ADR-026): the App
+    /// rendered against the cluster's capabilities now. A retry finds the
+    /// plan frozen and never renders it again.
+    async fn freeze(&self, claim: &Claim, m: &Materialization, app: &App) -> Result<(), Stop> {
+        let configs = Api::<KubenConfig>::all(self.client.clone())
+            .list(&ListParams::default())
+            .await?;
+        let capabilities = Capabilities::of(&platform_of(&configs.items));
+        let plan = plans::render(app, &capabilities).map_err(|e| refused(plan_refusal(&e)))?;
+        let (Ok(snapshot), Ok(resources)) = (plan.capabilities_json(), plan.resources()) else {
+            return Err(refused("RenderFailed"));
+        };
+        let mut tenant = self.store.tenant(m.org).await?;
+        let Some(id) = tenant
+            .freeze_run_plan(claim, m.run, plan.renderer_version(), &snapshot, &resources)
+            .await?
+        else {
+            return Err(Stop::Fenced);
+        };
+        tenant.commit().await?;
+        tracing::info!(run = %m.run, plan = %id, digest = %plan.digest, "render plan frozen");
+        Ok(())
     }
 
     /// Write a project or environment object, which many targets share: only

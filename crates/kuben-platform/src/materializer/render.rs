@@ -340,6 +340,7 @@ mod tests {
 
     fn sample() -> Materialization {
         Materialization {
+            render_plan: None,
             org: OrgId::new(),
             run: DeploymentRunId::new(),
             operation: OperationId::new(),

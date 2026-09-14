@@ -23,7 +23,7 @@ pub use lifecycle::{
     ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, LIFECYCLE_KINDS, PROJECT_APPLY, PROJECT_DELETE, Subject,
     TARGET_DELETE,
 };
-pub use materialize::{Materialization, Materialized};
+pub use materialize::{Materialization, Materialized, RunPlan};
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;

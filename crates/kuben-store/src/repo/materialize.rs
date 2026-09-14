@@ -14,7 +14,7 @@ use kuben_core::{
     artifact::Digest,
     ids::{
         ApplicationId, ConfigRevisionId, DeploymentRunId, EnvironmentId, OperationId, OrgId, ProjectId,
-        ReleaseId, TargetId,
+        ReleaseId, RenderPlanId, TargetId,
     },
     ops::{Generation, RunPhase},
 };
@@ -24,7 +24,7 @@ use uuid::Uuid;
 use super::{Claim, Tenant, product::counter};
 use crate::{Store, StoreError};
 
-const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.lifecycle_uid, \
+const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.lifecycle_uid, r.render_plan_id, \
      pr.id AS project_id, pr.slug AS project_slug, pr.name AS project_name, \
      pr.description AS project_description, \
      e.id AS environment_id, e.slug AS environment_slug, e.name AS environment_name, e.protected, \
@@ -62,6 +62,14 @@ const RECORD_DRIFT: &str = "UPDATE target_materializations \
      SET resource_uid = COALESCE($3, resource_uid), resource_generation = COALESCE($4, resource_generation), \
          drift_count = drift_count + 1, drift_detected_at = kuben_now_ms(), drift = $5::jsonb \
      WHERE target_id = $1 AND generation = $2";
+const RUN_PLAN_ID: &str = "SELECT render_plan_id FROM deployment_runs WHERE id = $1 AND org_id = $2";
+const SET_RUN_PLAN: &str = "UPDATE deployment_runs SET render_plan_id = $3, updated_at = kuben_now_ms() \
+     WHERE id = $1 AND org_id = $2 AND render_plan_id IS NULL AND EXISTS (SELECT 1 FROM operations o \
+       WHERE o.id = deployment_runs.operation_id AND o.id = $4 AND o.fence = $5 AND NOT o.done)";
+const RUN_PLAN: &str = "SELECT p.id, p.renderer_version, p.capability_snapshot::text AS capability_snapshot, \
+     p.resources::text AS resources FROM deployment_runs r \
+     JOIN render_plans p ON p.id = r.render_plan_id AND p.org_id = r.org_id \
+     WHERE r.id = $1 AND r.org_id = $2";
 
 /// Everything a deployment run is rendered from.
 #[derive(Clone, Debug, PartialEq)]
@@ -104,6 +112,18 @@ pub struct Materialization {
     pub config_revision_number: u64,
     /// The App spec without its image (the config revision contract).
     pub config: Value,
+    /// The run's frozen RenderPlan, once the materializer has frozen it.
+    pub render_plan: Option<RenderPlanId>,
+}
+
+/// A run's frozen RenderPlan (ADR-026).
+#[derive(Clone, Debug, PartialEq)]
+pub struct RunPlan {
+    pub id: RenderPlanId,
+    pub renderer_version: String,
+    pub capability_snapshot: Value,
+    /// The normalized resources, an array of objects.
+    pub resources: Value,
 }
 
 /// What the materializer last wrote for a target.
@@ -129,6 +149,7 @@ struct MaterializationRow {
     phase: String,
     generation: i64,
     lifecycle_uid: Uuid,
+    render_plan_id: Option<Uuid>,
     project_id: Uuid,
     project_slug: String,
     project_name: String,
@@ -152,6 +173,14 @@ struct MaterializationRow {
     config_revision_id: Uuid,
     config_revision: i64,
     config: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct RunPlanRow {
+    id: Uuid,
+    renderer_version: String,
+    capability_snapshot: String,
+    resources: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -224,6 +253,7 @@ impl MaterializationRow {
             config_revision: ConfigRevisionId::from_uuid(self.config_revision_id),
             config_revision_number: counter(self.config_revision)?,
             config: json(&self.config)?,
+            render_plan: self.render_plan_id.map(RenderPlanId::from_uuid),
         })
     }
 }
@@ -274,6 +304,62 @@ impl Tenant {
             .fetch_optional(&mut *self.tx)
             .await?;
         Ok(row.map(MaterializedRow::into_materialized).transpose()?)
+    }
+
+    /// Freeze `run`'s RenderPlan for the holder of `claim` (ADR-026): the plan
+    /// the run has already, or this one, set once and never replaced. `None`
+    /// when the claim was fenced off or the run is gone; commit only on
+    /// `Some`.
+    pub async fn freeze_run_plan(
+        &mut self,
+        claim: &Claim,
+        run: DeploymentRunId,
+        renderer_version: &str,
+        capability_snapshot: &Value,
+        resources: &Value,
+    ) -> Result<Option<RenderPlanId>, StoreError> {
+        let org = self.org.to_string();
+        let existing: Option<Option<Uuid>> = sqlx::query_scalar(RUN_PLAN_ID)
+            .bind(*run.as_uuid())
+            .bind(&org)
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        match existing {
+            None => return Ok(None),
+            Some(Some(plan)) => return Ok(Some(RenderPlanId::from_uuid(plan))),
+            Some(None) => {}
+        }
+        let plan = self
+            .freeze_render_plan(renderer_version, capability_snapshot, resources)
+            .await?;
+        let rows = sqlx::query(SET_RUN_PLAN)
+            .bind(*run.as_uuid())
+            .bind(&org)
+            .bind(*plan.as_uuid())
+            .bind(*claim.id.as_uuid())
+            .bind(claim.fence)
+            .execute(&mut *self.tx)
+            .await?
+            .rows_affected();
+        Ok((rows == 1).then_some(plan))
+    }
+
+    /// The RenderPlan frozen for `run`, if any.
+    pub async fn run_render_plan(&mut self, run: DeploymentRunId) -> Result<Option<RunPlan>, StoreError> {
+        let row: Option<RunPlanRow> = sqlx::query_as(RUN_PLAN)
+            .bind(*run.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        let plan = |r: RunPlanRow| -> Result<RunPlan, sqlx::Error> {
+            Ok(RunPlan {
+                id: RenderPlanId::from_uuid(r.id),
+                renderer_version: r.renderer_version,
+                capability_snapshot: json(&r.capability_snapshot)?,
+                resources: json(&r.resources)?,
+            })
+        };
+        Ok(row.map(plan).transpose()?)
     }
 }
 
@@ -499,6 +585,69 @@ mod tests {
             "another organization's run"
         );
         assert_eq!(read(&store, f.org, OperationId::new()).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_run_plan_is_frozen_once_under_the_fence() {
+        let Some(store) = pg_store().await else {
+            skip("run plans");
+            return;
+        };
+        let f = fixture(&store, "a").await;
+        let claim = deploy(&store, &f, 0).await;
+        let m = read(&store, f.org, claim.id).await.expect("run");
+        assert_eq!(m.render_plan, None);
+        let caps = json!({ "sizes": [] });
+        let first = json!([{ "kind": "Deployment", "metadata": { "name": "web-web" } }]);
+
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        let plan = t
+            .freeze_run_plan(&claim, m.run, "kuben-renderer/1", &caps, &first)
+            .await
+            .expect("freeze")
+            .expect("frozen");
+        t.commit().await.expect("commit");
+        assert_eq!(
+            read(&store, f.org, claim.id).await.expect("run").render_plan,
+            Some(plan)
+        );
+
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        let again = t
+            .freeze_run_plan(&claim, m.run, "kuben-renderer/2", &caps, &json!([]))
+            .await
+            .expect("freeze");
+        assert_eq!(again, Some(plan), "a frozen plan is never replaced");
+        let frozen = t.run_render_plan(m.run).await.expect("read").expect("plan");
+        assert_eq!(
+            (frozen.id, frozen.renderer_version.as_str()),
+            (plan, "kuben-renderer/1")
+        );
+        assert_eq!(
+            (frozen.resources, frozen.capability_snapshot),
+            (first.clone(), caps.clone())
+        );
+        drop(t);
+
+        let next = deploy(&store, &f, 1).await;
+        let m2 = read(&store, f.org, next.id).await.expect("run 2");
+        let stale = Claim {
+            fence: next.fence - 1,
+            ..next.clone()
+        };
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        assert_eq!(
+            t.freeze_run_plan(&stale, m2.run, "kuben-renderer/1", &caps, &first)
+                .await
+                .expect("freeze"),
+            None,
+            "a fenced-off worker freezes nothing"
+        );
+        drop(t);
+        assert_eq!(
+            read(&store, f.org, next.id).await.expect("run 2").render_plan,
+            None
+        );
     }
 
     #[tokio::test]
