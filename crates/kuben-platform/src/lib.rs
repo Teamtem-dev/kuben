@@ -5,6 +5,8 @@
 //! * [`projection`] — informers feed small, UI-shaped read models instead of
 //!   caching raw objects (ADR-004).
 //! * [`controller`] — reconcilers (server-side apply, level-triggered).
+//! * [`materializer`] — writes the resources of accepted deployment runs
+//!   from SQL, the only desired-state writer (ADR-032).
 //! * [`supervise`] / [`health`] — every long-running task is supervised and
 //!   reports into a health registry; a panic in one subsystem never takes
 //!   down the API.
@@ -13,6 +15,7 @@ pub mod controller;
 pub mod duration;
 pub mod health;
 pub mod leader;
+pub mod materializer;
 pub mod projection;
 pub mod registry;
 pub mod supervise;
