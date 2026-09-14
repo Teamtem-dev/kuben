@@ -142,7 +142,7 @@
       "cache": false
     },
     "kuben-platform#test:cluster": {
-      "description": "M0 spike: two writers against the current kube context. The tests are #[ignore]d elsewhere; --nocapture keeps the SSA answer in the log.",
+      "description": "Tests against the current kube context: the M0 two-writer spike and the materializer (which also needs KUBEN_TEST_PG_URL). The tests are #[ignore]d elsewhere; --nocapture keeps the SSA answer in the log.",
       "command": [
         "cargo",
         "test",
@@ -150,6 +150,8 @@
         "--locked",
         "--test",
         "two_writer_cas",
+        "--test",
+        "materializer",
         "--",
         "--ignored",
         "--nocapture"

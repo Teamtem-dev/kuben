@@ -30,6 +30,8 @@ tracing.workspace = true
 metrics.workspace = true
 
 [dev-dependencies]
+# The materializer's cluster tests keep their rows in a schema of their own.
+kuben-store = { workspace = true, features = ["testing"] }
 rcgen.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true

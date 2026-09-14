@@ -69,6 +69,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         health.ok("cluster");
         spawn_cluster_tasks(
             &cfg,
+            &store,
             registry,
             &projections,
             &health,
@@ -128,10 +129,12 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 }
 
 /// Cluster-backed subsystems: informers, the readiness gate on their first
-/// sync, controllers (behind leader election when enabled) and, with the
+/// sync, controllers (behind leader election when enabled), the materializer
+/// (whose claims are fenced in SQL, so every replica runs one) and, with the
 /// `activator` feature, the activator.
 fn spawn_cluster_tasks(
     cfg: &Config,
+    store: &kuben_store::Store,
     registry: &ClusterRegistry,
     projections: &Arc<Projections>,
     health: &Health,
@@ -187,6 +190,17 @@ fn spawn_cluster_tasks(
                 }
             }
         })));
+
+        // SQL is the only desired-state writer; this writes its resources (ADR-032).
+        let worker =
+            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
+        let (h, t) = (health.clone(), shutdown.child_token());
+        tasks.push(tokio::spawn(supervise(
+            "materializer",
+            t,
+            h.clone(),
+            move |tok| kuben_platform::materializer::run(worker.clone(), h.clone(), tok),
+        )));
     }
 
     #[cfg(feature = "activator")]
@@ -213,15 +227,21 @@ fn election(cfg: &Config) -> anyhow::Result<Option<Election>> {
     let namespace = own_namespace(cfg.kube.namespace.as_deref()).context(
         "kube.leader_election needs a namespace for its Lease: set KUBEN_KUBE__NAMESPACE (automatic inside a pod)",
     )?;
+    Ok(Some(Election {
+        namespace,
+        identity: instance_identity(),
+    }))
+}
+
+/// This process among the replicas: the host name plus a random suffix,
+/// for the leader Lease and the materializer's claims.
+fn instance_identity() -> String {
     let host = std::env::var("HOSTNAME")
         .ok()
         .filter(|h| !h.is_empty())
         .unwrap_or_else(|| "kuben".into());
     let suffix: u32 = rand::random();
-    Ok(Some(Election {
-        namespace,
-        identity: format!("{host}_{suffix:08x}"),
-    }))
+    format!("{host}_{suffix:08x}")
 }
 
 /// Heartbeat for `/livez`: if the runtime is wedged this stops ticking.
