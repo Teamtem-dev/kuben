@@ -448,7 +448,7 @@
         "tags": [
           "projects"
         ],
-        "summary": "Create a project (writes a `Project` CR).",
+        "summary": "Create a project; its `Project` resource follows.",
         "operationId": "createProject",
         "requestBody": {
           "content": {
@@ -493,16 +493,6 @@
           },
           "422": {
             "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "No cluster configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -647,7 +637,7 @@
         "tags": [
           "environments"
         ],
-        "summary": "Create an environment (the controller provisions its namespace).",
+        "summary": "Create an environment: its namespace follows.",
         "operationId": "createEnvironment",
         "parameters": [
           {
@@ -703,16 +693,6 @@
           },
           "422": {
             "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "No cluster configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -823,6 +803,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -884,7 +874,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "Deploy a new app from a container image.",
+        "summary": "Deploy a new app from a container image. A tag is resolved to a digest at\nits registry.",
         "operationId": "createApp",
         "parameters": [
           {
@@ -958,7 +948,7 @@
             }
           },
           "503": {
-            "description": "",
+            "description": "The image's registry cannot be reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -1086,6 +1076,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       },
@@ -1093,7 +1093,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "Update an app (image changes require `app-deploy`). Every change is a\nnew release revision.",
+        "summary": "Update an app (image changes require `app-deploy`). Every change is a new\ndeployment run; a new tag is resolved to a digest at its registry.",
         "operationId": "updateApp",
         "parameters": [
           {
@@ -1167,6 +1167,16 @@
           },
           "422": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The image's registry cannot be reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -1602,6 +1612,16 @@
               }
             }
           },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "",
             "content": {
@@ -1736,7 +1756,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "Roll back to an earlier revision (recorded as a new revision).",
+        "summary": "Roll back to an earlier revision: a new run of its release and\nconfiguration. The app stays on it until automatic deploys resume.",
         "operationId": "rollbackApp",
         "parameters": [
           {
@@ -1799,6 +1819,16 @@
             }
           },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
             "description": "",
             "content": {
               "application/json": {
@@ -3365,7 +3395,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The project's id."
           },
           "display_name": {
             "type": "string"
@@ -3534,7 +3565,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "`create`, `deploy`, `config`, `rollback`, `promote` or `template`."
+            "description": "`create`, `deploy`, `config`, `rollback` or `promote`."
           },
           "note": {
             "type": [

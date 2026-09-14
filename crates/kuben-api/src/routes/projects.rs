@@ -1,29 +1,24 @@
-//! Projects: read from the in-memory projection; write through the
-//! Kubernetes API (CRD is the source of truth).
-
-use std::collections::BTreeMap;
+//! Projects on the SQL model (ADR-032). SQL holds them; the materializer
+//! writes their `Project` resource, whose status the projection adds.
 
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use kube::{
-    Api,
-    api::{DeleteParams, ObjectMeta, PostParams},
-};
-use kuben_core::{Error, authz::ScopeChain, perm::Perm};
-use kuben_crd::{Project, ProjectSpec, labels};
+use kuben_core::{Error, authz::ScopeChain, ids::OrgId, perm::Perm};
 use kuben_platform::projection::ProjectView;
+use kuben_store::repo::{PROJECT_APPLY, PROJECT_DELETE, Project, Subject};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{scope, validate};
+use super::{request, scope, validate};
 use crate::{authz::Authz, error::ApiResult, state::ApiState};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ProjectDto {
     pub name: String,
+    /// The project's id.
     pub uid: Option<String>,
     pub display_name: String,
     pub description: Option<String>,
@@ -34,18 +29,19 @@ pub struct ProjectDto {
     pub created_at: Option<String>,
 }
 
-impl From<&ProjectView> for ProjectDto {
-    fn from(p: &ProjectView) -> Self {
+impl ProjectDto {
+    #[must_use]
+    pub fn of(org: OrgId, project: &Project, view: Option<&ProjectView>) -> Self {
         Self {
-            name: p.name.clone(),
-            uid: p.uid.clone(),
-            display_name: p.display_name.clone(),
-            description: p.description.clone(),
-            org: p.org.clone(),
-            environments: p.environments,
-            ready: p.ready,
-            deleting: p.deleting,
-            created_at: p.created_at.clone(),
+            name: project.slug.clone(),
+            uid: Some(project.id.to_string()),
+            display_name: project.name.clone(),
+            description: project.description.clone(),
+            org: Some(org.to_string()),
+            environments: project.environments,
+            ready: view.is_some_and(|v| v.ready) && !project.deleting,
+            deleting: project.deleting,
+            created_at: Some(request::timestamp(project.created_at)),
         }
     }
 }
@@ -63,14 +59,17 @@ pub struct CreateProject {
 /// List projects visible to the caller.
 #[utoipa::path(get, path = "/projects", operation_id = "listProjects", tag = "projects", responses((status = 200, body = Vec<ProjectDto>)))]
 pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json<Vec<ProjectDto>>> {
-    let orgs: Vec<String> = authz.org_ids().iter().map(ToString::to_string).collect();
-    let items = state
-        .projections
-        .projects()
-        .iter()
-        .filter(|p| p.org.as_ref().is_some_and(|o| orgs.contains(o)))
-        .map(|p| ProjectDto::from(&**p))
-        .collect();
+    let mut items = Vec::new();
+    for org in authz.org_ids() {
+        let mut tenant = state.store.tenant(org).await?;
+        for project in tenant.projects().await? {
+            let view = state
+                .projections
+                .project(&project.slug)
+                .filter(|v| v.org.as_deref() == Some(org.to_string().as_str()));
+            items.push(ProjectDto::of(org, &project, view.as_deref()));
+        }
+    }
     Ok(Json(items))
 }
 
@@ -89,16 +88,15 @@ pub async fn get(
 ) -> ApiResult<Json<ProjectDto>> {
     let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::ProjectRead, &p.chain())?;
-    Ok(Json(ProjectDto::from(&*p.view)))
+    Ok(Json(ProjectDto::of(p.org, &p.project, p.view.as_deref())))
 }
 
-/// Create a project (writes a `Project` CR).
+/// Create a project; its `Project` resource follows.
 #[utoipa::path(post, path = "/projects", operation_id = "createProject", tag = "projects", request_body = CreateProject, responses(
     (status = 201, body = ProjectDto),
     (status = 403, body = crate::error::Problem),
     (status = 409, body = crate::error::Problem),
     (status = 422, body = crate::error::Problem),
-    (status = 503, description = "No cluster configured", body = crate::error::Problem),
 ))]
 pub async fn create(
     State(state): State<ApiState>,
@@ -112,32 +110,38 @@ pub async fn create(
     }
     let org = authz.org_ids().into_iter().next().ok_or(Error::Forbidden)?;
     let _proof = authz.require(&state, Perm::ProjectWrite, &ScopeChain::org(org))?;
-    let client = scope::cluster(&state)?;
-
-    let project = Project {
-        metadata: ObjectMeta {
-            name: Some(body.name.clone()),
-            labels: Some(BTreeMap::from([
-                (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
-                (labels::ORG.to_owned(), org.to_string()),
-            ])),
-            ..ObjectMeta::default()
-        },
-        spec: ProjectSpec {
-            display_name: display_name.to_owned(),
-            description: body.description.clone().filter(|d| !d.trim().is_empty()),
-            previews: kuben_crd::PreviewPolicy::default(),
-        },
-        status: None,
-    };
-    let created = Api::<Project>::all(client)
-        .create(&PostParams::default(), &project)
+    // Project resources are cluster-wide: a name another organization holds
+    // there is taken.
+    let taken = || Error::Conflict(format!("project `{}` already exists", body.name));
+    if state
+        .projections
+        .project(&body.name)
+        .is_some_and(|v| v.org.as_deref() != Some(org.to_string().as_str()))
+    {
+        return Err(taken().into());
+    }
+    let description = body
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty());
+    let (_, actor) = request::actor(&authz);
+    let mut tenant = state.store.tenant(org).await?;
+    let id = tenant
+        .create_project_described(&body.name, display_name, description)
         .await
-        .map_err(|e| scope::kube_error(e, &body.name))?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ProjectDto::from(&ProjectView::from(&created))),
-    ))
+        .map_err(|e| request::duplicate(e, &format!("project `{}`", body.name)))?;
+    tenant
+        .request(
+            PROJECT_APPLY,
+            Subject::project(id),
+            &actor,
+            request::audit(&authz, PROJECT_APPLY, "project", body.name.clone()),
+        )
+        .await?;
+    let project = tenant.project(&body.name).await?.ok_or_else(taken)?;
+    tenant.commit().await?;
+    Ok((StatusCode::CREATED, Json(ProjectDto::of(org, &project, None))))
 }
 
 /// Delete an empty project. Projects with environments are refused (`409`):
@@ -160,22 +164,26 @@ pub async fn delete(
 ) -> ApiResult<StatusCode> {
     let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::ProjectWrite, &p.chain())?;
-    let remaining = state
-        .projections
-        .environments()
-        .iter()
-        .filter(|e| e.project == p.view.name)
-        .count();
+    let mut tenant = state.store.tenant(p.org).await?;
+    let remaining = tenant.live_environments(p.id()).await?;
     if remaining > 0 {
         return Err(Error::Conflict(format!(
             "project `{project}` still has {remaining} environment(s); delete them first"
         ))
         .into());
     }
-    let client = scope::cluster(&state)?;
-    Api::<Project>::all(client)
-        .delete(&p.view.name, &DeleteParams::default())
-        .await
-        .map_err(|e| scope::kube_error(e, &project))?;
+    if !tenant.mark_project_deleting(p.id()).await? {
+        return Err(Error::Conflict(format!("project `{project}` is being deleted")).into());
+    }
+    let (_, actor) = request::actor(&authz);
+    tenant
+        .request(
+            PROJECT_DELETE,
+            Subject::project(p.id()),
+            &actor,
+            request::audit(&authz, PROJECT_DELETE, "project", project.clone()),
+        )
+        .await?;
+    tenant.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

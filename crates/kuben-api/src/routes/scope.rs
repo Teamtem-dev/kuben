@@ -1,11 +1,14 @@
-//! Resolve URL path segments into authorized resources. Objects in orgs the
-//! caller does not belong to are reported as `404`, not `403`, so their
+//! Resolve URL path segments into authorized scopes on the SQL model
+//! (ADR-032). A project, environment or app is found by slug in each of the
+//! caller's organizations in turn. One that does not exist, or exists only in
+//! an organization the caller does not belong to, is `404`, not `403`, so its
 //! existence does not leak.
 //!
-//! During the handover of ADR-032 a scope is still found in the resource
-//! projections, which the routes need to write resources. When SQL has a row
-//! behind it, the scope chain names the node by its SQL id and keeps the
-//! Kubernetes UID as an alias, so role bindings on either apply.
+//! The scope chain names every node by its SQL id; a row imported from the
+//! resource model keeps its Kubernetes UID as an alias, so role bindings and
+//! tokens made on that UID keep applying until the importer rewrites them.
+//! The resource projections only add live status: a row that was never
+//! materialized has none yet.
 
 use std::sync::Arc;
 
@@ -15,9 +18,11 @@ use kuben_core::{
     authz::{ScopeChain, ScopeRef},
     ids::{ApplicationId, EnvironmentId, OrgId, ProjectId, TargetId},
 };
-use kuben_platform::projection::{AppView, EnvironmentView, ProjectView};
-use kuben_store::repo::{Named, SqlScope};
-use uuid::Uuid;
+use kuben_platform::{
+    controller::resources::namespace_name,
+    projection::{AppView, EnvironmentView, ProjectView},
+};
+use kuben_store::repo::{AppRecord, EnvironmentRecord, Project};
 
 use crate::{authz::Authz, error::ApiError, state::ApiState};
 
@@ -48,87 +53,6 @@ pub fn kube_error(err: kube::Error, name: &str) -> ApiError {
     }
 }
 
-/// The SQL rows behind a scope, looked up in one short read-only transaction
-/// of the scope's organization.
-async fn sql_scope(
-    state: &ApiState,
-    org: OrgId,
-    project: Named<'_>,
-    environment: Option<Named<'_>>,
-    app: Option<Named<'_>>,
-) -> Result<SqlScope, ApiError> {
-    let mut tenant = state.store.tenant(org).await?;
-    Ok(tenant.resolve_scope(project, environment, app).await?)
-}
-
-#[derive(Debug)]
-pub struct ProjectScope {
-    pub view: Arc<ProjectView>,
-    pub org: OrgId,
-    /// The Kubernetes UID of the `Project` resource.
-    pub uid: Uuid,
-    /// The SQL project behind it, once one exists.
-    pub id: Option<ProjectId>,
-}
-
-impl ProjectScope {
-    #[must_use]
-    pub fn chain(&self) -> ScopeChain {
-        match self.id {
-            Some(id) => ScopeChain {
-                aliases: vec![ScopeRef::Project(self.uid)],
-                ..ScopeChain::project(self.org, *id.as_uuid())
-            },
-            None => ScopeChain::project(self.org, self.uid),
-        }
-    }
-}
-
-/// The projection of a project the caller may see, with its org and UID.
-fn project_view(
-    state: &ApiState,
-    authz: &Authz,
-    name: &str,
-) -> Result<(Arc<ProjectView>, OrgId, Uuid), ApiError> {
-    let view = state
-        .projections
-        .project(name)
-        .ok_or_else(|| not_found("project", name))?;
-    let org = view
-        .org
-        .as_deref()
-        .and_then(|o| o.parse::<OrgId>().ok())
-        .filter(|o| authz.org_ids().contains(o))
-        .ok_or_else(|| not_found("project", name))?;
-    let uid = view
-        .uid
-        .as_deref()
-        .and_then(|u| u.parse::<Uuid>().ok())
-        .ok_or_else(|| not_found("project", name))?;
-    Ok((view, org, uid))
-}
-
-pub async fn project(state: &ApiState, authz: &Authz, name: &str) -> Result<ProjectScope, ApiError> {
-    let (view, org, uid) = project_view(state, authz, name)?;
-    let sql = sql_scope(
-        state,
-        org,
-        Named {
-            slug: &view.name,
-            legacy_uid: Some(uid),
-        },
-        None,
-        None,
-    )
-    .await?;
-    Ok(ProjectScope {
-        view,
-        org,
-        uid,
-        id: sql.project,
-    })
-}
-
 /// Kubernetes object name of an environment: `<project>-<env>`.
 #[must_use]
 pub fn environment_resource_name(project: &str, env: &str) -> String {
@@ -145,22 +69,55 @@ pub fn environment_short_name<'a>(project: &str, resource: &'a str) -> &'a str {
         .unwrap_or(resource)
 }
 
+/// A live project of one of the caller's organizations.
+#[derive(Debug)]
+pub struct ProjectScope {
+    pub org: OrgId,
+    pub project: Project,
+    /// Live status of its `Project` resource, once materialized.
+    pub view: Option<Arc<ProjectView>>,
+}
+
+impl ProjectScope {
+    #[must_use]
+    pub fn chain(&self) -> ScopeChain {
+        ScopeChain {
+            aliases: self
+                .project
+                .legacy_uid
+                .map(ScopeRef::Project)
+                .into_iter()
+                .collect(),
+            ..ScopeChain::project(self.org, *self.project.id.as_uuid())
+        }
+    }
+
+    #[must_use]
+    pub fn slug(&self) -> &str {
+        &self.project.slug
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> ProjectId {
+        self.project.id
+    }
+}
+
+/// A live environment of a project.
 #[derive(Debug)]
 pub struct EnvScope {
     pub project: ProjectScope,
-    pub view: Arc<EnvironmentView>,
-    /// The Kubernetes UID of the `Environment` resource.
-    pub uid: Option<Uuid>,
-    /// The SQL environment behind it, once one exists.
-    pub id: Option<EnvironmentId>,
+    pub env: EnvironmentRecord,
+    /// Live status of its `Environment` resource, once materialized.
+    pub view: Option<Arc<EnvironmentView>>,
 }
 
 impl EnvScope {
     #[must_use]
     pub fn chain(&self) -> ScopeChain {
         let mut chain = self.project.chain();
-        chain.environment = self.id.map(|id| *id.as_uuid()).or(self.uid);
-        if let (Some(_), Some(uid)) = (self.id, self.uid) {
+        chain.environment = Some(*self.env.id.as_uuid());
+        if let Some(uid) = self.env.legacy_uid {
             chain.aliases.push(ScopeRef::Environment(uid));
         }
         chain
@@ -168,58 +125,86 @@ impl EnvScope {
 
     #[must_use]
     pub fn short_name(&self) -> &str {
-        environment_short_name(&self.project.view.name, &self.view.name)
+        &self.env.slug
+    }
+
+    /// Its `Environment` object's name, `<project>-<env>`.
+    #[must_use]
+    pub fn resource_name(&self) -> String {
+        environment_resource_name(self.project.slug(), &self.env.slug)
+    }
+
+    /// Its placement's namespace.
+    #[must_use]
+    pub fn namespace(&self) -> String {
+        self.env
+            .namespace
+            .clone()
+            .unwrap_or_else(|| namespace_name(&self.resource_name()))
+    }
+
+    /// It, or its project, is being deleted.
+    #[must_use]
+    pub const fn deleting(&self) -> bool {
+        self.env.deleting || self.project.project.deleting
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> EnvironmentId {
+        self.env.id
     }
 }
 
-/// The projections of a project and one of its environments.
-struct EnvViews {
-    project: Arc<ProjectView>,
-    org: OrgId,
-    project_uid: Uuid,
-    env: Arc<EnvironmentView>,
-    env_uid: Option<Uuid>,
+/// A live app: one application on an environment's placement.
+#[derive(Debug)]
+pub struct AppScope {
+    pub env: EnvScope,
+    pub app: AppRecord,
+    /// Live status of its `App` resource, once materialized.
+    pub view: Option<Arc<AppView>>,
 }
 
-impl EnvViews {
-    fn find(state: &ApiState, authz: &Authz, project: &str, env: &str) -> Result<Self, ApiError> {
-        let (project, org, project_uid) = project_view(state, authz, project)?;
-        let p = project.name.clone();
-        let view = state
-            .projections
-            .environment(&environment_resource_name(&p, env))
-            .or_else(|| state.projections.environment(env))
-            .filter(|e| e.project == p)
-            .ok_or_else(|| not_found("environment", env))?;
-        let env_uid = view.uid.as_deref().and_then(|u| u.parse().ok());
-        Ok(Self {
-            project,
-            org,
-            project_uid,
-            env: view,
-            env_uid,
-        })
+impl AppScope {
+    #[must_use]
+    pub fn chain(&self) -> ScopeChain {
+        let mut chain = self.env.chain();
+        chain.app = Some(*self.app.target.as_uuid());
+        if let Some(uid) = self.app.legacy_uid {
+            chain.aliases.push(ScopeRef::App(uid));
+        }
+        chain
     }
 
-    /// The environment's short name, its SQL slug.
-    fn short_name(&self) -> String {
-        environment_short_name(&self.project.name, &self.env.name).to_owned()
+    #[must_use]
+    pub fn slug(&self) -> &str {
+        &self.app.slug
     }
 
-    /// The scope, given the SQL rows found behind it.
-    fn into_scope(self, sql: SqlScope) -> EnvScope {
-        EnvScope {
-            project: ProjectScope {
-                view: self.project,
-                org: self.org,
-                uid: self.project_uid,
-                id: sql.project,
-            },
-            view: self.env,
-            uid: self.env_uid,
-            id: sql.environment,
+    #[must_use]
+    pub fn namespace(&self) -> &str {
+        &self.app.namespace
+    }
+
+    /// It, its environment or its project is being deleted.
+    #[must_use]
+    pub const fn deleting(&self) -> bool {
+        self.app.deleting || self.env.deleting()
+    }
+}
+
+/// The project `name` in the first of the caller's organizations that has one.
+pub async fn project(state: &ApiState, authz: &Authz, name: &str) -> Result<ProjectScope, ApiError> {
+    for org in authz.org_ids() {
+        let mut tenant = state.store.tenant(org).await?;
+        if let Some(project) = tenant.project(name).await? {
+            let view = state
+                .projections
+                .project(&project.slug)
+                .filter(|v| v.org.as_deref() == Some(org.to_string().as_str()));
+            return Ok(ProjectScope { org, project, view });
         }
     }
+    Err(not_found("project", name))
 }
 
 pub async fn environment(
@@ -228,45 +213,16 @@ pub async fn environment(
     project: &str,
     env: &str,
 ) -> Result<EnvScope, ApiError> {
-    let views = EnvViews::find(state, authz, project, env)?;
-    let short = views.short_name();
-    let sql = sql_scope(
-        state,
-        views.org,
-        Named {
-            slug: &views.project.name,
-            legacy_uid: Some(views.project_uid),
-        },
-        Some(Named {
-            slug: &short,
-            legacy_uid: views.env_uid,
-        }),
-        None,
-    )
-    .await?;
-    Ok(views.into_scope(sql))
-}
-
-#[derive(Debug)]
-pub struct AppScope {
-    pub env: EnvScope,
-    pub view: Arc<AppView>,
-    /// The Kubernetes UID of the `App` resource.
-    pub uid: Option<Uuid>,
-    /// The SQL application target behind it, once one exists.
-    pub target: Option<TargetId>,
-}
-
-impl AppScope {
-    #[must_use]
-    pub fn chain(&self) -> ScopeChain {
-        let mut chain = self.env.chain();
-        chain.app = self.target.map(|id| *id.as_uuid()).or(self.uid);
-        if let (Some(_), Some(uid)) = (self.target, self.uid) {
-            chain.aliases.push(ScopeRef::App(uid));
-        }
-        chain
-    }
+    let project = self::project(state, authz, project).await?;
+    let mut tenant = state.store.tenant(project.org).await?;
+    let env = tenant
+        .environment(project.id(), env)
+        .await?
+        .ok_or_else(|| not_found("environment", env))?;
+    let view = state
+        .projections
+        .environment(&environment_resource_name(project.slug(), &env.slug));
+    Ok(EnvScope { project, env, view })
 }
 
 pub async fn app(
@@ -276,40 +232,21 @@ pub async fn app(
     env: &str,
     app: &str,
 ) -> Result<AppScope, ApiError> {
-    let views = EnvViews::find(state, authz, project, env)?;
-    let view = state
-        .projections
-        .app(&views.env.namespace, app)
+    let env = environment(state, authz, project, env).await?;
+    let mut tenant = state.store.tenant(env.project.org).await?;
+    let record = tenant
+        .app(env.id(), app)
+        .await?
         .ok_or_else(|| not_found("app", app))?;
-    let uid = view.uid.as_deref().and_then(|u| u.parse().ok());
-    let short = views.short_name();
-    let sql = sql_scope(
-        state,
-        views.org,
-        Named {
-            slug: &views.project.name,
-            legacy_uid: Some(views.project_uid),
-        },
-        Some(Named {
-            slug: &short,
-            legacy_uid: views.env_uid,
-        }),
-        Some(Named {
-            slug: &view.name,
-            legacy_uid: uid,
-        }),
-    )
-    .await?;
+    let view = state.projections.app(&record.namespace, &record.slug);
     Ok(AppScope {
-        env: views.into_scope(sql),
+        env,
+        app: record,
         view,
-        uid,
-        target: sql.target,
     })
 }
 
-/// A target found through SQL alone, for the routes of the SQL model
-/// (ADR-032). Nothing here reads the resource projections.
+/// The SQL ids of an app's target, for the deployment routes.
 #[derive(Debug)]
 pub struct TargetScope {
     pub org: OrgId,
@@ -317,29 +254,17 @@ pub struct TargetScope {
     pub environment: EnvironmentId,
     pub application: ApplicationId,
     pub target: TargetId,
+    chain: ScopeChain,
 }
 
 impl TargetScope {
     #[must_use]
     pub fn chain(&self) -> ScopeChain {
-        ScopeChain {
-            environment: Some(*self.environment.as_uuid()),
-            app: Some(*self.target.as_uuid()),
-            ..ScopeChain::project(self.org, *self.project.as_uuid())
-        }
+        self.chain.clone()
     }
 }
 
-const fn by_slug(slug: &str) -> Named<'_> {
-    Named {
-        slug,
-        legacy_uid: None,
-    }
-}
-
-/// The target of `app` in environment `env` of `project`, looked up by slug
-/// in each of the caller's organizations in turn. Not found anywhere, or in
-/// an organization the caller does not belong to, is `404`.
+/// The target of `app` in environment `env` of `project`.
 pub async fn sql_target(
     state: &ApiState,
     authz: &Authz,
@@ -347,28 +272,15 @@ pub async fn sql_target(
     env: &str,
     app: &str,
 ) -> Result<TargetScope, ApiError> {
-    for org in authz.org_ids() {
-        let sql = sql_scope(
-            state,
-            org,
-            by_slug(project),
-            Some(by_slug(env)),
-            Some(by_slug(app)),
-        )
-        .await?;
-        if let (Some(project), Some(environment), Some(application), Some(target)) =
-            (sql.project, sql.environment, sql.application, sql.target)
-        {
-            return Ok(TargetScope {
-                org,
-                project,
-                environment,
-                application,
-                target,
-            });
-        }
-    }
-    Err(not_found("app", app))
+    let a = self::app(state, authz, project, env, app).await?;
+    Ok(TargetScope {
+        org: a.env.project.org,
+        project: a.env.project.id(),
+        environment: a.env.id(),
+        application: a.app.application,
+        target: a.app.target,
+        chain: a.chain(),
+    })
 }
 
 #[cfg(test)]

@@ -77,7 +77,7 @@ pub async fn list(
 ) -> ApiResult<Json<Vec<SecretDto>>> {
     let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::SecretRead, &e.chain())?;
-    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.namespace());
     let list = api
         .list(&ListParams::default().labels(labels::MANAGED_SELECTOR))
         .await
@@ -122,7 +122,7 @@ pub async fn put(
     if total > MAX_SECRET_BYTES {
         return Err(Error::Validation(format!("secret values exceed {MAX_SECRET_BYTES} bytes")).into());
     }
-    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.namespace());
     if let Some(existing) = api
         .get_opt(&secret)
         .await
@@ -134,10 +134,10 @@ pub async fn put(
     let object = Secret {
         metadata: ObjectMeta {
             name: Some(secret.clone()),
-            namespace: Some(e.view.namespace.clone()),
+            namespace: Some(e.namespace()),
             labels: Some(BTreeMap::from([
                 (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
-                (labels::ENVIRONMENT.to_owned(), e.view.name.clone()),
+                (labels::ENVIRONMENT.to_owned(), e.resource_name()),
             ])),
             ..ObjectMeta::default()
         },
@@ -182,7 +182,7 @@ pub async fn delete(
 ) -> ApiResult<StatusCode> {
     let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::SecretWrite, &e.chain())?;
-    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.namespace());
     let existing = api
         .get_opt(&secret)
         .await

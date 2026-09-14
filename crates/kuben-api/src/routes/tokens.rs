@@ -2,6 +2,8 @@
 //! once; the store keeps only `sha256(secret)`. Tokens cannot manage tokens,
 //! members or passwords (no privilege persistence through a leaked token).
 
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{Path, State},
@@ -17,6 +19,7 @@ use kuben_core::{
 use kuben_store::repo::NewToken;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use super::scope;
 use crate::{auth::session, authz::Authz, error::ApiResult, state::ApiState};
@@ -69,32 +72,42 @@ pub struct CreatedToken {
     pub info: TokenDto,
 }
 
-fn dto(state: &ApiState, t: &ApiToken) -> TokenDto {
-    let project = t.scope.project.and_then(|uid| {
-        let uid = uid.to_string();
-        state
-            .projections
-            .projects()
-            .into_iter()
-            .find(|p| p.uid.as_deref() == Some(uid.as_str()))
-            .map(|p| p.name.clone())
-    });
-    let environment = t.scope.environment.and_then(|uid| {
-        let uid = uid.to_string();
-        state
-            .projections
-            .environments()
-            .into_iter()
-            .find(|e| e.uid.as_deref() == Some(uid.as_str()))
-            .map(|e| e.name.clone())
-    });
+/// Names of the projects and environments of the caller's organizations, by
+/// SQL id: what token scopes name.
+#[derive(Default)]
+struct ScopeNames {
+    projects: HashMap<Uuid, String>,
+    environments: HashMap<Uuid, String>,
+}
+
+async fn scope_names(state: &ApiState, authz: &Authz) -> ApiResult<ScopeNames> {
+    let mut names = ScopeNames::default();
+    for org in authz.org_ids() {
+        let mut tenant = state.store.tenant(org).await?;
+        for project in tenant.projects().await? {
+            for env in tenant.environments(project.id).await? {
+                names.environments.insert(
+                    *env.id.as_uuid(),
+                    scope::environment_resource_name(&project.slug, &env.slug),
+                );
+            }
+            names.projects.insert(*project.id.as_uuid(), project.slug);
+        }
+    }
+    Ok(names)
+}
+
+fn dto(names: &ScopeNames, t: &ApiToken) -> TokenDto {
     TokenDto {
         id: t.id.to_string(),
         name: t.name.clone(),
         prefix: t.prefix.clone(),
         role: t.scope.role.to_string(),
-        project,
-        environment,
+        project: t.scope.project.and_then(|id| names.projects.get(&id).cloned()),
+        environment: t
+            .scope
+            .environment
+            .and_then(|id| names.environments.get(&id).cloned()),
         expires_at: t.expires_at,
         last_used_at: t.last_used_at,
         revoked: t.revoked_at.is_some(),
@@ -136,13 +149,13 @@ pub async fn create(
     let (project, environment) = match (&body.project, &body.environment) {
         (None, None) => (None, None),
         (None, Some(_)) => return Err(Error::Validation("environment requires project".into()).into()),
-        (Some(p), None) => (Some(scope::project(&state, &authz, p).await?.uid), None),
+        (Some(p), None) => (
+            Some(*scope::project(&state, &authz, p).await?.id().as_uuid()),
+            None,
+        ),
         (Some(p), Some(e)) => {
             let env = scope::environment(&state, &authz, p, e).await?;
-            let uid = env
-                .uid
-                .ok_or_else(|| Error::NotFound(format!("environment `{e}`")))?;
-            (Some(env.project.uid), Some(uid))
+            (Some(*env.project.id().as_uuid()), Some(*env.id().as_uuid()))
         }
     };
     let days = body.expires_in_days.unwrap_or(DEFAULT_TTL_DAYS);
@@ -173,7 +186,7 @@ pub async fn create(
         StatusCode::CREATED,
         Json(CreatedToken {
             token: plaintext,
-            info: dto(&state, &token),
+            info: dto(&scope_names(&state, &authz).await?, &token),
         }),
     ))
 }
@@ -188,7 +201,8 @@ pub async fn create(
 pub async fn list(State(state): State<ApiState>, authz: Authz) -> ApiResult<Json<Vec<TokenDto>>> {
     authz.forbid_token()?;
     let tokens = state.store.list_tokens(authz.current.user.id).await?;
-    Ok(Json(tokens.iter().map(|t| dto(&state, t)).collect()))
+    let names = scope_names(&state, &authz).await?;
+    Ok(Json(tokens.iter().map(|t| dto(&names, t)).collect()))
 }
 
 /// Revoke one of the caller's tokens (immediately effective).

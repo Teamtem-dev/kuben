@@ -7,6 +7,7 @@ pub mod environments;
 pub mod health;
 pub mod members;
 pub mod projects;
+pub mod request;
 pub mod scope;
 pub mod secrets;
 pub mod templates;

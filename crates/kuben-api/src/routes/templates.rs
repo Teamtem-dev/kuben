@@ -430,7 +430,7 @@ pub async fn deploy(
     apps::validate_spec(&rendered.spec)?;
 
     let secret_name = credentials_secret(&body.name);
-    let secrets = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
+    let secrets = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.namespace());
     if secrets
         .get_opt(&secret_name)
         .await
@@ -442,10 +442,10 @@ pub async fn deploy(
     let object = Secret {
         metadata: ObjectMeta {
             name: Some(secret_name.clone()),
-            namespace: Some(e.view.namespace.clone()),
+            namespace: Some(e.namespace()),
             labels: Some(BTreeMap::from([
                 (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
-                (labels::ENVIRONMENT.to_owned(), e.view.name.clone()),
+                (labels::ENVIRONMENT.to_owned(), e.resource_name()),
                 (labels::APP.to_owned(), body.name.clone()),
             ])),
             ..ObjectMeta::default()
@@ -465,17 +465,7 @@ pub async fn deploy(
         .await
         .map_err(|err| scope::kube_error(err, &secret_name))?;
 
-    match apps::create_app(
-        &state,
-        &authz,
-        &e,
-        &body.name,
-        rendered.spec,
-        "template",
-        Some(t.id.to_owned()),
-    )
-    .await
-    {
+    match apps::create_app(&state, &authz, &e, &body.name, rendered.spec).await {
         Ok(app) => Ok((
             StatusCode::CREATED,
             Json(DeployedTemplate {

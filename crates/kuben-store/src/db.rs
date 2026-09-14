@@ -27,6 +27,14 @@ impl From<StoreError> for kuben_core::Error {
     }
 }
 
+impl StoreError {
+    /// A unique constraint refused the write: what it adds exists already.
+    #[must_use]
+    pub fn is_unique_violation(&self) -> bool {
+        matches!(self, Self::Sqlx(sqlx::Error::Database(db)) if db.is_unique_violation())
+    }
+}
+
 /// Cheap-to-clone handle to the PostgreSQL pool (ADR-025).
 #[derive(Clone, Debug)]
 pub struct Store {

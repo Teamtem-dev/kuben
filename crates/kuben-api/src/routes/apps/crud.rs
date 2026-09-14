@@ -1,27 +1,26 @@
-//! CRUD on the `App` CRD, rolling restart and recent logs.
+//! Apps on the SQL model: create, read, update and delete; rolling restart
+//! and recent logs, which act on the materialized workloads directly.
 
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use k8s_openapi::api::core::v1::{PersistentVolumeClaim, Pod};
+use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    Api, ResourceExt,
-    api::{DeleteParams, ListParams, LogParams, Patch, PatchParams, PostParams},
+    Api,
+    api::{LogParams, Patch, PatchParams},
 };
-use kuben_core::perm::Perm;
-use kuben_crd::labels;
-use kuben_platform::{
-    controller::resources::{RESTARTED_AT, RETAIN},
-    projection::AppView,
-};
+use kuben_core::{Error, perm::Perm};
+use kuben_crd::App;
+use kuben_platform::controller::resources::RESTARTED_AT;
+use kuben_store::repo::{RunReason, Subject, TARGET_DELETE};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use utoipa::{IntoParams, ToSchema};
 
 use super::{
-    AppDetail, AppDto, PodDto, app_api, app_dto, create_app, record_release,
+    AppDetail, AppDto, Artifact, Change, PodDto, create_app, deploy, desired_spec, resolve,
     spec::{
         CreateApp, UpdateApp, apply_update, ensure_domains_free, from_crd_env, spec_from_create,
         validate_spec,
@@ -31,7 +30,7 @@ use super::{
 use crate::{
     authz::Authz,
     error::ApiResult,
-    routes::{scope, validate},
+    routes::{request, scope, validate},
     state::ApiState,
 };
 
@@ -55,17 +54,21 @@ pub async fn list(
 ) -> ApiResult<Json<Vec<AppDto>>> {
     let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::AppRead, &e.chain())?;
-    let items = state
-        .projections
-        .apps()
+    let mut tenant = state.store.tenant(e.project.org).await?;
+    let items = tenant
+        .apps(e.id())
+        .await?
         .iter()
-        .filter(|a| a.namespace == e.view.namespace)
-        .map(|a| AppDto::from_view(a, &e.project.view.name, e.short_name()))
+        .map(|a| {
+            let view = state.projections.app(&a.namespace, &a.slug);
+            AppDto::of(e.project.slug(), e.short_name(), a, view.as_deref())
+        })
         .collect();
     Ok(Json(items))
 }
 
-/// Deploy a new app from a container image.
+/// Deploy a new app from a container image. A tag is resolved to a digest at
+/// its registry.
 #[utoipa::path(
     post,
     path = "/projects/{project}/environments/{environment}/apps", operation_id = "createApp",
@@ -80,7 +83,7 @@ pub async fn list(
         (status = 403, body = crate::error::Problem),
         (status = 409, body = crate::error::Problem),
         (status = 422, body = crate::error::Problem),
-        (status = 503, body = crate::error::Problem),
+        (status = 503, description = "The image's registry cannot be reached", body = crate::error::Problem),
     )
 )]
 pub async fn create(
@@ -93,7 +96,7 @@ pub async fn create(
     let _proof = authz.require(&state, Perm::AppWrite, &e.chain())?;
     validate::dns_label("name", &body.name, 40)?;
     let spec = spec_from_create(&body)?;
-    let dto = create_app(&state, &authz, &e, &body.name, spec, "create", None).await?;
+    let dto = create_app(&state, &authz, &e, &body.name, spec).await?;
     Ok((StatusCode::CREATED, Json(dto)))
 }
 
@@ -118,28 +121,26 @@ pub async fn get(
     let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
     let with_values = authz.require(&state, Perm::SecretRead, &a.chain()).is_ok();
-    let mut dto = app_dto(&a, &a.view);
-    if let Ok(api) = app_api(&state, &a.env)
-        && let Ok(live) = api.get(&a.view.name).await
-    {
-        dto.env = live
-            .spec
-            .env
-            .iter()
-            .map(|e| from_crd_env(e, with_values))
-            .collect();
+    let mut dto = AppDto::of(
+        a.env.project.slug(),
+        a.env.short_name(),
+        &a.app,
+        a.view.as_deref(),
+    );
+    if let Some(spec) = desired_spec(&a.app) {
+        dto.env = spec.env.iter().map(|e| from_crd_env(e, with_values)).collect();
     }
     let pods = state
         .projections
-        .pods_of_app(&a.view.namespace, &a.view.name)
+        .pods_of_app(a.namespace(), a.slug())
         .iter()
         .map(|p| PodDto::from(&**p))
         .collect();
     Ok(Json(AppDetail { app: dto, pods }))
 }
 
-/// Update an app (image changes require `app-deploy`). Every change is a
-/// new release revision.
+/// Update an app (image changes require `app-deploy`). Every change is a new
+/// deployment run; a new tag is resolved to a digest at its registry.
 #[utoipa::path(
     patch,
     path = "/projects/{project}/environments/{environment}/apps/{app}", operation_id = "updateApp",
@@ -155,6 +156,7 @@ pub async fn get(
         (status = 403, body = crate::error::Problem),
         (status = 409, body = crate::error::Problem),
         (status = 422, body = crate::error::Problem),
+        (status = 503, description = "The image's registry cannot be reached", body = crate::error::Problem),
     )
 )]
 pub async fn update(
@@ -164,38 +166,61 @@ pub async fn update(
     Json(body): Json<UpdateApp>,
 ) -> ApiResult<Json<AppDto>> {
     let a = scope::app(&state, &authz, &project, &environment, &app).await?;
-    let deploys = body.image.is_some();
-    let perm = if deploys { Perm::AppDeploy } else { Perm::AppWrite };
+    let perm = if body.image.is_some() {
+        Perm::AppDeploy
+    } else {
+        Perm::AppWrite
+    };
     let _proof = authz.require(&state, perm, &a.chain())?;
-    let api = app_api(&state, &a.env)?;
-    let mut live = api
-        .get(&a.view.name)
-        .await
-        .map_err(|e| scope::kube_error(e, &app))?;
-    let before = spec_json(&live.spec);
-    apply_update(&mut live.spec, body)?;
-    validate_spec(&live.spec)?;
-    ensure_domains_free(&state, &a.view.namespace, &a.view.name, &live.spec)?;
-    // `replace` carries the resourceVersion we read: a concurrent edit is a 409.
-    let updated = api
-        .replace(&a.view.name, &PostParams::default(), &live)
-        .await
-        .map_err(|e| scope::kube_error(e, &app))?;
-    if spec_json(&updated.spec) != before {
-        let reason = if deploys { "deploy" } else { "config" };
-        record_release(
-            &state,
-            &authz,
-            a.env.project.org,
-            &a.view.namespace,
-            &a.view.name,
-            &updated.spec,
-            reason,
-            None,
-        )
-        .await;
+    if a.deleting() {
+        return Err(Error::Conflict(format!("app `{app}` is being deleted")).into());
     }
-    Ok(Json(app_dto(&a, &AppView::from(&updated))))
+    let mut spec = desired_spec(&a.app)
+        .ok_or_else(|| Error::Conflict(format!("app `{app}` has no configuration yet")))?;
+    let before = spec_json(&spec);
+    let image = body.image.as_deref().map(str::trim).map(str::to_owned);
+    apply_update(&mut spec, body)?;
+    validate_spec(&spec)?;
+    ensure_domains_free(&state, a.env.project.org, a.namespace(), a.slug(), &spec).await?;
+    if spec_json(&spec) == before {
+        return Ok(Json(AppDto::of(
+            a.env.project.slug(),
+            a.env.short_name(),
+            &a.app,
+            a.view.as_deref(),
+        )));
+    }
+    let artifact = match image.filter(|i| Some(i.as_str()) != a.app.image.as_deref()) {
+        Some(image) => Artifact::Resolved(resolve(&state, &image).await?),
+        None => Artifact::Release(
+            a.app
+                .release
+                .ok_or_else(|| Error::Conflict(format!("app `{app}` has no release yet")))?,
+        ),
+    };
+    let mut tenant = state.store.tenant(a.env.project.org).await?;
+    let change = Change {
+        project: a.env.project.id(),
+        application: a.app.application,
+        target: a.app.target,
+        spec: &spec,
+        artifact,
+        expected: a.app.desired_generation,
+        reason: RunReason::Deploy,
+        reference: format!("{project}/{environment}/{app}"),
+    };
+    deploy(&mut tenant, &authz, change).await?;
+    let record = tenant
+        .app(a.env.id(), a.slug())
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("app `{app}`")))?;
+    tenant.commit().await?;
+    Ok(Json(AppDto::of(
+        a.env.project.slug(),
+        a.env.short_name(),
+        &record,
+        a.view.as_deref(),
+    )))
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -217,7 +242,11 @@ pub struct DeleteAppQuery {
         ("app" = String, Path, description = "App name"),
         DeleteAppQuery,
     ),
-    responses((status = 204, description = "Deleted"), (status = 404, body = crate::error::Problem))
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 404, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
+    )
 )]
 pub async fn delete(
     State(state): State<ApiState>,
@@ -227,27 +256,31 @@ pub async fn delete(
 ) -> ApiResult<StatusCode> {
     let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppWrite, &a.chain())?;
-    app_api(&state, &a.env)?
-        .delete(&a.view.name, &DeleteParams::background())
-        .await
-        .map_err(|e| scope::kube_error(e, &app))?;
-    if q.delete_volumes == Some(true) {
-        let pvcs = Api::<PersistentVolumeClaim>::namespaced(scope::cluster(&state)?, &a.view.namespace);
-        let selector = format!("{}={}", labels::APP, a.view.name);
-        let claims = pvcs
-            .list(&ListParams::default().labels(&selector))
-            .await
-            .map_err(|e| scope::kube_error(e, &app))?;
-        for pvc in claims
-            .items
-            .iter()
-            .filter(|p| p.annotations().contains_key(RETAIN))
-        {
-            pvcs.delete(&pvc.name_any(), &DeleteParams::background())
-                .await
-                .map_err(|e| scope::kube_error(e, &app))?;
-        }
+    let mut tenant = state.store.tenant(a.env.project.org).await?;
+    if !tenant.mark_target_deleting(a.app.target).await? {
+        return Err(Error::Conflict(format!("app `{app}` is being deleted")).into());
     }
+    let (_, actor) = request::actor(&authz);
+    let subject = Subject::target(
+        a.env.project.id(),
+        a.env.id(),
+        a.app.target,
+        q.delete_volumes == Some(true),
+    );
+    tenant
+        .request(
+            TARGET_DELETE,
+            subject,
+            &actor,
+            request::audit(
+                &authz,
+                TARGET_DELETE,
+                "app",
+                format!("{project}/{environment}/{app}"),
+            ),
+        )
+        .await?;
+    tenant.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -273,9 +306,10 @@ pub async fn restart(
     let now = k8s_openapi::jiff::Timestamp::now()
         .strftime("%Y-%m-%dT%H:%M:%SZ")
         .to_string();
+    // An annotation, not the spec: the materializer's drift check ignores it.
     let patch = json!({ "metadata": { "annotations": { RESTARTED_AT: now } } });
-    app_api(&state, &a.env)?
-        .patch(&a.view.name, &PatchParams::default(), &Patch::Merge(&patch))
+    Api::<App>::namespaced(scope::cluster(&state)?, a.namespace())
+        .patch(a.slug(), &PatchParams::default(), &Patch::Merge(&patch))
         .await
         .map_err(|e| scope::kube_error(e, &app))?;
     Ok(StatusCode::ACCEPTED)
@@ -322,12 +356,12 @@ pub async fn logs(
 ) -> ApiResult<Json<Vec<PodLogs>>> {
     let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppLogsRead, &a.chain())?;
-    let pods_api = Api::<Pod>::namespaced(scope::cluster(&state)?, &a.view.namespace);
+    let pods_api = Api::<Pod>::namespaced(scope::cluster(&state)?, a.namespace());
     let tail = q.tail.unwrap_or(200).clamp(1, 2000);
     let previous = q.previous.unwrap_or(false);
     let pods: Vec<_> = state
         .projections
-        .pods_of_app(&a.view.namespace, &a.view.name)
+        .pods_of_app(a.namespace(), a.slug())
         .into_iter()
         .filter(|p| {
             q.process

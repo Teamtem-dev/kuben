@@ -1,7 +1,9 @@
-//! End-to-end HTTP tests against an in-memory store, seeded projections and
-//! no cluster (writes that need Kubernetes must fail cleanly with 503).
+//! End-to-end HTTP tests against PostgreSQL (the SQL model of ADR-032): apps
+//! seeded in SQL, live status seeded in the projections, fixed image digests
+//! instead of a registry, and no cluster (what acts on Kubernetes directly
+//! must fail cleanly with 503).
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     Router,
@@ -9,13 +11,16 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use kuben_api::{ApiState, auth::CLIENT_HEADER};
-use kuben_core::{config::Config, ids::OrgId, perm::Role, traits::StaticPolicy};
+use kuben_api::{ApiState, auth::CLIENT_HEADER, oci::FixedImages};
+use kuben_core::{config::Config, ids::OrgId, ops::Generation, perm::Role, traits::StaticPolicy};
 use kuben_platform::{
     health::Health,
     projection::{AppView, EnvironmentView, PodPhase, PodView, ProcessView, ProjectView, Projections},
 };
-use kuben_store::{Store, repo::NewRelease};
+use kuben_store::{
+    Store,
+    repo::{EnvironmentKind, NewAudit, PortableRelease, RunReason, StartDeployment},
+};
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -77,7 +82,8 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
         projections.clone(),
         health,
         Arc::new(StaticPolicy),
-    );
+    )
+    .with_images(images());
     Some(TestApp {
         router: kuben_api::router(state),
         projections,
@@ -86,7 +92,101 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     })
 }
 
-fn seed(app: &TestApp) {
+/// The digests `nginx:1.27` and `nginx:1.26` resolve to: no registry here.
+const NGINX_127: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+const NGINX_126: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
+fn images() -> Arc<FixedImages> {
+    Arc::new(FixedImages(BTreeMap::from([
+        ("nginx:1.27".to_owned(), NGINX_127.parse().expect("digest")),
+        ("nginx:1.26".to_owned(), NGINX_126.parse().expect("digest")),
+    ])))
+}
+
+/// Project `shop`, production environment `prod` and app `api` (`nginx:1.27`
+/// on `api.example.com`, deployed once) in SQL; a project of another
+/// organization; and the live status of shop's resources in the projections.
+async fn seed(app: &TestApp) {
+    seed_sql(app).await;
+    seed_projections(app);
+}
+
+async fn seed_sql(app: &TestApp) {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t.create_project("shop", "Shop").await.expect("project");
+    let env = t
+        .create_environment_typed(project, "prod", "prod", EnvironmentKind::Production, None)
+        .await
+        .expect("environment");
+    let cluster = t.ensure_cluster("primary").await.expect("cluster");
+    let placement = t
+        .create_placement(project, env, cluster, "kb-shop-prod")
+        .await
+        .expect("placement");
+    let application = t
+        .create_application(project, "api", "api")
+        .await
+        .expect("application");
+    let target = t
+        .create_target(project, application, placement)
+        .await
+        .expect("target");
+    let config = json!({
+        "runtime": { "processes": { "web": { "port": 80 } } },
+        "domains": [{ "host": "api.example.com", "tls": "auto" }],
+    });
+    let (config_revision, _) = t
+        .create_config_revision(project, target, &config, "user:seed")
+        .await
+        .expect("revision")
+        .expect("target");
+    let release = PortableRelease {
+        application,
+        artifacts: BTreeMap::from([("web".to_owned(), NGINX_127.parse().expect("digest"))]),
+        process_contract: json!({}),
+        portable_config: json!({}),
+        renderer_schema: 1,
+        source: Some(json!({ "image_repository": "docker.io/library/nginx", "image": "nginx:1.27" })),
+        created_by: "user:seed".into(),
+    };
+    let (release, _) = t.create_release(project, &release).await.expect("release");
+    let lifecycle_uid = t
+        .target_state(target)
+        .await
+        .expect("read")
+        .expect("target")
+        .lifecycle_uid;
+    let deploy = StartDeployment {
+        project,
+        target,
+        release,
+        config_revision,
+        render_plan: None,
+        expected_generation: Generation(0),
+        lifecycle_uid,
+        reason: RunReason::Deploy,
+        requested_by: "user:seed".into(),
+        input_hash: b"seed".to_vec(),
+    };
+    let audit = NewAudit {
+        actor_kind: "user".into(),
+        action: "seed".into(),
+        outcome: "accepted".into(),
+        ..NewAudit::default()
+    };
+    t.start_deployment(&deploy, audit, None).await.expect("deploy");
+    t.commit().await.expect("commit");
+
+    let other = app.store.create_org("other", "Other").await.expect("org").id;
+    let mut t = app.store.tenant(other).await.expect("tenant");
+    t.create_project("secret-project", "Other tenant")
+        .await
+        .expect("project");
+    t.commit().await.expect("commit");
+}
+
+/// The live status of shop's resources, as the informers would report it.
+fn seed_projections(app: &TestApp) {
     let org = Some(app.org.to_string());
     app.projections.upsert_project(ProjectView {
         name: "shop".into(),
@@ -319,7 +419,7 @@ async fn wrong_password_is_unauthorized() {
 #[tokio::test]
 async fn projects_are_tenant_scoped() {
     let Some(app) = setup().await else { return };
-    seed(&app);
+    seed(&app).await;
     let cookie = login(&app.router, "alice@example.com").await;
 
     let (status, list) = send(&app.router, get("/api/v1/projects", &cookie)).await;
@@ -344,7 +444,7 @@ async fn projects_are_tenant_scoped() {
         "404, not 403: existence must not leak"
     );
 
-    // No cluster: validation runs first, then a clean 503.
+    // SQL holds projects: creating one needs no cluster.
     let (status, _) = send(
         &app.router,
         post(
@@ -364,7 +464,7 @@ async fn projects_are_tenant_scoped() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::CREATED);
 
     // A project with environments cannot be deleted.
     let req = Request::delete("/api/v1/projects/shop")
@@ -380,9 +480,9 @@ async fn projects_are_tenant_scoped() {
 }
 
 #[tokio::test]
-async fn environments_and_apps_read_from_projections() {
+async fn environments_and_apps_read_from_sql() {
     let Some(app) = setup().await else { return };
-    seed(&app);
+    seed(&app).await;
     let cookie = login(&app.router, "alice@example.com").await;
 
     let (status, envs) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
@@ -423,7 +523,8 @@ async fn environments_and_apps_read_from_projections() {
     .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 
-    // Invalid input is rejected before touching the cluster.
+    // Invalid input is rejected; a tag is resolved to a digest, and SQL needs
+    // no cluster.
     let bad = r#"{"name":"web","image":"nginx latest"}"#;
     let (status, _) = send(
         &app.router,
@@ -432,12 +533,35 @@ async fn environments_and_apps_read_from_projections() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let good = r#"{"name":"web","image":"nginx:1.27","port":80}"#;
-    let (status, _) = send(
+    let (status, created) = send(
         &app.router,
         post("/api/v1/projects/shop/environments/prod/apps", &cookie, good),
     )
     .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["image"], "nginx:1.27");
+    assert!(
+        !created["ready"].as_bool().expect("ready"),
+        "not materialized yet"
+    );
+    let clash = r#"{"name":"www","image":"nginx:1.27","port":80,"domains":["api.example.com"]}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, clash),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "a domain another app uses");
+    let unknown = r#"{"name":"cache","image":"redis:7"}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, unknown),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "a tag its registry does not know"
+    );
     let (status, _) = send(
         &app.router,
         post(
@@ -447,13 +571,22 @@ async fn environments_and_apps_read_from_projections() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, envs) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
+    let staging = envs
+        .as_array()
+        .expect("environments")
+        .iter()
+        .find(|e| e["name"] == "staging")
+        .expect("staging");
+    assert_eq!(staging["namespace"], "kb-shop-staging");
+    assert_eq!(staging["phase"], "Pending", "its namespace follows");
 }
 
 #[tokio::test]
 async fn viewers_can_read_but_not_write() {
     let Some(app) = setup().await else { return };
-    seed(&app);
+    seed(&app).await;
     let cookie = login(&app.router, "bob@example.com").await;
 
     let (status, _) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
@@ -628,7 +761,7 @@ async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
 #[tokio::test]
 async fn scenario2_every_mutation_is_audited_without_handler_code() {
     let Some(t) = setup().await else { return };
-    seed(&t);
+    seed(&t).await;
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
     let body = json!({ "name": "blog", "display_name": "Blog" });
@@ -638,8 +771,8 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
     );
     assert_eq!(
         status_of(&t.router, "POST", "/api/v1/projects", &alice, Some(body)).await,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "no cluster in tests"
+        StatusCode::CREATED,
+        "SQL holds projects"
     );
 
     let (status, _, page) = call(
@@ -664,7 +797,8 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
         .collect();
     for expected in [
         ("createProject", "denied"),
-        ("createProject", "error"),
+        ("createProject", "success"),
+        ("project.apply", "accepted"),
         ("login", "success"),
     ] {
         assert!(
@@ -688,7 +822,7 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
 #[allow(clippy::too_many_lines)] // one end-to-end story per scenario
 async fn scenario3_api_tokens_are_capped_scoped_and_revocable() {
     let Some(t) = setup().await else { return };
-    seed(&t);
+    seed(&t).await;
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (status, _, created) = call(
         &t.router,
@@ -839,7 +973,7 @@ async fn change_password(app: &Router, cookie: &str, current: &str, new: &str) -
 #[allow(clippy::too_many_lines)] // one end-to-end story per scenario
 async fn scenario4_team_members_follow_the_role_rules() {
     let Some(t) = setup().await else { return };
-    seed(&t);
+    seed(&t).await;
     let (_, alice, me) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let alice_id = me["id"].as_str().expect("id").to_owned();
 
@@ -986,50 +1120,55 @@ async fn scenario4_team_members_follow_the_role_rules() {
     );
 }
 
-#[tokio::test]
-async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
-    let Some(t) = setup().await else { return };
-    seed(&t);
-    for image in ["nginx:1.26", "nginx:1.27"] {
-        t.store
-            .record_release(NewRelease {
-                org_id: Some(t.org),
-                namespace: "kb-shop-prod".into(),
-                app: "api".into(),
-                image: Some(image.into()),
-                spec: json!({
-                    "source": { "image": image },
-                    "runtime": { "processes": { "web": { "port": 80 } } }
-                }),
-                reason: "deploy".into(),
-                actor_id: None,
-                note: None,
-            })
-            .await
-            .expect("release");
-    }
-    let base = "/api/v1/projects/shop/environments/prod/apps/api";
-    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
-    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+async fn releases(router: &Router, cookie: &str, base: &str) -> (StatusCode, serde_json::Value) {
     let (status, _, list) = call(
-        &t.router,
+        router,
         "GET",
         &format!("{base}/releases"),
-        Auth::Cookie(&bob),
+        Auth::Cookie(cookie),
         None,
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
-    let revisions: Vec<i64> = list
-        .as_array()
+    (status, list)
+}
+
+fn revisions(list: &serde_json::Value) -> Vec<i64> {
+    list.as_array()
         .expect("releases")
         .iter()
         .filter_map(|r| r["revision"].as_i64())
-        .collect();
-    assert_eq!(revisions, vec![2, 1]);
+        .collect()
+}
+
+#[tokio::test]
+async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
+    let Some(t) = setup().await else { return };
+    seed(&t).await;
+    let base = "/api/v1/projects/shop/environments/prod/apps/api";
+    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+    assert_eq!(
+        status_of(
+            &t.router,
+            "PATCH",
+            base,
+            &alice,
+            Some(json!({ "image": "nginx:1.26" }))
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    let (status, list) = releases(&t.router, &bob, base).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revisions(&list), vec![2, 1]);
     assert_eq!(list[0]["current"], true);
-    assert_eq!(list[0]["image"], "nginx:1.27");
+    assert_eq!(list[0]["image"], "nginx:1.26");
+    assert_eq!(
+        (list[0]["reason"].as_str(), list[1]["reason"].as_str()),
+        (Some("deploy"), Some("create"))
+    );
 
     let rollback = format!("{base}/rollback");
     let to = |revision: i64| Some(json!({ "revision": revision }));
@@ -1043,15 +1182,19 @@ async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
     );
     assert_eq!(
         status_of(&t.router, "POST", &rollback, &alice, to(1)).await,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "no cluster in tests"
+        StatusCode::OK,
+        "a rollback is a new run: SQL needs no cluster"
     );
+    let (_, list) = releases(&t.router, &alice, base).await;
+    assert_eq!(revisions(&list), vec![3, 2, 1]);
+    assert_eq!(list[0]["reason"], "rollback");
+    assert_eq!(list[0]["image"], "nginx:1.27");
 }
 
 #[tokio::test]
 async fn scenario8_template_catalogue() {
     let Some(t) = setup().await else { return };
-    seed(&t);
+    seed(&t).await;
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
     let (status, _, list) = call(

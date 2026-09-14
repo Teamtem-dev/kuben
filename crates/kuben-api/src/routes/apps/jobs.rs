@@ -14,6 +14,7 @@ use kuben_platform::controller::resources;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::desired_spec;
 use crate::{authz::Authz, error::ApiResult, routes::scope, state::ApiState};
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
@@ -63,17 +64,19 @@ pub async fn run(
     let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
     let process = match body.process {
         Some(p) => p,
-        None => a
-            .view
-            .processes
-            .iter()
-            .find(|p| p.schedule.is_some())
-            .map(|p| p.name.clone())
+        None => desired_spec(&a.app)
+            .and_then(|spec| {
+                spec.runtime
+                    .processes
+                    .into_iter()
+                    .find(|(_, p)| p.schedule.is_some())
+                    .map(|(name, _)| name)
+            })
             .ok_or_else(|| Error::Validation("this app has no scheduled process".into()))?,
     };
     let client = scope::cluster(&state)?;
-    let cron_name = resources::workload_name(&a.view.name, &process);
-    let cron = Api::<CronJob>::namespaced(client.clone(), &a.view.namespace)
+    let cron_name = resources::workload_name(a.slug(), &process);
+    let cron = Api::<CronJob>::namespaced(client.clone(), a.namespace())
         .get(&cron_name)
         .await
         .map_err(|e| scope::kube_error(e, &cron_name))?;
@@ -83,7 +86,7 @@ pub async fn run(
     let name = manual_job_name(&cron_name, now);
     let job =
         resources::job_from_cron(&cron, &name).ok_or_else(|| Error::internal("cron job has no template"))?;
-    Api::<Job>::namespaced(client, &a.view.namespace)
+    Api::<Job>::namespaced(client, a.namespace())
         .create(&PostParams::default(), &job)
         .await
         .map_err(|e| scope::kube_error(e, &name))?;

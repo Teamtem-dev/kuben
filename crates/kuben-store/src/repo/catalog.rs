@@ -7,8 +7,11 @@
 //! deployment run.
 
 use kuben_core::{
-    ids::{ApplicationId, ConfigRevisionId, EnvironmentId, ProjectId, TargetId},
-    ops::Generation,
+    ids::{
+        ApplicationId, ConfigRevisionId, DeploymentRunId, EnvironmentId, PlacementId, ProjectId, ReleaseId,
+        TargetId,
+    },
+    ops::{Generation, RunPhase},
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -19,7 +22,7 @@ use crate::StoreError;
 const ENVIRONMENTS: &str = "SELECT e.id, e.project_id, e.slug, e.name, \
      COALESCE(e.env_type, CASE WHEN e.protected THEN 'production' ELSE 'standard' END) AS env_type, \
      e.quota::text AS quota, \
-     e.protected, e.legacy_uid, e.deleting, e.created_at, pl.namespace \
+     e.protected, e.legacy_uid, e.deleting, e.created_at, pl.id AS placement_id, pl.namespace \
      FROM environments e \
      LEFT JOIN environment_placements pl \
        ON pl.environment_id = e.id AND pl.org_id = e.org_id AND pl.state <> 'retired' \
@@ -28,14 +31,14 @@ const ENVIRONMENTS: &str = "SELECT e.id, e.project_id, e.slug, e.name, \
      ORDER BY e.slug";
 const APPS: &str = "SELECT t.id AS target_id, a.id AS application_id, a.slug, a.name, pl.namespace, \
      t.legacy_uid, t.deleting, t.lifecycle_uid, t.desired_generation, t.created_at, \
-     c.id AS config_revision_id, c.config::text AS config, \
+     c.id AS config_revision_id, c.config::text AS config, r.id AS release_id, \
      COALESCE(r.source ->> 'image', (r.source ->> 'image_repository') || '@' || (r.artifacts ->> 'web')) AS image \
      FROM application_targets t \
      JOIN applications a ON a.id = t.application_id AND a.org_id = t.org_id \
      JOIN environment_placements pl ON pl.id = t.placement_id AND pl.org_id = t.org_id \
      LEFT JOIN LATERAL (SELECT id, config FROM target_config_revisions \
                         WHERE target_id = t.id ORDER BY revision DESC LIMIT 1) c ON TRUE \
-     LEFT JOIN LATERAL (SELECT rel.source, rel.artifacts FROM deployment_runs d \
+     LEFT JOIN LATERAL (SELECT rel.id, rel.source, rel.artifacts FROM deployment_runs d \
                         JOIN releases rel ON rel.id = d.release_id \
                         WHERE d.target_id = t.id ORDER BY d.generation DESC LIMIT 1) r ON TRUE \
      WHERE t.org_id = $1 AND pl.environment_id = $2 AND t.deleted_at IS NULL AND a.deleted_at IS NULL \
@@ -53,7 +56,8 @@ pub struct EnvironmentRecord {
     pub env_type: String,
     pub quota: Option<Value>,
     pub protected: bool,
-    /// The namespace of its placement, once it has one.
+    /// Its placement and the placement's namespace, once it has one.
+    pub placement: Option<PlacementId>,
     pub namespace: Option<String>,
     pub legacy_uid: Option<Uuid>,
     pub deleting: bool,
@@ -76,8 +80,25 @@ pub struct AppRecord {
     /// The newest configuration revision: the App spec without its image.
     pub config_revision: Option<ConfigRevisionId>,
     pub config: Option<Value>,
-    /// The image of the newest run's release, as it was given (a tag the
-    /// digest was resolved from), else `repository@digest`.
+    /// The release of the newest run, and its image as it was given (a tag
+    /// the digest was resolved from), else `repository@digest`.
+    pub release: Option<ReleaseId>,
+    pub image: Option<String>,
+}
+
+/// One deployment run of an app, as its release history shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunRecord {
+    pub run: DeploymentRunId,
+    pub generation: Generation,
+    /// `deploy`, `rollback` or `promotion`.
+    pub reason: String,
+    pub phase: RunPhase,
+    pub requested_by: String,
+    pub created_at: i64,
+    pub release: ReleaseId,
+    pub config_revision: ConfigRevisionId,
+    /// The release's image as it was given, else `repository@digest`.
     pub image: Option<String>,
 }
 
@@ -93,6 +114,7 @@ struct EnvironmentRow {
     legacy_uid: Option<Uuid>,
     deleting: bool,
     created_at: i64,
+    placement_id: Option<Uuid>,
     namespace: Option<String>,
 }
 
@@ -110,8 +132,41 @@ struct AppRow {
     created_at: i64,
     config_revision_id: Option<Uuid>,
     config: Option<String>,
+    release_id: Option<Uuid>,
     image: Option<String>,
 }
+
+#[derive(sqlx::FromRow)]
+struct RunRow {
+    id: Uuid,
+    generation: i64,
+    reason: String,
+    phase: String,
+    requested_by: String,
+    created_at: i64,
+    release_id: Uuid,
+    config_revision_id: Uuid,
+    image: Option<String>,
+}
+
+const RUNS: &str = "SELECT d.id, d.generation, d.reason, d.phase, d.requested_by, d.created_at, \
+     d.release_id, d.config_revision_id, \
+     COALESCE(rel.source ->> 'image', (rel.source ->> 'image_repository') || '@' || (rel.artifacts ->> 'web')) AS image \
+     FROM deployment_runs d JOIN releases rel ON rel.id = d.release_id AND rel.org_id = d.org_id \
+     WHERE d.target_id = $1 AND d.org_id = $2 \
+     ORDER BY d.generation DESC LIMIT $3";
+const CONFIG_REVISION: &str = "SELECT config::text FROM target_config_revisions \
+     WHERE id = $1 AND target_id = $2 AND org_id = $3";
+const DOMAINS: &str = "SELECT pl.namespace, a.slug, d.value ->> 'host' AS host \
+     FROM application_targets t \
+     JOIN applications a ON a.id = t.application_id AND a.org_id = t.org_id \
+     JOIN environment_placements pl ON pl.id = t.placement_id AND pl.org_id = t.org_id \
+     JOIN LATERAL (SELECT config FROM target_config_revisions \
+                   WHERE target_id = t.id ORDER BY revision DESC LIMIT 1) c ON TRUE \
+     CROSS JOIN LATERAL jsonb_array_elements(COALESCE(c.config -> 'domains', '[]'::jsonb)) AS d(value) \
+     WHERE t.org_id = $1 AND t.deleted_at IS NULL";
+const APPLICATION: &str = "SELECT id FROM applications \
+     WHERE org_id = $1 AND project_id = $2 AND slug = $3 AND deleted_at IS NULL";
 
 fn json(text: Option<String>) -> Result<Option<Value>, sqlx::Error> {
     text.map(|t| serde_json::from_str(&t).map_err(|e| sqlx::Error::Decode(e.into())))
@@ -128,6 +183,7 @@ impl EnvironmentRow {
             env_type: self.env_type,
             quota: json(self.quota)?,
             protected: self.protected,
+            placement: self.placement_id.map(PlacementId::from_uuid),
             namespace: self.namespace,
             legacy_uid: self.legacy_uid,
             deleting: self.deleting,
@@ -151,8 +207,82 @@ impl AppRow {
             created_at: self.created_at,
             config_revision: self.config_revision_id.map(ConfigRevisionId::from_uuid),
             config: json(self.config)?,
+            release: self.release_id.map(ReleaseId::from_uuid),
             image: self.image,
         })
+    }
+}
+
+impl RunRow {
+    fn into_record(self) -> Result<RunRecord, sqlx::Error> {
+        Ok(RunRecord {
+            run: DeploymentRunId::from_uuid(self.id),
+            generation: Generation(counter(self.generation)?),
+            phase: RunPhase::parse(&self.phase)
+                .ok_or_else(|| sqlx::Error::Decode(format!("unknown run phase {:?}", self.phase).into()))?,
+            reason: self.reason,
+            requested_by: self.requested_by,
+            created_at: self.created_at,
+            release: ReleaseId::from_uuid(self.release_id),
+            config_revision: ConfigRevisionId::from_uuid(self.config_revision_id),
+            image: self.image,
+        })
+    }
+}
+
+impl Tenant {
+    /// The newest `limit` deployment runs of `target`, newest first.
+    pub async fn runs(&mut self, target: TargetId, limit: i64) -> Result<Vec<RunRecord>, StoreError> {
+        let rows: Vec<RunRow> = sqlx::query_as(RUNS)
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .bind(limit)
+            .fetch_all(&mut *self.tx)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(RunRow::into_record)
+            .collect::<Result<_, _>>()?)
+    }
+
+    /// The content of configuration revision `revision` of `target`.
+    pub async fn config_revision(
+        &mut self,
+        target: TargetId,
+        revision: ConfigRevisionId,
+    ) -> Result<Option<Value>, StoreError> {
+        let text: Option<String> = sqlx::query_scalar(CONFIG_REVISION)
+            .bind(*revision.as_uuid())
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        Ok(json(text)?)
+    }
+
+    /// The hostnames of every live app of the organization, from its newest
+    /// configuration: `(namespace, app, host)`.
+    pub async fn domains(&mut self) -> Result<Vec<(String, String, String)>, StoreError> {
+        Ok(sqlx::query_as(DOMAINS)
+            .bind(self.org.to_string())
+            .fetch_all(&mut *self.tx)
+            .await?)
+    }
+
+    /// The live application `slug` of `project`: every environment's app of
+    /// that name belongs to it.
+    pub async fn application(
+        &mut self,
+        project: ProjectId,
+        slug: &str,
+    ) -> Result<Option<ApplicationId>, StoreError> {
+        let id: Option<Uuid> = sqlx::query_scalar(APPLICATION)
+            .bind(self.org.to_string())
+            .bind(*project.as_uuid())
+            .bind(slug)
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        Ok(id.map(ApplicationId::from_uuid))
     }
 }
 

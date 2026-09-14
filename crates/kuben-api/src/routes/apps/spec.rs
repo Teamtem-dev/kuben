@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use kuben_core::Error;
+use kuben_core::{Error, ids::OrgId};
 use kuben_crd::{
     App, AppSpec, Domain, EnvVar, HealthCheck, KeyRef, Process, Replicas, Runtime, Source, Volume,
 };
@@ -12,7 +12,11 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 use super::{EnvVarDto, JOB, ProtocolDto, SecretRef, VolumeDto, WEB};
-use crate::{routes::validate, state::ApiState};
+use crate::{
+    error::{ApiError, ApiResult},
+    routes::validate,
+    state::ApiState,
+};
 
 const MAX_REPLICAS: u32 = 50;
 const MAX_VOLUMES: usize = 5;
@@ -419,13 +423,33 @@ pub(super) fn apply_update(spec: &mut AppSpec, u: UpdateApp) -> Result<(), Error
 }
 
 /// A hostname belongs to exactly one app (first come, first served), so one
-/// tenant cannot route another tenant's domain. The owner is not revealed.
-pub(super) fn ensure_domains_free(
+/// tenant cannot route another tenant's domain. The organization's apps are
+/// checked in SQL, which answers at once; every other App in the cluster
+/// through the projection. The owner is not revealed.
+pub(super) async fn ensure_domains_free(
     state: &ApiState,
+    org: OrgId,
     namespace: &str,
     app: &str,
     spec: &AppSpec,
-) -> Result<(), Error> {
+) -> ApiResult<()> {
+    if spec.domains.is_empty() {
+        return Ok(());
+    }
+    let taken = |host: &str| {
+        ApiError(Error::Conflict(format!(
+            "domain `{host}` is already used by another app"
+        )))
+    };
+    let mut tenant = state.store.tenant(org).await?;
+    for (ns, name, host) in tenant.domains().await? {
+        if ns == namespace && name == app {
+            continue;
+        }
+        if let Some(d) = spec.domains.iter().find(|d| d.host.eq_ignore_ascii_case(&host)) {
+            return Err(taken(&d.host));
+        }
+    }
     for other in state.projections.apps() {
         if other.namespace == namespace && other.name == app {
             continue;
@@ -435,10 +459,7 @@ pub(super) fn ensure_domains_free(
             .iter()
             .find(|d| other.domains.iter().any(|o| o.eq_ignore_ascii_case(&d.host)))
         {
-            return Err(Error::Conflict(format!(
-                "domain `{}` is already used by another app",
-                d.host
-            )));
+            return Err(taken(&d.host));
         }
     }
     Ok(())

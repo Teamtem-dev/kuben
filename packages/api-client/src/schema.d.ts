@@ -155,7 +155,7 @@ export type paths = {
         /** List projects visible to the caller. */
         get: operations["listProjects"];
         put?: never;
-        /** Create a project (writes a `Project` CR). */
+        /** Create a project; its `Project` resource follows. */
         post: operations["createProject"];
         delete?: never;
         options?: never;
@@ -194,7 +194,7 @@ export type paths = {
         /** List a project's environments. */
         get: operations["listEnvironments"];
         put?: never;
-        /** Create an environment (the controller provisions its namespace). */
+        /** Create an environment: its namespace follows. */
         post: operations["createEnvironment"];
         delete?: never;
         options?: never;
@@ -233,7 +233,10 @@ export type paths = {
         /** List the apps of an environment. */
         get: operations["listApps"];
         put?: never;
-        /** Deploy a new app from a container image. */
+        /**
+         * Deploy a new app from a container image. A tag is resolved to a digest at
+         *     its registry.
+         */
         post: operations["createApp"];
         delete?: never;
         options?: never;
@@ -263,8 +266,8 @@ export type paths = {
         options?: never;
         head?: never;
         /**
-         * Update an app (image changes require `app-deploy`). Every change is a
-         *     new release revision.
+         * Update an app (image changes require `app-deploy`). Every change is a new
+         *     deployment run; a new tag is resolved to a digest at its registry.
          */
         patch: operations["updateApp"];
         trace?: never;
@@ -404,7 +407,10 @@ export type paths = {
         };
         get?: never;
         put?: never;
-        /** Roll back to an earlier revision (recorded as a new revision). */
+        /**
+         * Roll back to an earlier revision: a new run of its release and
+         *     configuration. The app stays on it until automatic deploys resume.
+         */
         post: operations["rollbackApp"];
         delete?: never;
         options?: never;
@@ -883,6 +889,7 @@ export type components = {
         };
         ProjectDto: {
             name: string;
+            /** @description The project's id. */
             uid?: string | null;
             display_name: string;
             description?: string | null;
@@ -935,7 +942,7 @@ export type components = {
             /** Format: int64 */
             revision: number;
             image?: string | null;
-            /** @description `create`, `deploy`, `config`, `rollback`, `promote` or `template`. */
+            /** @description `create`, `deploy`, `config`, `rollback` or `promote`. */
             reason: string;
             note?: string | null;
             /** @description Email of whoever made the change. */
@@ -1495,15 +1502,6 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No cluster configured */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     getProject: {
@@ -1652,15 +1650,6 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No cluster configured */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     getEnvironment: {
@@ -1725,6 +1714,14 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1816,6 +1813,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The image's registry cannot be reached */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1894,6 +1892,14 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     updateApp: {
@@ -1941,6 +1947,15 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The image's registry cannot be reached */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2180,6 +2195,14 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2294,6 +2317,14 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
