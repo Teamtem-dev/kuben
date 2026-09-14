@@ -2254,6 +2254,7 @@ name = "kuben-store"
 version = "1.1.2"
 dependencies = [
  "kuben-core",
+ "kuben-store",
  "serde",
  "serde_json",
  "sqlx",

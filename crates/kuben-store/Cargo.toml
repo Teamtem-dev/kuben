@@ -22,6 +22,8 @@ tracing.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+# The integration tests use `testing::pg_store`, which only exists with the feature.
+kuben-store = { workspace = true, features = ["testing"] }
 
 [lints]
 workspace = true
