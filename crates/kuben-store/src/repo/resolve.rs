@@ -5,7 +5,7 @@
 //! rows behind them: by the Kubernetes UID the importer recorded
 //! (`legacy_uid`), else by slug, always inside the tenant's organization.
 
-use kuben_core::ids::{EnvironmentId, ProjectId, TargetId};
+use kuben_core::ids::{ApplicationId, EnvironmentId, ProjectId, TargetId};
 use uuid::Uuid;
 
 use super::Tenant;
@@ -19,7 +19,7 @@ const FIND_ENVIRONMENT: &str = "SELECT id FROM environments \
      WHERE org_id = $1 AND project_id = $2 AND (legacy_uid = $3 OR slug = $4) \
      ORDER BY legacy_uid = $3 DESC NULLS LAST \
      LIMIT 1";
-const FIND_TARGET: &str = "SELECT t.id FROM application_targets t \
+const FIND_TARGET: &str = "SELECT t.id, t.application_id FROM application_targets t \
      JOIN applications a ON a.id = t.application_id \
      JOIN environment_placements p ON p.id = t.placement_id \
      WHERE t.org_id = $1 AND t.project_id = $2 AND p.environment_id = $3 \
@@ -42,6 +42,8 @@ pub struct SqlScope {
     pub environment: Option<EnvironmentId>,
     /// The application target: one application in this environment.
     pub target: Option<TargetId>,
+    /// The application of that target.
+    pub application: Option<ApplicationId>,
 }
 
 impl Tenant {
@@ -83,7 +85,7 @@ impl Tenant {
         let Some(app) = app else {
             return Ok(scope);
         };
-        let target: Option<Uuid> = sqlx::query_scalar(FIND_TARGET)
+        let target: Option<(Uuid, Uuid)> = sqlx::query_as(FIND_TARGET)
             .bind(&org)
             .bind(project_id)
             .bind(environment_id)
@@ -91,7 +93,10 @@ impl Tenant {
             .bind(app.slug)
             .fetch_optional(&mut *self.tx)
             .await?;
-        scope.target = target.map(TargetId::from_uuid);
+        if let Some((target, application)) = target {
+            scope.target = Some(TargetId::from_uuid(target));
+            scope.application = Some(ApplicationId::from_uuid(application));
+        }
         Ok(scope)
     }
 }
@@ -126,6 +131,7 @@ mod tests {
             project: Some(project),
             environment: Some(environment),
             target: Some(target),
+            application: Some(app),
         }
     }
 

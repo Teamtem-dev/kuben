@@ -52,6 +52,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::jobs::run))
         .routes(routes!(apps::domains::domains))
         .routes(routes!(apps::promote::promote))
+        .routes(routes!(apps::deployments::start))
+        .routes(routes!(apps::deployments::get))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
         .routes(routes!(templates::list))

@@ -1178,6 +1178,199 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Accept a deployment of this app.",
+        "description": "The release (from `image`, or an existing `release`), the configuration\nrevision and the run are written in one transaction with the audit record\nand the message to the executors; then the call answers `202` with the\nrun's `Location`. Replaying the request with the same `Idempotency-Key`\nreturns the first run.",
+        "operationId": "startDeployment",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Replays of the same request return the first run",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartDeploymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted: poll the `Location`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A stale expected generation, or an Idempotency-Key used for another request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "One deployment run of this app.",
+        "operationId": "getDeployment",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run",
+            "in": "path",
+            "description": "Deployment run id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
       "get": {
         "tags": [
@@ -2638,6 +2831,15 @@
           }
         }
       },
+      "DeployReason": {
+        "type": "string",
+        "description": "Why a run exists.",
+        "enum": [
+          "deploy",
+          "rollback",
+          "promotion"
+        ]
+      },
       "DeployTemplate": {
         "type": "object",
         "required": [
@@ -2672,6 +2874,36 @@
               "type": "string"
             },
             "description": "Reference it from other apps as `KEY=@<secret>/<key>`."
+          }
+        }
+      },
+      "DeploymentDto": {
+        "type": "object",
+        "description": "A deployment run and where it stands.",
+        "required": [
+          "run",
+          "operation",
+          "generation",
+          "phase"
+        ],
+        "properties": {
+          "run": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operation": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The target generation this run owns.",
+            "minimum": 0
+          },
+          "phase": {
+            "type": "string",
+            "description": "`planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,\n`succeeded`, `failed`, `superseded`, …"
           }
         }
       },
@@ -3437,6 +3669,47 @@
             "description": "`POST /setup` must carry the token the installer printed."
           }
         }
+      },
+      "StartDeploymentRequest": {
+        "type": "object",
+        "required": [
+          "expected_generation"
+        ],
+        "properties": {
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Image by digest: `registry/repository@sha256:…`. Give either `image`\nor `release`.",
+            "example": "ghcr.io/acme/api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          },
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "An existing release of this app: a rollback or a redeploy."
+          },
+          "config": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The app configuration: the app spec without its image. Omitted, the\napp's latest configuration is used."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/DeployReason"
+          },
+          "expected_generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The target generation the caller last saw. A deploy never silently\nreplaces a newer one: a stale value is refused with `409`.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "TemplateDto": {
         "type": "object",

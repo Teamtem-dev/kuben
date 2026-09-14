@@ -1226,3 +1226,127 @@ async fn setup_rejects_weak_input() {
     assert_eq!(body["needed"], true, "nothing was created");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+// ---- deployments on the SQL model (ADR-032) ----
+
+const DIGEST: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const DEPLOYMENTS: &str = "/api/v1/projects/shop/environments/prod/apps/api/deployments";
+
+/// Project `shop`, environment `prod` and app `api`, in SQL only.
+async fn sql_app(app: &TestApp) {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t.create_project("shop", "Shop").await.expect("project");
+    let env = t
+        .create_environment(project, "prod", "Production", true)
+        .await
+        .expect("environment");
+    let cluster = t.create_cluster("primary").await.expect("cluster");
+    let placement = t
+        .create_placement(project, env, cluster, "kb-shop-prod")
+        .await
+        .expect("placement");
+    let application = t
+        .create_application(project, "api", "API")
+        .await
+        .expect("application");
+    t.create_target(project, application, placement)
+        .await
+        .expect("target");
+    t.commit().await.expect("commit");
+}
+
+fn deploy(cookie: &str, expected: u64, key: Option<&str>) -> Request<Body> {
+    let body = json!({
+        "image": format!("ghcr.io/acme/api@{DIGEST}"),
+        "config": { "runtime": { "processes": { "web": { "port": 8080 } } } },
+        "expected_generation": expected,
+    });
+    let mut req = Request::post(DEPLOYMENTS)
+        .header(header::COOKIE, cookie)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(CLIENT_HEADER, "test");
+    if let Some(key) = key {
+        req = req.header("idempotency-key", key);
+    }
+    req.body(Body::from(body.to_string())).expect("request")
+}
+
+#[tokio::test]
+async fn a_deployment_is_accepted_once_and_can_be_polled() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let cookie = login(&app.router, "alice@example.com").await;
+
+    let resp = app
+        .router
+        .clone()
+        .oneshot(deploy(&cookie, 0, Some("deploy-1")))
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    let location = resp.headers()[header::LOCATION]
+        .to_str()
+        .expect("location")
+        .to_owned();
+    let bytes = resp.into_body().collect().await.expect("body").to_bytes();
+    let first: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(first["generation"], 1);
+    assert_eq!(first["phase"], "planned");
+    assert!(location.ends_with(first["run"].as_str().expect("run")));
+
+    let (status, polled) = send(&app.router, get(&location, &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(polled["run"], first["run"]);
+
+    let (status, replay) = send(&app.router, deploy(&cookie, 0, Some("deploy-1"))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{replay}");
+    assert_eq!(replay["run"], first["run"], "same key and request: the first run");
+
+    let (status, _) = send(&app.router, deploy(&cookie, 1, Some("deploy-1"))).await;
+    assert_eq!(status, StatusCode::CONFLICT, "the same key for another request");
+
+    let (status, problem) = send(&app.router, deploy(&cookie, 0, None)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "a stale generation: {problem}");
+
+    let (status, second) = send(&app.router, deploy(&cookie, 1, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{second}");
+    assert_eq!(second["generation"], 2);
+    let (_, first_now) = send(&app.router, get(&location, &cookie)).await;
+    assert_eq!(first_now["phase"], "superseded", "the newer run owns the app");
+}
+
+#[tokio::test]
+async fn deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+
+    let (status, _) = send(&app.router, deploy(&bob, 0, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a viewer cannot deploy");
+
+    let by_tag =
+        json!({ "image": "ghcr.io/acme/api:1.2", "config": {}, "expected_generation": 0 }).to_string();
+    let (status, _) = send(&app.router, post(DEPLOYMENTS, &alice, &by_tag)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "a tag is not a digest");
+
+    let (status, _) = send(
+        &app.router,
+        post(
+            "/api/v1/projects/shop/environments/prod/apps/nope/deployments",
+            &alice,
+            &by_tag,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let no_config =
+        json!({ "image": format!("ghcr.io/acme/api@{DIGEST}"), "expected_generation": 0 }).to_string();
+    let (status, _) = send(&app.router, post(DEPLOYMENTS, &alice, &no_config)).await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the first deploy brings its configuration"
+    );
+}

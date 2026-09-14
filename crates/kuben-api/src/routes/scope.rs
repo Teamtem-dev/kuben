@@ -13,7 +13,7 @@ use kube::Client;
 use kuben_core::{
     Error,
     authz::{ScopeChain, ScopeRef},
-    ids::{EnvironmentId, OrgId, ProjectId, TargetId},
+    ids::{ApplicationId, EnvironmentId, OrgId, ProjectId, TargetId},
 };
 use kuben_platform::projection::{AppView, EnvironmentView, ProjectView};
 use kuben_store::repo::{Named, SqlScope};
@@ -306,6 +306,69 @@ pub async fn app(
         uid,
         target: sql.target,
     })
+}
+
+/// A target found through SQL alone, for the routes of the SQL model
+/// (ADR-032). Nothing here reads the resource projections.
+#[derive(Debug)]
+pub struct TargetScope {
+    pub org: OrgId,
+    pub project: ProjectId,
+    pub environment: EnvironmentId,
+    pub application: ApplicationId,
+    pub target: TargetId,
+}
+
+impl TargetScope {
+    #[must_use]
+    pub fn chain(&self) -> ScopeChain {
+        ScopeChain {
+            environment: Some(*self.environment.as_uuid()),
+            app: Some(*self.target.as_uuid()),
+            ..ScopeChain::project(self.org, *self.project.as_uuid())
+        }
+    }
+}
+
+const fn by_slug(slug: &str) -> Named<'_> {
+    Named {
+        slug,
+        legacy_uid: None,
+    }
+}
+
+/// The target of `app` in environment `env` of `project`, looked up by slug
+/// in each of the caller's organizations in turn. Not found anywhere, or in
+/// an organization the caller does not belong to, is `404`.
+pub async fn sql_target(
+    state: &ApiState,
+    authz: &Authz,
+    project: &str,
+    env: &str,
+    app: &str,
+) -> Result<TargetScope, ApiError> {
+    for org in authz.org_ids() {
+        let sql = sql_scope(
+            state,
+            org,
+            by_slug(project),
+            Some(by_slug(env)),
+            Some(by_slug(app)),
+        )
+        .await?;
+        if let (Some(project), Some(environment), Some(application), Some(target)) =
+            (sql.project, sql.environment, sql.application, sql.target)
+        {
+            return Ok(TargetScope {
+                org,
+                project,
+                environment,
+                application,
+                target,
+            });
+        }
+    }
+    Err(not_found("app", app))
 }
 
 #[cfg(test)]

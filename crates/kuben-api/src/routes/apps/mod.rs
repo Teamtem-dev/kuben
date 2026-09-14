@@ -5,6 +5,7 @@
 //! * [`jobs`] — scheduled runs, "run now" (scenario 7);
 //! * [`domains`] — DNS checks of an app's hostnames (scenario 9);
 //! * [`promote`] — promotion between environments (scenario 10);
+//! * [`deployments`] — deploy acceptance on the SQL model (ADR-032);
 //! * [`spec`] — request bodies, validation and spec construction. Cross-field
 //!   rules are the controller's own (`resources::validate`), so the API
 //!   rejects exactly what the controller could never build.
@@ -13,6 +14,7 @@
 //! are part of the app spec.
 
 pub mod crud;
+pub mod deployments;
 pub mod domains;
 pub mod jobs;
 pub mod promote;

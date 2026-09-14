@@ -518,6 +518,77 @@ impl Tenant {
     }
 }
 
+const LATEST_CONFIG_REVISION: &str = "SELECT id FROM target_config_revisions \
+     WHERE target_id = $1 AND org_id = $2 ORDER BY revision DESC LIMIT 1";
+const RUN_OF_TARGET: &str = "SELECT id, operation_id, generation, phase FROM deployment_runs \
+     WHERE id = $1 AND target_id = $2 AND org_id = $3";
+const RUN_OF_OPERATION: &str = "SELECT id, operation_id, generation, phase FROM deployment_runs \
+     WHERE operation_id = $1 AND org_id = $2";
+
+/// A deployment run as the API shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RunSummary {
+    pub run: DeploymentRunId,
+    pub operation: OperationId,
+    pub generation: Generation,
+    pub phase: RunPhase,
+}
+
+fn run_summary(
+    (run, operation, generation, phase): (Uuid, Uuid, i64, String),
+) -> Result<RunSummary, sqlx::Error> {
+    Ok(RunSummary {
+        run: DeploymentRunId::from_uuid(run),
+        operation: OperationId::from_uuid(operation),
+        generation: Generation(counter(generation)?),
+        phase: parse_phase(&phase)?,
+    })
+}
+
+impl Tenant {
+    /// The newest configuration revision of `target`, if it has one.
+    pub async fn latest_config_revision(
+        &mut self,
+        target: TargetId,
+    ) -> Result<Option<ConfigRevisionId>, StoreError> {
+        let id: Option<Uuid> = sqlx::query_scalar(LATEST_CONFIG_REVISION)
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        Ok(id.map(ConfigRevisionId::from_uuid))
+    }
+
+    /// Run `run` of `target`, or `None` when it is not one of its runs.
+    pub async fn run_of_target(
+        &mut self,
+        target: TargetId,
+        run: DeploymentRunId,
+    ) -> Result<Option<RunSummary>, StoreError> {
+        let row: Option<(Uuid, Uuid, i64, String)> = sqlx::query_as(RUN_OF_TARGET)
+            .bind(*run.as_uuid())
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        Ok(row.map(run_summary).transpose()?)
+    }
+
+    /// The run an accepted deployment operation created, for a replayed
+    /// request.
+    pub async fn run_of_operation(
+        &mut self,
+        operation: OperationId,
+    ) -> Result<Option<RunSummary>, StoreError> {
+        let row: Option<(Uuid, Uuid, i64, String)> = sqlx::query_as(RUN_OF_OPERATION)
+            .bind(*operation.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        Ok(row.map(run_summary).transpose()?)
+    }
+}
+
 fn parse_phase(phase: &str) -> Result<RunPhase, sqlx::Error> {
     RunPhase::parse(phase).ok_or_else(|| sqlx::Error::Decode(format!("unknown run phase {phase:?}").into()))
 }

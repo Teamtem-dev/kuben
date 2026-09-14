@@ -269,6 +269,47 @@ export type paths = {
         patch: operations["updateApp"];
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a deployment of this app.
+         * @description The release (from `image`, or an existing `release`), the configuration
+         *     revision and the run are written in one transaction with the audit record
+         *     and the message to the executors; then the call answers `202` with the
+         *     run's `Location`. Replaying the request with the same `Idempotency-Key`
+         *     returns the first run.
+         */
+        post: operations["startDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One deployment run of this app. */
+        get: operations["getDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
         parameters: {
             query?: never;
@@ -671,6 +712,11 @@ export type components = {
             token: string;
             info: components["schemas"]["TokenDto"];
         };
+        /**
+         * @description Why a run exists.
+         * @enum {string}
+         */
+        DeployReason: "deploy" | "rollback" | "promotion";
         DeployTemplate: {
             /**
              * @description App name (also the in-cluster hostname of TCP services).
@@ -684,6 +730,23 @@ export type components = {
             credentials_secret: string;
             /** @description Reference it from other apps as `KEY=@<secret>/<key>`. */
             connection_keys: string[];
+        };
+        /** @description A deployment run and where it stands. */
+        DeploymentDto: {
+            /** Format: uuid */
+            run: string;
+            /** Format: uuid */
+            operation: string;
+            /**
+             * Format: int64
+             * @description The target generation this run owns.
+             */
+            generation: number;
+            /**
+             * @description `planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,
+             *     `succeeded`, `failed`, `superseded`, …
+             */
+            phase: string;
         };
         DomainCheck: {
             host: string;
@@ -918,6 +981,31 @@ export type components = {
             needed: boolean;
             /** @description `POST /setup` must carry the token the installer printed. */
             token_required: boolean;
+        };
+        StartDeploymentRequest: {
+            /**
+             * @description Image by digest: `registry/repository@sha256:…`. Give either `image`
+             *     or `release`.
+             * @example ghcr.io/acme/api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+             */
+            image?: string | null;
+            /**
+             * Format: uuid
+             * @description An existing release of this app: a rollback or a redeploy.
+             */
+            release?: string | null;
+            /**
+             * @description The app configuration: the app spec without its image. Omitted, the
+             *     app's latest configuration is used.
+             */
+            config?: Record<string, never> | null;
+            reason?: components["schemas"]["DeployReason"];
+            /**
+             * Format: int64
+             * @description The target generation the caller last saw. A deploy never silently
+             *     replaces a newer one: a stale value is refused with `409`.
+             */
+            expected_generation: number;
         };
         TemplateDto: {
             id: string;
@@ -1853,6 +1941,117 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startDeployment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Replays of the same request return the first run */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartDeploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted: poll the `Location` */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A stale expected generation, or an Idempotency-Key used for another request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

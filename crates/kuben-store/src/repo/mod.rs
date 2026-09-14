@@ -14,7 +14,7 @@ mod tokens;
 mod users;
 
 pub use audit::NewAudit;
-pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, StartDeployment, Started};
+pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use product::{Project, Tenant};
 pub use releases::NewRelease;
