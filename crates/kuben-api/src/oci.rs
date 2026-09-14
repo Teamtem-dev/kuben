@@ -300,12 +300,12 @@ impl RegistryResolver {
         let response = tokio::time::timeout(TIMEOUT, client.request(request))
             .await
             .map_err(|_| unreachable("timed out".into()))?
-            .map_err(|e| unreachable(e.to_string()))?;
+            .map_err(|e| unreachable(chain(&e)))?;
         let (parts, body) = response.into_parts();
         let body = tokio::time::timeout(TIMEOUT, Limited::new(body, MAX_BODY).collect())
             .await
             .map_err(|_| unreachable("timed out".into()))?
-            .map_err(|e| unreachable(e.to_string()))?
+            .map_err(|e| unreachable(chain(&*e)))?
             .to_bytes();
         Ok((parts.status, parts.headers, body))
     }
@@ -410,6 +410,19 @@ impl ImageResolver for RegistryResolver {
             given: image.to_owned(),
         })
     }
+}
+
+/// An error with its sources: hyper's own message is only
+/// "client error (Connect)", the cause (DNS, TCP, TLS) is in the chain.
+fn chain(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = e.to_string();
+    let mut source = e.source();
+    while let Some(cause) = source {
+        out.push_str(": ");
+        out.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    out
 }
 
 /// Percent-encode a query value (RFC 3986 unreserved characters stay).

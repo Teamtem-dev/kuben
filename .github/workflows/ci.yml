@@ -304,6 +304,10 @@ jobs:
         with:
           cluster_name: kuben-e2e
           wait: 120s
+      # ADR-032 option A: tags resolve to digests at their registry. First, so
+      # a registry problem shows here and not as an e2e failure.
+      - name: Registry resolution (network)
+        run: bun turbo run kuben-api#test:network
       # Builds the debug binary first (kuben#e2e depends on kuben#build).
       - run: bun turbo run kuben#e2e
       # ADR-027 spike: stale resourceVersion writes, server-side apply with a
@@ -315,9 +319,6 @@ jobs:
         run: bun turbo run kuben-platform#test:cluster
         env:
           KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
-      # ADR-032 option A: tags resolve to digests at their registry.
-      - name: Registry resolution (network)
-        run: bun turbo run kuben-api#test:network
       # The chart against the real API server, whose CRDs the e2e run applied:
       # server-side validation catches what `helm template` cannot, like a
       # custom resource that does not match its schema (v1.0.3 shipped
