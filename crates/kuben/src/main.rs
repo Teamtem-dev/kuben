@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
         cli::Command::Setup(opts) => cli::setup::setup(&opts),
         cli::Command::Status => cli::setup::status(),
         cli::Command::Uninstall(opts) => cli::setup::uninstall(&opts),
-        cli::Command::Serve(opts) => serve::run(cfg, &opts),
+        cli::Command::Serve(_) => serve::run(cfg),
         cli::Command::Migrate => serve::block_on(&runtime, async move {
             let store = kuben_store::Store::connect(&cfg.database).await?;
             tracing::info!(backend = store.backend(), "migrations applied");

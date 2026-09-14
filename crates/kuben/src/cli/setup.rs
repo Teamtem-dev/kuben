@@ -29,6 +29,9 @@ use super::ui::Ui;
 pub const BIN: &str = "/usr/local/bin/kuben";
 pub const USER: &str = "kuben";
 pub const STATE_DIR: &str = "/var/lib/kuben";
+/// The server's own PostgreSQL, reached over its Unix socket with peer
+/// authentication as [`USER`], so no password is stored (ADR-025).
+pub const LOCAL_DATABASE_URL: &str = "postgres:///kuben?host=/run/postgresql&user=kuben";
 pub const CONFIG_DIR: &str = "/etc/kuben";
 pub const CONFIG_FILE: &str = "/etc/kuben/config.toml";
 pub const UNIT_FILE: &str = "/etc/systemd/system/kuben.service";
@@ -515,9 +518,12 @@ fn config_template(bind_host: &str, port: u16, public_host: &str, kubeconfig: &P
          # Set to the https:// address once Kuben sits behind TLS; the session cookie\n\
          # then becomes Secure on its own.\n\
          public_url = \"http://{public_host}:{port}\"\n\
+         # The setup token and a generated first admin password go here.\n\
+         state_dir = \"{STATE_DIR}\"\n\
          \n\
          [database]\n\
-         url = \"sqlite://{STATE_DIR}/kuben.db\"\n\
+         # PostgreSQL on this server, over its Unix socket as the kuben user.\n\
+         url = \"{LOCAL_DATABASE_URL}\"\n\
          \n\
          [kube]\n\
          kubeconfig = \"{}\"\n",
@@ -1032,7 +1038,8 @@ mod tests {
         assert_eq!(cfg.server.bind, "0.0.0.0:3000");
         assert_eq!(cfg.server.public_url.as_deref(), Some("http://203.0.113.7:3000"));
         assert_eq!(cfg.kube.kubeconfig.as_deref(), Some("/var/lib/kuben/kubeconfig"));
-        assert_eq!(cfg.database.url, "sqlite:///var/lib/kuben/kuben.db");
+        assert_eq!(cfg.database.url, LOCAL_DATABASE_URL);
+        assert_eq!(cfg.state_dir(), Path::new(STATE_DIR));
         assert!(!cfg.cookie_secure(), "plain http until public_url is https");
         let unit = unit_template();
         assert!(unit.contains("ExecStart=/usr/local/bin/kuben serve"));

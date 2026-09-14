@@ -1099,9 +1099,9 @@ async fn empty_app(bind: &str, dir: &std::path::Path) -> Option<Router> {
     let mut cfg = Config::default();
     cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     cfg.server.bind = bind.into();
-    // Only locates the setup-token file (next to the database path); the
-    // store itself is the isolated PostgreSQL schema below.
-    cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
+    // Where the setup-token file goes; the store is the isolated PostgreSQL
+    // schema below.
+    cfg.server.state_dir = Some(dir.display().to_string());
     let Some(store) = kuben_store::testing::pg_store().await else {
         kuben_store::testing::skip("setup");
         return None;
@@ -1184,7 +1184,7 @@ async fn setup_on_a_public_address_needs_the_installer_token() {
     assert_eq!(status, StatusCode::FORBIDDEN, "wrong token");
 
     let mut cfg = Config::default();
-    cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
+    cfg.server.state_dir = Some(dir.display().to_string());
     let token = kuben_api::setup::issue_token(&cfg).expect("token");
     let right = SETUP_BODY.replace('}', &format!(r#","token":"{token}"}}"#));
     let (status, _) = send(&app, post("/api/v1/setup", "", &right)).await;

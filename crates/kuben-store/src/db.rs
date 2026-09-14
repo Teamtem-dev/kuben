@@ -16,6 +16,10 @@ pub enum StoreError {
     #[error("unsupported database url: {0}")]
     UnsupportedUrl(String),
     #[error(
+        "database.url is not set: Kuben keeps its data in PostgreSQL. For a local server run `docker run -d --name kuben-postgres -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine` and set KUBEN_DATABASE__URL=postgres://postgres:kuben@localhost:5432/postgres"
+    )]
+    NotConfigured,
+    #[error(
         "cannot create the database directory {path}: {source}; point KUBEN_DATABASE__URL at a directory this user can write, e.g. sqlite://$HOME/.local/state/kuben/kuben.db"
     )]
     Directory {
@@ -47,6 +51,9 @@ pub struct Store {
 impl Store {
     /// Connect according to the URL scheme and run embedded migrations.
     pub async fn connect(cfg: &DatabaseCfg) -> Result<Self, StoreError> {
+        if cfg.url.trim().is_empty() {
+            return Err(StoreError::NotConfigured);
+        }
         let db = if cfg.url.starts_with("sqlite:") {
             connect_sqlite(&cfg.url, cfg.max_connections).await?
         } else if cfg.url.starts_with("postgres:") || cfg.url.starts_with("postgresql:") {
