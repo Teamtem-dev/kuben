@@ -7,6 +7,7 @@ mod operations;
 mod orgs;
 mod product;
 mod releases;
+mod resolve;
 mod sessions;
 mod throttle;
 mod tokens;
@@ -17,6 +18,7 @@ pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, StartDeploy
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use product::{Project, Tenant};
 pub use releases::NewRelease;
+pub use resolve::{Named, SqlScope};
 pub use sessions::NewSession;
 pub use throttle::ThrottleWindow;
 pub use tokens::NewToken;

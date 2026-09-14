@@ -136,9 +136,9 @@ pub async fn create(
     let (project, environment) = match (&body.project, &body.environment) {
         (None, None) => (None, None),
         (None, Some(_)) => return Err(Error::Validation("environment requires project".into()).into()),
-        (Some(p), None) => (Some(scope::project(&state, &authz, p)?.uid), None),
+        (Some(p), None) => (Some(scope::project(&state, &authz, p).await?.uid), None),
         (Some(p), Some(e)) => {
-            let env = scope::environment(&state, &authz, p, e)?;
+            let env = scope::environment(&state, &authz, p, e).await?;
             let uid = env
                 .uid
                 .ok_or_else(|| Error::NotFound(format!("environment `{e}`")))?;

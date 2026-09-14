@@ -53,7 +53,7 @@ pub async fn list(
     authz: Authz,
     Path((project, environment)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<AppDto>>> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::AppRead, &e.chain())?;
     let items = state
         .projections
@@ -89,7 +89,7 @@ pub async fn create(
     Path((project, environment)): Path<(String, String)>,
     Json(body): Json<CreateApp>,
 ) -> ApiResult<(StatusCode, Json<AppDto>)> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::AppWrite, &e.chain())?;
     validate::dns_label("name", &body.name, 40)?;
     let spec = spec_from_create(&body)?;
@@ -115,7 +115,7 @@ pub async fn get(
     authz: Authz,
     Path((project, environment, app)): Path<(String, String, String)>,
 ) -> ApiResult<Json<AppDetail>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
     let with_values = authz.require(&state, Perm::SecretRead, &a.chain()).is_ok();
     let mut dto = app_dto(&a, &a.view);
@@ -163,7 +163,7 @@ pub async fn update(
     Path((project, environment, app)): Path<(String, String, String)>,
     Json(body): Json<UpdateApp>,
 ) -> ApiResult<Json<AppDto>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let deploys = body.image.is_some();
     let perm = if deploys { Perm::AppDeploy } else { Perm::AppWrite };
     let _proof = authz.require(&state, perm, &a.chain())?;
@@ -225,7 +225,7 @@ pub async fn delete(
     Path((project, environment, app)): Path<(String, String, String)>,
     Query(q): Query<DeleteAppQuery>,
 ) -> ApiResult<StatusCode> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppWrite, &a.chain())?;
     app_api(&state, &a.env)?
         .delete(&a.view.name, &DeleteParams::background())
@@ -268,7 +268,7 @@ pub async fn restart(
     authz: Authz,
     Path((project, environment, app)): Path<(String, String, String)>,
 ) -> ApiResult<StatusCode> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
     let now = k8s_openapi::jiff::Timestamp::now()
         .strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -320,7 +320,7 @@ pub async fn logs(
     Path((project, environment, app)): Path<(String, String, String)>,
     Query(q): Query<LogQuery>,
 ) -> ApiResult<Json<Vec<PodLogs>>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppLogsRead, &a.chain())?;
     let pods_api = Api::<Pod>::namespaced(scope::cluster(&state)?, &a.view.namespace);
     let tail = q.tail.unwrap_or(200).clamp(1, 2000);

@@ -87,7 +87,7 @@ pub async fn get(
     authz: Authz,
     Path(project): Path<String>,
 ) -> ApiResult<Json<ProjectDto>> {
-    let p = scope::project(&state, &authz, &project)?;
+    let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::ProjectRead, &p.chain())?;
     Ok(Json(ProjectDto::from(&*p.view)))
 }
@@ -158,7 +158,7 @@ pub async fn delete(
     authz: Authz,
     Path(project): Path<String>,
 ) -> ApiResult<StatusCode> {
-    let p = scope::project(&state, &authz, &project)?;
+    let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::ProjectWrite, &p.chain())?;
     let remaining = state
         .projections

@@ -49,7 +49,7 @@ pub async fn releases(
     authz: Authz,
     Path((project, environment, app)): Path<(String, String, String)>,
 ) -> ApiResult<Json<Vec<ReleaseDto>>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
     let rows = state
         .store
@@ -121,7 +121,7 @@ pub async fn rollback(
     Path((project, environment, app)): Path<(String, String, String)>,
     Json(body): Json<Rollback>,
 ) -> ApiResult<Json<AppDto>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
     let release = state
         .store

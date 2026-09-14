@@ -75,7 +75,7 @@ pub async fn list(
     authz: Authz,
     Path((project, environment)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<SecretDto>>> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::SecretRead, &e.chain())?;
     let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
     let list = api
@@ -108,7 +108,7 @@ pub async fn put(
     Path((project, environment, secret)): Path<(String, String, String)>,
     Json(body): Json<PutSecret>,
 ) -> ApiResult<Json<SecretDto>> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::SecretWrite, &e.chain())?;
     validate::dns_label("secret name", &secret, 63)?;
     if body.data.is_empty() {
@@ -180,7 +180,7 @@ pub async fn delete(
     authz: Authz,
     Path((project, environment, secret)): Path<(String, String, String)>,
 ) -> ApiResult<StatusCode> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::SecretWrite, &e.chain())?;
     let api = Api::<Secret>::namespaced(scope::cluster(&state)?, &e.view.namespace);
     let existing = api

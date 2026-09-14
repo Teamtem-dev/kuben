@@ -59,7 +59,7 @@ pub async fn run(
     Path((project, environment, app)): Path<(String, String, String)>,
     Json(body): Json<RunJob>,
 ) -> ApiResult<(StatusCode, Json<JobStarted>)> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
     let process = match body.process {
         Some(p) => p,

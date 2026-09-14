@@ -418,7 +418,7 @@ pub async fn deploy(
     Path((project, environment, template)): Path<(String, String, String)>,
     Json(body): Json<DeployTemplate>,
 ) -> ApiResult<(StatusCode, Json<DeployedTemplate>)> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _app = authz.require(&state, Perm::AppWrite, &e.chain())?;
     let _secret = authz.require(&state, Perm::SecretWrite, &e.chain())?;
     let t = TEMPLATES

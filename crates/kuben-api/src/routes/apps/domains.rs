@@ -131,7 +131,7 @@ pub async fn domains(
     authz: Authz,
     Path((project, environment, app)): Path<(String, String, String)>,
 ) -> ApiResult<Json<Vec<DomainCheck>>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
     let client = scope::cluster(&state)?;
     let platform = platform(&client).await;

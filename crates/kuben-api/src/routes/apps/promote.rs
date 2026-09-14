@@ -206,10 +206,10 @@ pub async fn promote(
     Path((project, environment, app)): Path<(String, String, String)>,
     Json(body): Json<Promote>,
 ) -> ApiResult<Json<PromoteResult>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _read = authz.require(&state, Perm::AppRead, &a.chain())?;
     validate::dns_label("to_environment", &body.to_environment, 63)?;
-    let target = scope::environment(&state, &authz, &project, &body.to_environment)?;
+    let target = scope::environment(&state, &authz, &project, &body.to_environment).await?;
     if target.view.name == a.env.view.name {
         return Err(Error::Validation("choose a different target environment".into()).into());
     }

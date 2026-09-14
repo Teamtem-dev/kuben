@@ -26,6 +26,10 @@ pub struct ScopeChain {
     pub project: Option<Uuid>,
     pub environment: Option<Uuid>,
     pub app: Option<Uuid>,
+    /// Other names of nodes on this chain: the Kubernetes UIDs of resources
+    /// whose SQL rows now name them (ADR-032), so role bindings made on those
+    /// UIDs keep applying until the importer rewrites them.
+    pub aliases: Vec<ScopeRef>,
 }
 
 impl ScopeChain {
@@ -36,6 +40,7 @@ impl ScopeChain {
             project: None,
             environment: None,
             app: None,
+            aliases: Vec::new(),
         }
     }
 
@@ -46,18 +51,21 @@ impl ScopeChain {
             project: Some(project),
             environment: None,
             app: None,
+            aliases: Vec::new(),
         }
     }
 
-    /// Whether `scope` is one of the nodes on this chain.
+    /// Whether `scope` is one of the nodes on this chain, by its name of
+    /// record or by an alias of the same level.
     #[must_use]
     pub fn contains(&self, scope: &ScopeRef) -> bool {
-        match scope {
+        let named = match scope {
             ScopeRef::Org(o) => *o == self.org,
             ScopeRef::Project(p) => self.project == Some(*p),
             ScopeRef::Environment(e) => self.environment == Some(*e),
             ScopeRef::App(a) => self.app == Some(*a),
-        }
+        };
+        named || self.aliases.contains(scope)
     }
 
     /// The most specific node of the chain.
@@ -102,5 +110,32 @@ impl AuthzProof {
     #[must_use]
     pub const fn scope(&self) -> &ScopeRef {
         &self.scope
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aliases_keep_bindings_on_imported_resources_applying() {
+        let org = OrgId::new();
+        let (sql, legacy) = (Uuid::now_v7(), Uuid::now_v7());
+        let chain = ScopeChain {
+            aliases: vec![ScopeRef::Project(legacy)],
+            ..ScopeChain::project(org, sql)
+        };
+        assert!(chain.contains(&ScopeRef::Project(sql)));
+        assert!(chain.contains(&ScopeRef::Project(legacy)));
+        assert!(!chain.contains(&ScopeRef::Project(Uuid::now_v7())));
+        assert!(
+            !chain.contains(&ScopeRef::Environment(legacy)),
+            "an alias keeps its level"
+        );
+        assert_eq!(
+            chain.leaf(),
+            ScopeRef::Project(sql),
+            "the SQL id is the name of record"
+        );
     }
 }

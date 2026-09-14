@@ -109,7 +109,7 @@ pub async fn list(
     authz: Authz,
     Path(project): Path<String>,
 ) -> ApiResult<Json<Vec<EnvironmentDto>>> {
-    let p = scope::project(&state, &authz, &project)?;
+    let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::EnvRead, &p.chain())?;
     let items = state
         .projections
@@ -137,7 +137,7 @@ pub async fn get(
     authz: Authz,
     Path((project, environment)): Path<(String, String)>,
 ) -> ApiResult<Json<EnvironmentDto>> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::EnvRead, &e.chain())?;
     Ok(Json(EnvironmentDto::from_view(&e.view)))
 }
@@ -163,7 +163,7 @@ pub async fn create(
     Path(project): Path<String>,
     Json(body): Json<CreateEnvironment>,
 ) -> ApiResult<(StatusCode, Json<EnvironmentDto>)> {
-    let p = scope::project(&state, &authz, &project)?;
+    let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::EnvWrite, &p.chain())?;
     validate::dns_label("name", &body.name, 20)?;
     let name = scope::environment_resource_name(&p.view.name, &body.name);
@@ -259,7 +259,7 @@ pub async fn delete(
     authz: Authz,
     Path((project, environment)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let perm = if e.view.env_type == "production" {
         Perm::EnvDeleteProtected
     } else {
