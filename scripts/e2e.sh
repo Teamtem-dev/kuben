@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # End-to-end test: a real cluster (kind), the real binary, the public API.
 #
-#   scripts/e2e.sh                     # uses ./target/debug/kuben and the current kube context
-#   KUBEN_BIN=target/release/kuben scripts/e2e.sh
+#   KUBEN_E2E_DATABASE_URL=postgres://postgres:kuben@localhost:5432/postgres scripts/e2e.sh
+#   KUBEN_BIN=target/release/kuben scripts/e2e.sh      # default: ./target/debug/kuben
+#
+# Uses the current kube context and KUBEN_E2E_DATABASE_URL, an empty
+# PostgreSQL database (ADR-025): the run creates the first admin, so a
+# database left over from an earlier run fails at login. A local server:
+#   docker run -d --rm --name kuben-e2e-pg -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine
 #
 # Exercises: CRD self-apply, the controller Lease, login, project → environment → namespace with
 # quota/limits/isolation, app deploy → Deployment/Service rollout, scale,
@@ -15,6 +20,7 @@ set -euo pipefail
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=${KUBEN_BIN:-$ROOT/target/debug/kuben}
+DATABASE_URL=${KUBEN_E2E_DATABASE_URL:?set KUBEN_E2E_DATABASE_URL to an empty PostgreSQL database, e.g. postgres://postgres:kuben@localhost:5432/postgres}
 PORT=${KUBEN_E2E_PORT:-18080}
 BASE="http://127.0.0.1:${PORT}/api/v1"
 PASSWORD="e2e-$(date +%s)-password"
@@ -114,7 +120,7 @@ expect_as() { # <status> <auth> <method> <path> [json]
 step "start kuben"
 KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
   KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
-  KUBEN_DATABASE__URL="sqlite://${work}/kuben.db" \
+  KUBEN_DATABASE__URL="$DATABASE_URL" \
   KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
   KUBEN_SECURITY__COOKIE_SECURE=false \
   KUBEN_KUBE__REQUIRED=true \
