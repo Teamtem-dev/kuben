@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "Kuben persistence: sqlx (SQLite WAL / Postgres) with embedded migrations"
 
+[features]
+# Test support: an isolated PostgreSQL schema per test (`testing::pg_store`).
+testing = []
+
 [dependencies]
 kuben-core.workspace = true
 sqlx.workspace = true

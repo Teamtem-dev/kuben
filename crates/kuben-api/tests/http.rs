@@ -26,15 +26,20 @@ struct TestApp {
     store: Store,
 }
 
-async fn setup() -> TestApp {
+/// The test app on a fresh PostgreSQL schema, or `None` (the test skips)
+/// when `KUBEN_TEST_PG_URL` is not set.
+async fn setup() -> Option<TestApp> {
     setup_with(|_| {}).await
 }
 
-async fn setup_with(tweak: impl FnOnce(&mut Config)) -> TestApp {
+async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     let mut cfg = Config::default();
     cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     tweak(&mut cfg);
-    let store = Store::memory().await.expect("store");
+    let Some(store) = kuben_store::testing::pg_store().await else {
+        kuben_store::testing::skip("http");
+        return None;
+    };
     let hasher = kuben_api::auth::password::Hasher::insecure_for_tests();
     let org = store.create_org("acme", "ACME").await.expect("org");
     let alice = store
@@ -73,12 +78,12 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> TestApp {
         health,
         Arc::new(StaticPolicy),
     );
-    TestApp {
+    Some(TestApp {
         router: kuben_api::router(state),
         projections,
         org: org.id,
         store,
-    }
+    })
 }
 
 fn seed(app: &TestApp) {
@@ -209,7 +214,7 @@ async fn login(app: &Router, email: &str) -> String {
 
 #[tokio::test]
 async fn health_endpoints() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let resp = app
         .router
         .clone()
@@ -227,7 +232,7 @@ async fn health_endpoints() {
 
 #[tokio::test]
 async fn unknown_api_route_is_json_404_not_spa() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let resp = app
         .router
         .oneshot(Request::get("/api/v1/nope").body(Body::empty()).expect("req"))
@@ -239,7 +244,7 @@ async fn unknown_api_route_is_json_404_not_spa() {
 
 #[tokio::test]
 async fn me_requires_auth() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let (status, problem) = send(
         &app.router,
         Request::get("/api/v1/me").body(Body::empty()).expect("req"),
@@ -251,7 +256,7 @@ async fn me_requires_auth() {
 
 #[tokio::test]
 async fn login_without_csrf_header_is_forbidden() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let req = Request::post("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(
@@ -264,7 +269,7 @@ async fn login_without_csrf_header_is_forbidden() {
 
 #[tokio::test]
 async fn session_lifecycle() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let req = Request::post("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .header(CLIENT_HEADER, "test")
@@ -301,7 +306,7 @@ async fn session_lifecycle() {
 
 #[tokio::test]
 async fn wrong_password_is_unauthorized() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let req = Request::post("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .header(CLIENT_HEADER, "test")
@@ -313,7 +318,7 @@ async fn wrong_password_is_unauthorized() {
 
 #[tokio::test]
 async fn projects_are_tenant_scoped() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     seed(&app);
     let cookie = login(&app.router, "alice@example.com").await;
 
@@ -376,7 +381,7 @@ async fn projects_are_tenant_scoped() {
 
 #[tokio::test]
 async fn environments_and_apps_read_from_projections() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     seed(&app);
     let cookie = login(&app.router, "alice@example.com").await;
 
@@ -447,7 +452,7 @@ async fn environments_and_apps_read_from_projections() {
 
 #[tokio::test]
 async fn viewers_can_read_but_not_write() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     seed(&app);
     let cookie = login(&app.router, "bob@example.com").await;
 
@@ -483,7 +488,7 @@ async fn viewers_can_read_but_not_write() {
 
 #[tokio::test]
 async fn openapi_docs_are_served() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let resp = app
         .router
         .oneshot(Request::get("/api/docs").body(Body::empty()).expect("req"))
@@ -590,11 +595,14 @@ async fn try_login(app: &Router, password: &str, forwarded_for: &str) -> (Status
 
 #[tokio::test]
 async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
-    let t = setup_with(|c| {
+    let Some(t) = setup_with(|c| {
         c.security.login_max_failures = 3;
         c.security.trust_forwarded_for = true;
     })
-    .await;
+    .await
+    else {
+        return;
+    };
     for _ in 0..3 {
         assert_eq!(
             try_login(&t.router, "wrong", "6.6.6.6, 10.0.0.1").await.0,
@@ -619,7 +627,7 @@ async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
 
 #[tokio::test]
 async fn scenario2_every_mutation_is_audited_without_handler_code() {
-    let t = setup().await;
+    let Some(t) = setup().await else { return };
     seed(&t);
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
@@ -679,7 +687,7 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one end-to-end story per scenario
 async fn scenario3_api_tokens_are_capped_scoped_and_revocable() {
-    let t = setup().await;
+    let Some(t) = setup().await else { return };
     seed(&t);
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (status, _, created) = call(
@@ -830,7 +838,7 @@ async fn change_password(app: &Router, cookie: &str, current: &str, new: &str) -
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one end-to-end story per scenario
 async fn scenario4_team_members_follow_the_role_rules() {
-    let t = setup().await;
+    let Some(t) = setup().await else { return };
     seed(&t);
     let (_, alice, me) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let alice_id = me["id"].as_str().expect("id").to_owned();
@@ -980,7 +988,7 @@ async fn scenario4_team_members_follow_the_role_rules() {
 
 #[tokio::test]
 async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
-    let t = setup().await;
+    let Some(t) = setup().await else { return };
     seed(&t);
     for image in ["nginx:1.26", "nginx:1.27"] {
         t.store
@@ -1042,7 +1050,7 @@ async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
 
 #[tokio::test]
 async fn scenario8_template_catalogue() {
-    let t = setup().await;
+    let Some(t) = setup().await else { return };
     seed(&t);
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
@@ -1087,22 +1095,27 @@ async fn scenario8_template_catalogue() {
 
 /// An empty store, as on a fresh install; `bind` decides whether the setup
 /// token is required, `dir` is where the token file goes.
-async fn empty_app(bind: &str, dir: &std::path::Path) -> Router {
+async fn empty_app(bind: &str, dir: &std::path::Path) -> Option<Router> {
     let mut cfg = Config::default();
     cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     cfg.server.bind = bind.into();
+    // Only locates the setup-token file (next to the database path); the
+    // store itself is the isolated PostgreSQL schema below.
     cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
-    let store = Store::memory().await.expect("store");
+    let Some(store) = kuben_store::testing::pg_store().await else {
+        kuben_store::testing::skip("setup");
+        return None;
+    };
     let health = Health::new();
     health.set_ready(true);
-    kuben_api::router(ApiState::new(
+    Some(kuben_api::router(ApiState::new(
         cfg,
         store,
         None,
         Arc::new(Projections::new()),
         health,
         Arc::new(StaticPolicy),
-    ))
+    )))
 }
 
 fn scratch_dir(name: &str) -> std::path::PathBuf {
@@ -1120,7 +1133,9 @@ async fn setup_creates_the_admin_and_signs_in() {
         return; // the Secret flow applies inside a pod
     }
     let dir = scratch_dir("setup");
-    let app = empty_app("127.0.0.1:3000", &dir).await;
+    let Some(app) = empty_app("127.0.0.1:3000", &dir).await else {
+        return;
+    };
 
     let (status, body) = send(&app, get("/api/v1/setup", "")).await;
     assert_eq!(status, StatusCode::OK);
@@ -1156,7 +1171,9 @@ async fn setup_on_a_public_address_needs_the_installer_token() {
         return;
     }
     let dir = scratch_dir("token");
-    let app = empty_app("0.0.0.0:3000", &dir).await;
+    let Some(app) = empty_app("0.0.0.0:3000", &dir).await else {
+        return;
+    };
     let (_, body) = send(&app, get("/api/v1/setup", "")).await;
     assert_eq!(body, json!({"needed": true, "token_required": true}));
 
@@ -1185,7 +1202,9 @@ async fn setup_rejects_weak_input() {
         return;
     }
     let dir = scratch_dir("validate");
-    let app = empty_app("127.0.0.1:3000", &dir).await;
+    let Some(app) = empty_app("127.0.0.1:3000", &dir).await else {
+        return;
+    };
     for (body, what) in [
         (
             r#"{"org_name":"ACME","email":"nope","password":"a-long-first-password"}"#,

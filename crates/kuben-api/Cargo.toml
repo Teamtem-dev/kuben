@@ -55,6 +55,7 @@ rust-embed = { workspace = true, optional = true }
 mime_guess = { workspace = true, optional = true }
 
 [dev-dependencies]
+kuben-store = { workspace = true, features = ["testing"] }
 http-body-util.workspace = true
 tower = { workspace = true, features = ["util"] }
 

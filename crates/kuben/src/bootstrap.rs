@@ -218,7 +218,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn bootstrap_runs_once_even_when_replicas_race() {
-        let store = Store::memory().await.expect("store");
+        let Some(store) = kuben_store::testing::pg_store().await else {
+            kuben_store::testing::skip("bootstrap race");
+            return;
+        };
         let hasher = Hasher::insecure_for_tests();
         let cfg = Config::default();
         let (a, b) = tokio::join!(

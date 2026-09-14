@@ -14,3 +14,6 @@ mod db;
 pub mod repo;
 
 pub use db::{Store, StoreError};
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

@@ -126,13 +126,18 @@ mod tests {
         }
     }
 
-    async fn throttle() -> LoginThrottle {
-        LoginThrottle::new(&cfg(), Store::memory().await.expect("store"))
+    /// `None` (the test skips) when `KUBEN_TEST_PG_URL` is not set.
+    async fn throttle() -> Option<LoginThrottle> {
+        let Some(store) = kuben_store::testing::pg_store().await else {
+            kuben_store::testing::skip("login throttle");
+            return None;
+        };
+        Some(LoginThrottle::new(&cfg(), store))
     }
 
     #[tokio::test]
     async fn pair_bucket_locks_and_success_resets_it() {
-        let t = throttle().await;
+        let Some(t) = throttle().await else { return };
         for _ in 0..3 {
             assert!(t.check("a@x.io", Some("1.1.1.1")).await.is_ok());
             t.record_failure("a@x.io", Some("1.1.1.1")).await;
@@ -149,7 +154,7 @@ mod tests {
 
     #[tokio::test]
     async fn ip_bucket_catches_password_spraying() {
-        let t = throttle().await;
+        let Some(t) = throttle().await else { return };
         for i in 0..5 {
             t.record_failure(&format!("user{i}@x.io"), Some("9.9.9.9")).await;
         }
@@ -159,7 +164,7 @@ mod tests {
 
     #[tokio::test]
     async fn account_bucket_slows_distributed_guessing() {
-        let t = throttle().await;
+        let Some(t) = throttle().await else { return };
         for i in 0..8 {
             t.record_failure("victim@x.io", Some(&format!("10.0.0.{i}")))
                 .await;
@@ -169,7 +174,10 @@ mod tests {
 
     #[tokio::test]
     async fn replicas_share_one_budget() {
-        let store = Store::memory().await.expect("store");
+        let Some(store) = kuben_store::testing::pg_store().await else {
+            kuben_store::testing::skip("shared throttle budget");
+            return;
+        };
         let (a, b) = (
             LoginThrottle::new(&cfg(), store.clone()),
             LoginThrottle::new(&cfg(), store),

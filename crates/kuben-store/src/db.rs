@@ -59,6 +59,25 @@ impl Store {
         Ok(store)
     }
 
+    /// Connect to PostgreSQL with explicit options (for example a
+    /// `search_path` per test) and run the migrations.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) async fn connect_postgres(
+        options: sqlx::postgres::PgConnectOptions,
+        max_connections: u32,
+    ) -> Result<Self, StoreError> {
+        let pool = PgPoolOptions::new()
+            .max_connections(max_connections.max(2))
+            .acquire_timeout(Duration::from_secs(10))
+            .connect_with(options)
+            .await?;
+        let store = Self {
+            db: Arc::new(Db::Postgres(pool)),
+        };
+        store.migrate().await?;
+        Ok(store)
+    }
+
     /// In-memory SQLite, for tests and `--dev` mode.
     pub async fn memory() -> Result<Self, StoreError> {
         Self::connect(&DatabaseCfg {

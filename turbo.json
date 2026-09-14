@@ -129,17 +129,15 @@
       ]
     },
     "kuben-store#test:postgres": {
-      "description": "Store tests and the M0 operation-store spike against PostgreSQL (set KUBEN_TEST_PG_URL=postgres://...).",
+      "description": "Every test that needs PostgreSQL: store, API and binary (set KUBEN_TEST_PG_URL=postgres://...). ADR-025.",
       "command": [
         "cargo",
         "nextest",
         "run",
-        "--package=kuben-store",
         "--locked",
-        "--test",
-        "matrix",
-        "--test",
-        "ops_store_pg"
+        "--package=kuben-store",
+        "--package=kuben-api",
+        "--package=kuben"
       ],
       "cache": false
     },
