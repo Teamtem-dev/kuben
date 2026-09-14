@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/kuben",
+  "crates/kuben-agent",
   "crates/kuben-api",
   "crates/kuben-core",
   "crates/kuben-crd",

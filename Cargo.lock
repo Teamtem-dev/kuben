@@ -2152,6 +2152,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kuben-agent"
+version = "1.1.2"
+dependencies = [
+ "rcgen",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-rustls",
+]
+
+[[package]]
 name = "kuben-api"
 version = "1.1.2"
 dependencies = [

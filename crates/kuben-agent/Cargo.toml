@@ -1,0 +1,22 @@
+[package]
+name = "kuben-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kuben cluster agent: AgentLink over outbound mTLS (ADR-027)"
+
+[dependencies]
+rustls.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+
+[lints]
+workspace = true
