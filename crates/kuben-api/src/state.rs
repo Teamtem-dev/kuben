@@ -7,7 +7,10 @@ use kuben_platform::{health::Health, projection::Projections, registry::ClusterR
 use kuben_store::Store;
 use tokio::sync::Semaphore;
 
-use crate::auth::{password::Hasher, throttle::LoginThrottle};
+use crate::{
+    auth::{password::Hasher, throttle::LoginThrottle},
+    oci::{ImageResolver, RegistryResolver},
+};
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -27,6 +30,8 @@ pub struct ApiState {
     pub throttle: LoginThrottle,
     /// `POST /setup` runs one at a time: exactly one first admin.
     pub setup_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Resolves image tags to digests when an app is created or changed.
+    pub images: Arc<dyn ImageResolver>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -66,6 +71,14 @@ impl ApiState {
             session_cache,
             throttle,
             setup_lock: Arc::default(),
+            images: Arc::new(RegistryResolver::new()),
         }
+    }
+
+    /// Resolve images with `images` instead of asking their registries.
+    #[must_use]
+    pub fn with_images(mut self, images: Arc<dyn ImageResolver>) -> Self {
+        self.images = images;
+        self
     }
 }

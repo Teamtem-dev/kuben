@@ -158,6 +158,11 @@
       ],
       "cache": false
     },
+    "kuben-api#test:network": {
+      "description": "Image tags resolved against real registries (Docker Hub, GHCR). The tests are #[ignore]d elsewhere; they need the network.",
+      "command": ["cargo", "test", "--package=kuben-api", "--locked", "--test", "oci", "--", "--ignored"],
+      "cache": false
+    },
     "kuben-api#gen": {
       "description": "OpenAPI spec for the TypeScript client.",
       "command": [

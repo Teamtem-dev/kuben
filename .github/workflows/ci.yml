@@ -315,6 +315,9 @@ jobs:
         run: bun turbo run kuben-platform#test:cluster
         env:
           KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
+      # ADR-032 option A: tags resolve to digests at their registry.
+      - name: Registry resolution (network)
+        run: bun turbo run kuben-api#test:network
       # The chart against the real API server, whose CRDs the e2e run applied:
       # server-side validation catches what `helm template` cannot, like a
       # custom resource that does not match its schema (v1.0.3 shipped
