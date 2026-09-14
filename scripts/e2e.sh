@@ -14,7 +14,9 @@
 # logs, restart, and the day-2 scenarios of blueprint §5.9: releases and
 # rollback, API tokens, audit, cron jobs with "run now", volumes that survive
 # app deletion, templates, promotion, domain checks, team invitations and
-# login throttling; then deletes and garbage collection.
+# login throttling; deploys by digest through `…/deployments` (idempotent
+# replay, a stale expected generation refused, rollback) and a direct App
+# edit replaced as drift (ADR-032); then deletes and garbage collection.
 set -euo pipefail
 
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
@@ -117,6 +119,21 @@ expect_as() { # <status> <auth> <method> <path> [json]
   [[ $got == "$want" ]] || fail "[$auth] $1 $2 → HTTP $got (want $want): $(cat "$work/body")"
 }
 
+# deploy <app> <Idempotency-Key or ""> <json> → HTTP status; headers in $work/headers
+deploy() {
+  local app=$1 key=$2 body=$3
+  local args=(-sS -o "$work/body" -D "$work/headers" -w '%{http_code}' -X POST
+    -H 'content-type: application/json' -H 'x-kuben-client: e2e'
+    -b "$work/cookies" -c "$work/cookies" --data "$body")
+  [[ -n $key ]] && args+=(-H "idempotency-key: $key")
+  curl "${args[@]}" "$BASE$APP/$app/deployments"
+}
+
+# run_succeeded <app> <run>: the deployment run has succeeded
+run_succeeded() {
+  [[ $(curl -fsS -b "$work/cookies" "$BASE$APP/$1/deployments/$2" | jq -r .phase) == succeeded ]]
+}
+
 step "start kuben"
 KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
   KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
@@ -197,6 +214,40 @@ expect_as 200 "bearer:$token" PATCH "$APP/web" '{"env":[{"name":"GREETING","valu
 expect_as 403 "bearer:$token" POST /tokens '{"name":"escalate"}'
 expect 204 DELETE "/tokens/${token_id}"
 expect_as 401 "bearer:$token" GET /me
+
+step "deploy by digest through /deployments (ADR-032)"
+# The app's image as the materializer wrote it: the tag resolved to a digest.
+pinned=$(kubectl -n "$NS" get app web -o jsonpath='{.spec.source.image}')
+[[ $pinned == *@sha256:* ]] || fail "the App image is not pinned by digest: $pinned"
+expect 200 GET "$APP/web/releases"
+gen=$(jq -r '.[0].revision' "$work/body")
+body="{\"image\":\"${pinned}\",\"expected_generation\":${gen}}"
+key="e2e-deploy-$(date +%s)"
+got=$(deploy web "$key" "$body")
+[[ $got == 202 ]] || fail "deploy → HTTP $got: $(cat "$work/body")"
+run=$(jq -r .run "$work/body")
+[[ $(jq -r .generation "$work/body") == $((gen + 1)) ]] || fail "run generation: $(cat "$work/body")"
+grep -qiE "^location: /api/v1${APP}/web/deployments/${run}"$'\r?$' "$work/headers" || fail "Location: $(cat "$work/headers")"
+got=$(deploy web "$key" "$body")
+[[ $got == 202 && $(jq -r .run "$work/body") == "$run" ]] || fail "a replayed key must return the first run → HTTP $got: $(cat "$work/body")"
+got=$(deploy web "" "$body")
+[[ $got == 409 ]] || fail "a stale expected generation must be refused → HTTP $got: $(cat "$work/body")"
+eventually 180 "run ${run} succeeded" run_succeeded web "$run"
+kubectl -n "$NS" get app web -o jsonpath='{.metadata.annotations.kuben\.dev/generation}' | grep -qx "$((gen + 1))" ||
+  fail "App generation annotation"
+
+step "rollback through /deployments"
+got=$(deploy web "" "{\"image\":\"${pinned}\",\"reason\":\"rollback\",\"expected_generation\":$((gen + 1))}")
+[[ $got == 202 ]] || fail "rollback deploy → HTTP $got: $(cat "$work/body")"
+run=$(jq -r .run "$work/body")
+eventually 180 "rollback run ${run} succeeded" run_succeeded web "$run"
+expect 200 GET "$APP/web/releases"
+[[ $(jq -r '.[0].reason' "$work/body") == rollback ]] || fail "rollback not in history: $(cat "$work/body")"
+
+step "a direct App edit is drift: replaced from SQL"
+kubectl -n "$NS" patch app web --type merge -p '{"spec":{"source":{"image":"evil.example.com/web:latest"}}}' >/dev/null
+eventually 60 "edited image replaced" bash -c "[[ \$(kubectl -n $NS get app web -o jsonpath='{.spec.source.image}') == '$pinned' ]]"
+kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
 
 step "scenario 2: audit log"
 expect 200 GET "/audit?limit=200"
