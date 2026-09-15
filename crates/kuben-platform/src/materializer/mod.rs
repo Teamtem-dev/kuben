@@ -13,6 +13,7 @@
 //! * [`drift`] — reports changes someone else made to a materialized App
 //!   object and writes it again.
 
+pub mod agent;
 pub mod drift;
 pub mod fence;
 pub mod lifecycle;
@@ -21,4 +22,5 @@ pub mod render;
 pub mod worker;
 pub mod write;
 
+pub use agent::AgentDispatch;
 pub use worker::{Error, Worker, run};

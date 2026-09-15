@@ -7,12 +7,15 @@
 //! * [`cluster_ca`]: the cluster CA kept under `<state dir>/agentlink`. Its
 //!   certificate is what agents pin; its private key is readable by the
 //!   hub's user alone and never lives in the database (ADR-030).
-//! * [`run`]: the listener; enrollments and linked agents share one port.
+//! * [`AgentLink`]: the hub, built once per process; the listener, where
+//!   enrollments and linked agents share one port; and the handle the
+//!   materializer hands envelopes to ([`AgentLink::dispatch`]).
 
 use std::{
-    fs,
+    fmt, fs,
     io::Write as _,
     path::{Path, PathBuf},
+    pin::Pin,
     sync::Arc,
     time::Duration,
 };
@@ -21,10 +24,13 @@ use anyhow::Context as _;
 use kuben_agent::{
     enroll::{ClusterCa, Enrollment, RESUME_GRACE, Redeemed, TokenRefused, TokenStore},
     hub::{Hub, HubSettings, Registry, SessionInfo},
-    protocol::{APPLICATION_RUNTIME, Observation},
+    protocol::{APPLICATION_RUNTIME, Apply, Observation, RuntimePhase},
     tls::{ClientAuth, hub_config},
 };
-use kuben_core::{config::AgentCfg, ids::ClusterId};
+use kuben_core::{
+    config::AgentCfg,
+    ids::{ClusterId, TargetId},
+};
 use kuben_store::{
     Store,
     repo::{TokenRedemption, TokenRefusal},
@@ -34,6 +40,8 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+
+use crate::materializer::AgentDispatch;
 
 /// The cluster CA's certificate, the file agents pin (`--hub-ca`).
 pub const CA_CERTIFICATE: &str = "ca.crt";
@@ -85,6 +93,18 @@ pub fn cluster_ca(dir: &Path) -> anyhow::Result<ClusterCa> {
     fs::write(&certificate, ca.certificate_pem()).with_context(|| certificate.display().to_string())?;
     tracing::info!(dir = %dir.display(), "AgentLink CA made");
     Ok(ca)
+}
+
+/// The phase as `runtime_observations` stores it.
+const fn phase_name(phase: RuntimePhase) -> &'static str {
+    match phase {
+        RuntimePhase::Accepted => "accepted",
+        RuntimePhase::Applying => "applying",
+        RuntimePhase::Ready => "ready",
+        RuntimePhase::Failed => "failed",
+        RuntimePhase::Rejected => "rejected",
+        RuntimePhase::Unknown => "unknown",
+    }
 }
 
 /// A cluster id as the agent protocol carries it.
@@ -236,16 +256,48 @@ impl Registry for SqlRegistry {
         _device: &str,
         observation: &Observation,
     ) -> impl Future<Output = ()> + Send {
-        // The materializer follows envelopes from here on (M1.9, next step).
-        tracing::info!(
-            cluster,
-            target = %observation.target,
-            generation = observation.generation,
-            phase = ?observation.phase,
-            reason = observation.reason.as_deref().unwrap_or_default(),
-            "agent observation"
-        );
-        std::future::ready(())
+        let (store, cluster) = (self.store.clone(), cluster_id(cluster));
+        let target = Uuid::parse_str(&observation.target).ok().map(TargetId::from_uuid);
+        let observation = observation.clone();
+        async move {
+            let (Some(cluster), Some(target)) = (cluster, target) else {
+                return;
+            };
+            let org = match store.cluster_agent(cluster).await {
+                Ok(Some(agent)) => agent.org,
+                Ok(None) => return,
+                Err(error) => {
+                    tracing::warn!(%error, %cluster, "cannot read the cluster's agent");
+                    return;
+                }
+            };
+            let phase = phase_name(observation.phase);
+            let recorded = async {
+                let mut tenant = store.tenant(org).await?;
+                let recorded = tenant
+                    .record_runtime_observation(
+                        cluster,
+                        target,
+                        observation.generation,
+                        phase,
+                        observation.reason.as_deref(),
+                        observation.message.as_deref(),
+                    )
+                    .await?;
+                tenant.commit().await?;
+                Ok::<_, kuben_store::StoreError>(recorded)
+            }
+            .await;
+            match recorded {
+                Ok(true) => {
+                    tracing::info!(%cluster, %target, generation = observation.generation, phase, "agent observation");
+                }
+                Ok(false) => {
+                    tracing::warn!(%cluster, %target, "an observation of a target not on this cluster, or of an older generation");
+                }
+                Err(error) => tracing::warn!(%error, %cluster, "cannot record the agent's observation"),
+            }
+        }
     }
 
     fn heard(&self, cluster: &str, device: &str) -> impl Future<Output = ()> + Send {
@@ -261,58 +313,103 @@ impl Registry for SqlRegistry {
     }
 }
 
-/// Serve AgentLink on `config.bind` until `token` is cancelled; nothing
-/// when it is unset.
-pub async fn run(
-    config: AgentCfg,
-    state_dir: PathBuf,
-    store: Store,
-    token: CancellationToken,
-) -> anyhow::Result<()> {
-    let Some(bind) = config.bind.clone() else {
-        return Ok(());
-    };
-    let ca = cluster_ca(&directory(&state_dir))?;
-    let trust = vec![ca.certificate().clone()];
-    let identity = ca.server_identity(&config.hub_name, HUB_CERTIFICATE, OffsetDateTime::now_utc())?;
-    let acceptor = TlsAcceptor::from(hub_config(&trust, identity, ClientAuth::EnrollmentAllowed)?);
-    let lifetime = Duration::from_hours(config.certificate_hours.max(1));
-    let hub = Arc::new(Hub::new(
-        Enrollment::new(ca, SqlTokens::new(store.clone()), lifetime),
-        SqlRegistry::new(store),
-        HubSettings {
-            heartbeat: Duration::from_secs(config.heartbeat_secs.max(1)),
-            features: [APPLICATION_RUNTIME.to_owned()].into(),
-            ..HubSettings::default()
-        },
-    ));
-    let listener = TcpListener::bind(&bind)
-        .await
-        .with_context(|| format!("cannot listen for agents on {bind}"))?;
-    tracing::info!(%bind, hub = %config.hub_name, "AgentLink listening");
-    loop {
-        let (tcp, peer) = tokio::select! {
-            () = token.cancelled() => return Ok(()),
-            accepted = listener.accept() => match accepted {
-                Ok(accepted) => accepted,
-                Err(error) => {
-                    tracing::warn!(%error, "AgentLink accept failed");
-                    continue;
-                }
-            },
+/// The hub of `kuben serve`.
+pub type AgentHub = Hub<SqlTokens, SqlRegistry>;
+
+/// AgentLink of this process: the hub, built once, and its listener.
+#[derive(Clone)]
+pub struct AgentLink {
+    hub: Arc<AgentHub>,
+    acceptor: TlsAcceptor,
+    bind: String,
+    hub_name: String,
+}
+
+impl fmt::Debug for AgentLink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AgentLink")
+            .field("bind", &self.bind)
+            .field("hub_name", &self.hub_name)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AgentLink {
+    /// The hub for `config`, issuing under the cluster CA kept in
+    /// `state_dir`; `None` while `agent.bind` is unset.
+    pub fn build(config: &AgentCfg, state_dir: &Path, store: Store) -> anyhow::Result<Option<Self>> {
+        let Some(bind) = config.bind.clone() else {
+            return Ok(None);
         };
-        let (acceptor, hub) = (acceptor.clone(), hub.clone());
-        tokio::spawn(async move {
-            match tokio::time::timeout(HANDSHAKE, acceptor.accept(tcp)).await {
-                Ok(Ok(tls)) => {
-                    if let Err(error) = hub.serve(tls).await {
-                        tracing::debug!(%peer, %error, "AgentLink connection ended");
+        let ca = cluster_ca(&directory(state_dir))?;
+        let trust = vec![ca.certificate().clone()];
+        let identity = ca.server_identity(&config.hub_name, HUB_CERTIFICATE, OffsetDateTime::now_utc())?;
+        let acceptor = TlsAcceptor::from(hub_config(&trust, identity, ClientAuth::EnrollmentAllowed)?);
+        let lifetime = Duration::from_hours(config.certificate_hours.max(1));
+        let hub = Arc::new(Hub::new(
+            Enrollment::new(ca, SqlTokens::new(store.clone()), lifetime),
+            SqlRegistry::new(store),
+            HubSettings {
+                heartbeat: Duration::from_secs(config.heartbeat_secs.max(1)),
+                features: [APPLICATION_RUNTIME.to_owned()].into(),
+                ..HubSettings::default()
+            },
+        ));
+        Ok(Some(Self {
+            hub,
+            acceptor,
+            bind,
+            hub_name: config.hub_name.clone(),
+        }))
+    }
+
+    /// The handle the materializer hands envelopes to.
+    #[must_use]
+    pub fn dispatch(&self) -> Arc<dyn AgentDispatch> {
+        Arc::new(HubDispatch(self.hub.clone()))
+    }
+
+    /// Listen for agents until `token` is cancelled.
+    pub async fn serve(&self, token: CancellationToken) -> anyhow::Result<()> {
+        let listener = TcpListener::bind(&self.bind)
+            .await
+            .with_context(|| format!("cannot listen for agents on {}", self.bind))?;
+        tracing::info!(bind = %self.bind, hub = %self.hub_name, "AgentLink listening");
+        loop {
+            let (tcp, peer) = tokio::select! {
+                () = token.cancelled() => return Ok(()),
+                accepted = listener.accept() => match accepted {
+                    Ok(accepted) => accepted,
+                    Err(error) => {
+                        tracing::warn!(%error, "AgentLink accept failed");
+                        continue;
                     }
+                },
+            };
+            let (acceptor, hub) = (self.acceptor.clone(), self.hub.clone());
+            tokio::spawn(async move {
+                match tokio::time::timeout(HANDSHAKE, acceptor.accept(tcp)).await {
+                    Ok(Ok(tls)) => {
+                        if let Err(error) = hub.serve(tls).await {
+                            tracing::debug!(%peer, %error, "AgentLink connection ended");
+                        }
+                    }
+                    Ok(Err(error)) => tracing::debug!(%peer, %error, "AgentLink TLS refused"),
+                    Err(_) => tracing::debug!(%peer, "AgentLink TLS handshake timed out"),
                 }
-                Ok(Err(error)) => tracing::debug!(%peer, %error, "AgentLink TLS refused"),
-                Err(_) => tracing::debug!(%peer, "AgentLink TLS handshake timed out"),
-            }
-        });
+            });
+        }
+    }
+}
+
+/// The hub as the materializer sees it.
+#[derive(Debug)]
+struct HubDispatch(Arc<AgentHub>);
+
+impl AgentDispatch for HubDispatch {
+    fn send(&self, cluster: &str, apply: Apply) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+        let cluster = cluster.to_owned();
+        Box::pin(async move { self.0.send(&cluster, apply).await })
     }
 }
 

@@ -43,7 +43,7 @@ use crate::{
 
 /// Health registry name of the worker loop.
 const HEALTH: &str = "materializer";
-const LEASE: Duration = Duration::from_mins(2);
+pub(super) const LEASE: Duration = Duration::from_mins(2);
 /// Pause between claims when nothing is due.
 const IDLE: Duration = Duration::from_secs(2);
 /// Pause between reads while waiting on the cluster.
@@ -157,8 +157,11 @@ pub struct Worker {
     pub(super) store: Store,
     pub(super) client: Client,
     id: String,
-    verify_deadline: Duration,
+    pub(super) verify_deadline: Duration,
     pub(super) deletion_check: Duration,
+    /// Hands envelopes to cluster agents; agent-delivered targets wait
+    /// without it.
+    pub(super) agents: Option<std::sync::Arc<dyn super::agent::AgentDispatch>>,
 }
 
 impl Debug for Worker {
@@ -194,7 +197,15 @@ impl Worker {
             id: id.into(),
             verify_deadline: VERIFY_DEADLINE,
             deletion_check: DELETION_CHECK,
+            agents: None,
         }
+    }
+
+    /// Deliver agent-delivered targets through `agents` (the hub).
+    #[must_use]
+    pub fn with_agents(mut self, agents: std::sync::Arc<dyn super::agent::AgentDispatch>) -> Self {
+        self.agents = Some(agents);
+        self
     }
 
     /// How long an environment deletion waits before it checks again; 20
@@ -297,6 +308,9 @@ impl Worker {
         if m.deleting {
             return Err(refused("TargetDeleting"));
         }
+        if m.delivery == kuben_store::repo::Delivery::Agent {
+            return self.drive_agent(claim, m, token).await;
+        }
         let mut phase = m.phase;
         if phase == RunPhase::Planned {
             phase = self.advance(claim, m, RunEvent::ReadyForDelivery).await?;
@@ -355,7 +369,7 @@ impl Worker {
     /// Freeze the run's RenderPlan before its first write (ADR-026): the App
     /// rendered against the cluster's capabilities now. A retry finds the
     /// plan frozen and never renders it again.
-    async fn freeze(&self, claim: &Claim, m: &Materialization, app: &App) -> Result<(), Stop> {
+    pub(super) async fn freeze(&self, claim: &Claim, m: &Materialization, app: &App) -> Result<(), Stop> {
         let configs = Api::<KubenConfig>::all(self.client.clone())
             .list(&ListParams::default())
             .await?;
@@ -442,7 +456,7 @@ impl Worker {
         }
     }
 
-    async fn wait_namespace(&self, name: &str, token: &CancellationToken) -> Result<(), Stop> {
+    pub(super) async fn wait_namespace(&self, name: &str, token: &CancellationToken) -> Result<(), Stop> {
         let api = Api::<Namespace>::all(self.client.clone());
         let deadline = Instant::now() + NAMESPACE_WAIT;
         loop {
@@ -495,7 +509,7 @@ impl Worker {
 
     /// The controller applied the written generation: the run is past its
     /// preflight and applying, and is verifying.
-    async fn to_verifying(
+    pub(super) async fn to_verifying(
         &self,
         claim: &Claim,
         m: &Materialization,
@@ -512,7 +526,12 @@ impl Worker {
         }
     }
 
-    async fn advance(&self, claim: &Claim, m: &Materialization, event: RunEvent) -> Result<RunPhase, Stop> {
+    pub(super) async fn advance(
+        &self,
+        claim: &Claim,
+        m: &Materialization,
+        event: RunEvent,
+    ) -> Result<RunPhase, Stop> {
         match self.store.advance_run(claim, m.run, event).await? {
             Advance::Moved(phase) => Ok(phase),
             Advance::Fenced => Err(Stop::Fenced),
@@ -526,7 +545,7 @@ impl Worker {
     }
 }
 
-async fn pause(token: &CancellationToken) -> Result<(), Stop> {
+pub(super) async fn pause(token: &CancellationToken) -> Result<(), Stop> {
     tokio::select! {
         () = token.cancelled() => Err(Stop::Shutdown),
         () = tokio::time::sleep(POLL) => Ok(()),

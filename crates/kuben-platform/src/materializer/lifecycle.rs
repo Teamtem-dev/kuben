@@ -138,18 +138,27 @@ impl Worker {
             .await?
             .into_iter()
             .find(|a| a.target == target);
+        let delivery = tenant.target_delivery(target).await?;
         drop(tenant);
         let Some(app) = app else {
             return Ok(()); // finished before
         };
-        let apps = Api::<App>::namespaced(self.client.clone(), &app.namespace);
-        if let Some(live) = apps.get_opt(&app.slug).await? {
-            let ours = live
-                .annotations()
-                .get(annotations::ID)
-                .is_none_or(|id| *id == target.to_string());
-            if write::belongs_to(live.meta(), org) && ours {
-                remove(&apps, &app.slug).await?;
+        if delivery == Some(kuben_store::repo::Delivery::Agent) {
+            // The runtime owns the target's objects, volumes excepted: they
+            // go with it.
+            let runtimes =
+                Api::<kuben_crd::ApplicationRuntime>::namespaced(self.client.clone(), &app.namespace);
+            remove(&runtimes, &app.slug).await?;
+        } else {
+            let apps = Api::<App>::namespaced(self.client.clone(), &app.namespace);
+            if let Some(live) = apps.get_opt(&app.slug).await? {
+                let ours = live
+                    .annotations()
+                    .get(annotations::ID)
+                    .is_none_or(|id| *id == target.to_string());
+                if write::belongs_to(live.meta(), org) && ours {
+                    remove(&apps, &app.slug).await?;
+                }
             }
         }
         if subject.delete_volumes {

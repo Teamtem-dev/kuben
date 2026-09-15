@@ -10,7 +10,8 @@
 //!    under the same generation: that is a rejection, not a retry.
 //! 3. The plan's resources are applied as [`FIELD_MANAGER`], owned by the
 //!    `ApplicationRuntime`. Resources an earlier plan had and this one does
-//!    not are deleted, except volumes, which are kept.
+//!    not are deleted. Volumes are neither owned nor deleted: they outlive
+//!    their app.
 //! 4. The agent follows the plan's Deployments until every one is available
 //!    (Ready), one passes its progress deadline (Failed), or the verify
 //!    deadline passes (Failed), and writes what it saw into the runtime's
@@ -301,17 +302,21 @@ impl KubeExecutor {
             .ok_or_else(|| Refused::new("KubernetesError", "the ApplicationRuntime has no uid"))?;
         let owner = serde_json::to_value(owner).map_err(|e| Refused::new("KubernetesError", e))?;
         for resource in &checked.resources {
-            let mut object = resource.clone();
-            object["metadata"]["namespace"] = json!(apply.namespace);
-            object["metadata"]["ownerReferences"] = json!([owner]);
             let (api_version, kind, name) = (
-                object["apiVersion"].as_str().unwrap_or_default(),
-                object["kind"].as_str().unwrap_or_default(),
-                object["metadata"]["name"].as_str().unwrap_or_default(),
+                resource["apiVersion"].as_str().unwrap_or_default(),
+                resource["kind"].as_str().unwrap_or_default(),
+                resource["metadata"]["name"].as_str().unwrap_or_default(),
             );
             let Some(allowed) = kind_of(api_version, kind) else {
                 return Err(Refused::new("KindNotAllowed", format!("{api_version} {kind}")));
             };
+            let mut object = resource.clone();
+            object["metadata"]["namespace"] = json!(apply.namespace);
+            // Volumes outlive their app (scenario 6): never owned by the
+            // runtime, so never collected with it.
+            if allowed.prune {
+                object["metadata"]["ownerReferences"] = json!([owner]);
+            }
             let api: Api<DynamicObject> =
                 Api::namespaced_with(self.client.clone(), &apply.namespace, &api_resource(allowed));
             match api

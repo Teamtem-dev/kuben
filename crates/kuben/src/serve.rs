@@ -64,6 +64,14 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         crate::bootstrap::hand_over_password(&cfg, cluster.as_ref(), &password).await;
     }
 
+    // AgentLink: the hub's endpoint for cluster agents (ADR-027). It needs no
+    // kubeconfig of its own; the materializer hands it envelopes.
+    let agent_link = if cfg.has_role(Role::Controller) {
+        kuben_platform::agentlink::AgentLink::build(&cfg.agent, &cfg.state_dir(), store.clone())?
+    } else {
+        None
+    };
+
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
         health.ok("cluster");
@@ -74,6 +82,9 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             &projections,
             &health,
             election.as_ref(),
+            agent_link
+                .as_ref()
+                .map(kuben_platform::agentlink::AgentLink::dispatch),
             &shutdown,
         )
     } else {
@@ -83,18 +94,11 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         Vec::new()
     };
 
-    // AgentLink: the hub's endpoint for cluster agents (ADR-027); it needs
-    // no kubeconfig of its own.
-    if cfg.agent.bind.is_some() && cfg.has_role(Role::Controller) {
-        let (agent, dir, s, h, t) = (
-            cfg.agent.clone(),
-            cfg.state_dir(),
-            store.clone(),
-            health.clone(),
-            shutdown.child_token(),
-        );
+    if let Some(link) = agent_link {
+        let (h, t) = (health.clone(), shutdown.child_token());
         tasks.push(tokio::spawn(supervise("agentlink", t, h, move |tok| {
-            kuben_platform::agentlink::run(agent.clone(), dir.clone(), s.clone(), tok)
+            let link = link.clone();
+            async move { link.serve(tok).await }
         })));
     }
 
@@ -164,6 +168,7 @@ async fn leading(
 /// election when enabled), the materializer's worker (whose claims are
 /// fenced in SQL, so every replica runs one) and, with the `activator`
 /// feature, the activator.
+#[allow(clippy::too_many_arguments)] // the process's shared parts, passed once at startup
 fn spawn_cluster_tasks(
     cfg: &Config,
     store: &kuben_store::Store,
@@ -171,6 +176,7 @@ fn spawn_cluster_tasks(
     projections: &Arc<Projections>,
     health: &Health,
     election: Option<&Election>,
+    agents: Option<Arc<dyn kuben_platform::materializer::AgentDispatch>>,
     shutdown: &CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut tasks = Vec::new();
@@ -201,8 +207,12 @@ fn spawn_cluster_tasks(
     if cfg.has_role(Role::Controller) {
         // SQL is the only desired-state writer; the materializer writes its
         // resources (ADR-032).
-        let worker =
+        let mut worker =
             kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
+        if let Some(agents) = agents {
+            // Targets delivered by their cluster's agent go through the hub.
+            worker = worker.with_agents(agents);
+        }
         let (r, p, h, watcher, t) = (
             registry.clone(),
             projections.clone(),

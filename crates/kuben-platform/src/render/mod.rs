@@ -274,7 +274,7 @@ fn rank(kind: &str) -> u8 {
 }
 
 /// JSON with object keys sorted and no whitespace.
-fn canonical(value: &Value) -> String {
+pub(crate) fn canonical(value: &Value) -> String {
     fn write(value: &Value, out: &mut String) {
         match value {
             Value::Object(map) => {
@@ -309,7 +309,7 @@ fn canonical(value: &Value) -> String {
     out
 }
 
-fn sha256(text: &str) -> String {
+pub(crate) fn sha256(text: &str) -> String {
     Sha256::digest(text.as_bytes())
         .iter()
         .fold(String::from("sha256:"), |mut s, b| {
