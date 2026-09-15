@@ -1375,8 +1375,9 @@ async fn setup_rejects_weak_input() {
 const DIGEST: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const DEPLOYMENTS: &str = "/api/v1/projects/shop/environments/prod/apps/api/deployments";
 
-/// Project `shop`, environment `prod` and app `api`, in SQL only.
-async fn sql_app(app: &TestApp) {
+/// Project `shop`, environment `prod` and app `api`, in SQL only: the
+/// app's target.
+async fn sql_app(app: &TestApp) -> kuben_core::ids::TargetId {
     let mut t = app.store.tenant(app.org).await.expect("tenant");
     let project = t.create_project("shop", "Shop").await.expect("project");
     let env = t
@@ -1392,10 +1393,12 @@ async fn sql_app(app: &TestApp) {
         .create_application(project, "api", "API")
         .await
         .expect("application");
-    t.create_target(project, application, placement)
+    let target = t
+        .create_target(project, application, placement)
         .await
         .expect("target");
     t.commit().await.expect("commit");
+    target
 }
 
 fn deploy(cookie: &str, expected: u64, key: Option<&str>) -> Request<Body> {
@@ -1456,6 +1459,34 @@ async fn a_deployment_is_accepted_once_and_can_be_polled() {
     assert_eq!(second["generation"], 2);
     let (_, first_now) = send(&app.router, get(&location, &cookie)).await;
     assert_eq!(first_now["phase"], "superseded", "the newer run owns the app");
+}
+
+/// A deployment whose answer was lost (plan §18.1 crash/ACK replay, I17):
+/// the retry with the same key gets the run the first request made, and
+/// only one run exists.
+#[tokio::test]
+async fn a_lost_answer_is_given_again_without_a_second_run() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let cookie = login(&app.router, "alice@example.com").await;
+
+    // The request is accepted, but its answer never reaches the client.
+    let lost = app
+        .router
+        .clone()
+        .oneshot(deploy(&cookie, 0, Some("lost-1")))
+        .await
+        .expect("response");
+    assert_eq!(lost.status(), StatusCode::ACCEPTED);
+    drop(lost);
+
+    let (status, retry) = send(&app.router, deploy(&cookie, 0, Some("lost-1"))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{retry}");
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let runs = t.runs(target, 10).await.expect("runs");
+    assert_eq!(runs.len(), 1, "one intent, one run: {runs:?}");
+    assert_eq!(retry["run"], runs[0].run.to_string(), "the first request's run");
+    assert_eq!(retry["generation"], 1);
 }
 
 #[tokio::test]
