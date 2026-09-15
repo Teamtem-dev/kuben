@@ -4,9 +4,10 @@
 //! an organization the caller does not belong to, is `404`, not `403`, so its
 //! existence does not leak.
 //!
-//! The scope chain names every node by its SQL id; a row imported from the
-//! resource model keeps its Kubernetes UID as an alias, so role bindings and
-//! tokens made on that UID keep applying until the importer rewrites them.
+//! The scope chain names every node by its SQL id; a row that came from the
+//! resource model keeps its Kubernetes UID (`legacy_uid`) as an alias, so role
+//! bindings and tokens made on that UID keep applying. Nothing records such a
+//! UID today (1.x data is not carried over), so the alias stays empty.
 //! The resource projections only add live status: a row that was never
 //! materialized has none yet.
 

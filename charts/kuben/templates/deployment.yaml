@@ -1,7 +1,7 @@
 {{- $bundled := include "kuben.postgresql.bundled" . }}
 {{- $legacy := printf "%s-data" (include "kuben.fullname" .) }}
 {{- if and (lookup "v1" "PersistentVolumeClaim" .Release.Namespace $legacy) (not .Values.legacy.sqliteVolumeAcknowledged) }}
-{{- fail (printf "the volume %s holds the SQLite database of a Kuben 1.x install, which this chart does not read: Kuben keeps its data in PostgreSQL. The volume stays; move its data with the importer, or set legacy.sqliteVolumeAcknowledged=true to start with a new database" $legacy) }}
+{{- fail (printf "the volume %s holds the SQLite database of a Kuben 1.x install. Kuben keeps its data in PostgreSQL and does not carry 1.x data over: set legacy.sqliteVolumeAcknowledged=true to start with a new, empty database (the volume stays untouched)" $legacy) }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment

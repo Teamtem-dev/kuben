@@ -44,10 +44,11 @@ postgresql:
     limits:
       memory: 512Mi
 
-# A 1.x install kept its data in SQLite on the volume `<fullname>-data`, which
-# this chart does not read (the importer moves the data). An upgrade over such
-# a volume stops, so that a fresh, empty database is never taken for lost
-# data; set this to start with the new database anyway (the volume stays).
+# A 1.x install kept its data in SQLite on the volume `<fullname>-data`. This
+# chart keeps the data in PostgreSQL and does not carry 1.x data over. An
+# upgrade over such a volume stops, so that a fresh, empty database is never
+# taken for lost data; set this to start with the new database anyway (the
+# volume stays untouched).
 legacy:
   sqliteVolumeAcknowledged: false
 

@@ -2,8 +2,9 @@
 //!
 //! While the resource model and SQL coexist, a route still finds its project,
 //! environment and app in the resource projections, and asks here for the SQL
-//! rows behind them: by the Kubernetes UID the importer recorded
-//! (`legacy_uid`), else by slug, always inside the tenant's organization.
+//! rows behind them: by a recorded Kubernetes UID (`legacy_uid`, empty in
+//! practice: 1.x data is not carried over), else by slug, always inside the
+//! tenant's organization.
 
 use kuben_core::ids::{ApplicationId, EnvironmentId, ProjectId, TargetId};
 use uuid::Uuid;
