@@ -39,9 +39,16 @@ const INSERT_PLACEMENT: &str = "INSERT INTO environment_placements \
      (id, org_id, project_id, environment_id, cluster_id, namespace, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)";
 const INSERT_APPLICATION: &str = "INSERT INTO applications (id, org_id, project_id, slug, name, created_at) \
      VALUES ($1, $2, $3, $4, $5, $6)";
+// A new target is delivered by its cluster's agent when that agent is linked,
+// unrevoked and negotiated the runtime feature (migration 0012).
 const INSERT_TARGET: &str = "INSERT INTO application_targets \
-     (id, org_id, project_id, application_id, placement_id, lifecycle_uid, created_at) \
-     VALUES ($1, $2, $3, $4, $5, $6, $7)";
+     (id, org_id, project_id, application_id, placement_id, lifecycle_uid, created_at, delivery) \
+     SELECT $1, $2, $3, $4, $5, $6, $7, \
+       CASE WHEN EXISTS (SELECT 1 FROM environment_placements p \
+                         JOIN cluster_agents a ON a.cluster_id = p.cluster_id AND a.org_id = p.org_id \
+                         WHERE p.id = $5 AND a.revoked_at IS NULL \
+                           AND a.features @> jsonb_build_array($8::text)) \
+            THEN 'agent' ELSE 'controller' END";
 const SELECT_TARGET_STATE: &str = "SELECT lifecycle_uid, deleting, desired_generation, source_epoch, \
      build_config_revision, deploy_policy FROM application_targets WHERE id = $1 AND org_id = $2";
 
@@ -333,6 +340,7 @@ impl Tenant {
             .bind(*placement.as_uuid())
             .bind(Uuid::now_v7())
             .bind(now_ms())
+            .bind(super::agents::RUNTIME_FEATURE)
             .execute(&mut *self.tx)
             .await?;
         Ok(id)

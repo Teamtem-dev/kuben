@@ -16,7 +16,7 @@
 
 use std::time::Duration;
 
-use kuben_core::ids::{ClusterId, OrgId};
+use kuben_core::ids::{ClusterId, OrgId, TargetId};
 use uuid::Uuid;
 
 use super::Tenant;
@@ -50,8 +50,66 @@ const RECORD_LINK: &str = "UPDATE cluster_agents \
 const TOUCH: &str = "UPDATE cluster_agents SET last_seen_at = kuben_now_ms() \
      WHERE cluster_id = $1 AND device_id = $2 AND revoked_at IS NULL";
 const TOKEN_ORG: &str = "SELECT org_id FROM agent_tokens WHERE cluster_id = $1 AND device_id = $2 LIMIT 1";
+const TARGET_DELIVERY: &str = "SELECT delivery FROM application_targets WHERE id = $1 AND org_id = $2";
+const RECORD_OBSERVATION: &str = "INSERT INTO runtime_observations \
+     (target_id, org_id, project_id, generation, phase, reason, message, observed_at) \
+     SELECT t.id, t.org_id, t.project_id, $3, $4, $5, $6, kuben_now_ms() \
+     FROM application_targets t \
+     JOIN environment_placements p ON p.id = t.placement_id AND p.org_id = t.org_id \
+     WHERE t.id = $1 AND p.cluster_id = $2 AND t.org_id = $7 \
+     ON CONFLICT (target_id) DO UPDATE \
+     SET generation = EXCLUDED.generation, phase = EXCLUDED.phase, reason = EXCLUDED.reason, \
+         message = EXCLUDED.message, observed_at = EXCLUDED.observed_at \
+     WHERE runtime_observations.generation <= EXCLUDED.generation";
+const OBSERVATION: &str = "SELECT generation, phase, reason, message, observed_at \
+     FROM runtime_observations WHERE target_id = $1 AND org_id = $2";
 const REVOKE: &str = "UPDATE cluster_agents SET revoked_at = kuben_now_ms(), updated_at = kuben_now_ms() \
      WHERE cluster_id = $1 AND org_id = $2 AND revoked_at IS NULL";
+
+/// The feature a linked agent must have negotiated for new targets of its
+/// cluster to be delivered by it (the protocol's `applicationRuntime`).
+pub const RUNTIME_FEATURE: &str = "applicationRuntime";
+
+/// How a target's runs reach its cluster (migration 0012).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Delivery {
+    /// The materializer writes the target's App; the App controller carries
+    /// it out.
+    Controller,
+    /// The cluster's agent carries the target's execution envelopes out.
+    Agent,
+}
+
+impl Delivery {
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "controller" => Some(Self::Controller),
+            "agent" => Some(Self::Agent),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Controller => "controller",
+            Self::Agent => "agent",
+        }
+    }
+}
+
+/// The latest observation an agent reported for a target.
+#[derive(Clone, Debug, PartialEq, Eq, sqlx::FromRow)]
+pub struct RuntimeObservation {
+    pub generation: i64,
+    /// `accepted`, `applying`, `ready`, `failed`, `rejected` or `unknown`.
+    pub phase: String,
+    pub reason: Option<String>,
+    pub message: Option<String>,
+    /// Unix milliseconds.
+    pub observed_at: i64,
+}
 
 /// How a token was redeemed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +245,56 @@ impl Tenant {
             .execute(&mut *self.tx)
             .await?;
         Ok(true)
+    }
+
+    /// How `target` of this organization is delivered, if it exists.
+    pub async fn target_delivery(&mut self, target: TargetId) -> Result<Option<Delivery>, StoreError> {
+        let found: Option<String> = sqlx::query_scalar(TARGET_DELIVERY)
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        found
+            .map(|d| Delivery::parse(&d).ok_or_else(|| decode(format!("unknown delivery {d:?}")).into()))
+            .transpose()
+    }
+
+    /// Record what the agent of `cluster` observed of `target`: only for a
+    /// target on that cluster, and never over a newer generation. False when
+    /// nothing was recorded.
+    pub async fn record_runtime_observation(
+        &mut self,
+        cluster: ClusterId,
+        target: TargetId,
+        generation: i64,
+        phase: &str,
+        reason: Option<&str>,
+        message: Option<&str>,
+    ) -> Result<bool, StoreError> {
+        let rows = sqlx::query(RECORD_OBSERVATION)
+            .bind(*target.as_uuid())
+            .bind(*cluster.as_uuid())
+            .bind(generation)
+            .bind(phase)
+            .bind(reason)
+            .bind(message)
+            .bind(self.org.to_string())
+            .execute(&mut *self.tx)
+            .await?
+            .rows_affected();
+        Ok(rows == 1)
+    }
+
+    /// The latest observation of `target`, if its agent reported one.
+    pub async fn runtime_observation(
+        &mut self,
+        target: TargetId,
+    ) -> Result<Option<RuntimeObservation>, StoreError> {
+        Ok(sqlx::query_as(OBSERVATION)
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .fetch_optional(&mut *self.tx)
+            .await?)
     }
 
     /// Revoke the agent of `cluster`: it may no longer link or renew until
@@ -421,6 +529,161 @@ mod tests {
                 .await
                 .expect("read"),
             Some(org)
+        );
+    }
+
+    /// A project with one environment on `cluster`: its id and placement.
+    async fn placement_on(
+        store: &Store,
+        org: OrgId,
+        cluster: ClusterId,
+    ) -> (kuben_core::ids::ProjectId, kuben_core::ids::PlacementId) {
+        let mut t = store.tenant(org).await.expect("tenant");
+        let project = t.create_project("shop", "Shop").await.expect("project");
+        let env = t
+            .create_environment(project, "production", "Production", true)
+            .await
+            .expect("environment");
+        let placement = t
+            .create_placement(project, env, cluster, "kb-shop-production")
+            .await
+            .expect("placement");
+        t.commit().await.expect("commit");
+        (project, placement)
+    }
+
+    async fn target(
+        store: &Store,
+        org: OrgId,
+        project: kuben_core::ids::ProjectId,
+        placement: kuben_core::ids::PlacementId,
+        slug: &str,
+    ) -> TargetId {
+        let mut t = store.tenant(org).await.expect("tenant");
+        let application = t
+            .create_application(project, slug, slug)
+            .await
+            .expect("application");
+        let target = t
+            .create_target(project, application, placement)
+            .await
+            .expect("target");
+        t.commit().await.expect("commit");
+        target
+    }
+
+    async fn delivery(store: &Store, org: OrgId, target: TargetId) -> Delivery {
+        let mut t = store.tenant(org).await.expect("tenant");
+        t.target_delivery(target).await.expect("read").expect("target")
+    }
+
+    #[tokio::test]
+    async fn new_targets_of_a_cluster_with_a_linked_agent_are_delivered_by_it() {
+        let Some(store) = pg_store().await else {
+            skip("agent delivery");
+            return;
+        };
+        let (org, cluster) = cluster(&store, "a").await;
+        let (project, placement) = placement_on(&store, org, cluster).await;
+        let before = target(&store, org, project, placement, "before").await;
+        assert_eq!(
+            delivery(&store, org, before).await,
+            Delivery::Controller,
+            "no agent yet"
+        );
+
+        store
+            .record_agent_certificate(org, cluster, "sha256:device-a", 1)
+            .await
+            .expect("certificate");
+        let without = target(&store, org, project, placement, "without").await;
+        assert_eq!(
+            delivery(&store, org, without).await,
+            Delivery::Controller,
+            "enrolled, never linked"
+        );
+        assert!(
+            store
+                .record_agent_link(
+                    cluster,
+                    "sha256:device-a",
+                    1,
+                    &[RUNTIME_FEATURE.to_owned()],
+                    "1.1.2"
+                )
+                .await
+                .expect("link")
+        );
+        let linked = target(&store, org, project, placement, "linked").await;
+        assert_eq!(delivery(&store, org, linked).await, Delivery::Agent);
+        assert_eq!(
+            delivery(&store, org, before).await,
+            Delivery::Controller,
+            "existing targets stay"
+        );
+
+        let mut t = store.tenant(org).await.expect("tenant");
+        assert!(
+            sqlx::query("UPDATE application_targets SET delivery = 'controller' WHERE id = $1")
+                .bind(*linked.as_uuid())
+                .execute(&mut *t.tx)
+                .await
+                .is_err(),
+            "a target delivered by its agent stays so"
+        );
+        drop(t);
+
+        let mut t = store.tenant(org).await.expect("tenant");
+        assert!(t.revoke_cluster_agent(cluster).await.expect("revoke"));
+        t.commit().await.expect("commit");
+        let revoked = target(&store, org, project, placement, "revoked").await;
+        assert_eq!(
+            delivery(&store, org, revoked).await,
+            Delivery::Controller,
+            "a revoked agent"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_agent_reports_only_on_targets_of_its_cluster_and_never_backwards() {
+        let Some(store) = pg_store().await else {
+            skip("runtime observations");
+            return;
+        };
+        let (org, cluster) = cluster(&store, "a").await;
+        let mut t = store.tenant(org).await.expect("tenant");
+        let elsewhere = t.create_cluster("secondary").await.expect("cluster");
+        t.commit().await.expect("commit");
+        let (project, placement) = placement_on(&store, org, cluster).await;
+        let web = target(&store, org, project, placement, "web").await;
+
+        let record = |cluster: ClusterId, generation: i64, phase: &'static str| {
+            let store = store.clone();
+            async move {
+                let mut t = store.tenant(org).await.expect("tenant");
+                let recorded = t
+                    .record_runtime_observation(cluster, web, generation, phase, None, None)
+                    .await
+                    .expect("record");
+                t.commit().await.expect("commit");
+                recorded
+            }
+        };
+        assert!(!record(elsewhere, 2, "ready").await, "another cluster's agent");
+        assert!(record(cluster, 2, "applying").await);
+        assert!(record(cluster, 2, "ready").await, "the same generation moves on");
+        assert!(!record(cluster, 1, "failed").await, "an older generation");
+
+        let mut t = store.tenant(org).await.expect("tenant");
+        let seen = t.runtime_observation(web).await.expect("read").expect("observed");
+        assert_eq!((seen.generation, seen.phase.as_str()), (2, "ready"));
+        drop(t);
+        let (other, _) = self::cluster(&store, "b").await;
+        let mut t = store.tenant(other).await.expect("tenant");
+        assert_eq!(
+            t.runtime_observation(web).await.expect("read"),
+            None,
+            "another organization"
         );
     }
 

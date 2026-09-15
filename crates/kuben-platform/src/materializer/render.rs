@@ -341,6 +341,8 @@ mod tests {
     fn sample() -> Materialization {
         Materialization {
             render_plan: None,
+            cluster: kuben_core::ids::ClusterId::new(),
+            delivery: kuben_store::repo::Delivery::Controller,
             org: OrgId::new(),
             run: DeploymentRunId::new(),
             operation: OperationId::new(),

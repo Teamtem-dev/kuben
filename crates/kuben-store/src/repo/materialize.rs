@@ -30,7 +30,7 @@ const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.l
      e.id AS environment_id, e.slug AS environment_slug, e.name AS environment_name, e.protected, \
      COALESCE(e.env_type, CASE WHEN e.protected THEN 'production' ELSE 'standard' END) AS env_type, \
      e.quota::text AS quota, \
-     p.namespace, a.id AS application_id, a.slug AS application_slug, a.name AS application_name, \
+     p.namespace, p.cluster_id, t.delivery, a.id AS application_id, a.slug AS application_slug, a.name AS application_name, \
      t.id AS target_id, t.desired_generation, (t.deleting OR e.deleting OR pr.deleting) AS deleting, \
      rel.id AS release_id, rel.artifacts::text AS artifacts, rel.source::text AS source, \
      c.id AS config_revision_id, c.revision AS config_revision, c.config::text AS config \
@@ -94,6 +94,10 @@ pub struct Materialization {
     pub quota: Option<Value>,
     /// The namespace of the target's placement.
     pub namespace: String,
+    /// The cluster of the target's placement.
+    pub cluster: kuben_core::ids::ClusterId,
+    /// How the target's runs reach the cluster.
+    pub delivery: super::agents::Delivery,
     pub application: ApplicationId,
     pub application_slug: String,
     pub application_name: String,
@@ -161,6 +165,8 @@ struct MaterializationRow {
     env_type: String,
     quota: Option<String>,
     namespace: String,
+    cluster_id: Uuid,
+    delivery: String,
     application_id: Uuid,
     application_slug: String,
     application_name: String,
@@ -241,6 +247,9 @@ impl MaterializationRow {
             env_type: self.env_type,
             quota: self.quota.as_deref().map(json).transpose()?,
             namespace: self.namespace,
+            cluster: kuben_core::ids::ClusterId::from_uuid(self.cluster_id),
+            delivery: super::agents::Delivery::parse(&self.delivery)
+                .ok_or_else(|| decode(format!("unknown delivery {:?}", self.delivery)))?,
             application: ApplicationId::from_uuid(self.application_id),
             application_slug: self.application_slug,
             application_name: self.application_name,

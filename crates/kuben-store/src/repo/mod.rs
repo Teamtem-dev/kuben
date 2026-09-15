@@ -17,7 +17,9 @@ mod throttle;
 mod tokens;
 mod users;
 
-pub use agents::{ClusterAgent, Redeemed, TokenRedemption, TokenRefusal};
+pub use agents::{
+    ClusterAgent, Delivery, RUNTIME_FEATURE, Redeemed, RuntimeObservation, TokenRedemption, TokenRefusal,
+};
 pub use audit::NewAudit;
 pub use catalog::{AppRecord, EnvironmentRecord, RunRecord};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
