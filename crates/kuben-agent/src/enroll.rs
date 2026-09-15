@@ -473,10 +473,12 @@ impl<T> Enrollment<T> {
     }
 }
 
-/// The hub's side of one anonymous connection: the first message must be
-/// [`Message::Enroll`]; the answer is [`Message::Enrolled`] or
-/// [`Message::Refused`]. The certificate issued, if any.
-pub async fn serve_enrollment<S, T>(
+/// The hub's side, first half: read an anonymous peer's enrollment request
+/// and issue its certificate. A refusal is answered here; an issued
+/// certificate is not sent yet, so the hub records the device first and
+/// then hands it over ([`answer_enrollment`]): an agent with its
+/// certificate links at once, and the hub must already know its device.
+pub async fn receive_enrollment<S, T>(
     stream: &mut S,
     enrollment: &Enrollment<T>,
     now: OffsetDateTime,
@@ -495,17 +497,7 @@ where
         Some(_) => Err(Refusal::BadRequest),
     };
     match answer {
-        Ok(issued) => {
-            write_frame(
-                stream,
-                &Message::Enrolled {
-                    certificate: issued.certificate_pem.clone(),
-                    not_after: issued.not_after.unix_timestamp(),
-                },
-            )
-            .await?;
-            Ok(Some(issued))
-        }
+        Ok(issued) => Ok(Some(issued)),
         Err(reason) => {
             let message = match reason {
                 Refusal::InvalidToken => "the bootstrap token is not valid for this cluster and device",
@@ -522,6 +514,39 @@ where
             Ok(None)
         }
     }
+}
+
+/// The hub's side, second half: hand the agent its certificate.
+pub async fn answer_enrollment<S>(stream: &mut S, issued: &Issued) -> Result<(), FrameError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    write_frame(
+        stream,
+        &Message::Enrolled {
+            certificate: issued.certificate_pem.clone(),
+            not_after: issued.not_after.unix_timestamp(),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+/// Both halves at once, for a hub that records nothing.
+pub async fn serve_enrollment<S, T>(
+    stream: &mut S,
+    enrollment: &Enrollment<T>,
+    now: OffsetDateTime,
+) -> Result<Option<Issued>, FrameError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    T: TokenStore,
+{
+    let Some(issued) = receive_enrollment(stream, enrollment, now).await? else {
+        return Ok(None);
+    };
+    answer_enrollment(stream, &issued).await?;
+    Ok(Some(issued))
 }
 
 /// What the hub answered an enrollment with.

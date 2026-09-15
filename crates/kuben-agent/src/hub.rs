@@ -1,7 +1,7 @@
 //! The hub's end of AgentLink, hosted by `kuben serve` (M1.9 integration)
 //! and tested end to end in this crate.
 //!
-//! * An anonymous peer may only enroll ([`serve_enrollment`]); the issued
+//! * An anonymous peer may only enroll ([`receive_enrollment`]; the device is recorded before [`answer_enrollment`] hands the certificate over); the issued
 //!   certificate is recorded in the [`Registry`].
 //! * An authenticated peer is the cluster its certificate names (the URI
 //!   SAN `kuben://cluster/<id>` the hub issued). Its Hello must name the same
@@ -34,7 +34,7 @@ use tokio_rustls::server::TlsStream;
 use x509_parser::prelude::{FromDer, GeneralName, ParsedExtension, X509Certificate};
 
 use crate::{
-    enroll::{Enrollment, TokenStore, device_id_of, serve_enrollment},
+    enroll::{Enrollment, TokenStore, answer_enrollment, device_id_of, receive_enrollment},
     protocol::{
         APPLICATION_RUNTIME, Apply, FrameError, Message, Observation, Refusal, SUPPORTED_VERSIONS, negotiate,
         read_frame, write_frame,
@@ -114,9 +114,21 @@ pub struct MemoryRegistry {
     devices: Mutex<HashMap<String, (String, bool)>>,
     /// Cluster → the observations its agent reported, oldest first.
     observations: Mutex<HashMap<String, Vec<Observation>>>,
+    /// How long recording a certificate takes: none, or a slow database.
+    certify_delay: Duration,
 }
 
 impl MemoryRegistry {
+    /// A registry that takes `delay` to record each certificate, as a
+    /// database may.
+    #[must_use]
+    pub fn with_certify_delay(delay: Duration) -> Self {
+        Self {
+            certify_delay: delay,
+            ..Self::default()
+        }
+    }
+
     /// What the agent of `cluster` reported, oldest first.
     #[must_use]
     pub fn observations(&self, cluster: &str) -> Vec<Observation> {
@@ -145,12 +157,20 @@ impl Registry for MemoryRegistry {
         device: &str,
         _not_after: OffsetDateTime,
     ) -> impl Future<Output = ()> + Send {
-        let mut devices = lock(&self.devices);
-        // The same device keeps its revocation; another one replaces it.
-        if devices.get(cluster).is_none_or(|(current, _)| current != device) {
-            devices.insert(cluster.to_owned(), (device.to_owned(), false));
+        let (cluster, device, delay) = (cluster.to_owned(), device.to_owned(), self.certify_delay);
+        async move {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            let mut devices = lock(&self.devices);
+            // The same device keeps its revocation; another one replaces it.
+            if devices
+                .get(&cluster)
+                .is_none_or(|(current, _)| *current != device)
+            {
+                devices.insert(cluster, (device, false));
+            }
         }
-        std::future::ready(())
     }
 
     fn linked(
@@ -288,10 +308,14 @@ impl<T: TokenStore, R: Registry> Hub<T, R> {
     {
         let Some(certificate) = peer_certificate(tls.get_ref().1) else {
             let now = OffsetDateTime::now_utc();
-            if let Some(issued) = serve_enrollment(&mut tls, &self.enrollment, now).await? {
+            if let Some(issued) = receive_enrollment(&mut tls, &self.enrollment, now).await? {
+                // Recorded before the agent has its certificate: it links at
+                // once, and a Hello the registry does not know yet is refused
+                // as revoked (seen in CI with the SQL registry).
                 self.registry
                     .certified(&issued.cluster_id, &issued.device_id, issued.not_after)
                     .await;
+                answer_enrollment(&mut tls, &issued).await?;
             }
             return Ok(());
         };

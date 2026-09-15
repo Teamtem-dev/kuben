@@ -35,6 +35,10 @@ struct World {
 }
 
 fn world(settings: HubSettings) -> Arc<World> {
+    world_with(settings, MemoryRegistry::default())
+}
+
+fn world_with(settings: HubSettings, registry: MemoryRegistry) -> Arc<World> {
     let ca = ClusterCa::generate("kuben cluster CA").expect("ca");
     let identity = ca
         .server_identity(HUB_NAME, DAY, OffsetDateTime::now_utc())
@@ -50,7 +54,7 @@ fn world(settings: HubSettings) -> Arc<World> {
     );
     let hub = Arc::new(Hub::new(
         Enrollment::new(ca, MemoryTokens::default(), DAY),
-        MemoryRegistry::default(),
+        registry,
         settings,
     ));
     Arc::new(World {
@@ -350,6 +354,50 @@ async fn an_agent_enrolls_through_the_hub_and_then_links() {
         heartbeats(&world, "primary") >= 1
     })
     .await;
+    stop.cancel();
+    task.await.expect("join");
+}
+
+/// The hub records a new device before it hands over the certificate. In
+/// CI (run 34979693959) the SQL registry was still writing when the freshly
+/// enrolled agent said Hello; the hub refused it as revoked and the agent
+/// waited five minutes. With a registry that takes its time, the agent now
+/// links on its first dial after enrolling.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_freshly_enrolled_agent_links_at_once_even_when_recording_is_slow() {
+    let world = world_with(
+        quick(),
+        MemoryRegistry::with_certify_delay(Duration::from_millis(300)),
+    );
+    let token =
+        world
+            .hub
+            .enrollment()
+            .tokens()
+            .issue("primary", Duration::from_mins(30), OffsetDateTime::now_utc());
+    let dialer = Dialer::new(&world, 0);
+    let device = DeviceKey::generate().expect("key");
+    let raw = dialer.connect().await.expect("dial");
+    let anonymous = agent_config(std::slice::from_ref(&world.pinned), None).expect("config");
+    let mut tls = TlsConnector::from(anonymous)
+        .connect(server_name(HUB_NAME).expect("name"), raw)
+        .await
+        .expect("TLS without a client certificate");
+    let enrolled = request_enrollment(&mut tls, &token, "primary", &device)
+        .await
+        .expect("enrolled through the hub");
+
+    let identity = device.identity(&enrolled.certificate_pem).expect("identity");
+    let (stop, task) = start(dialer.clone(), config(&world, "primary", identity));
+    eventually("a link with the enrolled identity", || {
+        heartbeats(&world, "primary") >= 1
+    })
+    .await;
+    assert_eq!(
+        dialer.dials(),
+        2,
+        "the enrollment and one link: the first Hello was admitted"
+    );
     stop.cancel();
     task.await.expect("join");
 }
