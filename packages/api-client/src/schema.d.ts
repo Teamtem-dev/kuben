@@ -330,6 +330,28 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/handover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand an app over from the App controller to its cluster's agent: its
+         *     next run goes through the agent, which adopts the app's workloads in
+         *     place (no new pods), and every later run follows. Only toward the agent;
+         *     the cluster needs a linked agent that carries applications.
+         */
+        post: operations["handOverApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs": {
         parameters: {
             query?: never;
@@ -942,7 +964,7 @@ export type components = {
             /** Format: int64 */
             revision: number;
             image?: string | null;
-            /** @description `create`, `deploy`, `config`, `rollback`, `promote` or `restart`. */
+            /** @description `create`, `deploy`, `config`, `rollback`, `promote`, `restart` or `handover`. */
             reason: string;
             note?: string | null;
             /** @description Email of whoever made the change. */
@@ -2101,6 +2123,48 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    handOverApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Handover scheduled */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Delivered by the agent already, being deleted, or no agent to take it */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

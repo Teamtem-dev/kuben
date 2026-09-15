@@ -24,7 +24,7 @@ const ROLLBACK_REACH: i64 = 1000;
 pub struct ReleaseDto {
     pub revision: i64,
     pub image: Option<String>,
-    /// `create`, `deploy`, `config`, `rollback`, `promote` or `restart`.
+    /// `create`, `deploy`, `config`, `rollback`, `promote`, `restart` or `handover`.
     pub reason: String,
     pub note: Option<String>,
     /// Email of whoever made the change.
@@ -42,6 +42,7 @@ fn reason(run: &RunRecord, previous: Option<&RunRecord>) -> &'static str {
         "rollback" => "rollback",
         "promotion" => "promote",
         "restart" => "restart",
+        "handover" => "handover",
         _ => match previous {
             None => "create",
             Some(p) if p.release == run.release => "config",

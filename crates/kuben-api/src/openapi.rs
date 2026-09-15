@@ -46,6 +46,7 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::crud::list, apps::crud::create))
         .routes(routes!(apps::crud::get, apps::crud::update, apps::crud::delete))
         .routes(routes!(apps::crud::restart))
+        .routes(routes!(apps::crud::hand_over))
         .routes(routes!(apps::crud::logs))
         .routes(routes!(apps::releases::releases))
         .routes(routes!(apps::releases::rollback))
@@ -97,6 +98,7 @@ mod tests {
             "/api/v1/projects/{project}/environments/{environment}/apps",
             app,
             &format!("{app}/restart"),
+            &format!("{app}/handover"),
             &format!("{app}/logs"),
             &format!("{app}/releases"),
             &format!("{app}/rollback"),

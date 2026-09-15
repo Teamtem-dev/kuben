@@ -308,24 +308,7 @@ pub async fn restart(
     if a.app.delivery == Delivery::Agent {
         // No App object to annotate: a run of the same release and
         // configuration stamps every pod template instead (M1.9).
-        let (Some(release), Some(config_revision)) = (a.app.release, a.app.config_revision) else {
-            return Err(Error::Conflict(format!("app `{app}` has no release yet")).into());
-        };
-        let (_, actor) = request::actor(&authz);
-        let expected = a.app.desired_generation;
-        let run = StartDeployment {
-            project: a.env.project.id(),
-            target: a.app.target,
-            release,
-            config_revision,
-            render_plan: None,
-            expected_generation: expected,
-            lifecycle_uid: a.app.lifecycle_uid,
-            reason: RunReason::Restart,
-            requested_by: actor,
-            input_hash: Sha256::digest(format!("restart/{release}/{config_revision}/{}", expected.0))
-                .to_vec(),
-        };
+        let run = rerun(&a, &authz, RunReason::Restart, &app)?;
         let audit = request::audit(
             &authz,
             "deployment.accepted",
@@ -347,6 +330,86 @@ pub async fn restart(
         .await
         .map_err(|e| scope::kube_error(e, &app))?;
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Hand an app over from the App controller to its cluster's agent: its
+/// next run goes through the agent, which adopts the app's workloads in
+/// place (no new pods), and every later run follows. Only toward the agent;
+/// the cluster needs a linked agent that carries applications.
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/handover", operation_id = "handOverApp",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+    ),
+    responses(
+        (status = 202, description = "Handover scheduled"),
+        (status = 404, body = crate::error::Problem),
+        (status = 409, description = "Delivered by the agent already, being deleted, or no agent to take it", body = crate::error::Problem),
+    )
+)]
+pub async fn hand_over(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+) -> ApiResult<StatusCode> {
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
+    let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
+    if a.app.delivery == Delivery::Agent {
+        return Err(
+            Error::Conflict(format!("app `{app}` is delivered by its cluster's agent already")).into(),
+        );
+    }
+    if a.deleting() {
+        return Err(Error::Conflict(format!("app `{app}` is being deleted")).into());
+    }
+    let run = rerun(&a, &authz, RunReason::Handover, &app)?;
+    let mut tenant = state.store.tenant(a.env.project.org).await?;
+    if !tenant.hand_over_to_agent(a.app.target).await? {
+        return Err(Error::Conflict(format!(
+            "the cluster of app `{app}` has no linked agent that carries applications"
+        ))
+        .into());
+    }
+    let audit = request::audit(
+        &authz,
+        "deployment.accepted",
+        "app",
+        format!("{project}/{environment}/{app}"),
+    );
+    started(tenant.start_deployment(&run, audit, None).await?)?;
+    tenant.commit().await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// A run of `a`'s current release and configuration for `reason`: a restart
+/// or a handover changes neither.
+fn rerun(a: &scope::AppScope, authz: &Authz, reason: RunReason, app: &str) -> ApiResult<StartDeployment> {
+    let (Some(release), Some(config_revision)) = (a.app.release, a.app.config_revision) else {
+        return Err(Error::Conflict(format!("app `{app}` has no release yet")).into());
+    };
+    let (_, actor) = request::actor(authz);
+    let expected = a.app.desired_generation;
+    Ok(StartDeployment {
+        project: a.env.project.id(),
+        target: a.app.target,
+        release,
+        config_revision,
+        render_plan: None,
+        expected_generation: expected,
+        lifecycle_uid: a.app.lifecycle_uid,
+        reason,
+        requested_by: actor,
+        input_hash: Sha256::digest(format!(
+            "{}/{release}/{config_revision}/{}",
+            reason.as_str(),
+            expected.0
+        ))
+        .to_vec(),
+    })
 }
 
 #[derive(Debug, Deserialize, IntoParams)]

@@ -1444,6 +1444,69 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/handover": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Hand an app over from the App controller to its cluster's agent: its\nnext run goes through the agent, which adopts the app's workloads in\nplace (no new pods), and every later run follows. Only toward the agent;\nthe cluster needs a linked agent that carries applications.",
+        "operationId": "handOverApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Handover scheduled"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Delivered by the agent already, being deleted, or no agent to take it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs": {
       "get": {
         "tags": [
@@ -3565,7 +3628,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "`create`, `deploy`, `config`, `rollback`, `promote` or `restart`."
+            "description": "`create`, `deploy`, `config`, `rollback`, `promote`, `restart` or `handover`."
           },
           "note": {
             "type": [
