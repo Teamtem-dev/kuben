@@ -12,11 +12,13 @@
 //! * [`link`]: the agent's end: dial, hello, heartbeats, dial again;
 //! * [`hub`]: the hub's end, a stub `kuben serve` will host;
 //! * [`state`]: the device key and certificate on disk, and enrolling
-//!   when there is no valid certificate.
+//!   when there is no valid certificate;
+//! * [`runtime`]: the executor that carries envelopes out in the cluster.
 
 pub mod enroll;
 pub mod hub;
 pub mod link;
 pub mod protocol;
+pub mod runtime;
 pub mod state;
 pub mod tls;

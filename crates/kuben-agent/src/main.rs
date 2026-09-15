@@ -11,6 +11,8 @@ use std::{path::PathBuf, sync::Arc};
 use clap::Parser;
 use kuben_agent::{
     link::{Credentials, Lifetime, LinkConfig, Renewal, TcpConnector, run},
+    protocol::APPLICATION_RUNTIME,
+    runtime::KubeExecutor,
     state::{HubAddress, State, TokenSource, ensure_identity, pinned_ca, read_token},
     tls::{HUB_NAME, server_name},
 };
@@ -116,6 +118,12 @@ async fn agent(args: Args) -> anyhow::Result<()> {
     let credentials = Arc::new(Credentials::new(pinned.clone(), identity, lifetime)?);
     let mut config = LinkConfig::new(args.cluster, hub_name.clone(), credentials);
     let keep = state.clone();
+    // The cluster's apiserver, with the agent's credentials (in-cluster or
+    // the kubeconfig): the only place they are used.
+    let client = kube::Client::try_default().await?;
+    config.kubernetes_version = client.apiserver_version().await.ok().map(|v| v.git_version);
+    config.capabilities.insert(APPLICATION_RUNTIME.to_owned());
+    config.executor = Some(Arc::new(KubeExecutor::new(client)));
     config.renewal = Some(Renewal {
         key: Arc::new(key),
         store: Arc::new(move |pem: &str| keep.save_certificate(pem).map_err(|e| e.to_string())),

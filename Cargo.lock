@@ -2157,6 +2157,9 @@ version = "1.1.2"
 dependencies = [
  "anyhow",
  "clap",
+ "k8s-openapi",
+ "kube",
+ "kuben-crd",
  "rand 0.10.2",
  "rcgen",
  "rustls",
@@ -2170,6 +2173,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "x509-parser",
 ]
 

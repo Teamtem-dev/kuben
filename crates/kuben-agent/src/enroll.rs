@@ -58,7 +58,7 @@ pub fn device_id_of(public_key_info: &[u8]) -> String {
     hex_digest(public_key_info)
 }
 
-fn hex_digest(bytes: &[u8]) -> String {
+pub(crate) fn hex_digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .fold(String::from("sha256:"), |mut s, b| {

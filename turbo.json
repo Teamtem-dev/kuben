@@ -160,6 +160,11 @@
       ],
       "cache": false
     },
+    "kuben-agent#test:cluster": {
+      "description": "The agent's executor against the current kube context: envelopes written, applied, pruned and refused. The tests are #[ignore]d elsewhere.",
+      "command": ["cargo", "test", "--package=kuben-agent", "--locked", "--test", "runtime", "--", "--ignored", "--nocapture"],
+      "cache": false
+    },
     "kuben-api#test:network": {
       "description": "Image tags resolved against real registries (Docker Hub, GHCR). The tests are #[ignore]d elsewhere; they need the network.",
       "command": ["cargo", "test", "--package=kuben-api", "--locked", "--test", "oci", "--", "--ignored"],

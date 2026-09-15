@@ -21,7 +21,7 @@ use anyhow::Context as _;
 use kuben_agent::{
     enroll::{ClusterCa, Enrollment, RESUME_GRACE, Redeemed, TokenRefused, TokenStore},
     hub::{Hub, HubSettings, Registry, SessionInfo},
-    protocol::Observation,
+    protocol::{APPLICATION_RUNTIME, Observation},
     tls::{ClientAuth, hub_config},
 };
 use kuben_core::{config::AgentCfg, ids::ClusterId};
@@ -282,6 +282,7 @@ pub async fn run(
         SqlRegistry::new(store),
         HubSettings {
             heartbeat: Duration::from_secs(config.heartbeat_secs.max(1)),
+            features: [APPLICATION_RUNTIME.to_owned()].into(),
             ..HubSettings::default()
         },
     ));
