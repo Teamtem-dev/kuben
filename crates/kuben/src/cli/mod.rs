@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod agent;
 pub mod backup;
 pub mod doctor;
 pub mod setup;
@@ -41,6 +42,9 @@ pub enum Command {
     ResetAdmin(ResetAdminOpts),
     /// Print a fresh link to the first-run setup page (`/setup`), with its token.
     SetupToken,
+    /// Issue a bootstrap token for a cluster's agent: printed once, only its
+    /// hash is kept.
+    AgentToken(AgentTokenOpts),
     /// Make this Linux server a Kuben server: k3s if needed, a system user, the
     /// config, a systemd service, the firewall. Re-run to upgrade or repair.
     Setup(setup::SetupOpts),
@@ -54,6 +58,20 @@ pub enum Command {
     Restore(RestoreOpts),
     /// Print version information.
     Version,
+}
+
+/// Options of `kuben agent-token`.
+#[derive(Debug, clap::Args)]
+pub struct AgentTokenOpts {
+    /// The cluster the agent runs in; made if it does not exist yet.
+    #[arg(long, default_value = "primary")]
+    pub cluster: String,
+    /// The organization (slug); the bootstrap organization by default.
+    #[arg(long)]
+    pub org: Option<String>,
+    /// How long the token stays valid, in minutes.
+    #[arg(long, default_value_t = 30)]
+    pub ttl_minutes: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

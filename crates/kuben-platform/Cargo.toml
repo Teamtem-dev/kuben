@@ -12,6 +12,7 @@ default = []
 activator = []
 
 [dependencies]
+kuben-agent.workspace = true
 kuben-core.workspace = true
 kuben-crd.workspace = true
 kuben-store.workspace = true
@@ -23,6 +24,9 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+time.workspace = true
+tokio-rustls.workspace = true
+uuid.workspace = true
 dashmap.workspace = true
 backon.workspace = true
 thiserror.workspace = true

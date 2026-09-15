@@ -11,6 +11,7 @@
 //!   reports into a health registry; a panic in one subsystem never takes
 //!   down the API.
 
+pub mod agentlink;
 pub mod controller;
 pub mod duration;
 pub mod health;

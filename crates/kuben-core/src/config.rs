@@ -35,6 +35,7 @@ pub struct Config {
     pub security: SecurityCfg,
     pub telemetry: TelemetryCfg,
     pub bootstrap: BootstrapCfg,
+    pub agent: AgentCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -278,6 +279,31 @@ impl Default for BootstrapCfg {
     }
 }
 
+/// AgentLink, the hub's endpoint for cluster agents (ADR-027).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentCfg {
+    /// Where the hub listens for agents (`host:port`); unset, it does not.
+    pub bind: Option<String>,
+    /// The name the hub's certificate carries; agents check it.
+    pub hub_name: String,
+    /// Lifetime of the client certificates the hub issues, hours.
+    pub certificate_hours: u64,
+    /// How often agents send a heartbeat, seconds.
+    pub heartbeat_secs: u64,
+}
+
+impl Default for AgentCfg {
+    fn default() -> Self {
+        Self {
+            bind: None,
+            hub_name: "hub.kuben.internal".into(),
+            certificate_hours: 24,
+            heartbeat_secs: 10,
+        }
+    }
+}
+
 impl Config {
     /// Load configuration using the documented precedence.
     #[allow(clippy::result_large_err)] // figment::Error is large by design; load runs once at startup
@@ -407,6 +433,7 @@ mod tests {
             cfg.database.url.is_empty(),
             "PostgreSQL has no default URL (ADR-025)"
         );
+        assert!(cfg.agent.bind.is_none(), "AgentLink is off unless configured");
     }
 
     fn env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {

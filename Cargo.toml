@@ -32,6 +32,7 @@ kuben-crd = { path = "crates/kuben-crd", version = "1.1.2" }
 kuben-store = { path = "crates/kuben-store", version = "1.1.2" }
 kuben-platform = { path = "crates/kuben-platform", version = "1.1.2" }
 kuben-api = { path = "crates/kuben-api", version = "1.1.2" }
+kuben-agent = { path = "crates/kuben-agent", version = "1.1.2" }
 
 # ---- runtime / http ----
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-util", "net", "fs"] }

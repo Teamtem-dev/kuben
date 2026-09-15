@@ -49,6 +49,7 @@ const RECORD_LINK: &str = "UPDATE cluster_agents \
      WHERE cluster_id = $1 AND device_id = $2 AND revoked_at IS NULL";
 const TOUCH: &str = "UPDATE cluster_agents SET last_seen_at = kuben_now_ms() \
      WHERE cluster_id = $1 AND device_id = $2 AND revoked_at IS NULL";
+const TOKEN_ORG: &str = "SELECT org_id FROM agent_tokens WHERE cluster_id = $1 AND device_id = $2 LIMIT 1";
 const REVOKE: &str = "UPDATE cluster_agents SET revoked_at = kuben_now_ms(), updated_at = kuben_now_ms() \
      WHERE cluster_id = $1 AND org_id = $2 AND revoked_at IS NULL";
 
@@ -301,6 +302,21 @@ impl Store {
         Ok(rows == 1)
     }
 
+    /// The organization of `cluster`, as the token `device_id` redeemed
+    /// names it: where the first certificate of a cluster belongs.
+    pub async fn agent_token_org(
+        &self,
+        cluster: ClusterId,
+        device_id: &str,
+    ) -> Result<Option<OrgId>, StoreError> {
+        let found: Option<String> = sqlx::query_scalar(TOKEN_ORG)
+            .bind(*cluster.as_uuid())
+            .bind(device_id)
+            .fetch_optional(self.pool())
+            .await?;
+        Ok(found.as_deref().map(org).transpose()?)
+    }
+
     /// Note that the cluster's agent was heard from.
     pub async fn touch_agent(&self, cluster: ClusterId, device_id: &str) -> Result<(), StoreError> {
         sqlx::query(TOUCH)
@@ -375,6 +391,36 @@ mod tests {
                 .await
                 .is_err(),
             "a redeemed token keeps its device"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_redeemed_token_names_the_organization_of_its_device() {
+        let Some(store) = pg_store().await else {
+            skip("agent tokens");
+            return;
+        };
+        let (org, cluster) = cluster(&store, "a").await;
+        assert!(token(&store, org, cluster, 4, Duration::from_mins(30)).await);
+        assert_eq!(
+            store
+                .agent_token_org(cluster, "sha256:device-a")
+                .await
+                .expect("read"),
+            None,
+            "not redeemed yet"
+        );
+        store
+            .redeem_agent_token(&[4; 32], cluster, "sha256:device-a", GRACE)
+            .await
+            .expect("redeem")
+            .expect("redeemed");
+        assert_eq!(
+            store
+                .agent_token_org(cluster, "sha256:device-a")
+                .await
+                .expect("read"),
+            Some(org)
         );
     }
 

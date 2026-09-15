@@ -65,7 +65,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     let projections = Arc::new(Projections::new());
-    let tasks = if let Some(registry) = &cluster {
+    let mut tasks = if let Some(registry) = &cluster {
         health.ok("cluster");
         spawn_cluster_tasks(
             &cfg,
@@ -82,6 +82,21 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         health.set_ready(true);
         Vec::new()
     };
+
+    // AgentLink: the hub's endpoint for cluster agents (ADR-027); it needs
+    // no kubeconfig of its own.
+    if cfg.agent.bind.is_some() && cfg.has_role(Role::Controller) {
+        let (agent, dir, s, h, t) = (
+            cfg.agent.clone(),
+            cfg.state_dir(),
+            store.clone(),
+            health.clone(),
+            shutdown.child_token(),
+        );
+        tasks.push(tokio::spawn(supervise("agentlink", t, h, move |tok| {
+            kuben_platform::agentlink::run(agent.clone(), dir.clone(), s.clone(), tok)
+        })));
+    }
 
     #[cfg(not(feature = "activator"))]
     if cfg.server.roles.contains(&Role::Activator) {
