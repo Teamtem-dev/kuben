@@ -3,6 +3,7 @@
 #
 #   KUBEN_E2E_DATABASE_URL=postgres://postgres:kuben@localhost:5432/postgres scripts/e2e.sh
 #   KUBEN_BIN=target/release/kuben scripts/e2e.sh      # default: ./target/debug/kuben
+#   KUBEN_AGENT_BIN=...                                # default: ./target/debug/kuben-agent (built if missing)
 #
 # Uses the current kube context and KUBEN_E2E_DATABASE_URL, an empty
 # PostgreSQL database (ADR-025): the run creates the first admin, so a
@@ -16,15 +17,19 @@
 # app deletion, templates, promotion, domain checks, team invitations and
 # login throttling; deploys by digest through `…/deployments` (idempotent
 # replay, a stale expected generation refused, rollback) and a direct App
-# edit replaced as drift (ADR-032); then deletes and garbage collection.
+# edit replaced as drift (ADR-032); a cluster agent enrolled with a bootstrap
+# token carries a new app out through AgentLink (ADR-027, M1.9); then deletes
+# and garbage collection.
 set -euo pipefail
 
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=${KUBEN_BIN:-$ROOT/target/debug/kuben}
+AGENT_BIN=${KUBEN_AGENT_BIN:-$ROOT/target/debug/kuben-agent}
 DATABASE_URL=${KUBEN_E2E_DATABASE_URL:?set KUBEN_E2E_DATABASE_URL to an empty PostgreSQL database, e.g. postgres://postgres:kuben@localhost:5432/postgres}
 PORT=${KUBEN_E2E_PORT:-18080}
 BASE="http://127.0.0.1:${PORT}/api/v1"
+AGENT_PORT=$((PORT + 2))
 PASSWORD="e2e-$(date +%s)-password"
 IMAGE=${KUBEN_E2E_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
 JOB_IMAGE=${KUBEN_E2E_JOB_IMAGE:-busybox:1.36}
@@ -58,6 +63,7 @@ fail() {
 
 cleanup() {
   status=$?
+  if [[ -n ${agent_pid:-} ]]; then kill "$agent_pid" 2>/dev/null || true; wait "$agent_pid" 2>/dev/null || true; fi
   if [[ -n ${pid:-} ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   if ((status != 0)); then
     if [[ -z ${failed:-} ]]; then
@@ -67,7 +73,11 @@ cleanup() {
     fi
     echo "---- kuben log (last 80 lines) ----"
     tail -n 80 "$work/kuben.log" || true
-    kubectl get projects,environments,apps -A 2>/dev/null || true
+    if [[ -s $work/agent.log ]]; then
+      echo "---- kuben-agent log (last 40 lines) ----"
+      tail -n 40 "$work/agent.log" || true
+    fi
+    kubectl get projects,environments,apps,applicationruntimes -A 2>/dev/null || true
     kubectl -n "$NS" get all,resourcequota,networkpolicy,pvc,cronjobs,jobs 2>/dev/null || true
   fi
   kubectl delete environment "${P}-dev" "${P}-live" --ignore-not-found --wait=false >/dev/null 2>&1 || true
@@ -144,6 +154,8 @@ KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
   KUBEN_KUBE__LEADER_ELECTION=true \
   KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
   KUBEN_TELEMETRY__LOG_FORMAT=pretty \
+  KUBEN_SERVER__STATE_DIR="$work/state" \
+  KUBEN_AGENT__BIND="127.0.0.1:${AGENT_PORT}" \
   "$BIN" serve --roles=all >"$work/kuben.log" 2>&1 &
 pid=$!
 eventually 60 "CRDs applied" kubectl get crd apps.kuben.dev
@@ -319,6 +331,36 @@ expect_as 429 none POST /auth/login '{"email":"nobody@e2e.test","password":"wron
 step "authorization and validation"
 expect 422 POST "$APP" '{"name":"Bad_Name","image":"nginx"}'
 expect 409 DELETE "/projects/${P}"
+
+# Last among the app scenarios: once the cluster's agent is linked, every new
+# target of the cluster is delivered by it (the earlier apps stay with the
+# App controller).
+step "M1.9: an enrolled agent carries a new app out (ADR-027)"
+if [[ ! -x $AGENT_BIN ]]; then
+  cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
+fi
+[[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
+KUBEN_SERVER__STATE_DIR="$work/state" KUBEN_DATABASE__URL="$DATABASE_URL" \
+  "$BIN" agent-token --cluster primary >"$work/agent-token.out"
+cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
+(
+  umask 077
+  sed -n 's/^token: *//p' "$work/agent-token.out" >"$work/token"
+)
+[[ -n $cluster && -s $work/token ]] || fail "agent-token: $(cat "$work/agent-token.out")"
+"$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \
+  --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
+agent_pid=$!
+eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+expect 201 POST "$APP" "{\"name\":\"edge\",\"image\":\"${IMAGE}\",\"port\":8080}"
+eventually 180 "edge runtime ready" kubectl -n "$NS" wait --for=condition=Ready applicationruntime/edge --timeout=5s
+kubectl -n "$NS" get app edge >/dev/null 2>&1 && fail "an agent-delivered app has no App object"
+kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
+owner=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.ownerReferences[0].kind}')
+[[ $owner == ApplicationRuntime ]] || fail "edge-web is owned by '$owner', not its ApplicationRuntime"
+expect 204 DELETE "$APP/edge"
+eventually 90 "edge runtime gone" bash -c "! kubectl -n $NS get applicationruntime edge"
+eventually 90 "edge deployment gone" bash -c "! kubectl -n $NS get deployment edge-web"
 
 step "delete apps → children are garbage-collected"
 for a in web tick cache; do expect 204 DELETE "$APP/${a}?delete_volumes=true"; done
