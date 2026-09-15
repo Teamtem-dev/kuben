@@ -8,9 +8,10 @@
 //! root; everything else gets a clear message and no changes.
 //!
 //! What it leaves behind: the binary at `/usr/local/bin/kuben`, the system
-//! user `kuben`, `/etc/kuben/config.toml`, `/var/lib/kuben` (database,
-//! kubeconfig copy, setup token), `kuben.service`, and k3s when it installed
-//! it (marked, so `uninstall --purge` knows to remove it).
+//! user `kuben`, `/etc/kuben/config.toml`, `/var/lib/kuben` (kubeconfig copy,
+//! setup token), the PostgreSQL role and database `kuben` (PostgreSQL from the
+//! distribution's packages when it was missing), `kuben.service`, and k3s
+//! when it installed it (marked, so `uninstall --purge` knows to remove it).
 
 use std::{
     io::{Read as _, Write as _},
@@ -86,6 +87,7 @@ pub fn setup(opts: &SetupOpts) -> anyhow::Result<()> {
     let (uid, gid) = ensure_user(ui)?;
     let kubeconfig = ensure_cluster(ui, opts, uid, gid)?;
     let configured = std::fs::read_to_string(CONFIG_FILE).ok();
+    ensure_database(ui, configured.as_deref())?;
     let port = choose_port(
         ui,
         opts.port,
@@ -314,6 +316,176 @@ fn ensure_user(ui: Ui) -> anyhow::Result<(u32, u32)> {
     chown(Path::new(STATE_DIR), ids.0, ids.1)?;
     std::fs::create_dir_all(CONFIG_DIR)?;
     Ok(ids)
+}
+
+/// Where a configuration keeps Kuben's data: this server's PostgreSQL (also
+/// when there is no configuration yet: setup writes one that uses it), the
+/// SQLite file of Kuben 1.x, or a PostgreSQL of the operator's own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DataHome {
+    Local,
+    Sqlite,
+    External,
+}
+
+fn data_home(config: Option<&str>) -> DataHome {
+    let Some(text) = config else {
+        return DataHome::Local;
+    };
+    let url = text
+        .lines()
+        .map(str::trim_start)
+        .find_map(|line| line.strip_prefix("url")?.trim_start().strip_prefix('='))
+        .map(|value| value.trim().trim_matches('"'));
+    match url {
+        Some(url) if url.starts_with("sqlite:") => DataHome::Sqlite,
+        Some(url) if url != LOCAL_DATABASE_URL => DataHome::External,
+        _ => DataHome::Local,
+    }
+}
+
+/// The PostgreSQL this server keeps its data in (ADR-025): installed from the
+/// distribution's packages when missing, started, with the role and database
+/// `kuben`. The role logs in over the Unix socket by peer authentication as
+/// the `kuben` system user, so it has no password; it owns its database and
+/// is no superuser, so row-level security applies to it.
+fn ensure_database(ui: Ui, configured: Option<&str>) -> anyhow::Result<()> {
+    let step = ui.step("PostgreSQL");
+    match data_home(configured) {
+        DataHome::External => {
+            step.done(format!("the database in {CONFIG_FILE}"));
+            return Ok(());
+        }
+        DataHome::Sqlite => {
+            step.fail("Kuben 1.x data in SQLite");
+            bail!(
+                "{CONFIG_FILE} keeps the data in SQLite, as Kuben 1.x did; this version keeps it in \
+                 PostgreSQL. Move the data with the importer, or set [database] url to an empty \
+                 PostgreSQL, then run kuben setup again"
+            );
+        }
+        DataHome::Local => {}
+    }
+    if !postgres_installed() {
+        let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        let Some(packages) = packages_of(&os_release) else {
+            step.fail("not installed");
+            bail!(
+                "install PostgreSQL 14 or newer with its systemd service, then run kuben setup again; \
+                 or set [database] url in {CONFIG_FILE} to a PostgreSQL of your own"
+            );
+        };
+        ui.command(packages.describe());
+        packages.install()?;
+    }
+    run(&["systemctl", "enable", "--now", "--quiet", "postgresql"])?;
+    wait_for_postgres(Duration::from_mins(1))?;
+    if psql_as_postgres("SELECT 1 FROM pg_roles WHERE rolname = 'kuben'")?.trim() != "1" {
+        psql_as_postgres("CREATE ROLE kuben LOGIN")?;
+    }
+    if psql_as_postgres("SELECT 1 FROM pg_database WHERE datname = 'kuben'")?.trim() != "1" {
+        psql_as_postgres("CREATE DATABASE kuben OWNER kuben")?;
+    }
+    let version = psql_as_postgres("SHOW server_version")?;
+    step.done(format!("PostgreSQL {}, role and database kuben", version.trim()));
+    Ok(())
+}
+
+fn postgres_installed() -> bool {
+    Command::new("systemctl")
+        .args(["cat", "postgresql.service"])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// How this distribution installs the PostgreSQL server, from `/etc/os-release`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Packages {
+    Apt,
+    Dnf,
+    Zypper,
+}
+
+fn packages_of(os_release: &str) -> Option<Packages> {
+    let ids: Vec<&str> = os_release
+        .lines()
+        .filter_map(|line| line.strip_prefix("ID=").or_else(|| line.strip_prefix("ID_LIKE=")))
+        .flat_map(|value| value.trim_matches('"').split_whitespace())
+        .collect();
+    let any = |names: &[&str]| ids.iter().any(|id| names.contains(id));
+    if any(&["debian", "ubuntu"]) {
+        Some(Packages::Apt)
+    } else if any(&["fedora", "rhel", "centos"]) {
+        Some(Packages::Dnf)
+    } else if any(&["suse", "opensuse", "sles"]) {
+        Some(Packages::Zypper)
+    } else {
+        None
+    }
+}
+
+impl Packages {
+    const fn describe(self) -> &'static str {
+        match self {
+            Self::Apt => "apt-get install postgresql",
+            Self::Dnf => "dnf install postgresql-server && postgresql-setup --initdb",
+            Self::Zypper => "zypper install postgresql-server",
+        }
+    }
+
+    fn install(self) -> anyhow::Result<()> {
+        match self {
+            Self::Apt => {
+                run(&["apt-get", "update", "-qq"])?;
+                run_env(
+                    &["apt-get", "install", "-y", "-qq", "postgresql"],
+                    &[("DEBIAN_FRONTEND", "noninteractive")],
+                )?;
+            }
+            Self::Dnf => {
+                run(&["dnf", "install", "-y", "-q", "postgresql-server"])?;
+                if !Path::new("/var/lib/pgsql/data/PG_VERSION").exists() {
+                    run(&["postgresql-setup", "--initdb"])?;
+                }
+            }
+            Self::Zypper => {
+                run(&["zypper", "--non-interactive", "install", "postgresql-server"])?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Wait until PostgreSQL answers on its Unix socket.
+fn wait_for_postgres(timeout: Duration) -> anyhow::Result<()> {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if Path::new("/run/postgresql/.s.PGSQL.5432").exists() && psql_as_postgres("SELECT 1").is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    bail!(
+        "PostgreSQL did not answer on /run/postgresql within {}s (journalctl -u postgresql has why)",
+        timeout.as_secs()
+    )
+}
+
+/// One statement as the superuser `postgres` over the Unix socket: its
+/// unaligned output.
+fn psql_as_postgres(sql: &str) -> anyhow::Result<String> {
+    run(&[
+        "runuser",
+        "-u",
+        "postgres",
+        "--",
+        "psql",
+        "--no-psqlrc",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-tAqc",
+        sql,
+    ])
 }
 
 /// The kubeconfig Kuben will use: a copy in the state directory, owned by
@@ -726,11 +898,22 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
     } else {
         step.done("not installed");
     }
+    // Only this server's own database is dropped, never an external one.
+    let local_database = data_home(std::fs::read_to_string(CONFIG_FILE).ok().as_deref()) == DataHome::Local;
     if opts.purge {
         let step = ui.step("Deleting data and configuration");
         std::fs::remove_dir_all(STATE_DIR).ok();
         std::fs::remove_dir_all(CONFIG_DIR).ok();
         step.done(format!("{STATE_DIR}, {CONFIG_DIR}"));
+        if local_database && which("psql").is_some() {
+            let step = ui.step("Dropping the PostgreSQL database and role kuben");
+            match psql_as_postgres("DROP DATABASE IF EXISTS kuben WITH (FORCE)")
+                .and_then(|_| psql_as_postgres("DROP ROLE IF EXISTS kuben"))
+            {
+                Ok(_) => step.done("PostgreSQL itself stays installed"),
+                Err(e) => step.warn(e.to_string()),
+            }
+        }
         if k3s_ours && Path::new(K3S_UNINSTALL).exists() {
             let step = ui.step("Uninstalling k3s");
             ui.command(K3S_UNINSTALL);
@@ -748,7 +931,8 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         step.done(BIN);
     } else {
         ui.note(&format!(
-            "Kept: {STATE_DIR} (database), {CONFIG_FILE}, {BIN}. `kuben uninstall --purge` removes them."
+            "Kept: the PostgreSQL database kuben, {STATE_DIR}, {CONFIG_FILE}, {BIN}. `kuben uninstall --purge` \
+             removes them (PostgreSQL itself stays)."
         ));
         if k3s_ours {
             ui.note("k3s stays as well; --purge removes it too.");
@@ -766,8 +950,8 @@ fn unit_template() -> String {
         "[Unit]\n\
          Description=Kuben\n\
          Documentation={DOCS}\n\
-         After=network-online.target k3s.service\n\
-         Wants=network-online.target\n\
+         After=network-online.target k3s.service postgresql.service\n\
+         Wants=network-online.target postgresql.service\n\
          \n\
          [Service]\n\
          ExecStart={BIN} serve\n\
@@ -934,9 +1118,15 @@ fn port_owner(port: u16) -> Option<String> {
 
 /// Run a command; on failure, its last lines are the error.
 fn run(command: &[&str]) -> anyhow::Result<String> {
+    run_env(command, &[])
+}
+
+/// [`run`] with extra environment variables.
+fn run_env(command: &[&str], env: &[(&str, &str)]) -> anyhow::Result<String> {
     let (program, args) = command.split_first().expect("a program");
     let output = Command::new(program)
         .args(args)
+        .envs(env.iter().copied())
         .output()
         .with_context(|| format!("running {program}"))?;
     if !output.status.success() {
@@ -1045,6 +1235,41 @@ mod tests {
         assert!(unit.contains("ExecStart=/usr/local/bin/kuben serve"));
         assert!(unit.contains("User=kuben"));
         assert!(unit.contains("StateDirectory=kuben"));
+        assert!(unit.contains("After=network-online.target k3s.service postgresql.service"));
+        assert!(unit.contains("Wants=network-online.target postgresql.service"));
+    }
+
+    #[test]
+    fn knows_where_the_data_lives_and_how_to_install_postgresql() {
+        assert_eq!(data_home(None), DataHome::Local);
+        let written = config_template(
+            "0.0.0.0",
+            3000,
+            "localhost",
+            Path::new("/var/lib/kuben/kubeconfig"),
+        );
+        assert_eq!(data_home(Some(&written)), DataHome::Local);
+        assert_eq!(
+            data_home(Some("[database]\nurl = \"sqlite:///var/lib/kuben/kuben.db\"\n")),
+            DataHome::Sqlite
+        );
+        assert_eq!(
+            data_home(Some(
+                "[server]\npublic_url = \"http://x:3000\"\n[database]\nurl = \"postgres://kuben:x@db/kuben\"\n"
+            )),
+            DataHome::External
+        );
+        assert_eq!(packages_of("ID=ubuntu\nID_LIKE=debian\n"), Some(Packages::Apt));
+        assert_eq!(
+            packages_of("ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n"),
+            Some(Packages::Dnf)
+        );
+        assert_eq!(packages_of("ID=fedora\n"), Some(Packages::Dnf));
+        assert_eq!(
+            packages_of("ID=\"opensuse-leap\"\nID_LIKE=\"suse opensuse\"\n"),
+            Some(Packages::Zypper)
+        );
+        assert_eq!(packages_of("ID=arch\n"), None);
     }
 
     #[test]

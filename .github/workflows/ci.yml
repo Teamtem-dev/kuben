@@ -332,6 +332,31 @@ jobs:
       - name: Helm chart's PostgreSQL on the cluster
         run: scripts/chart-postgres-test.sh
 
+  # M1.10: `kuben setup` on a fresh runner installs or starts PostgreSQL, makes
+  # the role and database kuben (peer auth, not a superuser) and runs Kuben on
+  # a kind cluster; `kuben uninstall --purge` drops the database again.
+  host-install:
+    name: Host install (kuben setup)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+        with:
+          rust-toolchain: stable
+          rust-cache-key: host-install
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          cluster_name: kuben-host
+          wait: 120s
+      - run: bun turbo run kuben#build
+      - name: kuben setup provisions PostgreSQL and runs Kuben
+        run: scripts/host-install-test.sh
+
   budgets:
     name: Binary size budget (static musl)
     needs: changes
@@ -390,7 +415,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, zizmor]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, host-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
