@@ -1,5 +1,5 @@
 //! AgentLink end to end, in memory: the agent's link loop against the hub
-//! stub over TLS on duplex streams (no sockets, so it runs anywhere).
+//! over TLS on duplex streams (no sockets, so it runs anywhere).
 
 use std::{
     collections::BTreeSet,
@@ -13,7 +13,7 @@ use std::{
 
 use kuben_agent::{
     enroll::{ClusterCa, Csr, DeviceKey, Enrollment, MemoryTokens, request_enrollment},
-    hub::{Hub, HubSettings, SessionInfo},
+    hub::{Hub, HubSettings, MemoryRegistry, Registry, SessionInfo},
     link::{Connector, Credentials, Lifetime, LinkConfig, Renewal, run},
     protocol::{Message, read_frame, write_frame},
     state::{HubAddress, State, StateError, ensure_identity},
@@ -26,8 +26,10 @@ use tokio_util::sync::CancellationToken;
 
 const DAY: Duration = Duration::from_hours(24);
 
+type TestHub = Hub<MemoryTokens, MemoryRegistry>;
+
 struct World {
-    hub: Arc<Hub<MemoryTokens>>,
+    hub: Arc<TestHub>,
     acceptor: TlsAcceptor,
     pinned: rustls::pki_types::CertificateDer<'static>,
 }
@@ -48,6 +50,7 @@ fn world(settings: HubSettings) -> Arc<World> {
     );
     let hub = Arc::new(Hub::new(
         Enrollment::new(ca, MemoryTokens::default(), DAY),
+        MemoryRegistry::default(),
         settings,
     ));
     Arc::new(World {
@@ -57,7 +60,9 @@ fn world(settings: HubSettings) -> Arc<World> {
     })
 }
 
-fn issued_identity(world: &World, cluster: &str) -> Identity {
+/// An identity the hub's CA issued for `cluster`, recorded as the cluster's
+/// agent device (as enrollment records it).
+async fn issued_identity(world: &World, cluster: &str) -> Identity {
     let device = DeviceKey::generate().expect("key");
     let csr = Csr::parse(&device.csr_pem(cluster).expect("csr")).expect("parse");
     let issued = world
@@ -66,12 +71,16 @@ fn issued_identity(world: &World, cluster: &str) -> Identity {
         .ca()
         .issue(cluster, &csr, DAY, OffsetDateTime::now_utc())
         .expect("issue");
+    world
+        .hub
+        .registry()
+        .certified(cluster, &issued.device_id, issued.not_after)
+        .await;
     device.identity(&issued.certificate_pem).expect("identity")
 }
 
-fn config(world: &World, cluster: &str, identity: Option<Identity>) -> LinkConfig {
-    let credentials = Credentials::new(vec![world.pinned.clone()], identity.expect("an identity"), None)
-        .expect("credentials");
+fn config(world: &World, cluster: &str, identity: Identity) -> LinkConfig {
+    let credentials = Credentials::new(vec![world.pinned.clone()], identity, None).expect("credentials");
     let mut config = LinkConfig::new(
         cluster,
         server_name(HUB_NAME).expect("name"),
@@ -158,14 +167,20 @@ fn heartbeats(world: &World, cluster: &str) -> u64 {
         .map_or(0, |s: SessionInfo| s.heartbeats)
 }
 
+fn quick() -> HubSettings {
+    HubSettings {
+        heartbeat: Duration::from_millis(20),
+        ..HubSettings::default()
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_enrolled_agent_links_and_keeps_the_link_alive() {
     let world = world(HubSettings {
         features: features(&["applicationRuntime", "executionTask"]),
-        heartbeat: Duration::from_millis(20),
-        ..HubSettings::default()
+        ..quick()
     });
-    let mut config = config(&world, "primary", Some(issued_identity(&world, "primary")));
+    let mut config = config(&world, "primary", issued_identity(&world, "primary").await);
     config.capabilities = features(&["executionTask", "logs"]);
     let dialer = Dialer::new(&world, 0);
     let (token, task) = start(dialer.clone(), config);
@@ -184,15 +199,10 @@ async fn an_enrolled_agent_links_and_keeps_the_link_alive() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_agent_dials_again_after_failed_dials() {
-    let world = world(HubSettings {
-        heartbeat: Duration::from_millis(20),
-        ..HubSettings::default()
-    });
+    let world = world(quick());
     let dialer = Dialer::new(&world, 2);
-    let (token, task) = start(
-        dialer.clone(),
-        config(&world, "primary", Some(issued_identity(&world, "primary"))),
-    );
+    let identity = issued_identity(&world, "primary").await;
+    let (token, task) = start(dialer.clone(), config(&world, "primary", identity));
     eventually("a link after two refused dials", || {
         heartbeats(&world, "primary") >= 1
     })
@@ -203,16 +213,30 @@ async fn the_agent_dials_again_after_failed_dials() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_revoked_cluster_is_refused_and_the_agent_keeps_trying() {
+async fn a_revoked_device_is_refused_and_the_agent_keeps_trying() {
     let world = world(HubSettings::default());
-    world.hub.revoke("primary");
+    let identity = issued_identity(&world, "primary").await;
+    world.hub.registry().revoke("primary");
     let dialer = Dialer::new(&world, 0);
-    let (token, task) = start(
-        dialer.clone(),
-        config(&world, "primary", Some(issued_identity(&world, "primary"))),
-    );
+    let (token, task) = start(dialer.clone(), config(&world, "primary", identity));
     eventually("three dials", || dialer.dials() >= 3).await;
     assert!(world.hub.session("primary").is_none(), "never linked");
+    token.cancel();
+    task.await.expect("join");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_device_a_newer_enrollment_replaced_is_refused() {
+    let world = world(HubSettings::default());
+    let old = issued_identity(&world, "primary").await;
+    let _new = issued_identity(&world, "primary").await;
+    let dialer = Dialer::new(&world, 0);
+    let (token, task) = start(dialer.clone(), config(&world, "primary", old));
+    eventually("two dials", || dialer.dials() >= 2).await;
+    assert!(
+        world.hub.session("primary").is_none(),
+        "a still valid certificate of a replaced device"
+    );
     token.cancel();
     task.await.expect("join");
 }
@@ -221,10 +245,8 @@ async fn a_revoked_cluster_is_refused_and_the_agent_keeps_trying() {
 async fn a_hello_for_another_cluster_than_the_certificate_is_refused() {
     let world = world(HubSettings::default());
     let dialer = Dialer::new(&world, 0);
-    let (token, task) = start(
-        dialer.clone(),
-        config(&world, "other", Some(issued_identity(&world, "primary"))),
-    );
+    let identity = issued_identity(&world, "primary").await;
+    let (token, task) = start(dialer.clone(), config(&world, "other", identity));
     eventually("two dials", || dialer.dials() >= 2).await;
     assert!(world.hub.session("other").is_none());
     assert!(world.hub.session("primary").is_none());
@@ -239,10 +261,8 @@ async fn an_agent_without_a_common_protocol_version_is_refused() {
         ..HubSettings::default()
     });
     let dialer = Dialer::new(&world, 0);
-    let (token, task) = start(
-        dialer.clone(),
-        config(&world, "primary", Some(issued_identity(&world, "primary"))),
-    );
+    let identity = issued_identity(&world, "primary").await;
+    let (token, task) = start(dialer.clone(), config(&world, "primary", identity));
     eventually("two dials", || dialer.dials() >= 2).await;
     assert!(world.hub.session("primary").is_none());
     token.cancel();
@@ -292,10 +312,8 @@ async fn a_hub_that_stops_answering_is_left_and_dialed_again() {
         world: world.clone(),
         dials: AtomicU32::new(0),
     });
-    let (token, task) = start(
-        silent.clone(),
-        config(&world, "primary", Some(issued_identity(&world, "primary"))),
-    );
+    let identity = issued_identity(&world, "primary").await;
+    let (token, task) = start(silent.clone(), config(&world, "primary", identity));
     eventually("a second dial after the heartbeat timeout", || {
         silent.dials.load(Ordering::SeqCst) >= 2
     })
@@ -306,10 +324,7 @@ async fn a_hub_that_stops_answering_is_left_and_dialed_again() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_agent_enrolls_through_the_hub_and_then_links() {
-    let world = world(HubSettings {
-        heartbeat: Duration::from_millis(20),
-        ..HubSettings::default()
-    });
+    let world = world(quick());
     let token =
         world
             .hub
@@ -330,7 +345,7 @@ async fn an_agent_enrolls_through_the_hub_and_then_links() {
         .expect("enrolled through the hub");
 
     let identity = device.identity(&enrolled.certificate_pem).expect("identity");
-    let (stop, task) = start(dialer.clone(), config(&world, "primary", Some(identity)));
+    let (stop, task) = start(dialer.clone(), config(&world, "primary", identity));
     eventually("a link with the enrolled identity", || {
         heartbeats(&world, "primary") >= 1
     })
@@ -341,10 +356,7 @@ async fn an_agent_enrolls_through_the_hub_and_then_links() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_agent_enrolls_once_and_then_uses_its_stored_identity() {
-    let world = world(HubSettings {
-        heartbeat: Duration::from_millis(20),
-        ..HubSettings::default()
-    });
+    let world = world(quick());
     let now = OffsetDateTime::now_utc();
     let token = world
         .hub
@@ -388,7 +400,7 @@ async fn the_agent_enrolls_once_and_then_uses_its_stored_identity() {
         "an expired certificate"
     );
 
-    let (stop, task) = start(dialer.clone(), config(&world, "primary", Some(stored)));
+    let (stop, task) = start(dialer.clone(), config(&world, "primary", stored));
     eventually("a link with the stored identity", || {
         heartbeats(&world, "primary") >= 1
     })
@@ -400,10 +412,7 @@ async fn the_agent_enrolls_once_and_then_uses_its_stored_identity() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_agent_renews_its_certificate_over_the_link_once() {
-    let world = world(HubSettings {
-        heartbeat: Duration::from_millis(20),
-        ..HubSettings::default()
-    });
+    let world = world(quick());
     let key = Arc::new(DeviceKey::generate().expect("key"));
     let now = OffsetDateTime::now_utc();
     let csr = Csr::parse(&key.csr_pem("primary").expect("csr")).expect("parse");
@@ -414,6 +423,11 @@ async fn an_agent_renews_its_certificate_over_the_link_once() {
         .ca()
         .issue("primary", &csr, Duration::from_mins(1), now)
         .expect("issue");
+    world
+        .hub
+        .registry()
+        .certified("primary", &issued.device_id, issued.not_after)
+        .await;
     let first = Lifetime {
         not_before: now - time::Duration::minutes(5),
         not_after: issued.not_after,

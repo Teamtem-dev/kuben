@@ -148,6 +148,8 @@ impl Csr {
 /// A certificate the hub issued.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Issued {
+    /// The cluster the certificate names.
+    pub cluster_id: String,
     pub certificate_pem: String,
     pub device_id: String,
     pub not_after: OffsetDateTime,
@@ -157,6 +159,8 @@ pub struct Issued {
 pub struct ClusterCa {
     issuer: Issuer<'static, KeyPair>,
     der: CertificateDer<'static>,
+    certificate_pem: String,
+    key_pem: String,
 }
 
 impl fmt::Debug for ClusterCa {
@@ -180,16 +184,42 @@ impl ClusterCa {
         params.distinguished_name.push(DnType::CommonName, name);
         params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
         let key = KeyPair::generate()?;
-        let der = params.self_signed(&key)?.der().clone();
+        let certificate = params.self_signed(&key)?;
         Ok(Self {
+            der: certificate.der().clone(),
+            certificate_pem: certificate.pem(),
+            key_pem: key.serialize_pem(),
             issuer: Issuer::new(params, key),
+        })
+    }
+
+    /// A CA kept earlier: its certificate and private key in PEM.
+    pub fn from_pem(certificate_pem: &str, key_pem: &str) -> Result<Self, EnrollError> {
+        let der = CertificateDer::from_pem_slice(certificate_pem.as_bytes())
+            .map_err(|e| EnrollError::Pem(e.to_string()))?;
+        let issuer = Issuer::from_ca_cert_der(&der, KeyPair::from_pem(key_pem)?)?;
+        Ok(Self {
+            issuer,
             der,
+            certificate_pem: certificate_pem.to_owned(),
+            key_pem: key_pem.to_owned(),
         })
     }
 
     #[must_use]
     pub fn certificate(&self) -> &CertificateDer<'static> {
         &self.der
+    }
+
+    #[must_use]
+    pub fn certificate_pem(&self) -> &str {
+        &self.certificate_pem
+    }
+
+    /// The CA's private key; keep it readable by its owner only.
+    #[must_use]
+    pub fn key_pem(&self) -> &str {
+        &self.key_pem
     }
 
     /// A client certificate for `cluster_id`, bound to the CSR's key and
@@ -219,6 +249,7 @@ impl ClusterCa {
         };
         Ok(Issued {
             certificate_pem: request.signed_by(&self.issuer)?.pem(),
+            cluster_id: cluster_id.to_owned(),
             device_id: csr.device_id(),
             not_after,
         })
@@ -714,6 +745,22 @@ mod tests {
             "another key"
         );
         assert_eq!(device_id_of(&device.public_key_info()), device.device_id());
+    }
+
+    #[test]
+    fn a_cluster_ca_survives_its_pem_and_keeps_issuing_for_the_same_trust() {
+        let ca = ClusterCa::generate("kuben cluster CA").expect("ca");
+        let kept = ClusterCa::from_pem(ca.certificate_pem(), ca.key_pem()).expect("reloaded");
+        assert_eq!(kept.certificate(), ca.certificate());
+        let device = DeviceKey::generate().expect("key");
+        let csr = Csr::parse(&device.csr_pem("primary").expect("csr")).expect("parse");
+        let issued = kept.issue("primary", &csr, DAY, now()).expect("issue");
+        assert_eq!(issued.cluster_id, "primary");
+        let der = CertificateDer::from_pem_slice(issued.certificate_pem.as_bytes()).expect("pem");
+        let (_, cert) = X509Certificate::from_der(&der).expect("x509");
+        let (_, root) = X509Certificate::from_der(ca.certificate()).expect("root");
+        cert.verify_signature(Some(root.public_key()))
+            .expect("signed by the original CA's key");
     }
 
     #[test]

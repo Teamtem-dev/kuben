@@ -1,13 +1,16 @@
-//! The hub's end of AgentLink: enough to test the agent end to end, and the
-//! piece `kuben serve` will host in the M1.9 integration.
+//! The hub's end of AgentLink, hosted by `kuben serve` (M1.9 integration)
+//! and tested end to end in this crate.
 //!
-//! * An anonymous peer may only enroll ([`serve_enrollment`]).
+//! * An anonymous peer may only enroll ([`serve_enrollment`]); the issued
+//!   certificate is recorded in the [`Registry`].
 //! * An authenticated peer is the cluster its certificate names (the URI
-//!   SAN `kuben://cluster/<id>` the hub issued); its Hello must name the same
-//!   cluster, and a revoked cluster is refused.
+//!   SAN `kuben://cluster/<id>` the hub issued). Its Hello must name the same
+//!   cluster, and its device must be the cluster's current, unrevoked agent
+//!   device ([`Registry::admits`]): a revoked device, or one a newer
+//!   enrollment replaced, is refused even while its certificate is valid.
 //! * The handshake negotiates the protocol version and the features
-//!   ([`negotiate`]); the hub then answers heartbeats and records when it
-//!   last heard from each cluster, which is how it tells a stale agent.
+//!   ([`negotiate`]); the hub then answers heartbeats and records the link
+//!   and when it last heard from each cluster.
 //! * A linked agent renews its certificate over the link, for the device
 //!   key the link authenticated with ([`Enrollment::renew`]).
 
@@ -61,17 +64,91 @@ pub struct SessionInfo {
     pub last_seen: Instant,
 }
 
-/// The hub's AgentLink endpoint.
-#[derive(Debug)]
-pub struct Hub<T> {
-    enrollment: Enrollment<T>,
-    settings: HubSettings,
-    sessions: Mutex<HashMap<String, SessionInfo>>,
-    revoked: Mutex<BTreeSet<String>>,
+/// Where the hub keeps what it knows of each cluster's agent: SQL in `kuben
+/// serve`, memory in tests. A registry that cannot answer refuses.
+pub trait Registry: Send + Sync {
+    /// Whether `device` is the current, unrevoked agent device of `cluster`.
+    fn admits(&self, cluster: &str, device: &str) -> impl Future<Output = bool> + Send;
+
+    /// A certificate valid until `not_after` was issued to `device` of
+    /// `cluster`: it is the cluster's agent device from now on.
+    fn certified(
+        &self,
+        cluster: &str,
+        device: &str,
+        not_after: OffsetDateTime,
+    ) -> impl Future<Output = ()> + Send;
+
+    /// `device` of `cluster` linked with `session`.
+    fn linked(&self, cluster: &str, device: &str, session: &SessionInfo) -> impl Future<Output = ()> + Send;
+
+    /// A heartbeat of `device` of `cluster` arrived.
+    fn heard(&self, cluster: &str, device: &str) -> impl Future<Output = ()> + Send;
 }
 
 fn lock<V>(m: &Mutex<V>) -> MutexGuard<'_, V> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A registry in memory, for tests.
+#[derive(Debug, Default)]
+pub struct MemoryRegistry {
+    /// Cluster → its agent device and whether that device is revoked.
+    devices: Mutex<HashMap<String, (String, bool)>>,
+}
+
+impl MemoryRegistry {
+    /// Revoke the current device of `cluster`.
+    pub fn revoke(&self, cluster: &str) {
+        if let Some(entry) = lock(&self.devices).get_mut(cluster) {
+            entry.1 = true;
+        }
+    }
+}
+
+impl Registry for MemoryRegistry {
+    fn admits(&self, cluster: &str, device: &str) -> impl Future<Output = bool> + Send {
+        let admitted = lock(&self.devices)
+            .get(cluster)
+            .is_some_and(|(current, revoked)| current == device && !revoked);
+        std::future::ready(admitted)
+    }
+
+    fn certified(
+        &self,
+        cluster: &str,
+        device: &str,
+        _not_after: OffsetDateTime,
+    ) -> impl Future<Output = ()> + Send {
+        let mut devices = lock(&self.devices);
+        // The same device keeps its revocation; another one replaces it.
+        if devices.get(cluster).is_none_or(|(current, _)| current != device) {
+            devices.insert(cluster.to_owned(), (device.to_owned(), false));
+        }
+        std::future::ready(())
+    }
+
+    fn linked(
+        &self,
+        _cluster: &str,
+        _device: &str,
+        _session: &SessionInfo,
+    ) -> impl Future<Output = ()> + Send {
+        std::future::ready(())
+    }
+
+    fn heard(&self, _cluster: &str, _device: &str) -> impl Future<Output = ()> + Send {
+        std::future::ready(())
+    }
+}
+
+/// The hub's AgentLink endpoint.
+#[derive(Debug)]
+pub struct Hub<T, R> {
+    enrollment: Enrollment<T>,
+    registry: R,
+    settings: HubSettings,
+    sessions: Mutex<HashMap<String, SessionInfo>>,
 }
 
 /// The cluster a certificate the hub issued names.
@@ -112,14 +189,17 @@ async fn refuse<S: AsyncWrite + Unpin>(
     .await
 }
 
-impl<T: TokenStore> Hub<T> {
+const NOT_THE_AGENT: &str =
+    "this device is not the cluster's agent: revoked, or replaced by a newer enrollment";
+
+impl<T: TokenStore, R: Registry> Hub<T, R> {
     #[must_use]
-    pub fn new(enrollment: Enrollment<T>, settings: HubSettings) -> Self {
+    pub fn new(enrollment: Enrollment<T>, registry: R, settings: HubSettings) -> Self {
         Self {
             enrollment,
+            registry,
             settings,
             sessions: Mutex::new(HashMap::new()),
-            revoked: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -128,12 +208,12 @@ impl<T: TokenStore> Hub<T> {
         &self.enrollment
     }
 
-    /// Refuse `cluster`'s links from now on (re-enrollment needed).
-    pub fn revoke(&self, cluster: &str) {
-        lock(&self.revoked).insert(cluster.to_owned());
+    #[must_use]
+    pub const fn registry(&self) -> &R {
+        &self.registry
     }
 
-    /// The latest link of `cluster`, if it ever linked.
+    /// The latest link of `cluster` this hub served, if any.
     #[must_use]
     pub fn session(&self, cluster: &str) -> Option<SessionInfo> {
         lock(&self.sessions).get(cluster).cloned()
@@ -145,10 +225,15 @@ impl<T: TokenStore> Hub<T> {
         S: AsyncRead + AsyncWrite + Unpin,
     {
         let Some(certificate) = peer_certificate(tls.get_ref().1) else {
-            serve_enrollment(&mut tls, &self.enrollment, OffsetDateTime::now_utc()).await?;
+            let now = OffsetDateTime::now_utc();
+            if let Some(issued) = serve_enrollment(&mut tls, &self.enrollment, now).await? {
+                self.registry
+                    .certified(&issued.cluster_id, &issued.device_id, issued.not_after)
+                    .await;
+            }
             return Ok(());
         };
-        let Some(cluster) = cluster_of(&certificate) else {
+        let (Some(cluster), Some(device)) = (cluster_of(&certificate), device_of(&certificate)) else {
             return refuse(
                 &mut tls,
                 Refusal::UnknownCluster,
@@ -156,7 +241,6 @@ impl<T: TokenStore> Hub<T> {
             )
             .await;
         };
-        let device = device_of(&certificate).unwrap_or_default();
         let Some(Message::Hello {
             protocol_versions,
             agent_version,
@@ -175,13 +259,8 @@ impl<T: TokenStore> Hub<T> {
             )
             .await;
         }
-        if lock(&self.revoked).contains(&cluster) {
-            return refuse(
-                &mut tls,
-                Refusal::Revoked,
-                "this cluster's enrollment was revoked",
-            )
-            .await;
+        if !self.registry.admits(&cluster, &device).await {
+            return refuse(&mut tls, Refusal::Revoked, NOT_THE_AGENT).await;
         }
         let agreed = match negotiate(
             &self.settings.versions,
@@ -202,16 +281,15 @@ impl<T: TokenStore> Hub<T> {
             },
         )
         .await?;
-        lock(&self.sessions).insert(
-            cluster.clone(),
-            SessionInfo {
-                version: agreed.version,
-                features: agreed.features,
-                agent_version,
-                heartbeats: 0,
-                last_seen: Instant::now(),
-            },
-        );
+        let session = SessionInfo {
+            version: agreed.version,
+            features: agreed.features,
+            agent_version,
+            heartbeats: 0,
+            last_seen: Instant::now(),
+        };
+        self.registry.linked(&cluster, &device, &session).await;
+        lock(&self.sessions).insert(cluster.clone(), session);
         self.converse(&mut tls, &cluster, &device).await
     }
 
@@ -228,27 +306,31 @@ impl<T: TokenStore> Hub<T> {
                         session.heartbeats += 1;
                         session.last_seen = Instant::now();
                     }
+                    self.registry.heard(cluster, device).await;
                     write_frame(tls, &Message::HeartbeatAck { seq }).await?;
                 }
                 Some(Message::Renew { csr }) => {
-                    match self
+                    if !self.registry.admits(cluster, device).await {
+                        return refuse(tls, Refusal::Revoked, NOT_THE_AGENT).await;
+                    }
+                    let issued = match self
                         .enrollment
                         .renew(cluster, &csr, device, OffsetDateTime::now_utc())
                     {
-                        Ok(issued) => {
-                            write_frame(
-                                tls,
-                                &Message::Enrolled {
-                                    certificate: issued.certificate_pem,
-                                    not_after: issued.not_after.unix_timestamp(),
-                                },
-                            )
-                            .await?;
-                        }
+                        Ok(issued) => issued,
                         Err(reason) => {
                             return refuse(tls, reason, "a renewal is for the device key of this link").await;
                         }
-                    }
+                    };
+                    self.registry.certified(cluster, device, issued.not_after).await;
+                    write_frame(
+                        tls,
+                        &Message::Enrolled {
+                            certificate: issued.certificate_pem,
+                            not_after: issued.not_after.unix_timestamp(),
+                        },
+                    )
+                    .await?;
                 }
                 Some(Message::Unknown) => {}
                 Some(_) => return refuse(tls, Refusal::BadRequest, "unexpected message").await,
