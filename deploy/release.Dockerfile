@@ -6,9 +6,8 @@ FROM gcr.io/distroless/static:nonroot
 ARG TARGETOS
 ARG TARGETARCH
 COPY --chmod=0755 image/${TARGETOS}-${TARGETARCH}/kuben /kuben
-# SQLite on the /data volume, set explicitly: the binary's own default is
-# chosen for servers.
-ENV KUBEN_DATABASE__URL=sqlite:///data/kuben.db
+# No database default: Kuben keeps its data in PostgreSQL (ADR-025), given
+# at run time as KUBEN_DATABASE__URL (the Helm chart sets it).
 # Numeric UID so Kubernetes `runAsNonRoot: true` can verify it.
 USER 65532:65532
 EXPOSE 8080 9090
