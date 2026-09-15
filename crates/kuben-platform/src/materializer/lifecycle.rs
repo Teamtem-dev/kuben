@@ -149,16 +149,17 @@ impl Worker {
             let runtimes =
                 Api::<kuben_crd::ApplicationRuntime>::namespaced(self.client.clone(), &app.namespace);
             remove(&runtimes, &app.slug).await?;
-        } else {
-            let apps = Api::<App>::namespaced(self.client.clone(), &app.namespace);
-            if let Some(live) = apps.get_opt(&app.slug).await? {
-                let ours = live
-                    .annotations()
-                    .get(annotations::ID)
-                    .is_none_or(|id| *id == target.to_string());
-                if write::belongs_to(live.meta(), org) && ours {
-                    remove(&apps, &app.slug).await?;
-                }
+        }
+        // The App object; for a target handed over to its agent, one a
+        // handover that never finished left behind.
+        let apps = Api::<App>::namespaced(self.client.clone(), &app.namespace);
+        if let Some(live) = apps.get_opt(&app.slug).await? {
+            let ours = live
+                .annotations()
+                .get(annotations::ID)
+                .is_none_or(|id| *id == target.to_string());
+            if write::belongs_to(live.meta(), org) && ours {
+                remove(&apps, &app.slug).await?;
             }
         }
         if subject.delete_volumes {

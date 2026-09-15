@@ -159,6 +159,10 @@ impl Worker {
         let (Some(m), Some(current)) = (m, current) else {
             return Ok(Finding::Clean);
         };
+        if m.delivery == kuben_store::repo::Delivery::Agent {
+            // Handed over to the cluster's agent: the App is gone on purpose.
+            return Ok(Finding::Clean);
+        }
         if m.deleting {
             // Its deletion removes the object; nothing to put back.
             return Ok(Finding::Clean);

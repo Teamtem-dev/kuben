@@ -13,13 +13,19 @@
 //!   accepted → acceptedByCluster; applying → verifying; ready → succeeded;
 //!   failed or rejected → failed with the agent's reason; a newer generation
 //!   → superseded.
+//! * A target handed over from the App controller loses its App object
+//!   first, deleted with orphan propagation: the agent adopts the workloads
+//!   in place instead of making new ones.
 
 use std::{convert::Infallible, fmt, pin::Pin, time::Duration};
 
-use kube::Api;
+use kube::{
+    Api, Resource, ResourceExt,
+    api::{DeleteParams, PropagationPolicy},
+};
 use kuben_agent::protocol::Apply;
 use kuben_core::ops::{RunEvent, RunPhase};
-use kuben_crd::{ApplicationRuntimeSpec, Environment, PlanEnvelope, Project};
+use kuben_crd::{App, ApplicationRuntimeSpec, Environment, PlanEnvelope, Project};
 use kuben_store::repo::{Claim, Materialization, RunPlan, RuntimeObservation};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -27,6 +33,7 @@ use tokio_util::sync::CancellationToken;
 use super::{
     render::{self, render},
     worker::{Error, LEASE, Stop, Worker, pause, refused},
+    write,
 };
 use crate::render::{canonical, sha256};
 
@@ -42,6 +49,9 @@ pub trait AgentDispatch: Send + Sync + fmt::Debug {
 const RESEND: Duration = Duration::from_mins(1);
 /// How long a run waits for its cluster's agent before it is claimed again.
 const AGENT_WAIT: Duration = Duration::from_secs(10);
+/// How long a handover waits for the garbage collector to orphan the App's
+/// workloads before it looks again.
+const ORPHAN_WAIT: Duration = Duration::from_secs(2);
 
 /// The envelope of `m`'s run, carrying its frozen `plan`.
 pub fn envelope(m: &Materialization, plan: &RunPlan) -> Result<Apply, String> {
@@ -155,6 +165,7 @@ impl Worker {
         self.ensure(Api::<Environment>::all(self.client.clone()), &environment, m.org)
             .await?;
         self.wait_namespace(&m.namespace, token).await?;
+        self.orphan_app(m).await?;
         let mut tenant = self.store.tenant(m.org).await?;
         let plan = tenant
             .run_render_plan(m.run)
@@ -162,6 +173,38 @@ impl Worker {
             .ok_or_else(|| refused("PlanMissing"))?;
         drop(tenant);
         envelope(m, &plan).map_err(|_| refused("RenderFailed"))
+    }
+
+    /// A target handed over from the App controller still has its App
+    /// object: delete it, orphaning its workloads, and wait until it is
+    /// gone. The agent then adopts them in place, without new pods; with
+    /// the App left, they would have two controllers.
+    async fn orphan_app(&self, m: &Materialization) -> Result<(), Stop> {
+        let apps = Api::<App>::namespaced(self.client.clone(), &m.namespace);
+        let Some(live) = apps.get_opt(&m.application_slug).await? else {
+            return Ok(());
+        };
+        let ours = live
+            .annotations()
+            .get(render::annotations::ID)
+            .is_none_or(|id| *id == m.target.to_string());
+        if !write::belongs_to(live.meta(), m.org) || !ours {
+            return Err(refused("NameTaken"));
+        }
+        if live.metadata.deletion_timestamp.is_none() {
+            let orphan = DeleteParams {
+                propagation_policy: Some(PropagationPolicy::Orphan),
+                ..DeleteParams::default()
+            };
+            match apps.delete(&m.application_slug, &orphan).await {
+                Ok(_) => tracing::info!(target = %m.target, "handover: the App goes, its workloads stay"),
+                Err(kube::Error::Api(s)) if s.code == 404 => return Ok(()),
+                Err(e) => return Err(e.into()),
+            }
+        }
+        // The garbage collector drops the App from its workloads' owners,
+        // then removes it.
+        Err(Stop::Wait(ORPHAN_WAIT, "OrphaningApp"))
     }
 
     /// Send the envelope and follow the agent's observations until the run
