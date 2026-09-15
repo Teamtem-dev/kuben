@@ -231,6 +231,44 @@ async fn the_agent_carries_an_envelope_out_and_prunes_what_a_newer_plan_dropped(
     ns.cleanup().await;
 }
 
+/// A report that never reached the hub (plan §18.1 crash/ACK replay, I17):
+/// the hub sends the same envelope again, and carrying it out again changes
+/// nothing: the same objects, the same generations, Ready again.
+#[tokio::test]
+#[ignore = "needs a Kubernetes cluster (cargo test -- --ignored)"]
+async fn the_same_envelope_carried_again_changes_nothing() {
+    let ns = TestNs::new().await;
+    let executor = KubeExecutor::new(ns.client.clone())
+        .with_verify_deadline(Duration::from_mins(1), Duration::from_secs(1));
+    let envelope = ns.envelope(1, &json!([ns.deployment("web-web"), ns.service()]), None);
+    let first = carry(&executor, envelope.clone()).await;
+    assert_eq!(phases(&first).last(), Some(&RuntimePhase::Ready), "{first:?}");
+
+    let deployments: Api<Deployment> = Api::namespaced(ns.client.clone(), &ns.name);
+    let runtimes: Api<ApplicationRuntime> = Api::namespaced(ns.client.clone(), &ns.name);
+    let deployment = |d: Deployment| (d.metadata.uid, d.metadata.generation);
+    let before = deployment(deployments.get("web-web").await.expect("deployment"));
+    let runtime_before = runtimes.get("web").await.expect("runtime").metadata;
+
+    let again = carry(&executor, envelope).await;
+    assert_eq!(phases(&again).last(), Some(&RuntimePhase::Ready), "{again:?}");
+    assert!(
+        !phases(&again).contains(&RuntimePhase::Rejected),
+        "the apiserver takes the same envelope again: {again:?}"
+    );
+    assert_eq!(
+        deployment(deployments.get("web-web").await.expect("deployment")),
+        before,
+        "the same Deployment, not rolled again"
+    );
+    let runtime_after = runtimes.get("web").await.expect("runtime").metadata;
+    assert_eq!(
+        (runtime_after.uid, runtime_after.generation),
+        (runtime_before.uid, runtime_before.generation)
+    );
+    ns.cleanup().await;
+}
+
 #[tokio::test]
 #[ignore = "needs a Kubernetes cluster (cargo test -- --ignored)"]
 async fn the_agent_refuses_a_wrong_digest_or_kind_before_writing_anything() {
