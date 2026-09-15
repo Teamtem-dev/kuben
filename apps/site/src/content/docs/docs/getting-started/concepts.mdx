@@ -28,12 +28,12 @@ Apps and environments carry **conditions** (`Ready`, `Exposed`) with a `reason` 
 
 ## Kubernetes holds the desired state
 
-Kuben stores what *should* exist as custom resources in the `kuben.dev` API group, and lets the controllers make the cluster match. The SQL database (SQLite on a volume, or PostgreSQL) holds only what Kubernetes has no home for: users, sessions, API tokens, memberships, login throttling and the audit log. SQL refers to cluster objects by `uid` only.
+Kuben stores what *should* exist as custom resources in the `kuben.dev` API group, and lets the controllers make the cluster match. The SQL database (PostgreSQL) holds only what Kubernetes has no home for: users, sessions, API tokens, memberships, login throttling and the audit log. SQL refers to cluster objects by `uid` only.
 
 Two consequences follow:
 
 - **GitOps tools work.** You can `kubectl apply` an `App`, and Argo CD or Flux can own the manifests, while the console keeps showing status, logs and releases.
-- **Backups are two things.** `kuben backup` exports the custom resources as YAML; the database volume is backed up like any other volume. Secret values are deliberately not exported. See [Backup and restore](/docs/operations/backup-restore/).
+- **Backups are two things.** `kuben backup` exports the custom resources as YAML; PostgreSQL is backed up with `pg_dump` or a snapshot of its volume. Secret values are deliberately not exported. See [Backup and restore](/docs/operations/backup-restore/).
 
 ## Networking
 
@@ -51,7 +51,7 @@ When a cert-manager `ClusterIssuer` is configured, Kuben **owns the listeners** 
 | `controller` | The reconcilers for projects, environments, apps, releases and the Gateway |
 | `activator` | Reserved for scale-to-zero; a placeholder today and left out of release builds |
 
-By default a process runs all of them (`--roles=all`). In the Helm chart with PostgreSQL you can run several replicas: every replica serves the API from its own **projections**, small in-memory read models fed by Kubernetes watches, while only the replica holding the `kuben-controller` Lease runs the controllers. A crashed leader is replaced within about fifteen seconds, a gracefully stopped one within a few. See [High availability](/docs/operations/high-availability/).
+By default a process runs all of them (`--roles=all`). In the Helm chart you can run several replicas: every replica serves the API from its own **projections**, small in-memory read models fed by Kubernetes watches, while only the replica holding the `kuben-controller` Lease runs the controllers. A crashed leader is replaced within about fifteen seconds, a gracefully stopped one within a few. See [High availability](/docs/operations/high-availability/).
 
 <Aside type="note" title="Why projections?">
 Caching raw Kubernetes objects for a whole cluster costs hundreds of megabytes. Projections keep only the fields the console and the API need, which is how Kuben's pod can request 64 MiB of memory.

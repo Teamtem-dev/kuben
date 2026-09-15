@@ -23,7 +23,7 @@ bind = "127.0.0.1:8080"
 public_url = "https://kuben.example.com"
 
 [database]
-url = "sqlite:///var/lib/kuben/kuben.db"
+url = "postgres:///kuben?host=/run/postgresql&user=kuben"
 
 [security]
 trust_forwarded_for = true
@@ -45,10 +45,19 @@ trust_forwarded_for = true
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KUBEN_DATABASE__URL` | see below | `sqlite://<path>` or `postgres://user:pass@host/db` |
-| `KUBEN_DATABASE__MAX_CONNECTIONS` | `4` | pool size. SQLite uses a single writer regardless |
+| `KUBEN_DATABASE__URL` | none, required | a `postgres://` or `postgresql://` URL, e.g. `postgres://user:pass@host/db` |
+| `KUBEN_DATABASE__MAX_CONNECTIONS` | `4` | pool size |
 
-Without a URL, the binary uses SQLite in the first of: `/data/kuben.db` when `/data` exists (the container volume, and the location before 1.0.3), `$STATE_DIRECTORY/kuben.db` (systemd's `StateDirectory=`), `$XDG_STATE_HOME/kuben/kuben.db`, `~/.local/state/kuben/kuben.db`. The image and the Helm chart set `sqlite:///data/kuben.db` explicitly. `kuben doctor` prints the database in use. The directory of a SQLite path is created on first start. PostgreSQL is required for more than one replica.
+Kuben keeps its data in PostgreSQL. There is no default URL: without one the server stops with a message that shows how to run a local PostgreSQL:
+
+```bash
+docker run -d --name kuben-postgres -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine
+export KUBEN_DATABASE__URL=postgres://postgres:kuben@localhost:5432/postgres
+```
+
+SQLite URLs are rejected. The data of a 1.x install that used SQLite will be moved by an importer, which is not released yet.
+
+The container image sets no database; the Helm chart sets `KUBEN_DATABASE__URL`, to its own PostgreSQL or to `database.url`. `kuben setup` writes the URL in the example above: the server's own PostgreSQL over its Unix socket, with peer authentication and no password. Connect as an ordinary role: `kuben doctor` warns (`database role`) when the role is a superuser or has `BYPASSRLS`, because row-level security is then bypassed.
 
 ## `kube`
 

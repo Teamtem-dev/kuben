@@ -1,6 +1,6 @@
 ---
 title: Helm chart values
-description: Every value of the kuben Helm chart with its default, what it renders, and the rules the chart enforces (PostgreSQL for several replicas, numeric non-root user, kept volume).
+description: Every value of the kuben Helm chart with its default, what it renders, and the rules the chart enforces (its own PostgreSQL or an external one, numeric non-root user, kept database).
 ---
 
 The chart is published as an OCI artifact:
@@ -22,15 +22,38 @@ helm show values oci://ghcr.io/teamtem-dev/charts/kuben
 
 | Value | Default | |
 |---|---|---|
-| `replicaCount` | `1` | SQLite supports exactly one. With PostgreSQL every replica serves the API and only the Lease holder runs the controllers |
-| `database.url` | `""` | empty: SQLite on the persistent volume (`sqlite:///data/kuben.db`) |
+| `replicaCount` | `1` | every replica serves the API; only the holder of the `kuben-controller` Lease runs the controllers. For several replicas or high availability use an external PostgreSQL: the chart's own is a single instance |
+| `database.url` | `""` | an external PostgreSQL, e.g. `postgres://kuben:…@db.example.com/kuben` |
 | `database.existingSecret` | `""` | Secret with a `url` key (PostgreSQL credentials); wins over `database.url` |
-| `persistence.enabled` | `true` | the SQLite volume; not created with PostgreSQL |
-| `persistence.size` | `1Gi` | |
-| `persistence.storageClass` | `""` | the cluster default |
-| `persistence.accessModes` | `[ReadWriteOnce]` | |
 
-The chart **fails to render** `replicaCount > 1` without a PostgreSQL URL. The PVC carries `helm.sh/resource-policy: keep` and survives `helm uninstall`.
+With `database.url` and `database.existingSecret` both empty, the chart runs its own PostgreSQL; with either set, it renders none. See [High availability](/docs/operations/high-availability/).
+
+## The chart's own PostgreSQL
+
+| Value | Default | |
+|---|---|---|
+| `postgresql.image.repository` | `docker.io/library/postgres` | |
+| `postgresql.image.tag` | `"17-alpine"` | |
+| `postgresql.image.pullPolicy` | `IfNotPresent` | |
+| `postgresql.persistence.size` | `8Gi` | |
+| `postgresql.persistence.storageClass` | `""` | the cluster default; it must offer `ReadWriteOnce` volumes |
+| `postgresql.resources` | requests `cpu: 50m`, `memory: 128Mi`; limits `memory: 512Mi` | |
+
+It is a single-instance StatefulSet `<fullname>-postgresql` with the volume `data-<fullname>-postgresql-0`; for a release named `kuben` the fullname is `kuben`. Kuben connects as the ordinary role `kuben`, which owns the database `kuben`, so row-level security applies to it. The superuser `postgres` is for maintenance only.
+
+The passwords are in the Secret `<fullname>-postgresql`: `password` for the role `kuben`, `postgres-password` for `postgres`. `helm uninstall` keeps that Secret and the volume, and a re-install finds the data with the same password. To start over, delete both:
+
+```bash
+kubectl -n kuben-system delete pvc/data-kuben-postgresql-0 secret/kuben-postgresql
+```
+
+## Upgrading from 1.x
+
+| Value | Default | |
+|---|---|---|
+| `legacy.sqliteVolumeAcknowledged` | `false` | `true`: upgrade over the 1.x SQLite volume and start with a new, empty database |
+
+Kuben 1.x kept its data in SQLite on the volume `<fullname>-data`, which this chart does not read. The `persistence.*` values that created it are gone. An upgrade of a release that still has that volume stops with a message, so that a new, empty database is never taken for lost data. With `legacy.sqliteVolumeAcknowledged=true` it goes ahead; the old volume stays untouched.
 
 ## Admin and security
 
@@ -75,7 +98,8 @@ The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits beh
 
 ## What the chart renders
 
-- A `Deployment` with `Recreate` (SQLite) or `RollingUpdate` with `maxUnavailable: 0` (PostgreSQL), and a `PodDisruptionBudget` for several replicas.
+- A `Deployment` with `RollingUpdate` (`maxUnavailable: 0`, `maxSurge: 1`), and a `PodDisruptionBudget` for several replicas.
+- Without an external database: the PostgreSQL `StatefulSet`, its `Service` and its Secret, and an init container in the Kuben pod that waits for PostgreSQL to answer.
 - A security context: `runAsNonRoot`, UID **65532** (numeric, so Kubernetes can verify it), read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp.
 - Liveness and readiness probes on `/livez` and `/readyz`.
 - A `ServiceAccount`, a `ClusterRole` for the tenant resources it manages and a namespaced `Role` for the controller Lease. The full list is in `templates/rbac.yaml`.

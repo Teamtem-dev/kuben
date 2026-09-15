@@ -12,7 +12,7 @@ This page gets Kuben running inside a cluster and signs you in. Publishing apps 
 ## Before you start
 
 - A Kubernetes cluster, **1.29 or later**: k3s, kind, EKS, GKE or AKS all work.
-- A StorageClass that supports `ReadWriteOnce`. Kuben keeps users, sessions, releases and the audit log on a 1 GiB volume when it runs on SQLite (the default).
+- A StorageClass that supports `ReadWriteOnce`. By default the chart runs its own PostgreSQL 17 for users, sessions, releases and the audit log, on an 8 GiB volume.
 - [Helm](https://helm.sh) 3.8 or later (for OCI charts).
 
 <Aside type="tip" title="No cluster yet?">
@@ -23,7 +23,7 @@ On a single server, [k3s](https://k3s.io) installs in under a minute and ships a
 
 <Steps>
 
-1. Install the chart. It creates the namespace, the CRDs, RBAC, a persistent volume and one Kuben pod.
+1. Install the chart. It creates the namespace, the CRDs, RBAC, one PostgreSQL pod with its volume, and one Kuben pod.
 
    ```bash
    helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben \
@@ -93,10 +93,16 @@ helm uninstall kuben -n kuben-system
 
 Kept on purpose, so that a re-install finds everything again:
 
-- the PersistentVolumeClaim `kuben-data`, with the users and the audit log (`helm.sh/resource-policy: keep`);
+- the PostgreSQL volume `data-kuben-postgresql-0`, with the users and the audit log, and the Secret `kuben-postgresql` with its passwords, so a re-install finds the data with the same password;
 - the `KubenConfig` named `kuben`, so apps keep their routes while Kuben stops (also `keep`, since 1.0.3);
 - the Secret `kuben-initial-admin` and the Lease `kuben-controller`, which Kuben creates itself;
 - the CRDs, which Helm never deletes.
+
+To start over with an empty database but keep the namespace, delete the volume and the Secret:
+
+```bash
+kubectl -n kuben-system delete pvc/data-kuben-postgresql-0 secret/kuben-postgresql
+```
 
 To remove everything:
 

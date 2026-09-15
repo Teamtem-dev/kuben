@@ -24,7 +24,14 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
    bun run setup
    ```
 
-2. Run the API and the console. The API listens on `:8080` in dev mode (pretty logs, insecure cookie, SQLite in `./.dev/kuben.db`); Vite serves the console on `:5173` and proxies `/api` to it.
+2. Start a PostgreSQL. Kuben keeps its data only there, in dev mode too, and has no default database:
+
+   ```bash
+   docker run -d --name kuben-postgres -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine
+   export KUBEN_DATABASE__URL=postgres://postgres:kuben@localhost:5432/postgres
+   ```
+
+3. Run the API and the console. The API listens on `:8080` in dev mode (pretty debug logs, insecure cookie) and uses the database in `KUBEN_DATABASE__URL`; Vite serves the console on `:5173` and proxies `/api` to it.
 
    ```bash
    bun run dev
@@ -32,13 +39,13 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 
    The first start opens the setup page, where you create the admin account (no token is needed on `localhost`).
 
-3. Before pushing, run what CI runs: rustfmt, clippy with `-D warnings`, tests, doctests, the TypeScript checks, Biome, the generated-file drift check and the web build with its size budget.
+4. Before pushing, run what CI runs: rustfmt, clippy with `-D warnings`, tests, doctests, the TypeScript checks, Biome, the generated-file drift check and the web build with its size budget.
 
    ```bash
    bun run ci
    ```
 
-4. If you touched controllers or the API, also run the end-to-end suite against a kind cluster:
+5. If you touched controllers or the API, also run the end-to-end suite against a kind cluster:
 
    ```bash
    kind create cluster --config deploy/kind.yaml
@@ -54,7 +61,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
   - kuben/ the binary: CLI, serve, bootstrap, telemetry
   - kuben-api/ Axum routes, auth, audit, OpenAPI, embedded console
   - kuben-platform/ controllers, projections, leader election, supervisor
-  - kuben-store/ sqlx repositories for SQLite and PostgreSQL, migrations
+  - kuben-store/ sqlx repositories for PostgreSQL, migrations, a read-only SQLite reader for importing 1.x data
   - kuben-crd/ the kuben.dev types and the CRD generator
   - kuben-core/ config, ids, authz, errors shared by all crates
 - apps/
@@ -89,7 +96,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 - **CRD types stay structural:** no internally tagged enums; use one-of structs with optional fields (`Source { image, git }`). A test guards this.
 - **Budgets are gates:** binary ≤ 26 MiB, image ≤ 30 MiB, console JS ≤ 200 kB and CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
 - **Commits** follow Conventional Commits (`feat(api): …`, `fix(controller): …`). Label pull requests (`feature`, `bug`, `security`, `breaking`); release notes are grouped by label.
-- **Every migration exists for both backends** with the same file name; a test enforces parity.
+- **Migrations are PostgreSQL only** (ADR-025), in `crates/kuben-store/migrations/postgres/`.
 
 ## The review checklist
 

@@ -40,10 +40,10 @@ Because the request id is recorded, you can correlate an audit record with Kuben
 
 - **Append-only through the API.** There is no endpoint that edits or deletes audit records.
 - **Written in the request path.** The record is part of handling the request, not a best-effort side channel. When a write fails, the failure is counted in the `kuben_audit_write_errors_total` metric so you can alert on it.
-- **Shared by all replicas.** With PostgreSQL, every replica writes to the same log.
+- **Shared by all replicas.** Every replica writes to the same log in PostgreSQL.
 
 <Aside type="note" title="Retention">
-Kuben does not delete audit records. The log lives in the database (SQLite on the persistent volume, or PostgreSQL); size it and back it up accordingly. Signed anchoring of the log is a planned extension.
+Kuben does not delete audit records. The log lives in PostgreSQL; size it and back it up accordingly (see [Backup and restore](/docs/operations/backup-restore/)). Signed anchoring of the log is a planned extension.
 </Aside>
 
 ## Client addresses behind a proxy
