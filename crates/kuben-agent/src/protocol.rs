@@ -70,8 +70,13 @@ pub enum Message {
         cluster_id: String,
         csr: String,
     },
-    /// The hub's answer to [`Message::Enroll`]: the client certificate (PEM)
-    /// and when it expires (Unix seconds).
+    /// A linked agent asks for a fresh certificate before its own expires:
+    /// a CSR (PEM) signed by the same device key.
+    Renew {
+        csr: String,
+    },
+    /// The hub's answer to [`Message::Enroll`] and [`Message::Renew`]: the
+    /// client certificate (PEM) and when it expires (Unix seconds).
     Enrolled {
         certificate: String,
         not_after: i64,

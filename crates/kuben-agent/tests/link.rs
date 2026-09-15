@@ -14,7 +14,7 @@ use std::{
 use kuben_agent::{
     enroll::{ClusterCa, Csr, DeviceKey, Enrollment, MemoryTokens, request_enrollment},
     hub::{Hub, HubSettings, SessionInfo},
-    link::{Connector, LinkConfig, run},
+    link::{Connector, Credentials, Lifetime, LinkConfig, Renewal, run},
     protocol::{Message, read_frame, write_frame},
     state::{HubAddress, State, StateError, ensure_identity},
     tls::{ClientAuth, HUB_NAME, Identity, agent_config, hub_config, server_name},
@@ -70,8 +70,13 @@ fn issued_identity(world: &World, cluster: &str) -> Identity {
 }
 
 fn config(world: &World, cluster: &str, identity: Option<Identity>) -> LinkConfig {
-    let tls = agent_config(std::slice::from_ref(&world.pinned), identity).expect("agent config");
-    let mut config = LinkConfig::new(cluster, server_name(HUB_NAME).expect("name"), tls);
+    let credentials = Credentials::new(vec![world.pinned.clone()], identity.expect("an identity"), None)
+        .expect("credentials");
+    let mut config = LinkConfig::new(
+        cluster,
+        server_name(HUB_NAME).expect("name"),
+        Arc::new(credentials),
+    );
     config.min_backoff = Duration::from_millis(10);
     config.max_backoff = Duration::from_millis(50);
     config
@@ -391,4 +396,70 @@ async fn the_agent_enrolls_once_and_then_uses_its_stored_identity() {
     stop.cancel();
     task.await.expect("join");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_agent_renews_its_certificate_over_the_link_once() {
+    let world = world(HubSettings {
+        heartbeat: Duration::from_millis(20),
+        ..HubSettings::default()
+    });
+    let key = Arc::new(DeviceKey::generate().expect("key"));
+    let now = OffsetDateTime::now_utc();
+    let csr = Csr::parse(&key.csr_pem("primary").expect("csr")).expect("parse");
+    // A minute of life left: the renewal is due at once.
+    let issued = world
+        .hub
+        .enrollment()
+        .ca()
+        .issue("primary", &csr, Duration::from_mins(1), now)
+        .expect("issue");
+    let first = Lifetime {
+        not_before: now - time::Duration::minutes(5),
+        not_after: issued.not_after,
+    };
+    let credentials = Arc::new(
+        Credentials::new(
+            vec![world.pinned.clone()],
+            key.identity(&issued.certificate_pem).expect("identity"),
+            Some(first),
+        )
+        .expect("credentials"),
+    );
+    let stored = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let keep = stored.clone();
+    let mut config = LinkConfig::new(
+        "primary",
+        server_name(HUB_NAME).expect("name"),
+        credentials.clone(),
+    );
+    config.min_backoff = Duration::from_millis(10);
+    config.max_backoff = Duration::from_millis(50);
+    config.renewal = Some(Renewal {
+        key: key.clone(),
+        store: Arc::new(move |pem: &str| {
+            keep.lock().expect("lock").push(pem.to_owned());
+            Ok(())
+        }),
+    });
+    let dialer = Dialer::new(&world, 0);
+    let (stop, task) = start(dialer.clone(), config);
+
+    eventually("a renewed certificate", || {
+        !stored.lock().expect("lock").is_empty()
+    })
+    .await;
+    let renewed = credentials.lifetime().expect("lifetime");
+    assert!(
+        renewed.not_after > first.not_after + Duration::from_hours(1),
+        "the hub's day-long certificate replaced the old one"
+    );
+    let at_renewal = heartbeats(&world, "primary");
+    eventually("more heartbeats", || {
+        heartbeats(&world, "primary") >= at_renewal + 5
+    })
+    .await;
+    assert_eq!(stored.lock().expect("lock").len(), 1, "renewed once, not again");
+    stop.cancel();
+    task.await.expect("join");
 }

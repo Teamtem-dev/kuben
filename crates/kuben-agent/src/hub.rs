@@ -8,6 +8,8 @@
 //! * The handshake negotiates the protocol version and the features
 //!   ([`negotiate`]); the hub then answers heartbeats and records when it
 //!   last heard from each cluster, which is how it tells a stale agent.
+//! * A linked agent renews its certificate over the link, for the device
+//!   key the link authenticated with ([`Enrollment::renew`]).
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -23,7 +25,7 @@ use tokio_rustls::server::TlsStream;
 use x509_parser::prelude::{FromDer, GeneralName, ParsedExtension, X509Certificate};
 
 use crate::{
-    enroll::{Enrollment, TokenStore, serve_enrollment},
+    enroll::{Enrollment, TokenStore, device_id_of, serve_enrollment},
     protocol::{FrameError, Message, Refusal, SUPPORTED_VERSIONS, negotiate, read_frame, write_frame},
     tls::peer_certificate,
 };
@@ -89,6 +91,12 @@ pub fn cluster_of(certificate: &CertificateDer<'_>) -> Option<String> {
         })
 }
 
+/// The device id of the key a certificate is for.
+fn device_of(certificate: &CertificateDer<'_>) -> Option<String> {
+    let (_, cert) = X509Certificate::from_der(certificate).ok()?;
+    Some(device_id_of(cert.public_key().raw))
+}
+
 async fn refuse<S: AsyncWrite + Unpin>(
     stream: &mut S,
     reason: Refusal,
@@ -148,6 +156,7 @@ impl<T: TokenStore> Hub<T> {
             )
             .await;
         };
+        let device = device_of(&certificate).unwrap_or_default();
         let Some(Message::Hello {
             protocol_versions,
             agent_version,
@@ -203,17 +212,46 @@ impl<T: TokenStore> Hub<T> {
                 last_seen: Instant::now(),
             },
         );
+        self.converse(&mut tls, &cluster, &device).await
+    }
+
+    /// The linked part of a connection: heartbeats and renewals until the
+    /// agent hangs up.
+    async fn converse<S>(&self, tls: &mut TlsStream<S>, cluster: &str, device: &str) -> Result<(), FrameError>
+    where
+        S: AsyncRead + AsyncWrite + Unpin,
+    {
         loop {
-            match read_frame(&mut tls).await? {
+            match read_frame(tls).await? {
                 Some(Message::Heartbeat { seq }) => {
-                    if let Some(session) = lock(&self.sessions).get_mut(&cluster) {
+                    if let Some(session) = lock(&self.sessions).get_mut(cluster) {
                         session.heartbeats += 1;
                         session.last_seen = Instant::now();
                     }
-                    write_frame(&mut tls, &Message::HeartbeatAck { seq }).await?;
+                    write_frame(tls, &Message::HeartbeatAck { seq }).await?;
+                }
+                Some(Message::Renew { csr }) => {
+                    match self
+                        .enrollment
+                        .renew(cluster, &csr, device, OffsetDateTime::now_utc())
+                    {
+                        Ok(issued) => {
+                            write_frame(
+                                tls,
+                                &Message::Enrolled {
+                                    certificate: issued.certificate_pem,
+                                    not_after: issued.not_after.unix_timestamp(),
+                                },
+                            )
+                            .await?;
+                        }
+                        Err(reason) => {
+                            return refuse(tls, reason, "a renewal is for the device key of this link").await;
+                        }
+                    }
                 }
                 Some(Message::Unknown) => {}
-                Some(_) => return refuse(&mut tls, Refusal::BadRequest, "unexpected message").await,
+                Some(_) => return refuse(tls, Refusal::BadRequest, "unexpected message").await,
                 None => return Ok(()),
             }
         }

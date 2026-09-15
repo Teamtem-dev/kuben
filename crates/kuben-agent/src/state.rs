@@ -83,6 +83,7 @@ fn write_owner_only(path: &Path, content: &str) -> Result<(), StateError> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoredCertificate {
     pub pem: String,
+    pub not_before: OffsetDateTime,
     pub not_after: OffsetDateTime,
     /// The SubjectPublicKeyInfo the certificate is for.
     pub public_key_info: Vec<u8>,
@@ -93,10 +94,12 @@ impl StoredCertificate {
     pub fn parse(pem: &str) -> Result<Self, String> {
         let der = CertificateDer::from_pem_slice(pem.as_bytes()).map_err(|e| e.to_string())?;
         let (_, cert) = X509Certificate::from_der(&der).map_err(|e| e.to_string())?;
-        let not_after = OffsetDateTime::from_unix_timestamp(cert.validity().not_after.timestamp())
-            .map_err(|e| e.to_string())?;
+        let time = |t: i64| OffsetDateTime::from_unix_timestamp(t).map_err(|e| e.to_string());
+        let not_before = time(cert.validity().not_before.timestamp())?;
+        let not_after = time(cert.validity().not_after.timestamp())?;
         Ok(Self {
             pem: pem.to_owned(),
+            not_before,
             not_after,
             public_key_info: cert.public_key().raw.to_vec(),
         })
@@ -283,6 +286,7 @@ mod tests {
         state.save_certificate(&issued.certificate_pem).expect("save");
         let stored = state.certificate().expect("read").expect("stored");
         assert_eq!(stored.not_after, issued.not_after);
+        assert_eq!(stored.not_before, now - time::Duration::minutes(5));
         assert_eq!(stored.public_key_info, key.public_key_info());
 
         fs::write(dir.join(CERTIFICATE), "garbage").expect("write");

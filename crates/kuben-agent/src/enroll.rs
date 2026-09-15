@@ -52,6 +52,12 @@ pub enum EnrollError {
     Unexpected,
 }
 
+/// The device id of a public key: `sha256:` of its SubjectPublicKeyInfo.
+#[must_use]
+pub fn device_id_of(public_key_info: &[u8]) -> String {
+    hex_digest(public_key_info)
+}
+
 fn hex_digest(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
@@ -415,6 +421,27 @@ impl<T: TokenStore> Enrollment<T> {
     }
 }
 
+impl<T> Enrollment<T> {
+    /// Renew the certificate of `device_id` in `cluster_id`, asked on the
+    /// device's authenticated link: the CSR must be signed by the same
+    /// device key.
+    pub fn renew(
+        &self,
+        cluster_id: &str,
+        csr_pem: &str,
+        device_id: &str,
+        now: OffsetDateTime,
+    ) -> Result<Issued, Refusal> {
+        let csr = Csr::parse(csr_pem).map_err(|_| Refusal::BadRequest)?;
+        if csr.device_id() != device_id {
+            return Err(Refusal::BadRequest);
+        }
+        self.ca
+            .issue(cluster_id, &csr, self.lifetime, now)
+            .map_err(|_| Refusal::BadRequest)
+    }
+}
+
 /// The hub's side of one anonymous connection: the first message must be
 /// [`Message::Enroll`]; the answer is [`Message::Enrolled`] or
 /// [`Message::Refused`]. The certificate issued, if any.
@@ -659,6 +686,34 @@ mod tests {
             .enroll(&token, "primary", &device.csr_pem("primary").expect("csr"), now())
             .await
             .expect("the token is still unused");
+    }
+
+    #[test]
+    fn a_renewal_is_only_for_the_device_key_of_the_link() {
+        let (service, _token) = enrollment();
+        let device = DeviceKey::generate().expect("key");
+        let renewed = service
+            .renew(
+                "primary",
+                &device.csr_pem("primary").expect("csr"),
+                &device.device_id(),
+                now(),
+            )
+            .expect("renewed");
+        assert_eq!(renewed.device_id, device.device_id());
+        assert_eq!(renewed.not_after, now() + DAY);
+        let other = DeviceKey::generate().expect("key");
+        assert_eq!(
+            service.renew(
+                "primary",
+                &other.csr_pem("primary").expect("csr"),
+                &device.device_id(),
+                now()
+            ),
+            Err(Refusal::BadRequest),
+            "another key"
+        );
+        assert_eq!(device_id_of(&device.public_key_info()), device.device_id());
     }
 
     #[test]

@@ -4,15 +4,15 @@
 //! On the first start it makes its device key, reads a bootstrap token
 //! (`--token-file` or `--token-stdin`; never an argument, so it stays out of
 //! process lists and shell history) and enrolls. Later starts use the stored
-//! certificate.
+//! certificate, which the agent renews over the link before it expires.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use clap::Parser;
 use kuben_agent::{
-    link::{LinkConfig, TcpConnector, run},
+    link::{Credentials, Lifetime, LinkConfig, Renewal, TcpConnector, run},
     state::{HubAddress, State, TokenSource, ensure_identity, pinned_ca, read_token},
-    tls::{HUB_NAME, agent_config, server_name},
+    tls::{HUB_NAME, server_name},
 };
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
@@ -109,7 +109,17 @@ async fn agent(args: Args) -> anyhow::Result<()> {
         OffsetDateTime::now_utc(),
     )
     .await?;
-    let config = LinkConfig::new(args.cluster, hub_name, agent_config(&pinned, Some(identity))?);
+    let lifetime = state.certificate()?.map(|c| Lifetime {
+        not_before: c.not_before,
+        not_after: c.not_after,
+    });
+    let credentials = Arc::new(Credentials::new(pinned.clone(), identity, lifetime)?);
+    let mut config = LinkConfig::new(args.cluster, hub_name.clone(), credentials);
+    let keep = state.clone();
+    config.renewal = Some(Renewal {
+        key: Arc::new(key),
+        store: Arc::new(move |pem: &str| keep.save_certificate(pem).map_err(|e| e.to_string())),
+    });
     let token = CancellationToken::new();
     tokio::spawn(stop_on_signal(token.clone()));
     run(&connector, &config, &token).await;

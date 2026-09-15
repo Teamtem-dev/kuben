@@ -11,10 +11,22 @@
 //! * A refusal the agent cannot fix by itself (revoked, unknown cluster, no
 //!   common protocol version) is retried at the longest pause, never given
 //!   up: an operator may fix the hub's side.
+//! * Certificates are short-lived. Two thirds into its certificate's life (up
+//!   to a tenth earlier at random) the agent asks for a fresh one over the
+//!   link, stores it, and dials with it from then on ([`Credentials`]).
 
-use std::{collections::BTreeSet, io, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    fmt, io,
+    sync::{Arc, Mutex, MutexGuard, PoisonError},
+    time::Duration,
+};
 
-use rustls::{ClientConfig, pki_types::ServerName};
+use rustls::{
+    ClientConfig,
+    pki_types::{CertificateDer, ServerName},
+};
+use time::OffsetDateTime;
 use tokio::{
     io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
@@ -26,6 +38,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::protocol::{
     FrameError, Message, Negotiated, Refusal, SUPPORTED_VERSIONS, read_frame, write_frame,
+};
+use crate::{
+    enroll::DeviceKey,
+    state::StoredCertificate,
+    tls::{Identity, TlsError, agent_config},
 };
 
 /// Shortest heartbeat interval the agent accepts from a hub.
@@ -53,6 +70,87 @@ impl Connector for TcpConnector {
     }
 }
 
+/// When a certificate is valid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lifetime {
+    pub not_before: OffsetDateTime,
+    pub not_after: OffsetDateTime,
+}
+
+/// What the agent authenticates with. A renewal replaces it; the next dial
+/// uses the new certificate.
+#[derive(Debug)]
+pub struct Credentials {
+    pinned: Vec<CertificateDer<'static>>,
+    current: Mutex<(Arc<ClientConfig>, Option<Lifetime>)>,
+}
+
+impl Credentials {
+    /// `identity` against the pinned hub CA; `lifetime` of its certificate,
+    /// when known, lets the link renew it.
+    pub fn new(
+        pinned: Vec<CertificateDer<'static>>,
+        identity: Identity,
+        lifetime: Option<Lifetime>,
+    ) -> Result<Self, TlsError> {
+        let tls = agent_config(&pinned, Some(identity))?;
+        Ok(Self {
+            pinned,
+            current: Mutex::new((tls, lifetime)),
+        })
+    }
+
+    fn lock(&self) -> MutexGuard<'_, (Arc<ClientConfig>, Option<Lifetime>)> {
+        self.current.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The TLS configuration of the next dial.
+    #[must_use]
+    pub fn tls(&self) -> Arc<ClientConfig> {
+        self.lock().0.clone()
+    }
+
+    #[must_use]
+    pub fn lifetime(&self) -> Option<Lifetime> {
+        self.lock().1
+    }
+
+    /// Use `identity` from the next dial on.
+    pub fn replace(&self, identity: Identity, lifetime: Lifetime) -> Result<(), TlsError> {
+        let tls = agent_config(&self.pinned, Some(identity))?;
+        *self.lock() = (tls, Some(lifetime));
+        Ok(())
+    }
+}
+
+/// Keeps a renewed certificate (PEM), e.g. on disk.
+pub type StoreCertificate = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// Renewing the certificate over the link.
+#[derive(Clone)]
+pub struct Renewal {
+    /// The device key the fresh certificate is for.
+    pub key: Arc<DeviceKey>,
+    /// Called with a renewed certificate before the link uses it.
+    pub store: StoreCertificate,
+}
+
+impl fmt::Debug for Renewal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Renewal")
+            .field("device_id", &self.key.device_id())
+            .finish_non_exhaustive()
+    }
+}
+
+/// When to renew: two thirds into the certificate's life, up to a tenth of
+/// the life earlier with `jitter` (0 to 1).
+#[must_use]
+pub fn renew_at(lifetime: &Lifetime, jitter: f64) -> OffsetDateTime {
+    let life = lifetime.not_after - lifetime.not_before;
+    lifetime.not_before + life * (2.0 / 3.0 - 0.1 * jitter.clamp(0.0, 1.0))
+}
+
 /// Who the agent is and how it talks to the hub.
 #[derive(Clone, Debug)]
 pub struct LinkConfig {
@@ -62,24 +160,31 @@ pub struct LinkConfig {
     pub kubernetes_version: Option<String>,
     /// The name the hub's certificate must carry.
     pub hub_name: ServerName<'static>,
-    /// TLS with the pinned hub CA and the agent's identity.
-    pub tls: Arc<ClientConfig>,
+    /// The pinned hub CA and the agent's identity.
+    pub credentials: Arc<Credentials>,
+    /// Renew the certificate over the link; `None` never renews.
+    pub renewal: Option<Renewal>,
     pub min_backoff: Duration,
     pub max_backoff: Duration,
 }
 
 impl LinkConfig {
-    /// This build's version, no capabilities, backoff from 1 second to 5
-    /// minutes.
+    /// This build's version, no capabilities, no renewal, backoff from 1
+    /// second to 5 minutes.
     #[must_use]
-    pub fn new(cluster_id: impl Into<String>, hub_name: ServerName<'static>, tls: Arc<ClientConfig>) -> Self {
+    pub fn new(
+        cluster_id: impl Into<String>,
+        hub_name: ServerName<'static>,
+        credentials: Arc<Credentials>,
+    ) -> Self {
         Self {
             cluster_id: cluster_id.into(),
             agent_version: env!("CARGO_PKG_VERSION").to_owned(),
             capabilities: BTreeSet::new(),
             kubernetes_version: None,
             hub_name,
-            tls,
+            credentials,
+            renewal: None,
             min_backoff: Duration::from_secs(1),
             max_backoff: Duration::from_mins(5),
         }
@@ -174,7 +279,12 @@ type Frames = mpsc::Receiver<Result<Option<Message>, FrameError>>;
 /// Keep an established link alive until `token` is cancelled (`Ok`) or the
 /// link fails. Frames are read by a task of their own, so a frame is never
 /// lost halfway through while a heartbeat goes out.
-pub async fn keep_alive<S>(stream: S, session: &Session, token: &CancellationToken) -> Result<(), LinkError>
+pub async fn keep_alive<S>(
+    stream: S,
+    session: &Session,
+    config: &LinkConfig,
+    token: &CancellationToken,
+) -> Result<(), LinkError>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -189,7 +299,7 @@ where
             }
         }
     });
-    let result = heartbeats(&mut writer, &mut rx, session, token).await;
+    let result = heartbeats(&mut writer, &mut rx, session, config, token).await;
     reading.abort();
     result
 }
@@ -198,6 +308,7 @@ async fn heartbeats<W>(
     writer: &mut W,
     frames: &mut Frames,
     session: &Session,
+    config: &LinkConfig,
     token: &CancellationToken,
 ) -> Result<(), LinkError>
 where
@@ -208,6 +319,8 @@ where
     tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let mut seq = 0_u64;
     let mut last_answer = Instant::now();
+    let jitter: f64 = rand::random();
+    let mut renewing = false;
     loop {
         tokio::select! {
             () = token.cancelled() => return Ok(()),
@@ -217,9 +330,24 @@ where
                 }
                 seq += 1;
                 write_frame(writer, &Message::Heartbeat { seq }).await?;
+                if !renewing && let Some(renewal) = renewal_due(config, jitter) {
+                    match renewal.key.csr_pem(&config.cluster_id) {
+                        Ok(csr) => {
+                            write_frame(writer, &Message::Renew { csr }).await?;
+                            renewing = true;
+                        }
+                        Err(error) => tracing::warn!(%error, "cannot make a renewal request"),
+                    }
+                }
             }
             frame = frames.recv() => match frame {
                 Some(Ok(Some(Message::HeartbeatAck { .. }))) => last_answer = Instant::now(),
+                Some(Ok(Some(Message::Enrolled { certificate, .. }))) if renewing => {
+                    renewing = false;
+                    if let Err(error) = adopt(config, &certificate) {
+                        tracing::warn!(%error, "cannot use the renewed certificate");
+                    }
+                }
                 Some(Ok(Some(Message::Refused { reason, message }))) => {
                     return Err(LinkError::Refused { reason, message });
                 }
@@ -230,6 +358,33 @@ where
             },
         }
     }
+}
+
+/// The renewal to run now, if one is set up and due.
+fn renewal_due(config: &LinkConfig, jitter: f64) -> Option<&Renewal> {
+    let renewal = config.renewal.as_ref()?;
+    let lifetime = config.credentials.lifetime()?;
+    (OffsetDateTime::now_utc() >= renew_at(&lifetime, jitter)).then_some(renewal)
+}
+
+/// Store a renewed certificate, then dial with it from now on.
+fn adopt(config: &LinkConfig, pem: &str) -> Result<(), String> {
+    let renewal = config.renewal.as_ref().ok_or("no renewal is set up")?;
+    let stored = StoredCertificate::parse(pem)?;
+    (renewal.store)(pem)?;
+    let identity = renewal.key.identity(pem).map_err(|e| e.to_string())?;
+    config
+        .credentials
+        .replace(
+            identity,
+            Lifetime {
+                not_before: stored.not_before,
+                not_after: stored.not_after,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    tracing::info!(not_after = %stored.not_after, "certificate renewed");
+    Ok(())
 }
 
 /// The pause before the next dial after `failures` failed ones: doubling
@@ -245,13 +400,12 @@ pub fn backoff(failures: u32, min: Duration, max: Duration, jitter: f64) -> Dura
 
 /// Keep the agent linked to the hub until `token` is cancelled.
 pub async fn run<C: Connector>(connector: &C, config: &LinkConfig, token: &CancellationToken) {
-    let tls = TlsConnector::from(config.tls.clone());
     let mut failures = 0_u32;
     while !token.is_cancelled() {
         let dialed = Instant::now();
         let outcome = async {
             let tcp = connector.connect().await.map_err(LinkError::Connect)?;
-            let mut stream = tls
+            let mut stream = TlsConnector::from(config.credentials.tls())
                 .connect(config.hub_name.clone(), tcp)
                 .await
                 .map_err(LinkError::Tls)?;
@@ -263,7 +417,7 @@ pub async fn run<C: Connector>(connector: &C, config: &LinkConfig, token: &Cance
                 features = ?session.negotiated.features,
                 "AgentLink up"
             );
-            keep_alive(stream, &session, token).await
+            keep_alive(stream, &session, config, token).await
         }
         .await;
         let Err(error) = outcome else {
@@ -305,6 +459,25 @@ mod tests {
         assert_eq!(
             backoff(3, min, max, 7.0),
             Duration::from_secs(4),
+            "jitter is clamped"
+        );
+    }
+
+    #[test]
+    fn renewal_is_due_two_thirds_into_the_life_at_the_latest() {
+        let not_before = OffsetDateTime::from_unix_timestamp(1_789_000_000).expect("time");
+        let life = Lifetime {
+            not_before,
+            not_after: not_before + Duration::from_hours(24),
+        };
+        let close = |a: OffsetDateTime, b: OffsetDateTime| (a - b).abs() < time::Duration::seconds(1);
+        assert!(close(renew_at(&life, 0.0), not_before + Duration::from_hours(16)));
+        assert!(close(
+            renew_at(&life, 1.0),
+            not_before + Duration::from_mins(16 * 60 - 144)
+        ));
+        assert!(
+            close(renew_at(&life, 9.0), renew_at(&life, 1.0)),
             "jitter is clamped"
         );
     }
