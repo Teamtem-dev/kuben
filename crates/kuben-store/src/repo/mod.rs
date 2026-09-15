@@ -21,7 +21,7 @@ pub use agents::{
     ClusterAgent, Delivery, RUNTIME_FEATURE, Redeemed, RuntimeObservation, TokenRedemption, TokenRefusal,
 };
 pub use audit::NewAudit;
-pub use catalog::{AppRecord, EnvironmentRecord, RunRecord};
+pub use catalog::{AppRecord, EnvironmentRecord, RunRecord, RuntimeStatus};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use lifecycle::{
     ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, LIFECYCLE_KINDS, PROJECT_APPLY, PROJECT_DELETE, Subject,

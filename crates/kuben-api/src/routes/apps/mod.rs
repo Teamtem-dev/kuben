@@ -14,7 +14,8 @@
 //! desired state is its newest configuration revision (the App spec without
 //! its image) and the release of its newest deployment run. Every change is
 //! a new run, which the materializer writes and the controllers carry out;
-//! the projection adds live status. An image given as a tag is resolved to a
+//! the projection adds live status (for an app its cluster's agent delivers,
+//! the agent's last report, from SQL). An image given as a tag is resolved to a
 //! digest at its registry first (option A).
 
 pub mod crud;
@@ -34,7 +35,9 @@ use kuben_core::{
 };
 use kuben_crd::{App, AppSpec, Protocol, Runtime, Source};
 use kuben_platform::projection::{AppView, PodPhase, PodView};
-use kuben_store::repo::{AppRecord, PortableRelease, RunReason, StartDeployment, Started, Tenant};
+use kuben_store::repo::{
+    AppRecord, Delivery, PortableRelease, RunReason, RuntimeStatus, StartDeployment, Started, Tenant,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
@@ -207,20 +210,47 @@ impl AppDto {
     }
 
     /// The app `record`: its desired state from SQL, its live status from
-    /// `view` (none until the materializer wrote it).
+    /// `view` (none until the materializer wrote it), or for an app its
+    /// cluster's agent delivers, from the agent's last report (M1.9).
     #[must_use]
     pub fn of(project: &str, environment: &str, record: &AppRecord, view: Option<&AppView>) -> Self {
         let mut desired = App::new(&record.slug, desired_spec(record).unwrap_or_else(empty_spec));
         desired.metadata.namespace = Some(record.namespace.clone());
         let mut dto = Self::from_view(&AppView::from(&desired), project, environment);
         dto.image.clone_from(&record.image);
-        dto.url = view.and_then(|v| v.url.clone());
-        dto.ready = view.is_some_and(|v| v.ready) && !record.deleting;
-        dto.reason = view.and_then(|v| v.reason.clone());
-        dto.message = view.and_then(|v| v.message.clone());
+        if record.delivery == Delivery::Agent {
+            // No App object: the agent reports what it carried out.
+            let runtime = record.runtime.as_ref();
+            dto.url = runtime.and_then(|r| r.url.clone());
+            dto.ready = runtime.is_some_and(RuntimeStatus::ready) && !record.deleting;
+            dto.reason = runtime.and_then(runtime_reason);
+            dto.message = runtime.and_then(|r| r.message.clone());
+        } else {
+            dto.url = view.and_then(|v| v.url.clone());
+            dto.ready = view.is_some_and(|v| v.ready) && !record.deleting;
+            dto.reason = view.and_then(|v| v.reason.clone());
+            dto.message = view.and_then(|v| v.message.clone());
+        }
         dto.created_at = Some(request::timestamp(record.created_at));
         dto
     }
+}
+
+/// Why an agent-delivered app is where it is: the agent's reason, else the
+/// phase it reported while not ready.
+fn runtime_reason(runtime: &RuntimeStatus) -> Option<String> {
+    runtime.reason.clone().or_else(|| {
+        (!runtime.ready()).then(|| {
+            match runtime.phase.as_str() {
+                "accepted" => "Accepted",
+                "applying" => "Applying",
+                "failed" => "Failed",
+                "rejected" => "Rejected",
+                _ => "Unknown",
+            }
+            .to_owned()
+        })
+    })
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -472,12 +502,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn the_configuration_is_the_spec_without_its_image() {
-        let spec = sample_spec();
-        let config = config_of(&spec).expect("config");
-        assert!(config.get("source").is_none());
-        let record = AppRecord {
+    fn record() -> AppRecord {
+        AppRecord {
             target: TargetId::new(),
             application: ApplicationId::new(),
             slug: "web".into(),
@@ -489,9 +515,22 @@ mod tests {
             desired_generation: Generation(1),
             created_at: 0,
             config_revision: None,
-            config: Some(config),
+            config: Some(config_of(&sample_spec()).expect("config")),
             release: None,
             image: Some("nginx:1.27".into()),
+            delivery: Delivery::Controller,
+            runtime: None,
+        }
+    }
+
+    #[test]
+    fn the_configuration_is_the_spec_without_its_image() {
+        let spec = sample_spec();
+        let config = config_of(&spec).expect("config");
+        assert!(config.get("source").is_none());
+        let record = AppRecord {
+            config: Some(config),
+            ..record()
         };
         let back = desired_spec(&record).expect("spec");
         assert_eq!(spec_json(&back), spec_json(&spec), "the round trip is lossless");
@@ -499,5 +538,71 @@ mod tests {
         assert_eq!(dto.image.as_deref(), Some("nginx:1.27"));
         assert_eq!(dto.processes[0].port, Some(80));
         assert!(!dto.ready, "not materialized yet");
+    }
+
+    #[test]
+    fn an_agent_delivered_app_shows_its_agents_report() {
+        let runtime = RuntimeStatus {
+            generation: Generation(1),
+            phase: "applying".into(),
+            reason: None,
+            message: None,
+            observed_at: 0,
+            url: Some("https://shop.example.com".into()),
+        };
+        let applying = AppRecord {
+            delivery: Delivery::Agent,
+            runtime: Some(runtime.clone()),
+            ..record()
+        };
+        let dto = AppDto::of("shop", "prod", &applying, None);
+        assert_eq!(
+            (dto.ready, dto.reason.as_deref(), dto.url.as_deref()),
+            (false, Some("Applying"), Some("https://shop.example.com"))
+        );
+
+        let ready = AppRecord {
+            runtime: Some(RuntimeStatus {
+                phase: "ready".into(),
+                ..runtime.clone()
+            }),
+            ..applying.clone()
+        };
+        let dto = AppDto::of("shop", "prod", &ready, None);
+        assert_eq!((dto.ready, dto.reason), (true, None));
+        let deleting = AppRecord {
+            deleting: true,
+            ..ready
+        };
+        assert!(!AppDto::of("shop", "prod", &deleting, None).ready);
+
+        let failed = AppRecord {
+            runtime: Some(RuntimeStatus {
+                phase: "failed".into(),
+                reason: Some("ProgressDeadlineExceeded".into()),
+                message: Some("web-web did not roll out".into()),
+                ..runtime
+            }),
+            ..applying
+        };
+        let dto = AppDto::of("shop", "prod", &failed, None);
+        assert_eq!(
+            (dto.ready, dto.reason.as_deref(), dto.message.as_deref()),
+            (
+                false,
+                Some("ProgressDeadlineExceeded"),
+                Some("web-web did not roll out")
+            )
+        );
+        let unreported = AppRecord {
+            delivery: Delivery::Agent,
+            ..record()
+        };
+        let dto = AppDto::of("shop", "prod", &unreported, None);
+        assert_eq!(
+            (dto.ready, dto.url),
+            (false, None),
+            "the agent has not reported yet"
+        );
     }
 }

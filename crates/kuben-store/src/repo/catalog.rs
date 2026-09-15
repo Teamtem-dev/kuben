@@ -16,7 +16,7 @@ use kuben_core::{
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{Tenant, product::counter};
+use super::{Tenant, agents::Delivery, product::counter};
 use crate::StoreError;
 
 const ENVIRONMENTS: &str = "SELECT e.id, e.project_id, e.slug, e.name, \
@@ -32,7 +32,9 @@ const ENVIRONMENTS: &str = "SELECT e.id, e.project_id, e.slug, e.name, \
 const APPS: &str = "SELECT t.id AS target_id, a.id AS application_id, a.slug, a.name, pl.namespace, \
      t.legacy_uid, t.deleting, t.lifecycle_uid, t.desired_generation, t.created_at, \
      c.id AS config_revision_id, c.config::text AS config, r.id AS release_id, \
-     COALESCE(r.source ->> 'image', (r.source ->> 'image_repository') || '@' || (r.artifacts ->> 'web')) AS image \
+     COALESCE(r.source ->> 'image', (r.source ->> 'image_repository') || '@' || (r.artifacts ->> 'web')) AS image, \
+     t.delivery, o.generation AS observed_generation, o.phase AS observed_phase, o.reason AS observed_reason, \
+     o.message AS observed_message, o.observed_at, rp.host AS observed_host, rp.tls AS observed_tls \
      FROM application_targets t \
      JOIN applications a ON a.id = t.application_id AND a.org_id = t.org_id \
      JOIN environment_placements pl ON pl.id = t.placement_id AND pl.org_id = t.org_id \
@@ -41,6 +43,13 @@ const APPS: &str = "SELECT t.id AS target_id, a.id AS application_id, a.slug, a.
      LEFT JOIN LATERAL (SELECT rel.id, rel.source, rel.artifacts FROM deployment_runs d \
                         JOIN releases rel ON rel.id = d.release_id \
                         WHERE d.target_id = t.id ORDER BY d.generation DESC LIMIT 1) r ON TRUE \
+     LEFT JOIN runtime_observations o ON o.target_id = t.id AND o.org_id = t.org_id \
+     LEFT JOIN LATERAL (SELECT jsonb_path_query_first(p.resources, \
+                                 '$[*] ? (@.kind == \"HTTPRoute\").spec.hostnames[0]') #>> '{}' AS host, \
+                               p.capability_snapshot ->> 'clusterIssuer' IS NOT NULL AS tls \
+                        FROM deployment_runs d \
+                        JOIN render_plans p ON p.id = d.render_plan_id AND p.org_id = d.org_id \
+                        WHERE d.target_id = t.id AND d.generation = o.generation) rp ON TRUE \
      WHERE t.org_id = $1 AND pl.environment_id = $2 AND t.deleted_at IS NULL AND a.deleted_at IS NULL \
        AND ($3::text IS NULL OR a.slug = $3) \
      ORDER BY a.slug";
@@ -84,6 +93,35 @@ pub struct AppRecord {
     /// the digest was resolved from), else `repository@digest`.
     pub release: Option<ReleaseId>,
     pub image: Option<String>,
+    /// How the target's runs reach its cluster.
+    pub delivery: Delivery,
+    /// What the target's agent last reported, once it reported (M1.9).
+    pub runtime: Option<RuntimeStatus>,
+}
+
+/// An agent-delivered target as its agent last saw it in the cluster
+/// (ADR-027): the observation, and the public URL of the plan it observed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeStatus {
+    pub generation: Generation,
+    /// `accepted`, `applying`, `ready`, `failed`, `rejected` or `unknown`.
+    pub phase: String,
+    pub reason: Option<String>,
+    pub message: Option<String>,
+    /// Unix milliseconds.
+    pub observed_at: i64,
+    /// The first hostname of the observed plan's route, over https when the
+    /// plan's cluster issues certificates: what the App controller would
+    /// report for the same plan.
+    pub url: Option<String>,
+}
+
+impl RuntimeStatus {
+    /// The observed generation is rolled out and ready.
+    #[must_use]
+    pub fn ready(&self) -> bool {
+        self.phase == "ready"
+    }
 }
 
 /// One deployment run of an app, as its release history shows it.
@@ -134,6 +172,14 @@ struct AppRow {
     config: Option<String>,
     release_id: Option<Uuid>,
     image: Option<String>,
+    delivery: String,
+    observed_generation: Option<i64>,
+    observed_phase: Option<String>,
+    observed_reason: Option<String>,
+    observed_message: Option<String>,
+    observed_at: Option<i64>,
+    observed_host: Option<String>,
+    observed_tls: Option<bool>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -209,6 +255,26 @@ impl AppRow {
             config: json(self.config)?,
             release: self.release_id.map(ReleaseId::from_uuid),
             image: self.image,
+            delivery: Delivery::parse(&self.delivery)
+                .ok_or_else(|| sqlx::Error::Decode(format!("unknown delivery {:?}", self.delivery).into()))?,
+            runtime: match (self.observed_generation, self.observed_phase, self.observed_at) {
+                (Some(generation), Some(phase), Some(observed_at)) => Some(RuntimeStatus {
+                    generation: Generation(counter(generation)?),
+                    phase,
+                    reason: self.observed_reason,
+                    message: self.observed_message,
+                    observed_at,
+                    url: self.observed_host.map(|host| {
+                        let scheme = if self.observed_tls == Some(true) {
+                            "https"
+                        } else {
+                            "http"
+                        };
+                        format!("{scheme}://{host}")
+                    }),
+                }),
+                _ => None,
+            },
         })
     }
 }

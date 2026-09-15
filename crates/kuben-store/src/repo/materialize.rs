@@ -596,6 +596,87 @@ mod tests {
         assert_eq!(read(&store, f.org, OperationId::new()).await, None);
     }
 
+    async fn app_record(store: &Store, org: OrgId, environment: EnvironmentId) -> crate::repo::AppRecord {
+        let mut t = store.tenant(org).await.expect("tenant");
+        t.app(environment, "web").await.expect("read").expect("app")
+    }
+
+    #[tokio::test]
+    async fn an_agent_delivered_app_shows_what_its_agent_observed() {
+        let Some(store) = pg_store().await else {
+            skip("runtime status");
+            return;
+        };
+        let f = fixture(&store, "a").await;
+        let claim = deploy(&store, &f, 0).await;
+        let m = read(&store, f.org, claim.id).await.expect("run");
+        let before = app_record(&store, f.org, m.environment).await;
+        assert_eq!((before.delivery.as_str(), before.runtime), ("controller", None));
+
+        let caps = json!({ "sizes": [], "clusterIssuer": "letsencrypt" });
+        let resources = json!([
+            { "kind": "Deployment", "metadata": { "name": "web-web" } },
+            {
+                "kind": "HTTPRoute",
+                "metadata": { "name": "web" },
+                "spec": { "hostnames": ["shop.example.com", "web-production.apps.example.com"] }
+            }
+        ]);
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        t.freeze_run_plan(&claim, m.run, "kuben-renderer/1", &caps, &resources)
+            .await
+            .expect("freeze")
+            .expect("frozen");
+        // A target moves to its agent, never back (migration 0012).
+        sqlx::query("UPDATE application_targets SET delivery = 'agent' WHERE id = $1")
+            .bind(*f.target.as_uuid())
+            .execute(&mut *t.tx)
+            .await
+            .expect("to the agent");
+        assert!(
+            t.record_runtime_observation(m.cluster, f.target, 1, "applying", None, None)
+                .await
+                .expect("record")
+        );
+        t.commit().await.expect("commit");
+
+        let applying = app_record(&store, f.org, m.environment).await;
+        assert_eq!(applying.delivery.as_str(), "agent");
+        let runtime = applying.runtime.expect("observed");
+        assert_eq!(
+            (runtime.generation, runtime.phase.as_str(), runtime.ready()),
+            (Generation(1), "applying", false)
+        );
+        assert_eq!(
+            runtime.url.as_deref(),
+            Some("https://shop.example.com"),
+            "the first hostname of the observed plan's route"
+        );
+
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        assert!(
+            t.record_runtime_observation(
+                m.cluster,
+                f.target,
+                1,
+                "failed",
+                Some("ProgressDeadlineExceeded"),
+                Some("web-web did not roll out")
+            )
+            .await
+            .expect("record")
+        );
+        t.commit().await.expect("commit");
+        let failed = app_record(&store, f.org, m.environment)
+            .await
+            .runtime
+            .expect("observed");
+        assert_eq!(
+            (failed.phase.as_str(), failed.reason.as_deref()),
+            ("failed", Some("ProgressDeadlineExceeded"))
+        );
+    }
+
     #[tokio::test]
     async fn a_run_plan_is_frozen_once_under_the_fence() {
         let Some(store) = pg_store().await else {
