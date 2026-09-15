@@ -8,15 +8,19 @@ repository.workspace = true
 description = "Kuben cluster agent: AgentLink over outbound mTLS (ADR-027)"
 
 [dependencies]
+rand.workspace = true
+rcgen.workspace = true
 rustls.workspace = true
-tokio.workspace = true
-tokio-rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
 
 [dev-dependencies]
-rcgen.workspace = true
+x509-parser.workspace = true
 
 [lints]
 workspace = true

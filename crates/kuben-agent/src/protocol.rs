@@ -63,6 +63,19 @@ pub enum Message {
     Heartbeat {
         seq: u64,
     },
+    /// An anonymous agent asks for its identity: the bootstrap token, its
+    /// cluster and a CSR (PEM) signed by its device key.
+    Enroll {
+        token: Token,
+        cluster_id: String,
+        csr: String,
+    },
+    /// The hub's answer to [`Message::Enroll`]: the client certificate (PEM)
+    /// and when it expires (Unix seconds).
+    Enrolled {
+        certificate: String,
+        not_after: i64,
+    },
     HeartbeatAck {
         seq: u64,
     },
@@ -85,9 +98,24 @@ pub enum Refusal {
     Revoked,
     /// The message does not fit the protocol at this point.
     BadRequest,
+    /// The bootstrap token is unknown, expired, for another cluster or
+    /// redeemed by another device (one answer for all, to reveal nothing).
+    InvalidToken,
     /// A reason this build does not know.
     #[serde(other)]
     Other,
+}
+
+/// A bootstrap token on the wire: serialized as the plain string, never
+/// shown by `Debug`, so logging a message cannot leak it.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Token(pub String);
+
+impl std::fmt::Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Token(***)")
+    }
 }
 
 /// What both sides agreed on in the handshake.

@@ -7,7 +7,9 @@
 //!
 //! * [`protocol`]: the messages, their framing and the version and feature
 //!   negotiation of the handshake;
-//! * [`tls`]: the TLS configurations of both ends, with the pinned CA.
+//! * [`tls`]: the TLS configurations of both ends, with the pinned CA;
+//! * [`enroll`]: how an agent gets its identity with a bootstrap token.
 
+pub mod enroll;
 pub mod protocol;
 pub mod tls;
