@@ -109,6 +109,9 @@ pub enum RunReason {
     /// The same release and configuration with a new restart stamp: every
     /// pod is replaced (an app its cluster's agent delivers, M1.9).
     Restart,
+    /// The same release and configuration, now through the cluster's agent,
+    /// which adopts the workloads the App controller made (M1.9).
+    Handover,
 }
 
 impl RunReason {
@@ -119,6 +122,7 @@ impl RunReason {
             Self::Rollback => "rollback",
             Self::Promotion => "promotion",
             Self::Restart => "restart",
+            Self::Handover => "handover",
         }
     }
 }
@@ -353,7 +357,7 @@ impl Tenant {
         let mut state = row.state()?;
         let decided = match req.reason {
             RunReason::Rollback => state.rollback(req.lifecycle_uid, req.expected_generation),
-            RunReason::Deploy | RunReason::Promotion | RunReason::Restart => {
+            RunReason::Deploy | RunReason::Promotion | RunReason::Restart | RunReason::Handover => {
                 state.deploy_explicit(req.lifecycle_uid, req.expected_generation)
             }
         };

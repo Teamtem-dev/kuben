@@ -51,6 +51,12 @@ const TOUCH: &str = "UPDATE cluster_agents SET last_seen_at = kuben_now_ms() \
      WHERE cluster_id = $1 AND device_id = $2 AND revoked_at IS NULL";
 const TOKEN_ORG: &str = "SELECT org_id FROM agent_tokens WHERE cluster_id = $1 AND device_id = $2 LIMIT 1";
 const TARGET_DELIVERY: &str = "SELECT delivery FROM application_targets WHERE id = $1 AND org_id = $2";
+const HAND_OVER: &str = "UPDATE application_targets t SET delivery = 'agent' \
+     FROM environment_placements p \
+     WHERE t.id = $1 AND t.org_id = $2 AND t.delivery = 'controller' AND NOT t.deleting \
+       AND p.id = t.placement_id AND p.org_id = t.org_id \
+       AND EXISTS (SELECT 1 FROM cluster_agents a WHERE a.cluster_id = p.cluster_id AND a.org_id = p.org_id \
+                   AND a.revoked_at IS NULL AND a.features @> jsonb_build_array($3::text))";
 const RECORD_OBSERVATION: &str = "INSERT INTO runtime_observations \
      (target_id, org_id, project_id, generation, phase, reason, message, observed_at) \
      SELECT t.id, t.org_id, t.project_id, $3, $4, $5, $6, kuben_now_ms() \
@@ -295,6 +301,22 @@ impl Tenant {
             .bind(self.org.to_string())
             .fetch_optional(&mut *self.tx)
             .await?)
+    }
+
+    /// Hand `target` over from the App controller to its cluster's agent: its
+    /// runs go through the agent from now on, never back (migration 0012).
+    /// Only a live target the App controller delivers, and only when its
+    /// cluster has a linked, unrevoked agent that carries applications; false
+    /// otherwise.
+    pub async fn hand_over_to_agent(&mut self, target: TargetId) -> Result<bool, StoreError> {
+        let rows = sqlx::query(HAND_OVER)
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .bind(RUNTIME_FEATURE)
+            .execute(&mut *self.tx)
+            .await?
+            .rows_affected();
+        Ok(rows == 1)
     }
 
     /// Revoke the agent of `cluster`: it may no longer link or renew until
@@ -641,6 +663,59 @@ mod tests {
             delivery(&store, org, revoked).await,
             Delivery::Controller,
             "a revoked agent"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_target_is_handed_over_only_to_a_linked_agent_that_carries_applications() {
+        let Some(store) = pg_store().await else {
+            skip("handover");
+            return;
+        };
+        let (org, cluster) = cluster(&store, "a").await;
+        let (project, placement) = placement_on(&store, org, cluster).await;
+        let web = target(&store, org, project, placement, "web").await;
+        let hand_over = |target: TargetId| {
+            let store = store.clone();
+            async move {
+                let mut t = store.tenant(org).await.expect("tenant");
+                let moved = t.hand_over_to_agent(target).await.expect("hand over");
+                t.commit().await.expect("commit");
+                moved
+            }
+        };
+        assert!(!hand_over(web).await, "no agent");
+        store
+            .record_agent_certificate(org, cluster, "sha256:device-a", 1)
+            .await
+            .expect("certificate");
+        assert!(
+            store
+                .record_agent_link(cluster, "sha256:device-a", 1, &[], "1.1.2")
+                .await
+                .expect("link")
+        );
+        assert!(!hand_over(web).await, "an agent without the runtime feature");
+        assert!(
+            store
+                .record_agent_link(
+                    cluster,
+                    "sha256:device-a",
+                    1,
+                    &[RUNTIME_FEATURE.to_owned()],
+                    "1.1.2"
+                )
+                .await
+                .expect("link")
+        );
+        assert!(hand_over(web).await);
+        assert_eq!(delivery(&store, org, web).await, Delivery::Agent);
+        assert!(!hand_over(web).await, "handed over once");
+        let (other, _) = self::cluster(&store, "b").await;
+        let mut t = store.tenant(other).await.expect("tenant");
+        assert!(
+            !t.hand_over_to_agent(web).await.expect("hand over"),
+            "another organization's target"
         );
     }
 
