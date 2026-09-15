@@ -132,6 +132,10 @@ pub struct RunRecord {
     /// `deploy`, `rollback` or `promotion`.
     pub reason: String,
     pub phase: RunPhase,
+    /// How the run ended, written once: `succeeded`, `failed` or
+    /// `cancelled`; `None` while it runs, or when a newer run superseded it
+    /// first. A run superseded after it failed keeps `failed`.
+    pub outcome: Option<String>,
     pub requested_by: String,
     pub created_at: i64,
     pub release: ReleaseId,
@@ -188,6 +192,7 @@ struct RunRow {
     generation: i64,
     reason: String,
     phase: String,
+    outcome: Option<String>,
     requested_by: String,
     created_at: i64,
     release_id: Uuid,
@@ -195,7 +200,7 @@ struct RunRow {
     image: Option<String>,
 }
 
-const RUNS: &str = "SELECT d.id, d.generation, d.reason, d.phase, d.requested_by, d.created_at, \
+const RUNS: &str = "SELECT d.id, d.generation, d.reason, d.phase, d.outcome, d.requested_by, d.created_at, \
      d.release_id, d.config_revision_id, \
      COALESCE(rel.source ->> 'image', (rel.source ->> 'image_repository') || '@' || (rel.artifacts ->> 'web')) AS image \
      FROM deployment_runs d JOIN releases rel ON rel.id = d.release_id AND rel.org_id = d.org_id \
@@ -287,6 +292,7 @@ impl RunRow {
             phase: RunPhase::parse(&self.phase)
                 .ok_or_else(|| sqlx::Error::Decode(format!("unknown run phase {:?}", self.phase).into()))?,
             reason: self.reason,
+            outcome: self.outcome,
             requested_by: self.requested_by,
             created_at: self.created_at,
             release: ReleaseId::from_uuid(self.release_id),

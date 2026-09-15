@@ -366,8 +366,9 @@ async fn the_tenant_context_never_outlives_its_transaction_on_a_shared_pool() {
 
 /// Criterion "rollback policy" (I08, I11): a rollback and a promotion reuse
 /// existing releases (no build, no new release), a rollback pins the target,
-/// and a failed deploy stays failed after the rollback that recovered from
-/// it succeeds.
+/// and a failed deploy keeps its failure as its outcome after the rollback
+/// that recovered from it succeeds: the rollback takes the failed run's
+/// rights (it is superseded and can no longer recover), never its outcome.
 #[tokio::test]
 async fn rollback_and_promotion_reuse_releases_and_a_failed_run_stays_failed() {
     let Some(store) = pg_store().await else {
@@ -402,16 +403,16 @@ async fn rollback_and_promotion_reuse_releases_and_a_failed_run_stays_failed() {
     let runs = t.runs(s.targets[PROD], 10).await.expect("runs");
     let history: Vec<_> = runs
         .iter()
-        .map(|r| (r.generation.0, r.reason.as_str(), r.phase))
+        .map(|r| (r.generation.0, r.reason.as_str(), r.phase, r.outcome.as_deref()))
         .collect();
     assert_eq!(
         history,
         [
-            (3, "rollback", RunPhase::Succeeded),
-            (2, "deploy", RunPhase::Failed),
-            (1, "deploy", RunPhase::Succeeded),
+            (3, "rollback", RunPhase::Succeeded, Some("succeeded")),
+            (2, "deploy", RunPhase::Superseded, Some("failed")),
+            (1, "deploy", RunPhase::Succeeded, Some("succeeded")),
         ],
-        "the failed deploy stays failed after the rollback succeeded"
+        "the rollback took the failed deploy's rights, never its failure"
     );
     assert_eq!(
         runs[0].release, s.releases[0],

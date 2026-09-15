@@ -81,7 +81,8 @@ const LOCK_RUN_UNDER_FENCE: &str = "SELECT r.phase FROM deployment_runs r \
      JOIN operations o ON o.id = r.operation_id \
      WHERE r.id = $1 AND o.id = $2 AND o.fence = $3 AND NOT o.done \
      FOR UPDATE OF r";
-const SET_RUN_PHASE: &str = "UPDATE deployment_runs SET phase = $2, updated_at = $3 WHERE id = $1";
+const SET_RUN_PHASE: &str = "UPDATE deployment_runs SET phase = $2, updated_at = $3, \
+     outcome = COALESCE(outcome, $4), recovery_outcome = COALESCE(recovery_outcome, $5) WHERE id = $1";
 
 /// Input for [`Tenant::create_release`]: portable and immutable (I03).
 #[derive(Clone, Debug)]
@@ -626,14 +627,32 @@ impl Store {
             Ok(next) => next,
             Err(illegal) => return Ok(Advance::Illegal(illegal)),
         };
+        // Written once, apart from the phase: a failed deploy that a newer
+        // run supersedes (it can no longer recover) stays a failed deploy.
+        let (outcome, recovery_outcome) = outcomes(next);
         sqlx::query(SET_RUN_PHASE)
             .bind(*run.as_uuid())
             .bind(next.as_str())
             .bind(now_ms())
+            .bind(outcome)
+            .bind(recovery_outcome)
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
         Ok(Advance::Moved(next))
+    }
+}
+
+/// What reaching `phase` records as the run's outcome and recovery outcome
+/// (migration 0006 keeps both apart from the phase; each is written once).
+const fn outcomes(phase: RunPhase) -> (Option<&'static str>, Option<&'static str>) {
+    match phase {
+        RunPhase::Succeeded => (Some("succeeded"), None),
+        RunPhase::Failed => (Some("failed"), None),
+        RunPhase::Cancelled => (Some("cancelled"), None),
+        RunPhase::Recovered => (None, Some("recovered")),
+        RunPhase::RecoveryFailed => (None, Some("recoveryFailed")),
+        _ => (None, None),
     }
 }
 

@@ -219,6 +219,7 @@ mod tests {
     #[test]
     fn reasons_follow_the_runs() {
         let run = |generation: u64, reason: &str, release: ReleaseId| RunRecord {
+            outcome: None,
             run: DeploymentRunId::new(),
             generation: Generation(generation),
             reason: reason.into(),
