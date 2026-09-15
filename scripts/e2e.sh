@@ -18,7 +18,8 @@
 # login throttling; deploys by digest through `…/deployments` (idempotent
 # replay, a stale expected generation refused, rollback) and a direct App
 # edit replaced as drift (ADR-032); a cluster agent enrolled with a bootstrap
-# token carries a new app out through AgentLink (ADR-027, M1.9), reports its
+# token takes an existing app over from the App controller and carries a new
+# app out through AgentLink (ADR-027, M1.9), reports its
 # status and restarts it through a run; then deletes
 # and garbage collection.
 set -euo pipefail
@@ -353,6 +354,18 @@ cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
   --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
 agent_pid=$!
 eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+# An app the App controller delivers moves to the agent on request: its App
+# object goes, and the agent adopts the same workloads (no new Deployment).
+web_uid=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.uid}')
+expect 202 POST "$APP/web/handover"
+eventually 180 "web runtime ready" kubectl -n "$NS" wait --for=condition=Ready applicationruntime/web --timeout=5s
+eventually 60 "web App object gone" bash -c "! kubectl -n $NS get app web"
+[[ $(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.uid}') == "$web_uid" ]] ||
+  fail "web-web was made again instead of adopted"
+owner=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.ownerReferences[*].kind}')
+[[ $owner == ApplicationRuntime ]] || fail "web-web is owned by '$owner' after the handover"
+expect 409 POST "$APP/web/handover"
+eventually 60 "web ready via API after the handover" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.ready'"
 expect 201 POST "$APP" "{\"name\":\"edge\",\"image\":\"${IMAGE}\",\"port\":8080}"
 eventually 180 "edge runtime ready" kubectl -n "$NS" wait --for=condition=Ready applicationruntime/edge --timeout=5s
 kubectl -n "$NS" get app edge >/dev/null 2>&1 && fail "an agent-delivered app has no App object"
