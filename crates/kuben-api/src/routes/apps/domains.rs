@@ -16,6 +16,7 @@ use kuben_platform::controller::{KUBEN_CONFIG_NAME, Platform, resources};
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use super::desired_spec;
 use crate::{authz::Authz, error::ApiResult, routes::scope, state::ApiState};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -131,15 +132,19 @@ pub async fn domains(
     authz: Authz,
     Path((project, environment, app)): Path<(String, String, String)>,
 ) -> ApiResult<Json<Vec<DomainCheck>>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppRead, &a.chain())?;
     let client = scope::cluster(&state)?;
     let platform = platform(&client).await;
     let expected = gateway_addresses(&client, &platform).await;
+    let environment = a.env.resource_name();
+    let domains: Vec<String> = desired_spec(&a.app)
+        .map(|spec| spec.domains.into_iter().map(|d| d.host).collect())
+        .unwrap_or_default();
     let hosts = resources::hostnames_for(
-        &a.view.name,
-        a.view.environment.as_deref(),
-        a.view.domains.iter().map(String::as_str),
+        a.slug(),
+        Some(environment.as_str()),
+        domains.iter().map(String::as_str),
         &platform,
     );
     let checks = hosts.iter().map(|host| {

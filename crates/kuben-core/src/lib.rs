@@ -2,6 +2,7 @@
 //! crate builds on. This crate deliberately performs **no IO** so it stays
 //! cheap to compile and easy to test.
 
+pub mod artifact;
 pub mod authz;
 pub mod config;
 pub mod error;

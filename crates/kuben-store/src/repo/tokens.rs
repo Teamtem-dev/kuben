@@ -8,10 +8,7 @@ use kuben_core::{
     time::now_ms,
 };
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 /// Input for a new token.
 #[derive(Debug)]
@@ -79,20 +76,18 @@ impl Store {
     pub async fn create_token(&self, t: NewToken) -> Result<ApiToken, StoreError> {
         let created_at = now_ms();
         let scopes = serde_json::to_string(&t.scope).map_err(|e| sqlx::Error::Encode(e.into()))?;
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_TOKEN)
-                .bind(t.id.to_string())
-                .bind(t.org_id.to_string())
-                .bind(t.owner.to_string())
-                .bind(&t.name)
-                .bind(&t.prefix)
-                .bind(&t.secret_hash)
-                .bind(&scopes)
-                .bind(t.expires_at)
-                .bind(created_at)
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_TOKEN)
+            .bind(t.id.to_string())
+            .bind(t.org_id.to_string())
+            .bind(t.owner.to_string())
+            .bind(&t.name)
+            .bind(&t.prefix)
+            .bind(&t.secret_hash)
+            .bind(&scopes)
+            .bind(t.expires_at)
+            .bind(created_at)
+            .execute(self.pool())
+            .await?;
         Ok(ApiToken {
             id: t.id,
             org_id: t.org_id,
@@ -109,53 +104,51 @@ impl Store {
     }
 
     pub async fn find_token(&self, id: TokenId) -> Result<Option<ApiToken>, StoreError> {
-        let row: Option<TokenRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_TOKEN)
+        let row: Option<TokenRow> = sqlx::query_as(SELECT_TOKEN)
             .bind(id.to_string())
-            .fetch_optional(pool)
-            .await?);
+            .fetch_optional(self.pool())
+            .await?;
         row.map(ApiToken::try_from).transpose()
     }
 
     pub async fn list_tokens(&self, owner: UserId) -> Result<Vec<ApiToken>, StoreError> {
-        let rows: Vec<TokenRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_TOKENS_OF_OWNER)
+        let rows: Vec<TokenRow> = sqlx::query_as(SELECT_TOKENS_OF_OWNER)
             .bind(owner.to_string())
-            .fetch_all(pool)
-            .await?);
+            .fetch_all(self.pool())
+            .await?;
         rows.into_iter().map(ApiToken::try_from).collect()
     }
 
     /// Revoke one of `owner`'s tokens. `false` when there was nothing to revoke.
     pub async fn revoke_token(&self, id: TokenId, owner: UserId) -> Result<bool, StoreError> {
-        let n = with_writer!(self, |pool| sqlx::query(REVOKE_TOKEN)
+        let n = sqlx::query(REVOKE_TOKEN)
             .bind(id.to_string())
             .bind(owner.to_string())
             .bind(now_ms())
-            .execute(pool)
+            .execute(self.pool())
             .await?
-            .rows_affected());
+            .rows_affected();
         Ok(n > 0)
     }
 
     /// Revoke every token a user owns in an org (used when a member is removed).
     pub async fn revoke_user_tokens(&self, org: OrgId, user: UserId) -> Result<u64, StoreError> {
-        let n = with_writer!(self, |pool| sqlx::query(REVOKE_USER_TOKENS)
+        let n = sqlx::query(REVOKE_USER_TOKENS)
             .bind(org.to_string())
             .bind(user.to_string())
             .bind(now_ms())
-            .execute(pool)
+            .execute(self.pool())
             .await?
-            .rows_affected());
+            .rows_affected();
         Ok(n)
     }
 
     pub async fn touch_token(&self, id: TokenId) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(TOUCH_TOKEN)
-                .bind(id.to_string())
-                .bind(now_ms())
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(TOUCH_TOKEN)
+            .bind(id.to_string())
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 }

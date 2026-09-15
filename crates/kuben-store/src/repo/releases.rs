@@ -3,10 +3,7 @@
 
 use kuben_core::{ids::OrgId, model::AppRelease, time::now_ms};
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 /// Input for a release record. `spec` is the App spec, which only ever holds
 /// Secret references, never values.
@@ -74,11 +71,11 @@ impl Store {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            let (max,): (i64,) = with_writer!(self, |pool| sqlx::query_as(NEXT_REVISION)
+            let (max,): (i64,) = sqlx::query_as(NEXT_REVISION)
                 .bind(&r.namespace)
                 .bind(&r.app)
-                .fetch_one(pool)
-                .await?);
+                .fetch_one(self.pool())
+                .await?;
             let release = AppRelease {
                 id: uuid::Uuid::now_v7().to_string(),
                 revision: max + 1,
@@ -91,7 +88,7 @@ impl Store {
                 note: r.note.clone(),
                 created_at: now_ms(),
             };
-            let inserted = with_writer!(self, |pool| sqlx::query(INSERT_RELEASE)
+            let inserted = sqlx::query(INSERT_RELEASE)
                 .bind(&release.id)
                 .bind(r.org_id.map(|o| o.to_string()))
                 .bind(&release.namespace)
@@ -103,9 +100,9 @@ impl Store {
                 .bind(&release.actor_id)
                 .bind(&release.note)
                 .bind(release.created_at)
-                .execute(pool)
+                .execute(self.pool())
                 .await
-                .map(|_| ()));
+                .map(|_| ());
             match inserted {
                 Ok(()) => return Ok(release),
                 Err(sqlx::Error::Database(e)) if e.is_unique_violation() && attempt < MAX_ATTEMPTS => {}
@@ -121,12 +118,12 @@ impl Store {
         app: &str,
         limit: i64,
     ) -> Result<Vec<AppRelease>, StoreError> {
-        let rows: Vec<ReleaseRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_RELEASES)
+        let rows: Vec<ReleaseRow> = sqlx::query_as(SELECT_RELEASES)
             .bind(namespace)
             .bind(app)
             .bind(limit)
-            .fetch_all(pool)
-            .await?);
+            .fetch_all(self.pool())
+            .await?;
         rows.into_iter().map(AppRelease::try_from).collect()
     }
 
@@ -136,12 +133,12 @@ impl Store {
         app: &str,
         revision: i64,
     ) -> Result<Option<AppRelease>, StoreError> {
-        let row: Option<ReleaseRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_RELEASE)
+        let row: Option<ReleaseRow> = sqlx::query_as(SELECT_RELEASE)
             .bind(namespace)
             .bind(app)
             .bind(revision)
-            .fetch_optional(pool)
-            .await?);
+            .fetch_optional(self.pool())
+            .await?;
         row.map(AppRelease::try_from).transpose()
     }
 }

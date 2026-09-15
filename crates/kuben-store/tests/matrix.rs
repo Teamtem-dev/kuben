@@ -1,13 +1,13 @@
-//! Repository tests that run against SQLite (always) and Postgres (when
-//! `KUBEN_TEST_PG_URL` is set, e.g. in CI).
+//! Repository tests against PostgreSQL, in a schema of their own on
+//! `KUBEN_TEST_PG_URL` (set in CI); without it they skip (ADR-025).
 
-use kuben_core::{config::DatabaseCfg, ids::TokenId, model::TokenScope, perm::Role, time::now_ms};
+use kuben_core::{ids::TokenId, model::TokenScope, perm::Role, time::now_ms};
 use kuben_store::{
     Store,
     repo::{NewAudit, NewRelease, NewSession, NewToken},
 };
 
-#[allow(clippy::too_many_lines)] // one pass over every repository, run against both backends
+#[allow(clippy::too_many_lines)] // one pass over every repository
 async fn roundtrip(store: Store) {
     // orgs + users + bindings
     let org = store.create_org("acme", "ACME Inc").await.expect("create org");
@@ -247,105 +247,15 @@ async fn roundtrip(store: Store) {
     assert!(store.throttle_window("bucket-a").await.expect("q").is_none());
 
     store.ping().await.expect("ping");
-    store.checkpoint_and_close().await.expect("close");
-}
-
-#[tokio::test]
-async fn sqlite_memory_roundtrip() {
-    let store = Store::memory().await.expect("connect");
-    assert_eq!(store.backend(), "sqlite");
-    roundtrip(store).await;
-}
-
-#[tokio::test]
-async fn sqlite_file_roundtrip_uses_separate_reader_pool() {
-    let dir = std::env::temp_dir().join(format!("kuben-store-{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).expect("tmp dir");
-    let url = format!("sqlite://{}", dir.join("kuben.db").display());
-    let store = Store::connect(&DatabaseCfg {
-        url,
-        max_connections: 2,
-    })
-    .await
-    .expect("connect");
-    roundtrip(store).await;
-    std::fs::remove_dir_all(&dir).ok();
+    store.close().await.expect("close");
 }
 
 #[tokio::test]
 async fn postgres_roundtrip() {
-    let Ok(url) = std::env::var("KUBEN_TEST_PG_URL") else {
-        eprintln!("KUBEN_TEST_PG_URL not set; skipping postgres matrix test");
+    let Some(store) = kuben_store::testing::pg_store().await else {
+        kuben_store::testing::skip("postgres_roundtrip");
         return;
     };
-    let store = Store::connect(&DatabaseCfg {
-        url,
-        max_connections: 4,
-    })
-    .await
-    .expect("connect");
     assert_eq!(store.backend(), "postgres");
     roundtrip(store).await;
-}
-
-/// Both backends ship the same migration files, declaring the same tables
-/// and columns. New migrations are picked up from the directories.
-#[test]
-fn schema_parity_between_sqlite_and_postgres() {
-    fn columns(sql: &str) -> Vec<(String, Vec<String>)> {
-        let mut out = Vec::new();
-        let mut current: Option<(String, Vec<String>)> = None;
-        for line in sql.lines() {
-            let l = line.trim();
-            if let Some(rest) = l.strip_prefix("CREATE TABLE ") {
-                let name = rest
-                    .trim_end_matches(" (")
-                    .trim_end_matches('(')
-                    .trim()
-                    .to_string();
-                current = Some((name, Vec::new()));
-            } else if l == ");" {
-                if let Some(t) = current.take() {
-                    out.push(t);
-                }
-            } else if let Some((_, cols)) = current.as_mut() {
-                let first = l.split_whitespace().next().unwrap_or_default();
-                if !first.is_empty() && !matches!(first, "PRIMARY" | "UNIQUE" | "--") {
-                    cols.push(first.to_string());
-                }
-            }
-        }
-        out
-    }
-    fn migrations(backend: &str) -> (Vec<String>, String) {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("migrations")
-            .join(backend);
-        let mut files: Vec<_> = std::fs::read_dir(&dir)
-            .expect("migrations dir")
-            .map(|e| e.expect("entry").path())
-            .collect();
-        files.sort();
-        let names = files
-            .iter()
-            .map(|p| p.file_name().expect("name").to_string_lossy().into_owned())
-            .collect();
-        let sql = files
-            .iter()
-            .map(|p| std::fs::read_to_string(p).expect("read migration"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        (names, sql)
-    }
-    let (sqlite_files, sqlite) = migrations("sqlite");
-    let (postgres_files, postgres) = migrations("postgres");
-    assert_eq!(
-        sqlite_files, postgres_files,
-        "every migration needs a twin for the other backend"
-    );
-    assert_eq!(
-        columns(&sqlite),
-        columns(&postgres),
-        "sqlite and postgres schemas diverged"
-    );
 }

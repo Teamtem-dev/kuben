@@ -31,6 +31,11 @@ futures.workspace = true
 async-stream.workspace = true
 http.workspace = true
 bytes.workspace = true
+http-body-util.workspace = true
+hyper-util.workspace = true
+hyper-rustls.workspace = true
+rustls.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 utoipa.workspace = true
@@ -55,7 +60,7 @@ rust-embed = { workspace = true, optional = true }
 mime_guess = { workspace = true, optional = true }
 
 [dev-dependencies]
-http-body-util.workspace = true
+kuben-store = { workspace = true, features = ["testing"] }
 tower = { workspace = true, features = ["util"] }
 
 [lints]

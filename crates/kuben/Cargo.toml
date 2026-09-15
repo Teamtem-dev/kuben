@@ -45,5 +45,8 @@ rand.workspace = true
 base64.workspace = true
 axum.workspace = true
 
+[dev-dependencies]
+kuben-store = { workspace = true, features = ["testing"] }
+
 [lints]
 workspace = true

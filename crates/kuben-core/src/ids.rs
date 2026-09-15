@@ -1,5 +1,5 @@
 //! Strongly typed identifiers. All IDs are UUIDv7 (time-ordered) so they
-//! index well in both SQLite and Postgres.
+//! index well in PostgreSQL B-trees.
 
 use std::{fmt, str::FromStr};
 
@@ -89,6 +89,38 @@ id_type!(
 id_type!(
     /// One build attempt; an infrastructure retry is a new attempt.
     BuildAttemptId
+);
+id_type!(
+    /// A project: owns applications and environments.
+    ProjectId
+);
+id_type!(
+    /// A logical environment such as staging or production (ADR-026).
+    EnvironmentId
+);
+id_type!(
+    /// A Kubernetes cluster registered with Kuben.
+    ClusterId
+);
+id_type!(
+    /// An environment's binding to one cluster and namespace (ADR-026).
+    PlacementId
+);
+id_type!(
+    /// An application definition in a project.
+    ApplicationId
+);
+id_type!(
+    /// A durable operation: one accepted request and its execution (plan §9.2).
+    OperationId
+);
+id_type!(
+    /// One immutable configuration revision of a target (ADR-026).
+    ConfigRevisionId
+);
+id_type!(
+    /// A frozen, content-addressed render plan (ADR-026, I22).
+    RenderPlanId
 );
 
 #[cfg(test)]

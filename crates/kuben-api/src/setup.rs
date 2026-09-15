@@ -203,7 +203,7 @@ mod tests {
 
     fn cfg_in(dir: &std::path::Path, bind: &str) -> Config {
         let mut cfg = Config::default();
-        cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
+        cfg.server.state_dir = Some(dir.display().to_string());
         cfg.server.bind = bind.into();
         cfg
     }

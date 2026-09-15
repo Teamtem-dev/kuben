@@ -35,6 +35,9 @@ impl From<Error> for ApiError {
 
 impl From<kuben_store::StoreError> for ApiError {
     fn from(e: kuben_store::StoreError) -> Self {
+        if e.is_unique_violation() {
+            return Self(Error::Conflict("it already exists".into()));
+        }
         Self(Error::Internal(e.to_string()))
     }
 }

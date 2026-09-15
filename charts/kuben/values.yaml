@@ -5,9 +5,10 @@ image:
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
-# SQLite supports exactly one replica. With PostgreSQL (`database.url`) every
-# replica serves the API, only the holder of the `kuben-controller` Lease runs
-# the controllers, and upgrades roll without downtime.
+# Every replica serves the API; only the holder of the `kuben-controller`
+# Lease runs the controllers, and upgrades roll without downtime. More than one
+# replica wants an external PostgreSQL (`database`): the chart's own is a
+# single instance.
 replicaCount: 1
 
 admin:
@@ -16,18 +17,39 @@ admin:
   # first start and stored in the Secret `kuben-initial-admin` (never logged).
   existingSecret: ""
 
+# Kuben keeps its data in PostgreSQL (ADR-025).
 database:
-  # Empty: SQLite on the persistent volume (`sqlite:///data/kuben.db`).
+  # An external PostgreSQL, e.g. postgres://kuben:…@db.example.com/kuben.
+  # Both empty: the chart's own PostgreSQL (`postgresql` below).
   url: ""
-  # Secret with a `url` key (PostgreSQL credentials); wins over `url`.
+  # Secret with a `url` key (the credentials stay in the Secret); wins over `url`.
   existingSecret: ""
 
-# Volume for the SQLite database (not created with PostgreSQL).
-persistence:
-  enabled: true
-  size: 1Gi
-  storageClass: ""
-  accessModes: [ReadWriteOnce]
+# The chart's own PostgreSQL, used when `database` is empty: one instance on a
+# volume, no replication, for a single server or a pilot. Kuben connects as
+# the ordinary role `kuben` (row-level security applies). `helm uninstall`
+# keeps its volume and its password Secret.
+postgresql:
+  image:
+    repository: docker.io/library/postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+# A 1.x install kept its data in SQLite on the volume `<fullname>-data`, which
+# this chart does not read (the importer moves the data). An upgrade over such
+# a volume stops, so that a fresh, empty database is never taken for lost
+# data; set this to start with the new database anyway (the volume stays).
+legacy:
+  sqliteVolumeAcknowledged: false
 
 # Public URL of the UI, e.g. https://kuben.example.com
 publicUrl: ""

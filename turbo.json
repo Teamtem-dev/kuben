@@ -129,23 +129,56 @@
       ]
     },
     "kuben-store#test:postgres": {
-      "description": "Store tests and the M0 operation-store spike against PostgreSQL (set KUBEN_TEST_PG_URL=postgres://...).",
+      "description": "Every test that needs PostgreSQL: store, API, platform and binary (set KUBEN_TEST_PG_URL=postgres://...). ADR-025.",
       "command": [
         "cargo",
         "nextest",
         "run",
-        "--package=kuben-store",
         "--locked",
-        "--test",
-        "matrix",
-        "--test",
-        "ops_store_pg"
+        "--package=kuben-store",
+        "--package=kuben-api",
+        "--package=kuben-platform",
+        "--package=kuben"
       ],
       "cache": false
     },
     "kuben-platform#test:cluster": {
-      "description": "M0 spike: two writers against the current kube context (set KUBEN_E2E_CLUSTER=1).",
-      "command": ["cargo", "test", "--package=kuben-platform", "--locked", "--test", "two_writer_cas"],
+      "description": "Tests against the current kube context: the M0 two-writer spike, the materializer (which also needs KUBEN_TEST_PG_URL) and the execution CRDs' CEL rules. The tests are #[ignore]d elsewhere; --nocapture keeps the SSA answer in the log.",
+      "command": [
+        "cargo",
+        "test",
+        "--package=kuben-platform",
+        "--locked",
+        "--test",
+        "two_writer_cas",
+        "--test",
+        "materializer",
+        "--test",
+        "execution_crds",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "cache": false
+    },
+    "kuben-agent#test:cluster": {
+      "description": "The agent's executor against the current kube context: envelopes written, applied, pruned and refused. The tests are #[ignore]d elsewhere.",
+      "command": [
+        "cargo",
+        "test",
+        "--package=kuben-agent",
+        "--locked",
+        "--test",
+        "runtime",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "cache": false
+    },
+    "kuben-api#test:network": {
+      "description": "Image tags resolved against real registries (Docker Hub, GHCR). The tests are #[ignore]d elsewhere; they need the network.",
+      "command": ["cargo", "test", "--package=kuben-api", "--locked", "--test", "oci", "--", "--ignored"],
       "cache": false
     },
     "kuben-api#gen": {

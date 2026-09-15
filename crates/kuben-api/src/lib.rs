@@ -10,6 +10,7 @@ pub mod auth;
 pub mod authz;
 pub mod error;
 pub mod host;
+pub mod oci;
 pub mod openapi;
 pub mod routes;
 pub mod setup;

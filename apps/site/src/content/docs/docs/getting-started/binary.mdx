@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside, Steps } from '@astrojs/starlight/components'
 
-Kuben is a single binary. On a Linux server it runs as a service and manages a cluster through a kubeconfig, k3s on the same machine by default, and keeps its own data in SQLite. It is the quickest way to run Kuben on one server.
+Kuben is a single binary. On a Linux server it runs as a service and manages a cluster through a kubeconfig, k3s on the same machine by default, and keeps its own data in PostgreSQL on the same server. It is the quickest way to run Kuben on one server.
 
 <Aside type="tip">
 For production inside a cluster you already have, prefer the [Helm install](/docs/operations/production-install/): it runs Kuben with probes, RBAC, a persistent volume and the security context described in the security model.
@@ -33,6 +33,7 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ✔ Installed kuben v1.1.1 (x86_64-unknown-linux-musl) to /usr/local/bin/kuben. sha256 3f9e…
 ✔ Preflight checks. Ubuntu 24.04.4 LTS, x86_64, 4 GB RAM
 ✔ Creating the kuben system user. kuben (uid 998)
+✔ PostgreSQL. PostgreSQL 16.9 (Ubuntu 16.9-0ubuntu0.24.04.1), role and database kuben
 ❯ curl -sfL https://get.k3s.io | sh -
 ✔ Installing k3s. v1.36.4+k3s1 · 38s
 ✔ Waiting for the cluster. 1 node, Kubernetes v1.36.4+k3s1 · 6s
@@ -74,7 +75,7 @@ Until the console has an `https://` address the session cookie is not `Secure` (
 - **Checksum first.** The archive's SHA-256 is compared with the release's `checksums.txt` *before* anything is extracted or installed.
 - **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
 - **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
-- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, `get.k3s.io`.
+- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, `get.k3s.io` and the distribution's package mirrors when PostgreSQL is missing.
 - **Tested after every release, and every day.** CI runs exactly this command on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
 
 Other options, as flags or environment variables:
@@ -98,11 +99,12 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 |---|---|
 | `/usr/local/bin/kuben` | the binary |
 | `/etc/kuben/config.toml` | port, public URL, database, kubeconfig; every `kuben` command reads it, so `kuben status`, `kuben reset-admin` or `kuben backup` work on the same installation |
-| `/var/lib/kuben/` | the SQLite database, the kubeconfig copy (readable by `kuben` only) and, until the admin exists, `setup-token` |
+| PostgreSQL | installed from the distribution's packages (apt, dnf, zypper) when it was missing, with the role and database `kuben`. Kuben connects over the Unix socket with peer authentication, so there is no password: the config has `url = "postgres:///kuben?host=/run/postgresql&user=kuben"`. A config that already names another PostgreSQL is kept as is |
+| `/var/lib/kuben/` | the kubeconfig copy (readable by `kuben` only) and, until the admin exists, `setup-token`. The data is in PostgreSQL, not here |
 | `kuben.service` | runs `kuben serve` as the system user `kuben`, restarts on failure, starts after k3s |
 | k3s | when there was no cluster: `/etc/rancher/k3s/k3s.yaml`, `k3s.service`, and a marker so `kuben uninstall --purge` removes it again |
 
-Useful commands: `systemctl status kuben`, `journalctl -u kuben -f`, `sudo -u kuben kuben doctor`.
+Useful commands: `systemctl status kuben`, `journalctl -u kuben -f`, `sudo -u kuben kuben doctor`. Run `doctor` as the service user, as here, so peer authentication lets it into the database.
 
 ## Run it by hand
 
@@ -118,25 +120,28 @@ Without root or systemd, or to keep things manual, the binary runs anywhere with
    export KUBECONFIG=~/.kube/config
    ```
 
-2. Check the prerequisites. `doctor` checks the database, the cluster connection, Gateway API, cert-manager and metrics-server, and tells you what is optional.
+2. Give Kuben a PostgreSQL. There is no default database: without `KUBEN_DATABASE__URL` (a `postgres://` or `postgresql://` URL) the server stops. For a first look, run one in a container:
+
+   ```bash
+   docker run -d --name kuben-postgres -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine
+   export KUBEN_DATABASE__URL=postgres://postgres:kuben@localhost:5432/postgres
+   ```
+
+   This connects as the superuser `postgres`, which bypasses row-level security, so `doctor` warns about the `database role`. For real use, connect as an ordinary role that owns its database.
+
+3. Check the prerequisites. `doctor` checks the database, the cluster connection, Gateway API, cert-manager and metrics-server, and tells you what is optional.
 
    ```bash
    kuben doctor
    ```
 
-   The `database` line shows where the data lives. Without `KUBEN_DATABASE__URL` it is `~/.local/state/kuben/kuben.db`, or the state directory under systemd's `StateDirectory=`. A server that already has `/data`, the container volume and the location before 1.0.3, keeps using `/data/kuben.db`. To choose yourself:
-
-   ```bash
-   export KUBEN_DATABASE__URL=sqlite:///srv/kuben/kuben.db
-   ```
-
-3. Start Kuben. The first start prints the setup link in this terminal:
+4. Start Kuben. The first start prints the setup link in this terminal:
 
    ```bash
    kuben serve
    ```
 
-4. Open the link, create the admin account, and you are in. The console listens on `0.0.0.0:8080` here; `KUBEN_SERVER__BIND` changes that.
+5. Open the link, create the admin account, and you are in. The console listens on `0.0.0.0:8080` here; `KUBEN_SERVER__BIND` changes that.
 
 </Steps>
 

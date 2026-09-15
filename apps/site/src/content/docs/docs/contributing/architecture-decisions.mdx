@@ -14,7 +14,7 @@ Code comments cite decisions as `ADR-NNN`. New decisions get their own file unde
 | 003 | Two Tokio runtimes as a bulkhead, a supervisor, `panic = "unwind"` | superseded by 013 (supervisor and unwind kept) | `kuben_platform::supervise` |
 | 004 | Projections (small read models) instead of raw reflectors | decided | `kuben_platform::projection` |
 | 005 | Opaque cookie sessions and opaque API tokens; no JWT in the browser | decided | `kuben_api::auth` |
-| 006 | sqlx with two backends (SQLite, PostgreSQL) and a test matrix | decided | `kuben-store`, `tests/matrix.rs` |
+| 006 | sqlx with two backends (SQLite, PostgreSQL) and a test matrix | superseded by 025 (PostgreSQL only) | — |
 | 007 | OpenAPI-first: the TypeScript client is generated, CI fails on drift | decided | `kuben_api::openapi`, `packages/api-client` |
 | 008 | Gateway API as the networking layer | decided | `controller::gateway` |
 | 009 | BuildKit + Railpack/CNB, deploy by digest, immutable releases | superseded by 016 | — |

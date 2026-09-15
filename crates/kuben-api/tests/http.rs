@@ -1,7 +1,9 @@
-//! End-to-end HTTP tests against an in-memory store, seeded projections and
-//! no cluster (writes that need Kubernetes must fail cleanly with 503).
+//! End-to-end HTTP tests against PostgreSQL (the SQL model of ADR-032): apps
+//! seeded in SQL, live status seeded in the projections, fixed image digests
+//! instead of a registry, and no cluster (what acts on Kubernetes directly
+//! must fail cleanly with 503).
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     Router,
@@ -9,13 +11,16 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use kuben_api::{ApiState, auth::CLIENT_HEADER};
-use kuben_core::{config::Config, ids::OrgId, perm::Role, traits::StaticPolicy};
+use kuben_api::{ApiState, auth::CLIENT_HEADER, oci::FixedImages};
+use kuben_core::{config::Config, ids::OrgId, ops::Generation, perm::Role, traits::StaticPolicy};
 use kuben_platform::{
     health::Health,
     projection::{AppView, EnvironmentView, PodPhase, PodView, ProcessView, ProjectView, Projections},
 };
-use kuben_store::{Store, repo::NewRelease};
+use kuben_store::{
+    Store,
+    repo::{EnvironmentKind, NewAudit, PortableRelease, RunReason, StartDeployment},
+};
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -26,15 +31,20 @@ struct TestApp {
     store: Store,
 }
 
-async fn setup() -> TestApp {
+/// The test app on a fresh PostgreSQL schema, or `None` (the test skips)
+/// when `KUBEN_TEST_PG_URL` is not set.
+async fn setup() -> Option<TestApp> {
     setup_with(|_| {}).await
 }
 
-async fn setup_with(tweak: impl FnOnce(&mut Config)) -> TestApp {
+async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     let mut cfg = Config::default();
     cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     tweak(&mut cfg);
-    let store = Store::memory().await.expect("store");
+    let Some(store) = kuben_store::testing::pg_store().await else {
+        kuben_store::testing::skip("http");
+        return None;
+    };
     let hasher = kuben_api::auth::password::Hasher::insecure_for_tests();
     let org = store.create_org("acme", "ACME").await.expect("org");
     let alice = store
@@ -72,16 +82,111 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> TestApp {
         projections.clone(),
         health,
         Arc::new(StaticPolicy),
-    );
-    TestApp {
+    )
+    .with_images(images());
+    Some(TestApp {
         router: kuben_api::router(state),
         projections,
         org: org.id,
         store,
-    }
+    })
 }
 
-fn seed(app: &TestApp) {
+/// The digests `nginx:1.27` and `nginx:1.26` resolve to: no registry here.
+const NGINX_127: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+const NGINX_126: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
+fn images() -> Arc<FixedImages> {
+    Arc::new(FixedImages(BTreeMap::from([
+        ("nginx:1.27".to_owned(), NGINX_127.parse().expect("digest")),
+        ("nginx:1.26".to_owned(), NGINX_126.parse().expect("digest")),
+    ])))
+}
+
+/// Project `shop`, production environment `prod` and app `api` (`nginx:1.27`
+/// on `api.example.com`, deployed once) in SQL; a project of another
+/// organization; and the live status of shop's resources in the projections.
+async fn seed(app: &TestApp) {
+    seed_sql(app).await;
+    seed_projections(app);
+}
+
+async fn seed_sql(app: &TestApp) {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t.create_project("shop", "Shop").await.expect("project");
+    let env = t
+        .create_environment_typed(project, "prod", "prod", EnvironmentKind::Production, None)
+        .await
+        .expect("environment");
+    let cluster = t.ensure_cluster("primary").await.expect("cluster");
+    let placement = t
+        .create_placement(project, env, cluster, "kb-shop-prod")
+        .await
+        .expect("placement");
+    let application = t
+        .create_application(project, "api", "api")
+        .await
+        .expect("application");
+    let target = t
+        .create_target(project, application, placement)
+        .await
+        .expect("target");
+    let config = json!({
+        "runtime": { "processes": { "web": { "port": 80 } } },
+        "domains": [{ "host": "api.example.com", "tls": "auto" }],
+    });
+    let (config_revision, _) = t
+        .create_config_revision(project, target, &config, "user:seed")
+        .await
+        .expect("revision")
+        .expect("target");
+    let release = PortableRelease {
+        application,
+        artifacts: BTreeMap::from([("web".to_owned(), NGINX_127.parse().expect("digest"))]),
+        process_contract: json!({}),
+        portable_config: json!({}),
+        renderer_schema: 1,
+        source: Some(json!({ "image_repository": "docker.io/library/nginx", "image": "nginx:1.27" })),
+        created_by: "user:seed".into(),
+    };
+    let (release, _) = t.create_release(project, &release).await.expect("release");
+    let lifecycle_uid = t
+        .target_state(target)
+        .await
+        .expect("read")
+        .expect("target")
+        .lifecycle_uid;
+    let deploy = StartDeployment {
+        project,
+        target,
+        release,
+        config_revision,
+        render_plan: None,
+        expected_generation: Generation(0),
+        lifecycle_uid,
+        reason: RunReason::Deploy,
+        requested_by: "user:seed".into(),
+        input_hash: b"seed".to_vec(),
+    };
+    let audit = NewAudit {
+        actor_kind: "user".into(),
+        action: "seed".into(),
+        outcome: "accepted".into(),
+        ..NewAudit::default()
+    };
+    t.start_deployment(&deploy, audit, None).await.expect("deploy");
+    t.commit().await.expect("commit");
+
+    let other = app.store.create_org("other", "Other").await.expect("org").id;
+    let mut t = app.store.tenant(other).await.expect("tenant");
+    t.create_project("secret-project", "Other tenant")
+        .await
+        .expect("project");
+    t.commit().await.expect("commit");
+}
+
+/// The live status of shop's resources, as the informers would report it.
+fn seed_projections(app: &TestApp) {
     let org = Some(app.org.to_string());
     app.projections.upsert_project(ProjectView {
         name: "shop".into(),
@@ -209,7 +314,7 @@ async fn login(app: &Router, email: &str) -> String {
 
 #[tokio::test]
 async fn health_endpoints() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let resp = app
         .router
         .clone()
@@ -227,7 +332,7 @@ async fn health_endpoints() {
 
 #[tokio::test]
 async fn unknown_api_route_is_json_404_not_spa() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let resp = app
         .router
         .oneshot(Request::get("/api/v1/nope").body(Body::empty()).expect("req"))
@@ -239,7 +344,7 @@ async fn unknown_api_route_is_json_404_not_spa() {
 
 #[tokio::test]
 async fn me_requires_auth() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let (status, problem) = send(
         &app.router,
         Request::get("/api/v1/me").body(Body::empty()).expect("req"),
@@ -251,7 +356,7 @@ async fn me_requires_auth() {
 
 #[tokio::test]
 async fn login_without_csrf_header_is_forbidden() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let req = Request::post("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(
@@ -264,7 +369,7 @@ async fn login_without_csrf_header_is_forbidden() {
 
 #[tokio::test]
 async fn session_lifecycle() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let req = Request::post("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .header(CLIENT_HEADER, "test")
@@ -301,7 +406,7 @@ async fn session_lifecycle() {
 
 #[tokio::test]
 async fn wrong_password_is_unauthorized() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let req = Request::post("/api/v1/auth/login")
         .header(header::CONTENT_TYPE, "application/json")
         .header(CLIENT_HEADER, "test")
@@ -313,8 +418,8 @@ async fn wrong_password_is_unauthorized() {
 
 #[tokio::test]
 async fn projects_are_tenant_scoped() {
-    let app = setup().await;
-    seed(&app);
+    let Some(app) = setup().await else { return };
+    seed(&app).await;
     let cookie = login(&app.router, "alice@example.com").await;
 
     let (status, list) = send(&app.router, get("/api/v1/projects", &cookie)).await;
@@ -339,7 +444,7 @@ async fn projects_are_tenant_scoped() {
         "404, not 403: existence must not leak"
     );
 
-    // No cluster: validation runs first, then a clean 503.
+    // SQL holds projects: creating one needs no cluster.
     let (status, _) = send(
         &app.router,
         post(
@@ -359,7 +464,7 @@ async fn projects_are_tenant_scoped() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::CREATED);
 
     // A project with environments cannot be deleted.
     let req = Request::delete("/api/v1/projects/shop")
@@ -375,9 +480,9 @@ async fn projects_are_tenant_scoped() {
 }
 
 #[tokio::test]
-async fn environments_and_apps_read_from_projections() {
-    let app = setup().await;
-    seed(&app);
+async fn environments_and_apps_read_from_sql() {
+    let Some(app) = setup().await else { return };
+    seed(&app).await;
     let cookie = login(&app.router, "alice@example.com").await;
 
     let (status, envs) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
@@ -418,7 +523,8 @@ async fn environments_and_apps_read_from_projections() {
     .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 
-    // Invalid input is rejected before touching the cluster.
+    // Invalid input is rejected; a tag is resolved to a digest, and SQL needs
+    // no cluster.
     let bad = r#"{"name":"web","image":"nginx latest"}"#;
     let (status, _) = send(
         &app.router,
@@ -427,12 +533,35 @@ async fn environments_and_apps_read_from_projections() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     let good = r#"{"name":"web","image":"nginx:1.27","port":80}"#;
-    let (status, _) = send(
+    let (status, created) = send(
         &app.router,
         post("/api/v1/projects/shop/environments/prod/apps", &cookie, good),
     )
     .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["image"], "nginx:1.27");
+    assert!(
+        !created["ready"].as_bool().expect("ready"),
+        "not materialized yet"
+    );
+    let clash = r#"{"name":"www","image":"nginx:1.27","port":80,"domains":["api.example.com"]}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, clash),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "a domain another app uses");
+    let unknown = r#"{"name":"cache","image":"redis:7"}"#;
+    let (status, _) = send(
+        &app.router,
+        post("/api/v1/projects/shop/environments/prod/apps", &cookie, unknown),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "a tag its registry does not know"
+    );
     let (status, _) = send(
         &app.router,
         post(
@@ -442,13 +571,22 @@ async fn environments_and_apps_read_from_projections() {
         ),
     )
     .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, envs) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
+    let staging = envs
+        .as_array()
+        .expect("environments")
+        .iter()
+        .find(|e| e["name"] == "staging")
+        .expect("staging");
+    assert_eq!(staging["namespace"], "kb-shop-staging");
+    assert_eq!(staging["phase"], "Pending", "its namespace follows");
 }
 
 #[tokio::test]
 async fn viewers_can_read_but_not_write() {
-    let app = setup().await;
-    seed(&app);
+    let Some(app) = setup().await else { return };
+    seed(&app).await;
     let cookie = login(&app.router, "bob@example.com").await;
 
     let (status, _) = send(&app.router, get("/api/v1/projects/shop/environments", &cookie)).await;
@@ -483,7 +621,7 @@ async fn viewers_can_read_but_not_write() {
 
 #[tokio::test]
 async fn openapi_docs_are_served() {
-    let app = setup().await;
+    let Some(app) = setup().await else { return };
     let resp = app
         .router
         .oneshot(Request::get("/api/docs").body(Body::empty()).expect("req"))
@@ -590,11 +728,14 @@ async fn try_login(app: &Router, password: &str, forwarded_for: &str) -> (Status
 
 #[tokio::test]
 async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
-    let t = setup_with(|c| {
+    let Some(t) = setup_with(|c| {
         c.security.login_max_failures = 3;
         c.security.trust_forwarded_for = true;
     })
-    .await;
+    .await
+    else {
+        return;
+    };
     for _ in 0..3 {
         assert_eq!(
             try_login(&t.router, "wrong", "6.6.6.6, 10.0.0.1").await.0,
@@ -619,8 +760,8 @@ async fn scenario1_login_is_throttled_per_client_and_ignores_forged_hops() {
 
 #[tokio::test]
 async fn scenario2_every_mutation_is_audited_without_handler_code() {
-    let t = setup().await;
-    seed(&t);
+    let Some(t) = setup().await else { return };
+    seed(&t).await;
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
     let body = json!({ "name": "blog", "display_name": "Blog" });
@@ -630,8 +771,8 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
     );
     assert_eq!(
         status_of(&t.router, "POST", "/api/v1/projects", &alice, Some(body)).await,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "no cluster in tests"
+        StatusCode::CREATED,
+        "SQL holds projects"
     );
 
     let (status, _, page) = call(
@@ -656,7 +797,8 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
         .collect();
     for expected in [
         ("createProject", "denied"),
-        ("createProject", "error"),
+        ("createProject", "success"),
+        ("project.apply", "accepted"),
         ("login", "success"),
     ] {
         assert!(
@@ -679,8 +821,8 @@ async fn scenario2_every_mutation_is_audited_without_handler_code() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one end-to-end story per scenario
 async fn scenario3_api_tokens_are_capped_scoped_and_revocable() {
-    let t = setup().await;
-    seed(&t);
+    let Some(t) = setup().await else { return };
+    seed(&t).await;
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (status, _, created) = call(
         &t.router,
@@ -830,8 +972,8 @@ async fn change_password(app: &Router, cookie: &str, current: &str, new: &str) -
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one end-to-end story per scenario
 async fn scenario4_team_members_follow_the_role_rules() {
-    let t = setup().await;
-    seed(&t);
+    let Some(t) = setup().await else { return };
+    seed(&t).await;
     let (_, alice, me) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let alice_id = me["id"].as_str().expect("id").to_owned();
 
@@ -978,50 +1120,55 @@ async fn scenario4_team_members_follow_the_role_rules() {
     );
 }
 
-#[tokio::test]
-async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
-    let t = setup().await;
-    seed(&t);
-    for image in ["nginx:1.26", "nginx:1.27"] {
-        t.store
-            .record_release(NewRelease {
-                org_id: Some(t.org),
-                namespace: "kb-shop-prod".into(),
-                app: "api".into(),
-                image: Some(image.into()),
-                spec: json!({
-                    "source": { "image": image },
-                    "runtime": { "processes": { "web": { "port": 80 } } }
-                }),
-                reason: "deploy".into(),
-                actor_id: None,
-                note: None,
-            })
-            .await
-            .expect("release");
-    }
-    let base = "/api/v1/projects/shop/environments/prod/apps/api";
-    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
-    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+async fn releases(router: &Router, cookie: &str, base: &str) -> (StatusCode, serde_json::Value) {
     let (status, _, list) = call(
-        &t.router,
+        router,
         "GET",
         &format!("{base}/releases"),
-        Auth::Cookie(&bob),
+        Auth::Cookie(cookie),
         None,
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
-    let revisions: Vec<i64> = list
-        .as_array()
+    (status, list)
+}
+
+fn revisions(list: &serde_json::Value) -> Vec<i64> {
+    list.as_array()
         .expect("releases")
         .iter()
         .filter_map(|r| r["revision"].as_i64())
-        .collect();
-    assert_eq!(revisions, vec![2, 1]);
+        .collect()
+}
+
+#[tokio::test]
+async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
+    let Some(t) = setup().await else { return };
+    seed(&t).await;
+    let base = "/api/v1/projects/shop/environments/prod/apps/api";
+    let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
+    let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
+    assert_eq!(
+        status_of(
+            &t.router,
+            "PATCH",
+            base,
+            &alice,
+            Some(json!({ "image": "nginx:1.26" }))
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    let (status, list) = releases(&t.router, &bob, base).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revisions(&list), vec![2, 1]);
     assert_eq!(list[0]["current"], true);
-    assert_eq!(list[0]["image"], "nginx:1.27");
+    assert_eq!(list[0]["image"], "nginx:1.26");
+    assert_eq!(
+        (list[0]["reason"].as_str(), list[1]["reason"].as_str()),
+        (Some("deploy"), Some("create"))
+    );
 
     let rollback = format!("{base}/rollback");
     let to = |revision: i64| Some(json!({ "revision": revision }));
@@ -1035,15 +1182,19 @@ async fn scenario5_releases_are_newest_first_and_rollback_is_authorized() {
     );
     assert_eq!(
         status_of(&t.router, "POST", &rollback, &alice, to(1)).await,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "no cluster in tests"
+        StatusCode::OK,
+        "a rollback is a new run: SQL needs no cluster"
     );
+    let (_, list) = releases(&t.router, &alice, base).await;
+    assert_eq!(revisions(&list), vec![3, 2, 1]);
+    assert_eq!(list[0]["reason"], "rollback");
+    assert_eq!(list[0]["image"], "nginx:1.27");
 }
 
 #[tokio::test]
 async fn scenario8_template_catalogue() {
-    let t = setup().await;
-    seed(&t);
+    let Some(t) = setup().await else { return };
+    seed(&t).await;
     let (_, alice, _) = sign_in(&t.router, "alice@example.com", "hunter22").await;
     let (_, bob, _) = sign_in(&t.router, "bob@example.com", "hunter22").await;
     let (status, _, list) = call(
@@ -1087,22 +1238,27 @@ async fn scenario8_template_catalogue() {
 
 /// An empty store, as on a fresh install; `bind` decides whether the setup
 /// token is required, `dir` is where the token file goes.
-async fn empty_app(bind: &str, dir: &std::path::Path) -> Router {
+async fn empty_app(bind: &str, dir: &std::path::Path) -> Option<Router> {
     let mut cfg = Config::default();
     cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     cfg.server.bind = bind.into();
-    cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
-    let store = Store::memory().await.expect("store");
+    // Where the setup-token file goes; the store is the isolated PostgreSQL
+    // schema below.
+    cfg.server.state_dir = Some(dir.display().to_string());
+    let Some(store) = kuben_store::testing::pg_store().await else {
+        kuben_store::testing::skip("setup");
+        return None;
+    };
     let health = Health::new();
     health.set_ready(true);
-    kuben_api::router(ApiState::new(
+    Some(kuben_api::router(ApiState::new(
         cfg,
         store,
         None,
         Arc::new(Projections::new()),
         health,
         Arc::new(StaticPolicy),
-    ))
+    )))
 }
 
 fn scratch_dir(name: &str) -> std::path::PathBuf {
@@ -1120,7 +1276,9 @@ async fn setup_creates_the_admin_and_signs_in() {
         return; // the Secret flow applies inside a pod
     }
     let dir = scratch_dir("setup");
-    let app = empty_app("127.0.0.1:3000", &dir).await;
+    let Some(app) = empty_app("127.0.0.1:3000", &dir).await else {
+        return;
+    };
 
     let (status, body) = send(&app, get("/api/v1/setup", "")).await;
     assert_eq!(status, StatusCode::OK);
@@ -1156,7 +1314,9 @@ async fn setup_on_a_public_address_needs_the_installer_token() {
         return;
     }
     let dir = scratch_dir("token");
-    let app = empty_app("0.0.0.0:3000", &dir).await;
+    let Some(app) = empty_app("0.0.0.0:3000", &dir).await else {
+        return;
+    };
     let (_, body) = send(&app, get("/api/v1/setup", "")).await;
     assert_eq!(body, json!({"needed": true, "token_required": true}));
 
@@ -1167,7 +1327,7 @@ async fn setup_on_a_public_address_needs_the_installer_token() {
     assert_eq!(status, StatusCode::FORBIDDEN, "wrong token");
 
     let mut cfg = Config::default();
-    cfg.database.url = format!("sqlite://{}", dir.join("kuben.db").display());
+    cfg.server.state_dir = Some(dir.display().to_string());
     let token = kuben_api::setup::issue_token(&cfg).expect("token");
     let right = SETUP_BODY.replace('}', &format!(r#","token":"{token}"}}"#));
     let (status, _) = send(&app, post("/api/v1/setup", "", &right)).await;
@@ -1185,7 +1345,9 @@ async fn setup_rejects_weak_input() {
         return;
     }
     let dir = scratch_dir("validate");
-    let app = empty_app("127.0.0.1:3000", &dir).await;
+    let Some(app) = empty_app("127.0.0.1:3000", &dir).await else {
+        return;
+    };
     for (body, what) in [
         (
             r#"{"org_name":"ACME","email":"nope","password":"a-long-first-password"}"#,
@@ -1206,4 +1368,159 @@ async fn setup_rejects_weak_input() {
     let (_, body) = send(&app, get("/api/v1/setup", "")).await;
     assert_eq!(body["needed"], true, "nothing was created");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// ---- deployments on the SQL model (ADR-032) ----
+
+const DIGEST: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const DEPLOYMENTS: &str = "/api/v1/projects/shop/environments/prod/apps/api/deployments";
+
+/// Project `shop`, environment `prod` and app `api`, in SQL only: the
+/// app's target.
+async fn sql_app(app: &TestApp) -> kuben_core::ids::TargetId {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t.create_project("shop", "Shop").await.expect("project");
+    let env = t
+        .create_environment(project, "prod", "Production", true)
+        .await
+        .expect("environment");
+    let cluster = t.create_cluster("primary").await.expect("cluster");
+    let placement = t
+        .create_placement(project, env, cluster, "kb-shop-prod")
+        .await
+        .expect("placement");
+    let application = t
+        .create_application(project, "api", "API")
+        .await
+        .expect("application");
+    let target = t
+        .create_target(project, application, placement)
+        .await
+        .expect("target");
+    t.commit().await.expect("commit");
+    target
+}
+
+fn deploy(cookie: &str, expected: u64, key: Option<&str>) -> Request<Body> {
+    let body = json!({
+        "image": format!("ghcr.io/acme/api@{DIGEST}"),
+        "config": { "runtime": { "processes": { "web": { "port": 8080 } } } },
+        "expected_generation": expected,
+    });
+    let mut req = Request::post(DEPLOYMENTS)
+        .header(header::COOKIE, cookie)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(CLIENT_HEADER, "test");
+    if let Some(key) = key {
+        req = req.header("idempotency-key", key);
+    }
+    req.body(Body::from(body.to_string())).expect("request")
+}
+
+#[tokio::test]
+async fn a_deployment_is_accepted_once_and_can_be_polled() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let cookie = login(&app.router, "alice@example.com").await;
+
+    let resp = app
+        .router
+        .clone()
+        .oneshot(deploy(&cookie, 0, Some("deploy-1")))
+        .await
+        .expect("response");
+    assert_eq!(resp.status(), StatusCode::ACCEPTED);
+    let location = resp.headers()[header::LOCATION]
+        .to_str()
+        .expect("location")
+        .to_owned();
+    let bytes = resp.into_body().collect().await.expect("body").to_bytes();
+    let first: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(first["generation"], 1);
+    assert_eq!(first["phase"], "planned");
+    assert!(location.ends_with(first["run"].as_str().expect("run")));
+
+    let (status, polled) = send(&app.router, get(&location, &cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(polled["run"], first["run"]);
+
+    let (status, replay) = send(&app.router, deploy(&cookie, 0, Some("deploy-1"))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{replay}");
+    assert_eq!(replay["run"], first["run"], "same key and request: the first run");
+
+    let (status, _) = send(&app.router, deploy(&cookie, 1, Some("deploy-1"))).await;
+    assert_eq!(status, StatusCode::CONFLICT, "the same key for another request");
+
+    let (status, problem) = send(&app.router, deploy(&cookie, 0, None)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "a stale generation: {problem}");
+
+    let (status, second) = send(&app.router, deploy(&cookie, 1, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{second}");
+    assert_eq!(second["generation"], 2);
+    let (_, first_now) = send(&app.router, get(&location, &cookie)).await;
+    assert_eq!(first_now["phase"], "superseded", "the newer run owns the app");
+}
+
+/// A deployment whose answer was lost (plan §18.1 crash/ACK replay, I17):
+/// the retry with the same key gets the run the first request made, and
+/// only one run exists.
+#[tokio::test]
+async fn a_lost_answer_is_given_again_without_a_second_run() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let cookie = login(&app.router, "alice@example.com").await;
+
+    // The request is accepted, but its answer never reaches the client.
+    let lost = app
+        .router
+        .clone()
+        .oneshot(deploy(&cookie, 0, Some("lost-1")))
+        .await
+        .expect("response");
+    assert_eq!(lost.status(), StatusCode::ACCEPTED);
+    drop(lost);
+
+    let (status, retry) = send(&app.router, deploy(&cookie, 0, Some("lost-1"))).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{retry}");
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let runs = t.runs(target, 10).await.expect("runs");
+    assert_eq!(runs.len(), 1, "one intent, one run: {runs:?}");
+    assert_eq!(retry["run"], runs[0].run.to_string(), "the first request's run");
+    assert_eq!(retry["generation"], 1);
+}
+
+#[tokio::test]
+async fn deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+
+    let (status, _) = send(&app.router, deploy(&bob, 0, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a viewer cannot deploy");
+
+    let by_tag =
+        json!({ "image": "ghcr.io/acme/api:1.2", "config": {}, "expected_generation": 0 }).to_string();
+    let (status, _) = send(&app.router, post(DEPLOYMENTS, &alice, &by_tag)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "a tag is not a digest");
+
+    let (status, _) = send(
+        &app.router,
+        post(
+            "/api/v1/projects/shop/environments/prod/apps/nope/deployments",
+            &alice,
+            &by_tag,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let no_config =
+        json!({ "image": format!("ghcr.io/acme/api@{DIGEST}"), "expected_generation": 0 }).to_string();
+    let (status, _) = send(&app.router, post(DEPLOYMENTS, &alice, &no_config)).await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the first deploy brings its configuration"
+    );
 }

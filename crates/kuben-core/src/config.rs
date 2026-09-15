@@ -35,6 +35,7 @@ pub struct Config {
     pub security: SecurityCfg,
     pub telemetry: TelemetryCfg,
     pub bootstrap: BootstrapCfg,
+    pub agent: AgentCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,13 +50,17 @@ pub struct ServerCfg {
     pub request_timeout_secs: u64,
     /// Maximum request body, bytes.
     pub max_body_bytes: usize,
+    /// Directory for files that belong to this installation: the setup token
+    /// and a generated initial admin password. Default: see
+    /// [`Config::state_dir`].
+    pub state_dir: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DatabaseCfg {
-    /// `sqlite://<path>` or `postgres://user:pass@host/db`; defaults to
-    /// [`default_sqlite_url`].
+    /// `postgres://user:pass@host/db`. Required, with no default: Kuben keeps
+    /// its data in PostgreSQL (ADR-025).
     pub url: String,
     pub max_connections: u32,
 }
@@ -161,7 +166,7 @@ pub struct BootstrapCfg {
     /// Initial admin password. If unset, a random one is generated: in a pod
     /// it is stored in the `kuben-initial-admin` Secret; elsewhere it is
     /// printed once to the terminal or, without one, written to an
-    /// owner-only file next to the database. It is never logged.
+    /// owner-only file in [`Config::state_dir`]. It is never logged.
     pub admin_password: Option<String>,
 }
 
@@ -175,6 +180,7 @@ impl Default for ServerCfg {
             roles: vec![Role::All],
             request_timeout_secs: 30,
             max_body_bytes: 1 << 20,
+            state_dir: None,
         }
     }
 }
@@ -182,40 +188,15 @@ impl Default for ServerCfg {
 impl Default for DatabaseCfg {
     fn default() -> Self {
         Self {
-            url: default_sqlite_url(),
+            url: String::new(),
             max_connections: 4,
         }
     }
 }
 
-impl DatabaseCfg {
-    /// The database file, when the URL names an on-disk SQLite database.
-    #[must_use]
-    pub fn sqlite_file(&self) -> Option<PathBuf> {
-        let rest = self.url.strip_prefix("sqlite:")?;
-        let rest = rest.strip_prefix("//").unwrap_or(rest);
-        let path = rest.split('?').next().unwrap_or_default();
-        (!path.is_empty() && !path.contains(":memory:")).then(|| PathBuf::from(path))
-    }
-}
-
 /// The volume of the container image and the Helm chart, and where binaries
-/// before 1.0.3 kept their database.
+/// before 1.0.3 kept their data.
 const LEGACY_DATA_DIR: &str = "/data";
-
-/// SQLite URL used when `database.url` is not configured.
-///
-/// An existing `/data` wins: it is the container volume (the image and the
-/// chart also set the URL explicitly) and where earlier binaries kept their
-/// data, so upgrading never starts over with an empty database. On a fresh
-/// server the database goes to systemd's `StateDirectory=`, else to the
-/// user's state directory (`~/.local/state/kuben`), so `kuben doctor` and
-/// `kuben serve` work without root.
-#[must_use]
-pub fn default_sqlite_url() -> String {
-    let dir = default_data_dir(Path::new(LEGACY_DATA_DIR).is_dir(), |key| std::env::var_os(key));
-    format!("sqlite://{}", dir.join("kuben.db").display())
-}
 
 fn default_data_dir(legacy_exists: bool, env: impl Fn(&str) -> Option<OsString>) -> PathBuf {
     if legacy_exists {
@@ -294,6 +275,31 @@ impl Default for BootstrapCfg {
             org_name: "Default".into(),
             admin_email: "admin@kuben.local".into(),
             admin_password: None,
+        }
+    }
+}
+
+/// AgentLink, the hub's endpoint for cluster agents (ADR-027).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentCfg {
+    /// Where the hub listens for agents (`host:port`); unset, it does not.
+    pub bind: Option<String>,
+    /// The name the hub's certificate carries; agents check it.
+    pub hub_name: String,
+    /// Lifetime of the client certificates the hub issues, hours.
+    pub certificate_hours: u64,
+    /// How often agents send a heartbeat, seconds.
+    pub heartbeat_secs: u64,
+}
+
+impl Default for AgentCfg {
+    fn default() -> Self {
+        Self {
+            bind: None,
+            hub_name: "hub.kuben.internal".into(),
+            certificate_hours: 24,
+            heartbeat_secs: 10,
         }
     }
 }
@@ -397,20 +403,18 @@ impl Config {
             .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback())
     }
 
-    /// Where files that belong to this installation go: next to the SQLite
-    /// database, else systemd's `StateDirectory=`, else the working directory.
+    /// Where files that belong to this installation go (the setup token, a
+    /// generated initial admin password): `server.state_dir` when set. Else an
+    /// existing `/data` (the container volume, and where binaries before 1.0.3
+    /// kept their data), systemd's `StateDirectory=`, the user's state
+    /// directory (`~/.local/state/kuben`), or the working directory, so
+    /// `kuben serve` and `kuben setup-token` work without root.
     #[must_use]
     pub fn state_dir(&self) -> PathBuf {
-        self.database
-            .sqlite_file()
-            .and_then(|db| db.parent().map(Path::to_path_buf))
-            .filter(|dir| !dir.as_os_str().is_empty())
-            .or_else(|| {
-                std::env::var_os("STATE_DIRECTORY")
-                    .and_then(|dirs| dirs.to_string_lossy().split(':').next().map(PathBuf::from))
-                    .filter(|dir| !dir.as_os_str().is_empty())
-            })
-            .unwrap_or_else(|| PathBuf::from("."))
+        match self.server.state_dir.as_deref().filter(|dir| !dir.is_empty()) {
+            Some(dir) => PathBuf::from(dir),
+            None => default_data_dir(Path::new(LEGACY_DATA_DIR).is_dir(), |key| std::env::var_os(key)),
+        }
     }
 }
 
@@ -425,7 +429,11 @@ mod tests {
         assert!(cfg.has_role(Role::Api));
         assert!(cfg.has_role(Role::Controller));
         assert_eq!(cfg.security.cookie_secure, CookieSecure::AUTO);
-        assert!(cfg.database.url.starts_with("sqlite://"));
+        assert!(
+            cfg.database.url.is_empty(),
+            "PostgreSQL has no default URL (ADR-025)"
+        );
+        assert!(cfg.agent.bind.is_none(), "AgentLink is off unless configured");
     }
 
     fn env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
@@ -437,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn database_default_keeps_an_existing_data_volume() {
+    fn state_dir_keeps_an_existing_data_volume() {
         let dir = default_data_dir(
             true,
             env(&[("STATE_DIRECTORY", "/var/lib/kuben"), ("HOME", "/home/u")]),
@@ -446,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn database_default_needs_no_root_on_a_fresh_server() {
+    fn state_dir_needs_no_root_on_a_fresh_server() {
         let systemd = env(&[
             ("STATE_DIRECTORY", "/var/lib/kuben:/var/lib/other"),
             ("HOME", "/root"),
@@ -460,27 +468,6 @@ mod tests {
             PathBuf::from("/home/u/.local/state/kuben")
         );
         assert_eq!(default_data_dir(false, env(&[])), PathBuf::from("."));
-    }
-
-    #[test]
-    fn sqlite_file_of_database_urls() {
-        let file = |url: &str| {
-            DatabaseCfg {
-                url: url.into(),
-                max_connections: 1,
-            }
-            .sqlite_file()
-        };
-        assert_eq!(
-            file("sqlite:///data/kuben.db"),
-            Some(PathBuf::from("/data/kuben.db"))
-        );
-        assert_eq!(
-            file("sqlite://./.dev/kuben.db?mode=rwc"),
-            Some(PathBuf::from("./.dev/kuben.db"))
-        );
-        assert_eq!(file("sqlite::memory:"), None);
-        assert_eq!(file("postgres://u:p@db/kuben"), None);
     }
 
     #[test]
@@ -520,7 +507,7 @@ mod tests {
         );
         cfg.server.public_url = Some("https://kuben.example.com/".into());
         assert_eq!(cfg.console_url_with_host("ignored"), "https://kuben.example.com");
-        cfg.database.url = "sqlite:///var/lib/kuben/kuben.db".into();
+        cfg.server.state_dir = Some("/var/lib/kuben".into());
         assert_eq!(cfg.state_dir(), PathBuf::from("/var/lib/kuben"));
     }
 

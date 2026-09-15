@@ -1,6 +1,7 @@
-{{- $postgres := or .Values.database.url .Values.database.existingSecret }}
-{{- if and (gt (int .Values.replicaCount) 1) (not $postgres) }}
-{{- fail "replicaCount > 1 requires PostgreSQL (database.url or database.existingSecret): SQLite supports one replica" }}
+{{- $bundled := include "kuben.postgresql.bundled" . }}
+{{- $legacy := printf "%s-data" (include "kuben.fullname" .) }}
+{{- if and (lookup "v1" "PersistentVolumeClaim" .Release.Namespace $legacy) (not .Values.legacy.sqliteVolumeAcknowledged) }}
+{{- fail (printf "the volume %s holds the SQLite database of a Kuben 1.x install, which this chart does not read: Kuben keeps its data in PostgreSQL. The volume stays; move its data with the importer, or set legacy.sqliteVolumeAcknowledged=true to start with a new database" $legacy) }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment
@@ -11,17 +12,12 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
-    {{- if $postgres }}
-    # PostgreSQL: roll pods one at a time with no downtime. The controllers
-    # follow the `kuben-controller` Lease, so two pods never reconcile at once.
+    # Roll pods one at a time with no downtime. The controllers follow the
+    # `kuben-controller` Lease, so two pods never reconcile at once.
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
-    {{- else }}
-    # The SQLite volume is ReadWriteOnce: never run two pods against it.
-    type: Recreate
-    {{- end }}
   selector:
     matchLabels:
       {{- include "kuben.selectorLabels" . | nindent 6 }}
@@ -47,6 +43,29 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       terminationGracePeriodSeconds: 30
+      {{- if $bundled }}
+      initContainers:
+        # The server exits while its database is unreachable: wait for the
+        # chart's PostgreSQL instead of restarting against it.
+        - name: wait-for-postgresql
+          image: {{ include "kuben.postgresql.image" . }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - until pg_isready -q -h {{ include "kuben.postgresql.fullname" . }} -p 5432; do sleep 2; done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      {{- end }}
       containers:
         - name: kuben
           image: {{ include "kuben.image" . }}
@@ -97,9 +116,15 @@ spec:
             - name: KUBEN_DATABASE__URL
               value: {{ .Values.database.url | quote }}
             {{- else }}
-            # SQLite on the volume, never the binary's server default.
+            # The chart's own PostgreSQL, as the ordinary role `kuben`; the
+            # password stays in its Secret.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kuben.postgresql.fullname" . }}
+                  key: password
             - name: KUBEN_DATABASE__URL
-              value: "sqlite:///data/kuben.db"
+              value: "postgres://kuben:$(POSTGRES_PASSWORD)@{{ include "kuben.postgresql.fullname" . }}:5432/kuben"
             {{- end }}
             {{- with .Values.publicUrl }}
             - name: KUBEN_SERVER__PUBLIC_URL
@@ -130,13 +155,9 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        # The state directory (setup token): the data is in PostgreSQL.
         - name: data
-          {{- if and .Values.persistence.enabled (not $postgres) }}
-          persistentVolumeClaim:
-            claimName: {{ include "kuben.fullname" . }}-data
-          {{- else }}
           emptyDir: {}
-          {{- end }}
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi

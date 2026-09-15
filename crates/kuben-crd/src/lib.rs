@@ -42,6 +42,8 @@ pub fn all_crds()
         App::crd(),
         Release::crd(),
         BuildRun::crd(),
+        ApplicationRuntime::crd(),
+        ExecutionTask::crd(),
     ]
 }
 
@@ -59,6 +61,8 @@ mod tests {
         assert_eq!(Release::crd_name(), "releases.kuben.dev");
         assert_eq!(BuildRun::crd_name(), "buildruns.kuben.dev");
         assert_eq!(KubenConfig::crd_name(), "kubenconfigs.kuben.dev");
+        assert_eq!(ApplicationRuntime::crd_name(), "applicationruntimes.kuben.dev");
+        assert_eq!(ExecutionTask::crd_name(), "executiontasks.kuben.dev");
     }
 
     #[test]

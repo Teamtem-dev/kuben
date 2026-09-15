@@ -155,7 +155,7 @@ export type paths = {
         /** List projects visible to the caller. */
         get: operations["listProjects"];
         put?: never;
-        /** Create a project (writes a `Project` CR). */
+        /** Create a project; its `Project` resource follows. */
         post: operations["createProject"];
         delete?: never;
         options?: never;
@@ -194,7 +194,7 @@ export type paths = {
         /** List a project's environments. */
         get: operations["listEnvironments"];
         put?: never;
-        /** Create an environment (the controller provisions its namespace). */
+        /** Create an environment: its namespace follows. */
         post: operations["createEnvironment"];
         delete?: never;
         options?: never;
@@ -233,7 +233,10 @@ export type paths = {
         /** List the apps of an environment. */
         get: operations["listApps"];
         put?: never;
-        /** Deploy a new app from a container image. */
+        /**
+         * Deploy a new app from a container image. A tag is resolved to a digest at
+         *     its registry.
+         */
         post: operations["createApp"];
         delete?: never;
         options?: never;
@@ -263,10 +266,51 @@ export type paths = {
         options?: never;
         head?: never;
         /**
-         * Update an app (image changes require `app-deploy`). Every change is a
-         *     new release revision.
+         * Update an app (image changes require `app-deploy`). Every change is a new
+         *     deployment run; a new tag is resolved to a digest at its registry.
          */
         patch: operations["updateApp"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a deployment of this app.
+         * @description The release (from `image`, or an existing `release`), the configuration
+         *     revision and the run are written in one transaction with the audit record
+         *     and the message to the executors; then the call answers `202` with the
+         *     run's `Location`. Replaying the request with the same `Idempotency-Key`
+         *     returns the first run.
+         */
+        post: operations["startDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One deployment run of this app. */
+        get: operations["getDeployment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
@@ -280,6 +324,28 @@ export type paths = {
         get: operations["checkAppDomains"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/handover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand an app over from the App controller to its cluster's agent: its
+         *     next run goes through the agent, which adopts the app's workloads in
+         *     place (no new pods), and every later run follows. Only toward the agent;
+         *     the cluster needs a linked agent that carries applications.
+         */
+        post: operations["handOverApp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -363,7 +429,10 @@ export type paths = {
         };
         get?: never;
         put?: never;
-        /** Roll back to an earlier revision (recorded as a new revision). */
+        /**
+         * Roll back to an earlier revision: a new run of its release and
+         *     configuration. The app stays on it until automatic deploys resume.
+         */
         post: operations["rollbackApp"];
         delete?: never;
         options?: never;
@@ -671,6 +740,11 @@ export type components = {
             token: string;
             info: components["schemas"]["TokenDto"];
         };
+        /**
+         * @description Why a run exists.
+         * @enum {string}
+         */
+        DeployReason: "deploy" | "rollback" | "promotion";
         DeployTemplate: {
             /**
              * @description App name (also the in-cluster hostname of TCP services).
@@ -684,6 +758,23 @@ export type components = {
             credentials_secret: string;
             /** @description Reference it from other apps as `KEY=@<secret>/<key>`. */
             connection_keys: string[];
+        };
+        /** @description A deployment run and where it stands. */
+        DeploymentDto: {
+            /** Format: uuid */
+            run: string;
+            /** Format: uuid */
+            operation: string;
+            /**
+             * Format: int64
+             * @description The target generation this run owns.
+             */
+            generation: number;
+            /**
+             * @description `planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,
+             *     `succeeded`, `failed`, `superseded`, …
+             */
+            phase: string;
         };
         DomainCheck: {
             host: string;
@@ -820,6 +911,7 @@ export type components = {
         };
         ProjectDto: {
             name: string;
+            /** @description The project's id. */
             uid?: string | null;
             display_name: string;
             description?: string | null;
@@ -872,7 +964,7 @@ export type components = {
             /** Format: int64 */
             revision: number;
             image?: string | null;
-            /** @description `create`, `deploy`, `config`, `rollback`, `promote` or `template`. */
+            /** @description `create`, `deploy`, `config`, `rollback`, `promote`, `restart` or `handover`. */
             reason: string;
             note?: string | null;
             /** @description Email of whoever made the change. */
@@ -918,6 +1010,31 @@ export type components = {
             needed: boolean;
             /** @description `POST /setup` must carry the token the installer printed. */
             token_required: boolean;
+        };
+        StartDeploymentRequest: {
+            /**
+             * @description Image by digest: `registry/repository@sha256:…`. Give either `image`
+             *     or `release`.
+             * @example ghcr.io/acme/api@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+             */
+            image?: string | null;
+            /**
+             * Format: uuid
+             * @description An existing release of this app: a rollback or a redeploy.
+             */
+            release?: string | null;
+            /**
+             * @description The app configuration: the app spec without its image. Omitted, the
+             *     app's latest configuration is used.
+             */
+            config?: Record<string, never> | null;
+            reason?: components["schemas"]["DeployReason"];
+            /**
+             * Format: int64
+             * @description The target generation the caller last saw. A deploy never silently
+             *     replaces a newer one: a stale value is refused with `409`.
+             */
+            expected_generation: number;
         };
         TemplateDto: {
             id: string;
@@ -1407,15 +1524,6 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No cluster configured */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     getProject: {
@@ -1564,15 +1672,6 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No cluster configured */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     getEnvironment: {
@@ -1637,6 +1736,14 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1728,6 +1835,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The image's registry cannot be reached */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1806,6 +1914,14 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     updateApp: {
@@ -1860,6 +1976,126 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The image's registry cannot be reached */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startDeployment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Replays of the same request return the first run */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartDeploymentRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted: poll the `Location` */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A stale expected generation, or an Idempotency-Key used for another request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     checkAppDomains: {
@@ -1887,6 +2123,48 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    handOverApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Handover scheduled */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Delivered by the agent already, being deleted, or no agent to take it */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1974,6 +2252,14 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2095,6 +2381,14 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

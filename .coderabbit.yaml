@@ -35,8 +35,9 @@ reviews:
         server-side apply with the `kuben` field manager.
     - path: "crates/kuben-store/**"
       instructions: >-
-        Every migration must exist for both SQLite and PostgreSQL with the
-        same file name, and foreign keys stay on.
+        Migrations are PostgreSQL only (ADR-025), and an applied migration
+        file is never edited (sqlx checksums it). Tenant tables keep their
+        row-level security policies and tenant-aware foreign keys.
     - path: ".github/**"
       instructions: >-
         Actions must be pinned to a full commit SHA. Untrusted input reaches

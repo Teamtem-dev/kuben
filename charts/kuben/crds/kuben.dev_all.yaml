@@ -1163,3 +1163,408 @@ spec:
     storage: true
     subresources:
       status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applicationruntimes.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: ApplicationRuntime
+    plural: applicationruntimes
+    shortNames:
+    - kbrt
+    singular: applicationruntime
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.generation
+      name: Generation
+      type: integer
+    - jsonPath: .status.observedGeneration
+      name: Observed
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ApplicationRuntimeSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              controlEpoch:
+                description: |-
+                  Raised when control of the target moves (a new controller or a
+                  cutover); an older epoch never writes again.
+                format: int64
+                minimum: 0.0
+                type: integer
+                x-kubernetes-validations:
+                - message: controlEpoch never decreases
+                  rule: self >= oldSelf
+              generation:
+                description: The target's desired generation this envelope carries.
+                format: int64
+                minimum: 1.0
+                type: integer
+                x-kubernetes-validations:
+                - message: a lower generation is rejected
+                  rule: self >= oldSelf
+              inputHash:
+                description: Digest of the run's inputs (release, configuration, generation).
+                maxLength: 80
+                pattern: ^sha256:[0-9a-f]{64}$
+                type: string
+              lifecycleUid:
+                description: 'The target''s lifecycle UID: a recreated target is a new runtime.'
+                maxLength: 64
+                type: string
+                x-kubernetes-validations:
+                - message: lifecycleUid is immutable
+                  rule: self == oldSelf
+              plan:
+                description: |-
+                  The frozen RenderPlan the envelope carries (ADR-026): enough to apply
+                  and resume without asking the hub.
+                properties:
+                  digest:
+                    description: '`sha256:` of `resources`.'
+                    maxLength: 80
+                    pattern: ^sha256:[0-9a-f]{64}$
+                    type: string
+                  id:
+                    description: SQL `render_plans.id`.
+                    maxLength: 64
+                    type: string
+                  rendererVersion:
+                    maxLength: 64
+                    type: string
+                  resources:
+                    description: The normalized resources as canonical JSON (an array of objects).
+                    maxLength: 131072
+                    type: string
+                required:
+                - digest
+                - id
+                - rendererVersion
+                - resources
+                type: object
+              releaseId:
+                description: The release this generation makes effective.
+                maxLength: 64
+                type: string
+              targetId:
+                description: The application target (SQL `application_targets.id`).
+                maxLength: 64
+                type: string
+                x-kubernetes-validations:
+                - message: targetId is immutable
+                  rule: self == oldSelf
+            required:
+            - controlEpoch
+            - generation
+            - inputHash
+            - lifecycleUid
+            - plan
+            - releaseId
+            - targetId
+            type: object
+            x-kubernetes-validations:
+            - message: the same generation must carry the same envelope (input hash, release and plan)
+              rule: self.generation != oldSelf.generation || (self.inputHash == oldSelf.inputHash && self.releaseId == oldSelf.releaseId && self.plan == oldSelf.plan)
+          status:
+            nullable: true
+            properties:
+              conditions:
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              effectiveGeneration:
+                description: The generation whose resources are live and ready.
+                format: int64
+                nullable: true
+                type: integer
+              effectiveRelease:
+                description: The release of `effectiveGeneration`.
+                nullable: true
+                type: string
+              inventory:
+                description: What the agent applied for `observedGeneration`.
+                items:
+                  description: One object of the applied inventory.
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    uid:
+                      nullable: true
+                      type: string
+                  required:
+                  - apiVersion
+                  - kind
+                  - name
+                  type: object
+                type: array
+              inventoryHash:
+                nullable: true
+                type: string
+              observedGeneration:
+                description: The newest generation the agent has acted on.
+                format: int64
+                nullable: true
+                type: integer
+                x-kubernetes-validations:
+                - message: observedGeneration never decreases
+                  rule: self >= oldSelf
+              recoveryLatch:
+                description: |-
+                  Set when the agent stopped moving forward and waits for a decision
+                  (a failed rollout with no pre-authorized compensation).
+                nullable: true
+                properties:
+                  generation:
+                    format: int64
+                    type: integer
+                  reason:
+                    type: string
+                  since:
+                    description: RFC 3339.
+                    type: string
+                required:
+                - generation
+                - reason
+                - since
+                type: object
+            type: object
+        required:
+        - spec
+        title: ApplicationRuntime
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: executiontasks.kuben.dev
+spec:
+  group: kuben.dev
+  names:
+    kind: ExecutionTask
+    plural: executiontasks
+    shortNames:
+    - kbet
+    singular: executiontask
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.attempt
+      name: Attempt
+      type: integer
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ExecutionTaskSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              attempt:
+                format: int64
+                minimum: 1.0
+                type: integer
+                x-kubernetes-validations:
+                - message: attempt is immutable
+                  rule: self == oldSelf
+              cancel:
+                nullable: true
+                properties:
+                  reason:
+                    maxLength: 256
+                    type: string
+                  requestedAt:
+                    description: RFC 3339.
+                    maxLength: 40
+                    type: string
+                required:
+                - reason
+                - requestedAt
+                type: object
+              deadline:
+                description: RFC 3339; the agent stops the attempt and reports `TimedOut` after it.
+                maxLength: 40
+                type: string
+                x-kubernetes-validations:
+                - message: deadline is immutable
+                  rule: self == oldSelf
+              input:
+                description: The kind's input as canonical JSON; never a secret value.
+                maxLength: 131072
+                type: string
+                x-kubernetes-validations:
+                - message: input is immutable
+                  rule: self == oldSelf
+              inputHash:
+                description: '`sha256:` of `input`.'
+                maxLength: 80
+                pattern: ^sha256:[0-9a-f]{64}$
+                type: string
+                x-kubernetes-validations:
+                - message: inputHash is immutable
+                  rule: self == oldSelf
+              kind:
+                description: What an attempt runs; each kind has its own input schema and permissions.
+                enum:
+                - Build
+                - Backup
+                - Restore
+                - Migration
+                - PlatformChange
+                type: string
+                x-kubernetes-validations:
+                - message: kind is immutable
+                  rule: self == oldSelf
+              operationId:
+                description: The SQL operation this attempt belongs to.
+                maxLength: 64
+                type: string
+                x-kubernetes-validations:
+                - message: operationId is immutable
+                  rule: self == oldSelf
+            required:
+            - attempt
+            - deadline
+            - input
+            - inputHash
+            - kind
+            - operationId
+            type: object
+            x-kubernetes-validations:
+            - message: a cancel request can be added, never changed or withdrawn
+              rule: '!has(oldSelf.cancel) || (has(self.cancel) && self.cancel == oldSelf.cancel)'
+          status:
+            nullable: true
+            properties:
+              conditions:
+                items:
+                  description: |-
+                    kstatus-style condition. Mirrors `metav1.Condition` without pulling the
+                    `schemars` feature of `k8s-openapi`.
+                  properties:
+                    lastTransitionTime:
+                      nullable: true
+                      type: string
+                    message:
+                      nullable: true
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      nullable: true
+                      type: integer
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      description: '`"True"`, `"False"` or `"Unknown"`.'
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              phase:
+                description: '`Pending | Running | Succeeded | Failed | Cancelled | TimedOut`.'
+                nullable: true
+                type: string
+              receipt:
+                description: The terminal result of an attempt.
+                nullable: true
+                properties:
+                  finishedAt:
+                    description: RFC 3339.
+                    maxLength: 40
+                    type: string
+                  message:
+                    maxLength: 1024
+                    nullable: true
+                    type: string
+                  outcome:
+                    enum:
+                    - Succeeded
+                    - Failed
+                    - Cancelled
+                    - TimedOut
+                    type: string
+                  result:
+                    description: |-
+                      The kind's result as canonical JSON (an artifact digest, a backup
+                      location, …), bounded like the input.
+                    maxLength: 16384
+                    nullable: true
+                    type: string
+                required:
+                - finishedAt
+                - outcome
+                type: object
+              startedAt:
+                description: RFC 3339.
+                nullable: true
+                type: string
+            type: object
+            x-kubernetes-validations:
+            - message: a receipt is final
+              rule: '!has(oldSelf.receipt) || (has(self.receipt) && self.receipt == oldSelf.receipt)'
+        required:
+        - spec
+        title: ExecutionTask
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

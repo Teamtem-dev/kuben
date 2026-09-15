@@ -1,22 +1,37 @@
 #!/usr/bin/env bash
 # End-to-end test: a real cluster (kind), the real binary, the public API.
 #
-#   scripts/e2e.sh                     # uses ./target/debug/kuben and the current kube context
-#   KUBEN_BIN=target/release/kuben scripts/e2e.sh
+#   KUBEN_E2E_DATABASE_URL=postgres://postgres:kuben@localhost:5432/postgres scripts/e2e.sh
+#   KUBEN_BIN=target/release/kuben scripts/e2e.sh      # default: ./target/debug/kuben
+#   KUBEN_AGENT_BIN=...                                # default: ./target/debug/kuben-agent (built if missing)
+#
+# Uses the current kube context and KUBEN_E2E_DATABASE_URL, an empty
+# PostgreSQL database (ADR-025): the run creates the first admin, so a
+# database left over from an earlier run fails at login. A local server:
+#   docker run -d --rm --name kuben-e2e-pg -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine
 #
 # Exercises: CRD self-apply, the controller Lease, login, project → environment → namespace with
 # quota/limits/isolation, app deploy → Deployment/Service rollout, scale,
 # logs, restart, and the day-2 scenarios of blueprint §5.9: releases and
 # rollback, API tokens, audit, cron jobs with "run now", volumes that survive
 # app deletion, templates, promotion, domain checks, team invitations and
-# login throttling; then deletes and garbage collection.
+# login throttling; deploys by digest through `…/deployments` (idempotent
+# replay, a stale expected generation refused, rollback) and a direct App
+# edit replaced as drift (ADR-032); a cluster agent enrolled with a bootstrap
+# token takes an existing app over from the App controller and carries a new
+# app out through AgentLink (ADR-027, M1.9), reports its
+# status and restarts it through a run; then deletes
+# and garbage collection.
 set -euo pipefail
 
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=${KUBEN_BIN:-$ROOT/target/debug/kuben}
+AGENT_BIN=${KUBEN_AGENT_BIN:-$ROOT/target/debug/kuben-agent}
+DATABASE_URL=${KUBEN_E2E_DATABASE_URL:?set KUBEN_E2E_DATABASE_URL to an empty PostgreSQL database, e.g. postgres://postgres:kuben@localhost:5432/postgres}
 PORT=${KUBEN_E2E_PORT:-18080}
 BASE="http://127.0.0.1:${PORT}/api/v1"
+AGENT_PORT=$((PORT + 2))
 PASSWORD="e2e-$(date +%s)-password"
 IMAGE=${KUBEN_E2E_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
 JOB_IMAGE=${KUBEN_E2E_JOB_IMAGE:-busybox:1.36}
@@ -50,6 +65,7 @@ fail() {
 
 cleanup() {
   status=$?
+  if [[ -n ${agent_pid:-} ]]; then kill "$agent_pid" 2>/dev/null || true; wait "$agent_pid" 2>/dev/null || true; fi
   if [[ -n ${pid:-} ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   if ((status != 0)); then
     if [[ -z ${failed:-} ]]; then
@@ -59,7 +75,11 @@ cleanup() {
     fi
     echo "---- kuben log (last 80 lines) ----"
     tail -n 80 "$work/kuben.log" || true
-    kubectl get projects,environments,apps -A 2>/dev/null || true
+    if [[ -s $work/agent.log ]]; then
+      echo "---- kuben-agent log (last 40 lines) ----"
+      tail -n 40 "$work/agent.log" || true
+    fi
+    kubectl get projects,environments,apps,applicationruntimes -A 2>/dev/null || true
     kubectl -n "$NS" get all,resourcequota,networkpolicy,pvc,cronjobs,jobs 2>/dev/null || true
   fi
   kubectl delete environment "${P}-dev" "${P}-live" --ignore-not-found --wait=false >/dev/null 2>&1 || true
@@ -111,16 +131,33 @@ expect_as() { # <status> <auth> <method> <path> [json]
   [[ $got == "$want" ]] || fail "[$auth] $1 $2 → HTTP $got (want $want): $(cat "$work/body")"
 }
 
+# deploy <app> <Idempotency-Key or ""> <json> → HTTP status; headers in $work/headers
+deploy() {
+  local app=$1 key=$2 body=$3
+  local args=(-sS -o "$work/body" -D "$work/headers" -w '%{http_code}' -X POST
+    -H 'content-type: application/json' -H 'x-kuben-client: e2e'
+    -b "$work/cookies" -c "$work/cookies" --data "$body")
+  [[ -n $key ]] && args+=(-H "idempotency-key: $key")
+  curl "${args[@]}" "$BASE$APP/$app/deployments"
+}
+
+# run_succeeded <app> <run>: the deployment run has succeeded
+run_succeeded() {
+  [[ $(curl -fsS -b "$work/cookies" "$BASE$APP/$1/deployments/$2" | jq -r .phase) == succeeded ]]
+}
+
 step "start kuben"
 KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
   KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
-  KUBEN_DATABASE__URL="sqlite://${work}/kuben.db" \
+  KUBEN_DATABASE__URL="$DATABASE_URL" \
   KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
   KUBEN_SECURITY__COOKIE_SECURE=false \
   KUBEN_KUBE__REQUIRED=true \
   KUBEN_KUBE__LEADER_ELECTION=true \
   KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
   KUBEN_TELEMETRY__LOG_FORMAT=pretty \
+  KUBEN_SERVER__STATE_DIR="$work/state" \
+  KUBEN_AGENT__BIND="127.0.0.1:${AGENT_PORT}" \
   "$BIN" serve --roles=all >"$work/kuben.log" 2>&1 &
 pid=$!
 eventually 60 "CRDs applied" kubectl get crd apps.kuben.dev
@@ -192,6 +229,40 @@ expect_as 403 "bearer:$token" POST /tokens '{"name":"escalate"}'
 expect 204 DELETE "/tokens/${token_id}"
 expect_as 401 "bearer:$token" GET /me
 
+step "deploy by digest through /deployments (ADR-032)"
+# The app's image as the materializer wrote it: the tag resolved to a digest.
+pinned=$(kubectl -n "$NS" get app web -o jsonpath='{.spec.source.image}')
+[[ $pinned == *@sha256:* ]] || fail "the App image is not pinned by digest: $pinned"
+expect 200 GET "$APP/web/releases"
+gen=$(jq -r '.[0].revision' "$work/body")
+body="{\"image\":\"${pinned}\",\"expected_generation\":${gen}}"
+key="e2e-deploy-$(date +%s)"
+got=$(deploy web "$key" "$body")
+[[ $got == 202 ]] || fail "deploy → HTTP $got: $(cat "$work/body")"
+run=$(jq -r .run "$work/body")
+[[ $(jq -r .generation "$work/body") == $((gen + 1)) ]] || fail "run generation: $(cat "$work/body")"
+grep -qiE "^location: /api/v1${APP}/web/deployments/${run}"$'\r?$' "$work/headers" || fail "Location: $(cat "$work/headers")"
+got=$(deploy web "$key" "$body")
+[[ $got == 202 && $(jq -r .run "$work/body") == "$run" ]] || fail "a replayed key must return the first run → HTTP $got: $(cat "$work/body")"
+got=$(deploy web "" "$body")
+[[ $got == 409 ]] || fail "a stale expected generation must be refused → HTTP $got: $(cat "$work/body")"
+eventually 180 "run ${run} succeeded" run_succeeded web "$run"
+kubectl -n "$NS" get app web -o jsonpath='{.metadata.annotations.kuben\.dev/generation}' | grep -qx "$((gen + 1))" ||
+  fail "App generation annotation"
+
+step "rollback through /deployments"
+got=$(deploy web "" "{\"image\":\"${pinned}\",\"reason\":\"rollback\",\"expected_generation\":$((gen + 1))}")
+[[ $got == 202 ]] || fail "rollback deploy → HTTP $got: $(cat "$work/body")"
+run=$(jq -r .run "$work/body")
+eventually 180 "rollback run ${run} succeeded" run_succeeded web "$run"
+expect 200 GET "$APP/web/releases"
+[[ $(jq -r '.[0].reason' "$work/body") == rollback ]] || fail "rollback not in history: $(cat "$work/body")"
+
+step "a direct App edit is drift: replaced from SQL"
+kubectl -n "$NS" patch app web --type merge -p '{"spec":{"source":{"image":"evil.example.com/web:latest"}}}' >/dev/null
+eventually 60 "edited image replaced" bash -c "[[ \$(kubectl -n $NS get app web -o jsonpath='{.spec.source.image}') == '$pinned' ]]"
+kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
+
 step "scenario 2: audit log"
 expect 200 GET "/audit?limit=200"
 jq -e '.events | map(.action) | (index("createApp") != null) and (index("rollbackApp") != null) and (index("revokeToken") != null)' \
@@ -262,6 +333,60 @@ expect_as 429 none POST /auth/login '{"email":"nobody@e2e.test","password":"wron
 step "authorization and validation"
 expect 422 POST "$APP" '{"name":"Bad_Name","image":"nginx"}'
 expect 409 DELETE "/projects/${P}"
+
+# Last among the app scenarios: once the cluster's agent is linked, every new
+# target of the cluster is delivered by it (the earlier apps stay with the
+# App controller).
+step "M1.9: an enrolled agent carries a new app out (ADR-027)"
+if [[ ! -x $AGENT_BIN ]]; then
+  cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
+fi
+[[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
+KUBEN_SERVER__STATE_DIR="$work/state" KUBEN_DATABASE__URL="$DATABASE_URL" \
+  "$BIN" agent-token --cluster primary >"$work/agent-token.out"
+cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
+(
+  umask 077
+  sed -n 's/^token: *//p' "$work/agent-token.out" >"$work/token"
+)
+[[ -n $cluster && -s $work/token ]] || fail "agent-token: $(cat "$work/agent-token.out")"
+"$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \
+  --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
+agent_pid=$!
+eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+# An app the App controller delivers moves to the agent on request: its App
+# object goes, and the agent adopts the same workloads (no new Deployment).
+web_uid=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.uid}')
+expect 202 POST "$APP/web/handover"
+eventually 180 "web runtime ready" kubectl -n "$NS" wait --for=condition=Ready applicationruntime/web --timeout=5s
+eventually 60 "web App object gone" bash -c "! kubectl -n $NS get app web"
+[[ $(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.uid}') == "$web_uid" ]] ||
+  fail "web-web was made again instead of adopted"
+owner=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.ownerReferences[*].kind}')
+[[ $owner == ApplicationRuntime ]] || fail "web-web is owned by '$owner' after the handover"
+expect 409 POST "$APP/web/handover"
+eventually 60 "web ready via API after the handover" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.ready'"
+expect 201 POST "$APP" "{\"name\":\"edge\",\"image\":\"${IMAGE}\",\"port\":8080}"
+eventually 180 "edge runtime ready" kubectl -n "$NS" wait --for=condition=Ready applicationruntime/edge --timeout=5s
+kubectl -n "$NS" get app edge >/dev/null 2>&1 && fail "an agent-delivered app has no App object"
+kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
+owner=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.ownerReferences[0].kind}')
+[[ $owner == ApplicationRuntime ]] || fail "edge-web is owned by '$owner', not its ApplicationRuntime"
+# Its status comes from the agent's report (no App object), and a restart is a
+# run of the same release that stamps the pod template.
+eventually 60 "edge ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
+before=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.generation}')
+expect 202 POST "$APP/edge/restart"
+eventually 90 "edge restart rolled out" bash -c "[[ \$(kubectl -n $NS get deployment edge-web -o jsonpath='{.metadata.generation}') -gt $before ]]"
+kubectl -n "$NS" get deployment edge-web -o jsonpath='{.spec.template.metadata.annotations.kuben\.dev/restarted-at}' |
+  grep -q . || fail "edge-web has no restart stamp"
+kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
+eventually 90 "edge ready again via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
+expect 200 GET "$APP/edge/releases"
+jq -e '.[0].reason == "restart"' "$work/body" >/dev/null || fail "restart missing from the history: $(cat "$work/body")"
+expect 204 DELETE "$APP/edge"
+eventually 90 "edge runtime gone" bash -c "! kubectl -n $NS get applicationruntime edge"
+eventually 90 "edge deployment gone" bash -c "! kubectl -n $NS get deployment edge-web"
 
 step "delete apps → children are garbage-collected"
 for a in web tick cache; do expect 204 DELETE "$APP/${a}?delete_volumes=true"; done

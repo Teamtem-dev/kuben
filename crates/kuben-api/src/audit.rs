@@ -22,8 +22,9 @@ use crate::{
     state::ApiState,
 };
 
-/// Handlers that write their own, richer record (e.g. the attempted email).
-const SELF_AUDITED: &[&str] = &["login"];
+/// Handlers that write their own, richer record: the attempted email, or a
+/// deployment accepted in the same transaction as its record (I01).
+const SELF_AUDITED: &[&str] = &["login", "startDeployment"];
 
 /// `(METHOD, "/api/v1/…/{param}")` → `operationId`, built once from the spec.
 static OPERATIONS: LazyLock<HashMap<(String, String), String>> =

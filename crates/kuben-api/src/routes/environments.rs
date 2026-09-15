@@ -1,29 +1,27 @@
-//! Environments of a project. Writes go to the `Environment` CRD (the
-//! controller provisions the namespace); reads come from the projection.
-
-use std::collections::BTreeMap;
+//! Environments of a project, on the SQL model (ADR-032). SQL holds them
+//! and their placement; the materializer writes the `Environment` resource
+//! right away (its controller provisions the namespace) and removes it on
+//! deletion. The projection adds live status.
 
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use kube::{
-    Api,
-    api::{DeleteParams, ObjectMeta, PostParams},
-};
 use kuben_core::{Error, perm::Perm};
-use kuben_crd::{DeletionPolicy, Environment, EnvironmentSpec, EnvironmentType, Protection, Quota, labels};
+use kuben_crd::Quota;
 use kuben_platform::{controller::resources::namespace_name, projection::EnvironmentView};
+use kuben_store::repo::{ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, EnvironmentKind, EnvironmentRecord, Subject};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{scope, validate};
+use super::{request, scope, validate};
 use crate::{authz::Authz, error::ApiResult, state::ApiState};
 
 /// Grace period before a deleted production environment is purged.
 pub const PRODUCTION_DELETION_GRACE: &str = "168h";
+/// The cluster every placement is on until multi-cluster (M1.9 and later).
+const PRIMARY_CLUSTER: &str = "primary";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -32,6 +30,16 @@ pub enum EnvType {
     Standard,
     Production,
     Preview,
+}
+
+impl From<EnvType> for EnvironmentKind {
+    fn from(t: EnvType) -> Self {
+        match t {
+            EnvType::Standard => Self::Standard,
+            EnvType::Production => Self::Production,
+            EnvType::Preview => Self::Preview,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -56,19 +64,26 @@ pub struct EnvironmentDto {
 
 impl EnvironmentDto {
     #[must_use]
-    pub fn from_view(v: &EnvironmentView) -> Self {
+    pub fn of(project: &str, e: &EnvironmentRecord, view: Option<&EnvironmentView>) -> Self {
+        let resource_name = scope::environment_resource_name(project, &e.slug);
+        let phase = view
+            .and_then(|v| v.phase.clone())
+            .or_else(|| Some(if e.deleting { "Terminating" } else { "Pending" }.to_owned()));
         Self {
-            name: scope::environment_short_name(&v.project, &v.name).to_owned(),
-            resource_name: v.name.clone(),
-            project: v.project.clone(),
-            env_type: v.env_type.to_owned(),
-            namespace: v.namespace.clone(),
-            phase: v.phase.clone(),
-            ready: v.ready,
-            message: v.message.clone(),
-            deleting: v.deleting,
-            deletion_scheduled_at: v.deletion_scheduled_at.clone(),
-            created_at: v.created_at.clone(),
+            name: e.slug.clone(),
+            namespace: e
+                .namespace
+                .clone()
+                .unwrap_or_else(|| namespace_name(&resource_name)),
+            resource_name,
+            project: project.to_owned(),
+            env_type: e.env_type.clone(),
+            phase,
+            ready: view.is_some_and(|v| v.ready) && !e.deleting,
+            message: view.and_then(|v| v.message.clone()),
+            deleting: e.deleting,
+            deletion_scheduled_at: view.and_then(|v| v.deletion_scheduled_at.clone()),
+            created_at: Some(request::timestamp(e.created_at)),
         }
     }
 }
@@ -109,14 +124,19 @@ pub async fn list(
     authz: Authz,
     Path(project): Path<String>,
 ) -> ApiResult<Json<Vec<EnvironmentDto>>> {
-    let p = scope::project(&state, &authz, &project)?;
+    let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::EnvRead, &p.chain())?;
-    let items = state
-        .projections
-        .environments()
+    let mut tenant = state.store.tenant(p.org).await?;
+    let items = tenant
+        .environments(p.id())
+        .await?
         .iter()
-        .filter(|e| e.project == p.view.name)
-        .map(|e| EnvironmentDto::from_view(e))
+        .map(|e| {
+            let view = state
+                .projections
+                .environment(&scope::environment_resource_name(p.slug(), &e.slug));
+            EnvironmentDto::of(p.slug(), e, view.as_deref())
+        })
         .collect();
     Ok(Json(items))
 }
@@ -137,12 +157,34 @@ pub async fn get(
     authz: Authz,
     Path((project, environment)): Path<(String, String)>,
 ) -> ApiResult<Json<EnvironmentDto>> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
     let _proof = authz.require(&state, Perm::EnvRead, &e.chain())?;
-    Ok(Json(EnvironmentDto::from_view(&e.view)))
+    Ok(Json(EnvironmentDto::of(
+        e.project.slug(),
+        &e.env,
+        e.view.as_deref(),
+    )))
 }
 
-/// Create an environment (the controller provisions its namespace).
+fn quota(input: Option<QuotaInput>) -> ApiResult<Option<serde_json::Value>> {
+    let Some(q) = input else {
+        return Ok(None);
+    };
+    if let Some(cpu) = &q.cpu {
+        validate::quantity("quota.cpu", cpu)?;
+    }
+    if let Some(mem) = &q.memory {
+        validate::quantity("quota.memory", mem)?;
+    }
+    let quota = Quota {
+        cpu: q.cpu,
+        memory: q.memory,
+        pods: q.pods,
+    };
+    Ok(Some(serde_json::to_value(quota).map_err(Error::internal)?))
+}
+
+/// Create an environment: its namespace follows.
 #[utoipa::path(
     post,
     path = "/projects/{project}/environments", operation_id = "createEnvironment",
@@ -154,7 +196,6 @@ pub async fn get(
         (status = 403, body = crate::error::Problem),
         (status = 409, body = crate::error::Problem),
         (status = 422, body = crate::error::Problem),
-        (status = 503, description = "No cluster configured", body = crate::error::Problem),
     )
 )]
 pub async fn create(
@@ -163,78 +204,58 @@ pub async fn create(
     Path(project): Path<String>,
     Json(body): Json<CreateEnvironment>,
 ) -> ApiResult<(StatusCode, Json<EnvironmentDto>)> {
-    let p = scope::project(&state, &authz, &project)?;
+    let p = scope::project(&state, &authz, &project).await?;
     let _proof = authz.require(&state, Perm::EnvWrite, &p.chain())?;
     validate::dns_label("name", &body.name, 20)?;
-    let name = scope::environment_resource_name(&p.view.name, &body.name);
-    if namespace_name(&name).len() > 63 {
+    let resource = scope::environment_resource_name(p.slug(), &body.name);
+    let namespace = namespace_name(&resource);
+    if namespace.len() > 63 {
         return Err(Error::Validation("project and environment names are too long together".into()).into());
     }
-    if let Some(q) = &body.quota {
-        if let Some(cpu) = &q.cpu {
-            validate::quantity("quota.cpu", cpu)?;
-        }
-        if let Some(mem) = &q.memory {
-            validate::quantity("quota.memory", mem)?;
-        }
+    let quota = quota(body.quota)?;
+    if p.project.deleting {
+        return Err(Error::Conflict(format!("project `{}` is being deleted", p.slug())).into());
     }
-    if p.view.deleting {
-        return Err(Error::Conflict(format!("project `{}` is being deleted", p.view.name)).into());
+    // Environment resources are cluster-wide.
+    let taken = || Error::Conflict(format!("environment `{}` already exists", body.name));
+    if state
+        .projections
+        .environment(&resource)
+        .is_some_and(|v| v.org.as_deref() != Some(p.org.to_string().as_str()))
+    {
+        return Err(taken().into());
     }
-    let client = scope::cluster(&state)?;
-
-    let (type_, protection) = match body.env_type {
-        EnvType::Standard => (EnvironmentType::Standard, None),
-        EnvType::Preview => (EnvironmentType::Preview, None),
-        // Deleting production is a soft delete with a 7-day grace period.
-        EnvType::Production => (
-            EnvironmentType::Production,
-            Some(Protection {
-                require_approvals: 0,
-                deletion_grace: PRODUCTION_DELETION_GRACE.into(),
-            }),
-        ),
-    };
-    let env = Environment {
-        metadata: ObjectMeta {
-            name: Some(name.clone()),
-            labels: Some(BTreeMap::from([
-                (labels::MANAGED_BY.to_owned(), labels::MANAGER.to_owned()),
-                (labels::ORG.to_owned(), p.org.to_string()),
-                (labels::PROJECT.to_owned(), p.view.name.clone()),
-            ])),
-            // Deleting the project deletes its environments (each one still
-            // honours its own deletion policy through the finalizer).
-            owner_references: Some(vec![OwnerReference {
-                api_version: "kuben.dev/v1alpha1".into(),
-                kind: "Project".into(),
-                name: p.view.name.clone(),
-                uid: p.uid.to_string(),
-                ..OwnerReference::default()
-            }]),
-            ..ObjectMeta::default()
-        },
-        spec: EnvironmentSpec {
-            project: p.view.name.clone(),
-            type_,
-            deletion_policy: DeletionPolicy::Delete,
-            protection,
-            quota: body.quota.map(|q| Quota {
-                cpu: q.cpu,
-                memory: q.memory,
-                pods: q.pods,
-            }),
-            ttl: None,
-        },
-        status: None,
-    };
-    let created = Api::<Environment>::all(client)
-        .create(&PostParams::default(), &env)
+    let (_, actor) = request::actor(&authz);
+    let what = format!("environment `{}`", body.name);
+    let mut tenant = state.store.tenant(p.org).await?;
+    let id = tenant
+        .create_environment_typed(
+            p.id(),
+            &body.name,
+            &body.name,
+            body.env_type.into(),
+            quota.as_ref(),
+        )
         .await
-        .map_err(|e| scope::kube_error(e, &name))?;
+        .map_err(|e| request::duplicate(e, &what))?;
+    let cluster = tenant.ensure_cluster(PRIMARY_CLUSTER).await?;
+    tenant
+        .create_placement(p.id(), id, cluster, &namespace)
+        .await
+        .map_err(|e| request::duplicate(e, &what))?;
+    tenant
+        .request(
+            ENVIRONMENT_APPLY,
+            Subject::environment(p.id(), id),
+            &actor,
+            request::audit(&authz, ENVIRONMENT_APPLY, "environment", resource),
+        )
+        .await?;
+    let env = tenant.environment(p.id(), &body.name).await?.ok_or_else(taken)?;
+    tenant.commit().await?;
     Ok((
         StatusCode::CREATED,
-        Json(EnvironmentDto::from_view(&EnvironmentView::from(&created))),
+        Json(EnvironmentDto::of(p.slug(), &env, None)),
     ))
 }
 
@@ -252,6 +273,7 @@ pub async fn create(
         (status = 202, description = "Deletion accepted"),
         (status = 403, body = crate::error::Problem),
         (status = 404, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
     )
 )]
 pub async fn delete(
@@ -259,17 +281,26 @@ pub async fn delete(
     authz: Authz,
     Path((project, environment)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
-    let e = scope::environment(&state, &authz, &project, &environment)?;
-    let perm = if e.view.env_type == "production" {
+    let e = scope::environment(&state, &authz, &project, &environment).await?;
+    let perm = if e.env.env_type == "production" {
         Perm::EnvDeleteProtected
     } else {
         Perm::EnvWrite
     };
     let _proof = authz.require(&state, perm, &e.chain())?;
-    let client = scope::cluster(&state)?;
-    Api::<Environment>::all(client)
-        .delete(&e.view.name, &DeleteParams::default())
-        .await
-        .map_err(|err| scope::kube_error(err, &e.view.name))?;
+    let mut tenant = state.store.tenant(e.project.org).await?;
+    if !tenant.mark_environment_deleting(e.id()).await? {
+        return Err(Error::Conflict(format!("environment `{environment}` is being deleted")).into());
+    }
+    let (_, actor) = request::actor(&authz);
+    tenant
+        .request(
+            ENVIRONMENT_DELETE,
+            Subject::environment(e.project.id(), e.id()),
+            &actor,
+            request::audit(&authz, ENVIRONMENT_DELETE, "environment", e.resource_name()),
+        )
+        .await?;
+    tenant.commit().await?;
     Ok(StatusCode::ACCEPTED)
 }

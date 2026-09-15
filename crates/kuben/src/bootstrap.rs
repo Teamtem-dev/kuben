@@ -18,7 +18,7 @@ use kuben_store::Store;
 pub const INITIAL_ADMIN_SECRET: &str = "kuben-initial-admin";
 
 /// File that receives a generated admin password when a binary runs without
-/// a terminal (a systemd unit), next to the SQLite database.
+/// a terminal (a systemd unit), in the installation's state directory.
 pub const INITIAL_ADMIN_FILE: &str = "initial-admin-password";
 
 /// Ensure the default org and an admin user exist. Returns the generated
@@ -218,7 +218,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn bootstrap_runs_once_even_when_replicas_race() {
-        let store = Store::memory().await.expect("store");
+        let Some(store) = kuben_store::testing::pg_store().await else {
+            kuben_store::testing::skip("bootstrap race");
+            return;
+        };
         let hasher = Hasher::insecure_for_tests();
         let cfg = Config::default();
         let (a, b) = tokio::join!(
@@ -241,9 +244,9 @@ mod tests {
     }
 
     #[test]
-    fn password_file_sits_next_to_the_sqlite_database() {
+    fn password_file_sits_in_the_state_directory() {
         let mut cfg = Config::default();
-        cfg.database.url = "sqlite:///var/lib/kuben/kuben.db".into();
+        cfg.server.state_dir = Some("/var/lib/kuben".into());
         assert_eq!(
             password_file(&cfg),
             PathBuf::from("/var/lib/kuben").join(INITIAL_ADMIN_FILE)

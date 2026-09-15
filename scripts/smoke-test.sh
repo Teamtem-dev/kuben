@@ -107,6 +107,7 @@ cleanup() {
   status=$?
   stop_forward
   if [[ -n ${app_fwd:-} ]]; then kill "$app_fwd" 2>/dev/null || true; fi
+  if [[ -n ${scratch_pg:-} ]]; then docker rm -f "$scratch_pg" >/dev/null 2>&1 || true; fi
   if ((status != 0)); then
     if [[ -z ${failed:-} ]]; then annotate "exit ${status}"; fi
     if [[ $MODE == binary ]]; then
@@ -318,6 +319,11 @@ binary_server() {
   ! sudo systemctl is-active --quiet kuben || fail "kuben.service is still active"
   sudo test ! -e /var/lib/kuben || fail "/var/lib/kuben still exists after --purge"
   sudo test ! -e /etc/kuben || fail "/etc/kuben still exists after --purge"
+  # Since 1.2 `kuben setup` keeps the data in the server's PostgreSQL; --purge drops it.
+  if sudo systemctl is-active --quiet postgresql 2>/dev/null; then
+    [[ -z $(sudo runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'kuben'" 2>/dev/null) ]] ||
+      fail "the kuben database stayed after --purge"
+  fi
   sudo test ! -e /etc/rancher/k3s/k3s.yaml || fail "k3s stayed although kuben setup installed it"
   installed=
 }
@@ -374,15 +380,26 @@ if [[ $MODE == binary ]]; then
 fi
 
 step "kuben doctor without a cluster"
-# A clean environment: no kubeconfig, not in a pod, a scratch database.
-if ! env -u KUBERNETES_SERVICE_HOST KUBECONFIG="$work/no-kubeconfig" \
-  KUBEN_DATABASE__URL="sqlite://${work}/doctor.db" "$bin" doctor >"$work/doctor.txt" 2>&1; then
+# A clean environment: no kubeconfig, not in a pod, a scratch PostgreSQL (Kuben
+# keeps its data in PostgreSQL; releases up to 1.1 also took SQLite).
+if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+  scratch_pg="kuben-smoke-pg-$$"
+  docker run -d --rm --name "$scratch_pg" -e POSTGRES_PASSWORD=smoke -p 127.0.0.1::5432 postgres:17-alpine >/dev/null
+  pg_port=$(docker port "$scratch_pg" 5432/tcp | head -n 1 | sed 's/.*://')
+  eventually 60 "scratch PostgreSQL" docker exec "$scratch_pg" pg_isready -q -h 127.0.0.1
+  if ! env -u KUBERNETES_SERVICE_HOST KUBECONFIG="$work/no-kubeconfig" \
+    KUBEN_DATABASE__URL="postgres://postgres:smoke@127.0.0.1:${pg_port}/postgres" "$bin" doctor >"$work/doctor.txt" 2>&1; then
+    cat "$work/doctor.txt"
+    fail "kuben doctor failed without a cluster (want warnings only)"
+  fi
   cat "$work/doctor.txt"
-  fail "kuben doctor failed without a cluster (want warnings only)"
+  grep -q '^\[OK  \] database' "$work/doctor.txt" || fail "doctor: database not OK"
+  grep -q '^\[WARN\] kubernetes: no cluster found' "$work/doctor.txt" || fail "doctor: no setup-mode warning"
+  docker rm -f "$scratch_pg" >/dev/null
+  scratch_pg=
+else
+  echo "no docker here for a scratch PostgreSQL: skipped"
 fi
-cat "$work/doctor.txt"
-grep -q '^\[OK  \] database' "$work/doctor.txt" || fail "doctor: database not OK"
-grep -q '^\[WARN\] kubernetes: no cluster found' "$work/doctor.txt" || fail "doctor: no setup-mode warning"
 
 step "cluster"
 if ! { command -v kubectl >/dev/null && kubectl version --request-timeout=5s >/dev/null 2>&1; }; then
@@ -400,6 +417,17 @@ kubectl get nodes -o wide
 if helm -n "$NS" status "$RELEASE" >/dev/null 2>&1; then
   fail "a Helm release ${RELEASE} already exists in ${NS}; this test would replace it: use a throwaway cluster"
 fi
+
+# Charts up to 1.1 keep the data in SQLite on the volume `${RELEASE}-data`; later
+# ones in PostgreSQL. An upgrade from a SQLite chart needs the importer, so it
+# is not part of this test: the release under test is installed directly.
+sqlite_chart() { helm show values "$CHART" --version "$1" 2>/dev/null | grep -qi sqlite; }
+if [[ -n $FROM ]] && sqlite_chart "$FROM"; then
+  echo "chart ${FROM} keeps its data in SQLite: an upgrade to ${VERSION} needs the importer; installing ${VERSION} directly"
+  FROM=
+fi
+sqlite_data=
+if sqlite_chart "$VERSION"; then sqlite_data=1; fi
 
 step "helm install from ${CHART}, no registry login"
 args=(install "$RELEASE" "$CHART" --namespace "$NS" --create-namespace --wait --timeout 6m)
@@ -440,7 +468,12 @@ else
   run "helm uninstall" helm uninstall "$RELEASE" --namespace "$NS" --wait --timeout 3m
   eventually 90 "kuben pods gone" bash -c "[[ -z \$(kubectl -n $NS get pods -l app.kubernetes.io/instance=${RELEASE} -o name) ]]"
   # The chart promises that uninstalling never deletes the user and audit database.
-  kubectl -n "$NS" get pvc "${RELEASE}-data" >/dev/null || fail "helm uninstall deleted the database volume"
+  if [[ -n $sqlite_data ]]; then
+    kubectl -n "$NS" get pvc "${RELEASE}-data" >/dev/null || fail "helm uninstall deleted the database volume"
+  else
+    kubectl -n "$NS" get pvc "data-${RELEASE}-postgresql-0" >/dev/null || fail "helm uninstall deleted the database volume"
+    kubectl -n "$NS" get secret "${RELEASE}-postgresql" >/dev/null || fail "helm uninstall deleted the database password"
+  fi
   # The volume and the generated admin Secret go with the namespace. The
   # KubenConfig is kept too (since 1.0.3); Helm never deletes the CRDs in
   # crds/ (every app would go with them).

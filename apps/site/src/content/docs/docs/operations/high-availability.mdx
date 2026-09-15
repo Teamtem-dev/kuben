@@ -1,15 +1,15 @@
 ---
 title: High availability
-description: Run several Kuben replicas on PostgreSQL. How leader election picks the replica that runs the controllers, what rolls without downtime, and what stays eventually consistent.
+description: Run several Kuben replicas on an external PostgreSQL. How leader election picks the replica that runs the controllers, what rolls without downtime, and what stays eventually consistent.
 sidebar:
   order: 3
 ---
 
 import { Aside } from '@astrojs/starlight/components'
 
-SQLite supports exactly one replica. With PostgreSQL, `replicaCount` can be raised, and the chart changes how Kuben is deployed.
+`replicaCount` can be raised: every replica serves the API, and only the holder of the `kuben-controller` Lease runs the controllers. The chart's own PostgreSQL is a single instance, though, so for several replicas or high availability point Kuben at an external PostgreSQL.
 
-## Switch to PostgreSQL
+## Use an external PostgreSQL
 
 Create a Secret with a `url` key and point the chart at it:
 
@@ -22,10 +22,12 @@ helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reus
   --set replicaCount=3
 ```
 
-Migrations run at boot with a lock, so several replicas starting together do not race. The SQLite PVC is no longer created; migrate data first if you have any (see [Backup and restore](/docs/operations/backup-restore/)).
+`database.existingSecret` wins over `database.url`. With either set, the chart renders no PostgreSQL of its own. Migrations run at boot with a lock, so several replicas starting together do not race. The volume and the Secret of an earlier chart-run PostgreSQL stay behind; move their data yourself if you need it (see [Backup and restore](/docs/operations/backup-restore/)).
+
+Connect as an ordinary role that owns its database, not as a superuser or a `BYPASSRLS` role: row-level security does not apply to those, and `kuben doctor` warns about it (`database role`).
 
 <Aside type="caution">
-The chart **fails** to render `replicaCount > 1` without a PostgreSQL URL rather than silently deploying a broken setup.
+`replicaCount > 1` also renders with the chart's own PostgreSQL, but that database is a single instance: when its pod or node goes down, every replica loses it.
 </Aside>
 
 ## What each replica does
@@ -54,7 +56,7 @@ The `kuben_leader` metric is `1` on the leader and `0` elsewhere.
 
 ## Rolling upgrades
 
-With PostgreSQL the chart uses rolling updates with `maxUnavailable: 0`: a new pod must be ready before an old one stops. A `PodDisruptionBudget` stops node drains from evicting more than one pod at a time. Together with leader hand-over, an upgrade pauses the controllers for a few seconds and the API not at all.
+The chart always uses rolling updates with `maxUnavailable: 0` and `maxSurge: 1`: a new pod must be ready before an old one stops. A `PodDisruptionBudget` stops node drains from evicting more than one pod at a time. Together with leader hand-over, an upgrade pauses the controllers for a few seconds and the API not at all.
 
 ## What to expect
 

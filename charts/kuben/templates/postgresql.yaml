@@ -1,0 +1,170 @@
+{{- /*
+The chart's own PostgreSQL (ADR-025), used when database.url and
+database.existingSecret are empty: one instance on a volume, no replication.
+Kuben connects as the ordinary role `kuben`, which owns the `kuben` database;
+the superuser `postgres` is for maintenance only, so row-level security
+applies to Kuben (a superuser would bypass it).
+*/}}
+{{- if include "kuben.postgresql.bundled" . }}
+{{- $name := include "kuben.postgresql.fullname" . }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- $data := dict }}
+{{- if and $existing $existing.data }}
+{{- $data = $existing.data }}
+{{- end }}
+{{- /* Run once, when the data directory is made (docker-entrypoint-initdb.d).
+       In the Secret, not a ConfigMap: it is how the role gets its password. */}}
+{{- $init := `psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
+  --set=password="$KUBEN_PASSWORD" <<'SQL'
+CREATE ROLE kuben LOGIN PASSWORD :'password';
+CREATE DATABASE kuben OWNER kuben;
+SQL
+` }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+  annotations:
+    # Kept on `helm uninstall` with the volume: a re-install must find the
+    # passwords the kept database was made with.
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  # Kuben's role.
+  password: {{ get $data "password" | default (randAlphaNum 32 | b64enc) }}
+  # The superuser `postgres`, for maintenance.
+  postgres-password: {{ get $data "postgres-password" | default (randAlphaNum 32 | b64enc) }}
+  # Makes the role `kuben` and its database.
+  kuben-role.sh: {{ $init | b64enc }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kuben.postgresql.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kuben.postgresql.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kuben.postgresql.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The image's `postgres` user.
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgresql
+          image: {{ include "kuben.postgresql.image" . }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: postgres-password
+            - name: KUBEN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: password
+            # Below the mount point: a fresh volume may hold lost+found.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-q", "-h", "127.0.0.1", "-U", "kuben", "-d", "kuben"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-q", "-h", "127.0.0.1", "-U", "kuben", "-d", "kuben"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: init
+          secret:
+            secretName: {{ $name }}
+            items:
+              - key: kuben-role.sh
+                path: kuben-role.sh
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  # The volume outlives the StatefulSet: `helm uninstall` never deletes the
+  # user and audit database.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "kuben.postgresql.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size }}
+{{- end }}

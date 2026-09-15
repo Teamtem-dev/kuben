@@ -1,5 +1,6 @@
 //! Promotion of an app to another environment of the same project
-//! (scenario 10), with a dry-run diff.
+//! (scenario 10), with a dry-run diff. The target runs the source's release,
+//! digests and all: nothing is rebuilt.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -8,21 +9,18 @@ use axum::{
     extract::{Path, State},
 };
 use k8s_openapi::api::core::v1::Secret;
-use kube::{
-    Api, ResourceExt,
-    api::{ListParams, PostParams},
-};
-use kuben_core::{Error, perm::Perm};
-use kuben_crd::{App, AppSpec, labels};
-use kuben_platform::projection::AppView;
+use kube::{Api, ResourceExt, api::ListParams};
+use kuben_core::{Error, ops::Generation, perm::Perm};
+use kuben_crd::{AppSpec, labels};
+use kuben_store::repo::RunReason;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{AppDto, new_app_object, record_release, spec::validate_spec};
+use super::{AppDto, Artifact, Change, deploy, desired_spec, spec::validate_spec};
 use crate::{
     authz::Authz,
     error::ApiResult,
-    routes::{scope, validate},
+    routes::{request, scope, validate},
     state::ApiState,
 };
 
@@ -197,6 +195,7 @@ async fn managed_secret_keys(
         (status = 200, body = PromoteResult),
         (status = 403, body = crate::error::Problem),
         (status = 404, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem),
         (status = 422, body = crate::error::Problem),
     )
 )]
@@ -206,36 +205,38 @@ pub async fn promote(
     Path((project, environment, app)): Path<(String, String, String)>,
     Json(body): Json<Promote>,
 ) -> ApiResult<Json<PromoteResult>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app)?;
+    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _read = authz.require(&state, Perm::AppRead, &a.chain())?;
     validate::dns_label("to_environment", &body.to_environment, 63)?;
-    let target = scope::environment(&state, &authz, &project, &body.to_environment)?;
-    if target.view.name == a.env.view.name {
+    let target = scope::environment(&state, &authz, &project, &body.to_environment).await?;
+    if target.id() == a.env.id() {
         return Err(Error::Validation("choose a different target environment".into()).into());
     }
     let _promote = authz.require(&state, Perm::ReleasePromote, &target.chain())?;
-    if target.view.deleting {
+    if target.deleting() {
         return Err(
             Error::Conflict(format!("environment `{}` is being deleted", target.short_name())).into(),
         );
     }
-    let client = scope::cluster(&state)?;
-    let source = Api::<App>::namespaced(client.clone(), &a.view.namespace)
-        .get(&a.view.name)
-        .await
-        .map_err(|e| scope::kube_error(e, &app))?;
-    let target_api = Api::<App>::namespaced(client.clone(), &target.view.namespace);
-    let existing = target_api
-        .get_opt(&a.view.name)
-        .await
-        .map_err(|e| scope::kube_error(e, &app))?;
-    let spec = promote_spec(&source.spec, existing.as_ref().map(|e| &e.spec));
+    let source = desired_spec(&a.app)
+        .ok_or_else(|| Error::Conflict(format!("app `{app}` has no configuration yet")))?;
+    let release = a
+        .app
+        .release
+        .ok_or_else(|| Error::Conflict(format!("app `{app}` has no release yet")))?;
+    let mut tenant = state.store.tenant(a.env.project.org).await?;
+    let existing = tenant.app(target.id(), a.slug()).await?;
+    let current = existing.as_ref().and_then(super::desired_spec);
+    let spec = promote_spec(&source, current.as_ref());
     validate_spec(&spec)?;
-    let changes = spec_changes(existing.as_ref().map(|e| &e.spec), &spec);
-    let warnings = missing_secrets(
-        &spec,
-        &managed_secret_keys(&client, &target.view.namespace).await?,
-    );
+    let changes = spec_changes(current.as_ref(), &spec);
+    let warnings = match &state.cluster {
+        Some(_) => missing_secrets(
+            &spec,
+            &managed_secret_keys(&scope::cluster(&state)?, &target.namespace()).await?,
+        ),
+        None => Vec::new(),
+    };
     if body.dry_run || (existing.is_some() && changes.is_empty()) {
         return Ok(Json(PromoteResult {
             dry_run: body.dry_run,
@@ -245,44 +246,41 @@ pub async fn promote(
             app: None,
         }));
     }
-    let (saved, created) = if let Some(mut live) = existing {
-        live.spec = spec;
-        let saved = target_api
-            .replace(&a.view.name, &PostParams::default(), &live)
-            .await
-            .map_err(|e| scope::kube_error(e, &app))?;
-        (saved, false)
+    let project_id = a.env.project.id();
+    let (target_id, expected, created) = if let Some(record) = &existing {
+        (record.target, record.desired_generation, false)
     } else {
-        let saved = target_api
-            .create(
-                &PostParams::default(),
-                &new_app_object(&target, &a.view.name, spec),
-            )
+        let placement = target.env.placement.ok_or_else(|| {
+            Error::Conflict(format!("environment `{}` has no placement", target.short_name()))
+        })?;
+        let id = tenant
+            .create_target(project_id, a.app.application, placement)
             .await
-            .map_err(|e| scope::kube_error(e, &app))?;
-        (saved, true)
+            .map_err(|e| request::duplicate(e, &format!("app `{app}`")))?;
+        (id, Generation(0), true)
     };
-    record_release(
-        &state,
-        &authz,
-        target.project.org,
-        &target.view.namespace,
-        &a.view.name,
-        &saved.spec,
-        "promote",
-        Some(format!("from {}", a.env.short_name())),
-    )
-    .await;
+    let change = Change {
+        project: project_id,
+        application: a.app.application,
+        target: target_id,
+        spec: &spec,
+        artifact: Artifact::Release(release),
+        expected,
+        reason: RunReason::Promotion,
+        reference: format!("{project}/{}/{app}", target.short_name()),
+    };
+    deploy(&mut tenant, &authz, change).await?;
+    let record = tenant
+        .app(target.id(), a.slug())
+        .await?
+        .ok_or_else(|| Error::Internal("the promoted app is missing".into()))?;
+    tenant.commit().await?;
     Ok(Json(PromoteResult {
         dry_run: false,
         created,
         changes,
         warnings,
-        app: Some(AppDto::from_view(
-            &AppView::from(&saved),
-            &target.project.view.name,
-            target.short_name(),
-        )),
+        app: Some(AppDto::of(project.as_str(), target.short_name(), &record, None)),
     }))
 }
 

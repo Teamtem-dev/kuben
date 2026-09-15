@@ -36,6 +36,19 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// Platform settings from the `KubenConfig` singleton among `configs` (the
+/// one named [`KUBEN_CONFIG_NAME`], else the first), or defaults. The App
+/// controller and the renderer's capability snapshot choose alike.
+#[must_use]
+pub fn platform_of<'a>(configs: impl IntoIterator<Item = &'a KubenConfig>) -> Platform {
+    let configs: Vec<&KubenConfig> = configs.into_iter().collect();
+    let chosen = configs
+        .iter()
+        .find(|c| c.metadata.name.as_deref() == Some(KUBEN_CONFIG_NAME))
+        .or_else(|| configs.first());
+    Platform::from_spec(chosen.map(|c| &c.spec))
+}
+
 /// State shared by all reconcilers.
 pub struct Ctx {
     pub client: Client,
@@ -65,11 +78,7 @@ impl Ctx {
     #[must_use]
     pub fn platform(&self) -> Platform {
         let configs = self.config.state();
-        let chosen = configs
-            .iter()
-            .find(|c| c.metadata.name.as_deref() == Some(KUBEN_CONFIG_NAME))
-            .or_else(|| configs.first());
-        Platform::from_spec(chosen.map(|c| &c.spec))
+        platform_of(configs.iter().map(std::sync::Arc::as_ref))
     }
 
     fn key<K: Resource<DynamicType = ()>>(obj: &K) -> String {

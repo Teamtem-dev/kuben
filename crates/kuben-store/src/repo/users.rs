@@ -4,10 +4,7 @@ use kuben_core::{
     time::now_ms,
 };
 
-use crate::{
-    Store, StoreError,
-    db::{with_reader, with_writer},
-};
+use crate::{Store, StoreError};
 
 #[derive(Debug, sqlx::FromRow)]
 struct UserRow {
@@ -88,66 +85,56 @@ impl Store {
             must_change_password,
             created_at: now_ms(),
         };
-        with_writer!(self, |pool| {
-            sqlx::query(INSERT_USER)
-                .bind(user.id.to_string())
-                .bind(&user.email)
-                .bind(&user.display_name)
-                .bind(password_hash)
-                .bind(user.is_active)
-                .bind(user.must_change_password)
-                .bind(user.created_at)
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(INSERT_USER)
+            .bind(user.id.to_string())
+            .bind(&user.email)
+            .bind(&user.display_name)
+            .bind(password_hash)
+            .bind(user.is_active)
+            .bind(user.must_change_password)
+            .bind(user.created_at)
+            .execute(self.pool())
+            .await?;
         Ok(user)
     }
 
     pub async fn find_user_by_email(&self, email: &str) -> Result<Option<UserCredentials>, StoreError> {
         let email = email.trim().to_ascii_lowercase();
-        let row: Option<UserRow> = with_reader!(self, |pool| {
-            sqlx::query_as(SELECT_USER_BY_EMAIL)
-                .bind(&email)
-                .fetch_optional(pool)
-                .await?
-        });
+        let row: Option<UserRow> = sqlx::query_as(SELECT_USER_BY_EMAIL)
+            .bind(&email)
+            .fetch_optional(self.pool())
+            .await?;
         row.map(UserCredentials::try_from).transpose()
     }
 
     pub async fn find_user_by_id(&self, id: UserId) -> Result<Option<User>, StoreError> {
-        let row: Option<UserRow> = with_reader!(self, |pool| {
-            sqlx::query_as(SELECT_USER_BY_ID)
-                .bind(id.to_string())
-                .fetch_optional(pool)
-                .await?
-        });
+        let row: Option<UserRow> = sqlx::query_as(SELECT_USER_BY_ID)
+            .bind(id.to_string())
+            .fetch_optional(self.pool())
+            .await?;
         row.map(UserCredentials::try_from)
             .transpose()
             .map(|c| c.map(|c| c.user))
     }
 
     pub async fn list_users(&self) -> Result<Vec<User>, StoreError> {
-        let rows: Vec<UserRow> = with_reader!(self, |pool| sqlx::query_as(SELECT_USER_COLS)
-            .fetch_all(pool)
-            .await?);
+        let rows: Vec<UserRow> = sqlx::query_as(SELECT_USER_COLS).fetch_all(self.pool()).await?;
         rows.into_iter()
             .map(|r| UserCredentials::try_from(r).map(|c| c.user))
             .collect()
     }
 
     pub async fn count_users(&self) -> Result<i64, StoreError> {
-        let (n,): (i64,) = with_reader!(self, |pool| sqlx::query_as(COUNT_USERS).fetch_one(pool).await?);
+        let (n,): (i64,) = sqlx::query_as(COUNT_USERS).fetch_one(self.pool()).await?;
         Ok(n)
     }
 
     pub async fn set_password_hash(&self, id: UserId, password_hash: &str) -> Result<(), StoreError> {
-        with_writer!(self, |pool| {
-            sqlx::query(UPDATE_PASSWORD)
-                .bind(id.to_string())
-                .bind(password_hash)
-                .execute(pool)
-                .await?;
-        });
+        sqlx::query(UPDATE_PASSWORD)
+            .bind(id.to_string())
+            .bind(password_hash)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 }

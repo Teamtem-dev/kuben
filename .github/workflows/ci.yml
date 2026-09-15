@@ -280,6 +280,18 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # Kuben keeps its data in PostgreSQL (ADR-025); the server under test
+    # runs on the runner and reaches the service on localhost.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: kuben
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      KUBEN_E2E_DATABASE_URL: postgres://postgres:kuben@localhost:5432/postgres
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -292,20 +304,58 @@ jobs:
         with:
           cluster_name: kuben-e2e
           wait: 120s
+      # ADR-032 option A: tags resolve to digests at their registry. First, so
+      # a registry problem shows here and not as an e2e failure.
+      - name: Registry resolution (network)
+        run: bun turbo run kuben-api#test:network
       # Builds the debug binary first (kuben#e2e depends on kuben#build).
       - run: bun turbo run kuben#e2e
       # ADR-027 spike: stale resourceVersion writes, server-side apply with a
       # stale precondition, and racing writers against the real API server.
-      - name: Two writers against the API server (M0 spike)
+      # ADR-032: the materializer writes, fences and verifies runs from SQL.
+      # The tests are #[ignore]d everywhere else; this step runs them with
+      # --ignored, so an unreachable cluster fails instead of skipping.
+      - name: Cluster tests (two writers, materializer, execution CRDs)
         run: bun turbo run kuben-platform#test:cluster
         env:
-          KUBEN_E2E_CLUSTER: "1"
+          KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
+      - name: Agent executor against the cluster
+        run: bun turbo run kuben-agent#test:cluster
       # The chart against the real API server, whose CRDs the e2e run applied:
       # server-side validation catches what `helm template` cannot, like a
       # custom resource that does not match its schema (v1.0.3 shipped
       # `KubenConfig.spec: null`). A dry run creates no namespace, hence default.
       - name: Helm chart validates against the cluster
         run: helm install kuben charts/kuben --namespace default --dry-run=server >/dev/null
+      # M1.10: the chart's own PostgreSQL comes up, Kuben's role is not a
+      # superuser, and uninstall keeps the volume and password for a re-install.
+      - name: Helm chart's PostgreSQL on the cluster
+        run: scripts/chart-postgres-test.sh
+
+  # M1.10: `kuben setup` on a fresh runner installs or starts PostgreSQL, makes
+  # the role and database kuben (peer auth, not a superuser) and runs Kuben on
+  # a kind cluster; `kuben uninstall --purge` drops the database again.
+  host-install:
+    name: Host install (kuben setup)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+        with:
+          rust-toolchain: stable
+          rust-cache-key: host-install
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          cluster_name: kuben-host
+          wait: 120s
+      - run: bun turbo run kuben#build
+      - name: kuben setup provisions PostgreSQL and runs Kuben
+        run: scripts/host-install-test.sh
 
   budgets:
     name: Binary size budget (static musl)
@@ -365,7 +415,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, zizmor]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, host-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

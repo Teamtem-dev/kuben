@@ -17,7 +17,7 @@ Every CI job calls the same Turborepo task a developer runs locally. Pull reques
 | **Rust format** | `cargo fmt --check` |
 | **Clippy** | every crate and target with `-D warnings` and `clippy::pedantic`; workspace lints deny `unwrap` and forbid `unsafe` |
 | **Test** (4-OS matrix) | cargo-nextest on linux-x64, linux-arm64, macos-arm64 and windows-x64, plus doctests. Binaries ship for all five targets, so all of them are tested |
-| **Store matrix** | the store tests against PostgreSQL 17, so both backends behave identically |
+| **Store matrix** | the store tests against PostgreSQL 17, the only database Kuben keeps its data in |
 | **MSRV** | `cargo check` on Rust 1.94, because `rust-version` is a promise |
 | **Supply chain** | `cargo-deny`: licenses, advisories, bans (`openssl-sys`, `serde_yaml`), sources |
 | **Web** | Biome, `tsc`, `bun test`, the Vite build, the Astro build, and **size-limit** (200 kB JS, 25 kB CSS, brotli) |

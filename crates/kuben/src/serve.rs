@@ -18,8 +18,6 @@ use kuben_platform::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::cli::ServeOpts;
-
 pub fn build_runtime(rt: &RuntimeCfg) -> anyhow::Result<tokio::runtime::Runtime> {
     let workers = rt
         .worker_threads
@@ -36,11 +34,7 @@ pub fn block_on<F: Future<Output = anyhow::Result<()>>>(rt: &RuntimeCfg, f: F) -
     build_runtime(rt)?.block_on(f)
 }
 
-pub fn run(mut cfg: Config, opts: &ServeOpts) -> anyhow::Result<()> {
-    if opts.dev && cfg.database.url == kuben_core::config::DatabaseCfg::default().url {
-        cfg.database.url = "sqlite://./.dev/kuben.db".into();
-        std::fs::create_dir_all("./.dev").ok();
-    }
+pub fn run(cfg: Config) -> anyhow::Result<()> {
     // ADR-013: one runtime in phase 0; `runtime.bulkhead` reserves the second.
     let rt = build_runtime(&cfg.runtime)?;
     rt.block_on(serve(cfg))
@@ -57,6 +51,12 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     let store = kuben_store::Store::connect(&cfg.database).await?;
     tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
+    if let Ok(Some(role)) = store.role_bypassing_row_security().await {
+        tracing::warn!(
+            %role,
+            "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
+        );
+    }
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 
@@ -70,15 +70,27 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         crate::bootstrap::hand_over_password(&cfg, cluster.as_ref(), &password).await;
     }
 
+    // AgentLink: the hub's endpoint for cluster agents (ADR-027). It needs no
+    // kubeconfig of its own; the materializer hands it envelopes.
+    let agent_link = if cfg.has_role(Role::Controller) {
+        kuben_platform::agentlink::AgentLink::build(&cfg.agent, &cfg.state_dir(), store.clone())?
+    } else {
+        None
+    };
+
     let projections = Arc::new(Projections::new());
-    let tasks = if let Some(registry) = &cluster {
+    let mut tasks = if let Some(registry) = &cluster {
         health.ok("cluster");
         spawn_cluster_tasks(
             &cfg,
+            &store,
             registry,
             &projections,
             &health,
             election.as_ref(),
+            agent_link
+                .as_ref()
+                .map(kuben_platform::agentlink::AgentLink::dispatch),
             &shutdown,
         )
     } else {
@@ -87,6 +99,14 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         health.set_ready(true);
         Vec::new()
     };
+
+    if let Some(link) = agent_link {
+        let (h, t) = (health.clone(), shutdown.child_token());
+        tasks.push(tokio::spawn(supervise("agentlink", t, h, move |tok| {
+            let link = link.clone();
+            async move { link.serve(tok).await }
+        })));
+    }
 
     #[cfg(not(feature = "activator"))]
     if cfg.server.roles.contains(&Role::Activator) {
@@ -128,20 +148,41 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     for t in tasks {
         let _ = tokio::time::timeout(Duration::from_secs(10), t).await;
     }
-    store.checkpoint_and_close().await?;
+    store.close().await?;
     tracing::info!("bye");
     Ok(())
 }
 
+/// What runs on one replica at a time: the controllers and the materializer's
+/// drift watch.
+async fn leading(
+    registry: ClusterRegistry,
+    projections: Arc<Projections>,
+    health: Health,
+    worker: kuben_platform::materializer::Worker,
+    token: CancellationToken,
+) -> anyhow::Result<()> {
+    tokio::try_join!(
+        kuben_platform::controller::run_all(registry, projections, health, token.clone()),
+        kuben_platform::materializer::drift::watch(worker, token),
+    )?;
+    Ok(())
+}
+
 /// Cluster-backed subsystems: informers, the readiness gate on their first
-/// sync, controllers (behind leader election when enabled) and, with the
-/// `activator` feature, the activator.
+/// sync, controllers and the materializer's drift watch (behind leader
+/// election when enabled), the materializer's worker (whose claims are
+/// fenced in SQL, so every replica runs one) and, with the `activator`
+/// feature, the activator.
+#[allow(clippy::too_many_arguments)] // the process's shared parts, passed once at startup
 fn spawn_cluster_tasks(
     cfg: &Config,
+    store: &kuben_store::Store,
     registry: &ClusterRegistry,
     projections: &Arc<Projections>,
     health: &Health,
     election: Option<&Election>,
+    agents: Option<Arc<dyn kuben_platform::materializer::AgentDispatch>>,
     shutdown: &CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut tasks = Vec::new();
@@ -170,29 +211,47 @@ fn spawn_cluster_tasks(
     });
 
     if cfg.has_role(Role::Controller) {
-        let (r, p, h, t) = (
+        // SQL is the only desired-state writer; the materializer writes its
+        // resources (ADR-032).
+        let mut worker =
+            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
+        if let Some(agents) = agents {
+            // Targets delivered by their cluster's agent go through the hub.
+            worker = worker.with_agents(agents);
+        }
+        let (r, p, h, watcher, t) = (
             registry.clone(),
             projections.clone(),
             health.clone(),
+            worker.clone(),
             shutdown.child_token(),
         );
         let election = election.cloned();
         tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
-            let (r, p, h, election) = (r.clone(), p.clone(), h.clone(), election.clone());
+            let (r, p, h, watcher, election) =
+                (r.clone(), p.clone(), h.clone(), watcher.clone(), election.clone());
             async move {
                 match election {
                     // Several replicas: reconcile only while holding the Lease.
                     Some(election) => {
                         let client = r.primary();
                         leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
-                            kuben_platform::controller::run_all(r, p, h, tok)
+                            leading(r, p, h, watcher, tok)
                         })
                         .await
                     }
-                    None => kuben_platform::controller::run_all(r, p, h, tok).await,
+                    None => Box::pin(leading(r, p, h, watcher, tok)).await,
                 }
             }
         })));
+
+        let (h, t) = (health.clone(), shutdown.child_token());
+        tasks.push(tokio::spawn(supervise(
+            "materializer",
+            t,
+            h.clone(),
+            move |tok| kuben_platform::materializer::run(worker.clone(), h.clone(), tok),
+        )));
     }
 
     #[cfg(feature = "activator")]
@@ -219,15 +278,21 @@ fn election(cfg: &Config) -> anyhow::Result<Option<Election>> {
     let namespace = own_namespace(cfg.kube.namespace.as_deref()).context(
         "kube.leader_election needs a namespace for its Lease: set KUBEN_KUBE__NAMESPACE (automatic inside a pod)",
     )?;
+    Ok(Some(Election {
+        namespace,
+        identity: instance_identity(),
+    }))
+}
+
+/// This process among the replicas: the host name plus a random suffix,
+/// for the leader Lease and the materializer's claims.
+fn instance_identity() -> String {
     let host = std::env::var("HOSTNAME")
         .ok()
         .filter(|h| !h.is_empty())
         .unwrap_or_else(|| "kuben".into());
     let suffix: u32 = rand::random();
-    Ok(Some(Election {
-        namespace,
-        identity: format!("{host}_{suffix:08x}"),
-    }))
+    format!("{host}_{suffix:08x}")
 }
 
 /// Heartbeat for `/livez`: if the runtime is wedged this stops ticking.
