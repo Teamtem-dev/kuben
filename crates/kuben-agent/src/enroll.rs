@@ -384,6 +384,11 @@ impl<T: TokenStore> Enrollment<T> {
         &self.ca
     }
 
+    #[must_use]
+    pub const fn tokens(&self) -> &T {
+        &self.tokens
+    }
+
     /// Enroll the device that signed `csr_pem` into `cluster_id`. A CSR that
     /// does not verify never consumes the token.
     pub async fn enroll(

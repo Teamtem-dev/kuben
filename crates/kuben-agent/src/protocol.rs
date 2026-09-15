@@ -52,7 +52,7 @@ pub enum Message {
     Welcome {
         protocol_version: u32,
         hub_version: String,
-        heartbeat_seconds: u32,
+        heartbeat_ms: u64,
         features: BTreeSet<String>,
     },
     /// The other side will not go on; the link closes after this.

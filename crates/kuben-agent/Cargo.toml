@@ -18,8 +18,8 @@ thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
-
-[dev-dependencies]
+tokio-util.workspace = true
+tracing.workspace = true
 x509-parser.workspace = true
 
 [lints]

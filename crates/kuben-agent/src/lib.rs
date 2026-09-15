@@ -8,8 +8,12 @@
 //! * [`protocol`]: the messages, their framing and the version and feature
 //!   negotiation of the handshake;
 //! * [`tls`]: the TLS configurations of both ends, with the pinned CA;
-//! * [`enroll`]: how an agent gets its identity with a bootstrap token.
+//! * [`enroll`]: how an agent gets its identity with a bootstrap token;
+//! * [`link`]: the agent's end: dial, hello, heartbeats, dial again;
+//! * [`hub`]: the hub's end, a stub `kuben serve` will host.
 
 pub mod enroll;
+pub mod hub;
+pub mod link;
 pub mod protocol;
 pub mod tls;
