@@ -1,6 +1,7 @@
 //! Repositories. Each function is a thin, explicit SQL statement — no ORM
 //! magic (Drizzle philosophy) — with PostgreSQL's `$n` placeholders.
 
+mod agents;
 mod audit;
 mod catalog;
 mod deployments;
@@ -16,6 +17,7 @@ mod throttle;
 mod tokens;
 mod users;
 
+pub use agents::{ClusterAgent, Redeemed, TokenRedemption, TokenRefusal};
 pub use audit::NewAudit;
 pub use catalog::{AppRecord, EnvironmentRecord, RunRecord};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
