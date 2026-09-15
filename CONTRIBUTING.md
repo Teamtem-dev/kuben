@@ -71,8 +71,10 @@ Also check:
 - New long-running tasks run under `supervise` and report into `Health`.
 - Work that must happen once per cluster (reconciling, applying CRDs) runs
   under the controller Lease, never on every replica (ADR-023).
-- Each migration exists for both backends with the same file name;
-  `schema_parity_between_sqlite_and_postgres` enforces it.
+- Migrations are PostgreSQL only (ADR-025), in
+  `crates/kuben-store/migrations/postgres/`. An applied migration is never
+  edited, not even a comment: sqlx checksums every file and existing
+  databases would refuse to start.
 - Pure logic (builders, validation, parsing) has unit tests; API behaviour has
   tests in `crates/kuben-api/tests/http.rs`; cluster behaviour is covered by
   `scripts/e2e.sh`.

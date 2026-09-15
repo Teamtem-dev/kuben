@@ -54,8 +54,10 @@ body:
     attributes:
       label: Database
       options:
-        - SQLite (single replica)
-        - PostgreSQL (one or more replicas)
+        - PostgreSQL in the Helm chart
+        - External PostgreSQL
+        - PostgreSQL on the host (kuben setup)
+        - SQLite (Kuben 1.x only)
     validations:
       required: true
 
