@@ -552,6 +552,77 @@ async fn the_hub_hands_an_agent_an_envelope_and_hears_how_it_went() {
     task.await.expect("join");
 }
 
+/// Two clusters on one hub, the contract harness of plan §18.1: each agent
+/// receives only its own cluster's envelopes, and what it reports is filed
+/// under its own cluster.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_clusters_on_one_hub_each_hear_only_their_own_envelopes() {
+    let world = world(HubSettings {
+        features: features(&[APPLICATION_RUNTIME]),
+        ..quick()
+    });
+    let mut links = Vec::new();
+    for cluster in ["primary", "secondary"] {
+        let fake = Arc::new(Fake::default());
+        let mut config = config(&world, cluster, issued_identity(&world, cluster).await);
+        config.capabilities = features(&[APPLICATION_RUNTIME]);
+        config.executor = Some(fake.clone());
+        let (token, task) = start(Dialer::new(&world, 0), config);
+        links.push((fake, token, task));
+    }
+    eventually("both links", || {
+        heartbeats(&world, "primary") >= 1 && heartbeats(&world, "secondary") >= 1
+    })
+    .await;
+
+    assert!(world.hub.send("primary", envelope(5)).await);
+    assert!(world.hub.send("secondary", envelope(7)).await);
+    let ready = |cluster: &str, generation: i64| {
+        world
+            .hub
+            .registry()
+            .observations(cluster)
+            .iter()
+            .any(|o| o.phase == RuntimePhase::Ready && o.generation == generation)
+    };
+    eventually("both envelopes ready", || {
+        ready("primary", 5) && ready("secondary", 7)
+    })
+    .await;
+
+    let specs = |fake: &Fake| -> Vec<String> {
+        fake.applied
+            .lock()
+            .expect("lock")
+            .iter()
+            .map(|a| a.spec.clone())
+            .collect()
+    };
+    assert_eq!(
+        specs(&links[0].0),
+        [r#"{"generation":5}"#],
+        "primary got only its own"
+    );
+    assert_eq!(
+        specs(&links[1].0),
+        [r#"{"generation":7}"#],
+        "secondary got only its own"
+    );
+    assert!(
+        !world
+            .hub
+            .registry()
+            .observations("primary")
+            .iter()
+            .any(|o| o.generation == 7),
+        "secondary's reports are not filed under primary"
+    );
+    for (_, token, task) in links {
+        token.cancel();
+        task.await.expect("join");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn envelopes_need_the_negotiated_feature() {
     let world = world(quick());

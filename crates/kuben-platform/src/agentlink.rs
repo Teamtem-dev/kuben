@@ -415,6 +415,8 @@ impl AgentDispatch for HubDispatch {
 
 #[cfg(test)]
 mod tests {
+    use kuben_agent::protocol::{Observation, RuntimePhase};
+    use kuben_core::ids::TargetId;
     use kuben_store::testing::{pg_store, skip};
 
     use super::*;
@@ -445,6 +447,93 @@ mod tests {
             assert_eq!(mode(&dir), 0o700);
         }
         fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Two clusters of one organization (plan §18.1, I21): the hub files a
+    /// report under the cluster whose agent sent it, and SQL keeps a report
+    /// on a target of the other cluster out, even for a newer generation.
+    #[tokio::test]
+    async fn an_agent_reports_only_on_the_targets_of_its_own_cluster() {
+        let Some(store) = pg_store().await else {
+            skip("two clusters");
+            return;
+        };
+        let org = store.create_org("a", "A").await.expect("org").id;
+        let mut t = store.tenant(org).await.expect("tenant");
+        let primary = t.create_cluster("primary").await.expect("cluster");
+        let secondary = t.create_cluster("secondary").await.expect("cluster");
+        let project = t.create_project("shop", "Shop").await.expect("project");
+        let mut targets = Vec::new();
+        for (slug, cluster) in [("prod", primary), ("edge", secondary)] {
+            let env = t
+                .create_environment(project, slug, slug, false)
+                .await
+                .expect("environment");
+            let placement = t
+                .create_placement(project, env, cluster, &format!("kb-shop-{slug}"))
+                .await
+                .expect("placement");
+            let application = t
+                .create_application(project, &format!("web-{slug}"), "Web")
+                .await
+                .expect("application");
+            targets.push(
+                t.create_target(project, application, placement)
+                    .await
+                    .expect("target"),
+            );
+        }
+        t.commit().await.expect("commit");
+        for cluster in [primary, secondary] {
+            store
+                .record_agent_certificate(org, cluster, &format!("sha256:{cluster}"), i64::MAX)
+                .await
+                .expect("certificate");
+        }
+
+        let registry = SqlRegistry::new(store.clone());
+        let report = |target: TargetId, generation: i64, phase: RuntimePhase| Observation {
+            target: target.to_string(),
+            generation,
+            phase,
+            reason: None,
+            message: None,
+        };
+        let (prod, edge) = (targets[0], targets[1]);
+        registry
+            .observed(
+                &primary.to_string(),
+                "sha256:p",
+                &report(prod, 1, RuntimePhase::Ready),
+            )
+            .await;
+        registry
+            .observed(
+                &secondary.to_string(),
+                "sha256:s",
+                &report(edge, 1, RuntimePhase::Ready),
+            )
+            .await;
+        // The secondary cluster's agent reports on the primary's target.
+        registry
+            .observed(
+                &secondary.to_string(),
+                "sha256:s",
+                &report(prod, 2, RuntimePhase::Failed),
+            )
+            .await;
+
+        let mut t = store.tenant(org).await.expect("tenant");
+        let seen = |o: Option<kuben_store::repo::RuntimeObservation>| o.map(|o| (o.generation, o.phase));
+        assert_eq!(
+            seen(t.runtime_observation(prod).await.expect("read")),
+            Some((1, "ready".to_owned())),
+            "the other cluster's report is kept out"
+        );
+        assert_eq!(
+            seen(t.runtime_observation(edge).await.expect("read")),
+            Some((1, "ready".to_owned()))
+        );
     }
 
     #[tokio::test]
