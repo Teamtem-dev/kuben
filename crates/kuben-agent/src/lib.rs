@@ -10,10 +10,13 @@
 //! * [`tls`]: the TLS configurations of both ends, with the pinned CA;
 //! * [`enroll`]: how an agent gets its identity with a bootstrap token;
 //! * [`link`]: the agent's end: dial, hello, heartbeats, dial again;
-//! * [`hub`]: the hub's end, a stub `kuben serve` will host.
+//! * [`hub`]: the hub's end, a stub `kuben serve` will host;
+//! * [`state`]: the device key and certificate on disk, and enrolling
+//!   when there is no valid certificate.
 
 pub mod enroll;
 pub mod hub;
 pub mod link;
 pub mod protocol;
+pub mod state;
 pub mod tls;

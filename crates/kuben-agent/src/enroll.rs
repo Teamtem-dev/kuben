@@ -90,6 +90,12 @@ impl DeviceKey {
         self.0.serialize_pem()
     }
 
+    /// The public key as a SubjectPublicKeyInfo (DER).
+    #[must_use]
+    pub fn public_key_info(&self) -> Vec<u8> {
+        self.0.subject_public_key_info()
+    }
+
     /// `sha256:` of the public key (its SubjectPublicKeyInfo).
     #[must_use]
     pub fn device_id(&self) -> String {

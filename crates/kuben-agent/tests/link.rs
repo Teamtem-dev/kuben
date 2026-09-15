@@ -16,6 +16,7 @@ use kuben_agent::{
     hub::{Hub, HubSettings, SessionInfo},
     link::{Connector, LinkConfig, run},
     protocol::{Message, read_frame, write_frame},
+    state::{HubAddress, State, StateError, ensure_identity},
     tls::{ClientAuth, HUB_NAME, Identity, agent_config, hub_config, server_name},
 };
 use time::OffsetDateTime;
@@ -331,4 +332,63 @@ async fn an_agent_enrolls_through_the_hub_and_then_links() {
     .await;
     stop.cancel();
     task.await.expect("join");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_agent_enrolls_once_and_then_uses_its_stored_identity() {
+    let world = world(HubSettings {
+        heartbeat: Duration::from_millis(20),
+        ..HubSettings::default()
+    });
+    let now = OffsetDateTime::now_utc();
+    let token = world
+        .hub
+        .enrollment()
+        .tokens()
+        .issue("primary", Duration::from_mins(30), now);
+    let dir = std::env::temp_dir().join(format!(
+        "kuben-agent-link-{}-{}",
+        std::process::id(),
+        now.unix_timestamp_nanos()
+    ));
+    let state = State::open(&dir).expect("state");
+    let key = state.device_key().expect("key");
+    let dialer = Dialer::new(&world, 0);
+    let pinned = [world.pinned.clone()];
+    let name = server_name(HUB_NAME).expect("name");
+    let hub = HubAddress {
+        connector: dialer.as_ref(),
+        pinned: &pinned,
+        name: &name,
+    };
+
+    let without = ensure_identity(&state, &key, &hub, "primary", || Ok(None), now).await;
+    assert!(matches!(without, Err(StateError::NeedsEnrollment)), "{without:?}");
+    ensure_identity(&state, &key, &hub, "primary", || Ok(Some(token.clone())), now)
+        .await
+        .expect("enrolled");
+    let stored = ensure_identity(
+        &state,
+        &key,
+        &hub,
+        "primary",
+        || panic!("an enrolled agent never reads a token"),
+        now,
+    )
+    .await
+    .expect("the stored identity");
+    let later = ensure_identity(&state, &key, &hub, "primary", || Ok(None), now + DAY + DAY).await;
+    assert!(
+        matches!(later, Err(StateError::NeedsEnrollment)),
+        "an expired certificate"
+    );
+
+    let (stop, task) = start(dialer.clone(), config(&world, "primary", Some(stored)));
+    eventually("a link with the stored identity", || {
+        heartbeats(&world, "primary") >= 1
+    })
+    .await;
+    stop.cancel();
+    task.await.expect("join");
+    std::fs::remove_dir_all(&dir).ok();
 }
