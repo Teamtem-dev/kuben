@@ -28,7 +28,7 @@ pub struct ScopeChain {
     pub app: Option<Uuid>,
     /// Other names of nodes on this chain: the Kubernetes UIDs of resources
     /// whose SQL rows now name them (ADR-032), so role bindings made on those
-    /// UIDs keep applying until the importer rewrites them.
+    /// UIDs keep applying. Empty in practice: 1.x data is not carried over.
     pub aliases: Vec<ScopeRef>,
 }
 

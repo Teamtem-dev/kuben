@@ -55,7 +55,7 @@ docker run -d --name kuben-postgres -e POSTGRES_PASSWORD=kuben -p 5432:5432 post
 export KUBEN_DATABASE__URL=postgres://postgres:kuben@localhost:5432/postgres
 ```
 
-SQLite URLs are rejected. The data of a 1.x install that used SQLite will be moved by an importer, which is not released yet.
+SQLite URLs are rejected, and the data of a 1.x install that used SQLite is not carried over.
 
 The container image sets no database; the Helm chart sets `KUBEN_DATABASE__URL`, to its own PostgreSQL or to `database.url`. `kuben setup` writes the URL in the example above: the server's own PostgreSQL over its Unix socket, with peer authentication and no password. Connect as an ordinary role: `kuben doctor` warns (`database role`) when the role is a superuser or has `BYPASSRLS`, because row-level security is then bypassed.
 

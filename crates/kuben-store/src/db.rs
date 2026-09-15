@@ -12,7 +12,7 @@ pub enum StoreError {
     #[error("unsupported database url {0}: Kuben keeps its data in PostgreSQL (postgres://…)")]
     UnsupportedUrl(String),
     #[error(
-        "SQLite is no longer supported: Kuben keeps its data in PostgreSQL (ADR-025). Point database.url at a PostgreSQL server; importing an existing SQLite installation is not available yet"
+        "SQLite is no longer supported: Kuben keeps its data in PostgreSQL (ADR-025) and does not carry the data of a SQLite (1.x) installation over. Point database.url at an empty PostgreSQL server"
     )]
     Sqlite,
     #[error(

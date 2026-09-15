@@ -24,10 +24,10 @@ The upgrade is a rolling update with `maxUnavailable: 0` and a leader hand-over:
 
 ## From 1.x
 
-Kuben 1.x kept its data in SQLite. Kuben now keeps it in PostgreSQL only and does not open SQLite. The data of a 1.x install will be moved by an importer, which is not released yet.
+Kuben 1.x kept its data in SQLite. Kuben now keeps it in PostgreSQL only and does not open SQLite, and 1.x data is not carried over: a 1.x install starts again with an empty database.
 
 - **Helm.** The `persistence.*` values and the SQLite volume `<fullname>-data` are gone from the chart; it runs its own PostgreSQL unless `database.url` or `database.existingSecret` is set. An upgrade of a release that still has the volume `<fullname>-data` (`kuben-data` for a release named `kuben`) stops with a message. Set `legacy.sqliteVolumeAcknowledged=true` to start with a new, empty database instead; the old volume stays untouched.
-- **Server.** `kuben setup` stops when `/etc/kuben/config.toml` still names a SQLite database.
+- **Server.** `kuben setup` stops when `/etc/kuben/config.toml` still names a SQLite database. Delete that file and run it again: setup then writes one for the server's own PostgreSQL.
 
 ## Binary
 

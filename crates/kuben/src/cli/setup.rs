@@ -360,8 +360,9 @@ fn ensure_database(ui: Ui, configured: Option<&str>) -> anyhow::Result<()> {
             step.fail("Kuben 1.x data in SQLite");
             bail!(
                 "{CONFIG_FILE} keeps the data in SQLite, as Kuben 1.x did; this version keeps it in \
-                 PostgreSQL. Move the data with the importer, or set [database] url to an empty \
-                 PostgreSQL, then run kuben setup again"
+                 PostgreSQL and does not carry 1.x data over. Delete {CONFIG_FILE} (setup then \
+                 writes one for this server's PostgreSQL), or set [database] url to an empty \
+                 PostgreSQL of your own, then run kuben setup again"
             );
         }
         DataHome::Local => {}

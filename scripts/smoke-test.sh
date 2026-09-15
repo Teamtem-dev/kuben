@@ -419,11 +419,12 @@ if helm -n "$NS" status "$RELEASE" >/dev/null 2>&1; then
 fi
 
 # Charts up to 1.1 keep the data in SQLite on the volume `${RELEASE}-data`; later
-# ones in PostgreSQL. An upgrade from a SQLite chart needs the importer, so it
-# is not part of this test: the release under test is installed directly.
+# ones in PostgreSQL and do not carry 1.x data over. An upgrade from a SQLite
+# chart is therefore not part of this test: the release under test is
+# installed directly.
 sqlite_chart() { helm show values "$CHART" --version "$1" 2>/dev/null | grep -qi sqlite; }
 if [[ -n $FROM ]] && sqlite_chart "$FROM"; then
-  echo "chart ${FROM} keeps its data in SQLite: an upgrade to ${VERSION} needs the importer; installing ${VERSION} directly"
+  echo "chart ${FROM} keeps its data in SQLite, which ${VERSION} does not carry over; installing ${VERSION} directly"
   FROM=
 fi
 sqlite_data=
