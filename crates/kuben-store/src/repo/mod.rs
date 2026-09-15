@@ -1,6 +1,8 @@
 //! Repositories. Each function is a thin, explicit SQL statement — no ORM
 //! magic (Drizzle philosophy) — with PostgreSQL's `$n` placeholders.
 
+#[cfg(test)]
+mod acceptance;
 mod agents;
 mod audit;
 mod catalog;
