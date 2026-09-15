@@ -21,6 +21,7 @@ use anyhow::Context as _;
 use kuben_agent::{
     enroll::{ClusterCa, Enrollment, RESUME_GRACE, Redeemed, TokenRefused, TokenStore},
     hub::{Hub, HubSettings, Registry, SessionInfo},
+    protocol::Observation,
     tls::{ClientAuth, hub_config},
 };
 use kuben_core::{config::AgentCfg, ids::ClusterId};
@@ -227,6 +228,24 @@ impl Registry for SqlRegistry {
                 Err(error) => tracing::warn!(%error, %cluster, "cannot record the agent's link"),
             }
         }
+    }
+
+    fn observed(
+        &self,
+        cluster: &str,
+        _device: &str,
+        observation: &Observation,
+    ) -> impl Future<Output = ()> + Send {
+        // The materializer follows envelopes from here on (M1.9, next step).
+        tracing::info!(
+            cluster,
+            target = %observation.target,
+            generation = observation.generation,
+            phase = ?observation.phase,
+            reason = observation.reason.as_deref().unwrap_or_default(),
+            "agent observation"
+        );
+        std::future::ready(())
     }
 
     fn heard(&self, cluster: &str, device: &str) -> impl Future<Output = ()> + Send {

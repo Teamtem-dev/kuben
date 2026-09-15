@@ -14,8 +14,8 @@ use std::{
 use kuben_agent::{
     enroll::{ClusterCa, Csr, DeviceKey, Enrollment, MemoryTokens, request_enrollment},
     hub::{Hub, HubSettings, MemoryRegistry, Registry, SessionInfo},
-    link::{Connector, Credentials, Lifetime, LinkConfig, Renewal, run},
-    protocol::{Message, read_frame, write_frame},
+    link::{Connector, Credentials, Executor, Lifetime, LinkConfig, Renewal, Reports, run},
+    protocol::{APPLICATION_RUNTIME, Apply, Message, Observation, RuntimePhase, read_frame, write_frame},
     state::{HubAddress, State, StateError, ensure_identity},
     tls::{ClientAuth, HUB_NAME, Identity, agent_config, hub_config, server_name},
 };
@@ -475,5 +475,163 @@ async fn an_agent_renews_its_certificate_over_the_link_once() {
     .await;
     assert_eq!(stored.lock().expect("lock").len(), 1, "renewed once, not again");
     stop.cancel();
+    task.await.expect("join");
+}
+
+/// An executor that records envelopes and reports them ready.
+#[derive(Debug, Default)]
+struct Fake {
+    applied: std::sync::Mutex<Vec<Apply>>,
+}
+
+impl Executor for Fake {
+    fn apply(&self, apply: Apply, reports: Reports) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> {
+        self.applied.lock().expect("lock").push(apply.clone());
+        Box::pin(async move {
+            let generation = serde_json::from_str::<serde_json::Value>(&apply.spec)
+                .ok()
+                .and_then(|v| v["generation"].as_i64())
+                .unwrap_or(0);
+            for phase in [RuntimePhase::Accepted, RuntimePhase::Ready] {
+                let _ = reports
+                    .send(Observation {
+                        target: apply.target.clone(),
+                        generation,
+                        phase,
+                        reason: None,
+                        message: None,
+                    })
+                    .await;
+            }
+        })
+    }
+}
+
+fn envelope(generation: i64) -> Apply {
+    Apply {
+        target: "0199a0c0-0000-7000-8000-000000000001".into(),
+        namespace: "kb-shop-prod".into(),
+        name: "web".into(),
+        spec: format!(r#"{{"generation":{generation}}}"#),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_hub_hands_an_agent_an_envelope_and_hears_how_it_went() {
+    let world = world(HubSettings {
+        features: features(&[APPLICATION_RUNTIME]),
+        ..quick()
+    });
+    let fake = Arc::new(Fake::default());
+    let mut config = config(&world, "primary", issued_identity(&world, "primary").await);
+    config.capabilities = features(&[APPLICATION_RUNTIME]);
+    config.executor = Some(fake.clone());
+    let dialer = Dialer::new(&world, 0);
+    let (token, task) = start(dialer.clone(), config);
+    eventually("a link", || heartbeats(&world, "primary") >= 1).await;
+
+    assert!(
+        world.hub.send("primary", envelope(5)).await,
+        "sent over the live link"
+    );
+    eventually("a ready observation", || {
+        world
+            .hub
+            .registry()
+            .observations("primary")
+            .iter()
+            .any(|o| o.phase == RuntimePhase::Ready && o.generation == 5)
+    })
+    .await;
+    assert_eq!(fake.applied.lock().expect("lock").len(), 1);
+    assert!(
+        !world.hub.send("elsewhere", envelope(5)).await,
+        "no link to that cluster"
+    );
+    token.cancel();
+    task.await.expect("join");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn envelopes_need_the_negotiated_feature() {
+    let world = world(quick());
+    let mut config = config(&world, "primary", issued_identity(&world, "primary").await);
+    config.capabilities = features(&[APPLICATION_RUNTIME]);
+    config.executor = Some(Arc::new(Fake::default()));
+    let dialer = Dialer::new(&world, 0);
+    let (token, task) = start(dialer.clone(), config);
+    eventually("a link", || heartbeats(&world, "primary") >= 1).await;
+    assert!(
+        !world.hub.send("primary", envelope(5)).await,
+        "the hub did not offer the feature"
+    );
+    token.cancel();
+    task.await.expect("join");
+}
+
+/// A hub that sends an envelope right after a Welcome without features and
+/// keeps what the agent answers.
+struct Pushy {
+    world: Arc<World>,
+    answer: Arc<std::sync::Mutex<Option<Observation>>>,
+}
+
+impl Connector for Pushy {
+    type Stream = DuplexStream;
+
+    fn connect(&self) -> impl Future<Output = io::Result<DuplexStream>> + Send {
+        let (acceptor, answer) = (self.world.acceptor.clone(), self.answer.clone());
+        async move {
+            let (agent, hub) = duplex(64 * 1024);
+            tokio::spawn(async move {
+                let Ok(mut tls) = acceptor.accept(hub).await else {
+                    return;
+                };
+                let _hello = read_frame(&mut tls).await;
+                let welcome = Message::Welcome {
+                    protocol_version: 1,
+                    hub_version: "pushy".into(),
+                    heartbeat_ms: 20,
+                    features: BTreeSet::new(),
+                };
+                if write_frame(&mut tls, &welcome).await.is_err()
+                    || write_frame(&mut tls, &Message::Apply(envelope(5))).await.is_err()
+                {
+                    return;
+                }
+                while let Ok(Some(message)) = read_frame(&mut tls).await {
+                    match message {
+                        Message::Heartbeat { seq } => {
+                            let _ = write_frame(&mut tls, &Message::HeartbeatAck { seq }).await;
+                        }
+                        Message::Observed(observation) => {
+                            *answer.lock().expect("lock") = Some(observation);
+                        }
+                        _ => {}
+                    }
+                }
+            });
+            Ok(agent)
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_agent_rejects_an_envelope_outside_the_negotiated_features() {
+    let world = world(HubSettings::default());
+    let pushy = Arc::new(Pushy {
+        world: world.clone(),
+        answer: Arc::default(),
+    });
+    let fake = Arc::new(Fake::default());
+    let mut config = config(&world, "primary", issued_identity(&world, "primary").await);
+    config.executor = Some(fake.clone());
+    let (token, task) = start(pushy.clone(), config);
+    eventually("an answer", || pushy.answer.lock().expect("lock").is_some()).await;
+    let answer = pushy.answer.lock().expect("lock").clone().expect("answer");
+    assert_eq!(answer.phase, RuntimePhase::Rejected);
+    assert_eq!(answer.reason.as_deref(), Some("UnsupportedCapability"));
+    assert!(fake.applied.lock().expect("lock").is_empty(), "never applied");
+    token.cancel();
     task.await.expect("join");
 }

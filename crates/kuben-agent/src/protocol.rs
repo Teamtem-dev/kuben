@@ -33,6 +33,57 @@ pub const SUPPORTED_VERSIONS: RangeInclusive<u32> = OLDEST_VERSION..=PROTOCOL_VE
 /// envelopes are bounded far below it (128 KiB).
 pub const MAX_FRAME: usize = 1024 * 1024;
 
+/// The feature that lets the hub hand the agent execution envelopes
+/// ([`Message::Apply`]) and hear back ([`Message::Observed`]).
+pub const APPLICATION_RUNTIME: &str = "applicationRuntime";
+
+/// An execution envelope for one application target, hub to agent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Apply {
+    /// The application target (its SQL id).
+    pub target: String,
+    /// Where the target's `ApplicationRuntime` lives.
+    pub namespace: String,
+    pub name: String,
+    /// The `ApplicationRuntime` spec, as JSON.
+    pub spec: String,
+}
+
+/// How far the agent got with a target's envelope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RuntimePhase {
+    /// The envelope is written to the cluster.
+    Accepted,
+    /// Its resources are applied and rolling out.
+    Applying,
+    /// Every workload of the envelope's generation is available.
+    Ready,
+    /// It will not become ready without a new generation.
+    Failed,
+    /// The agent or the cluster refused the envelope (a stale generation, a
+    /// digest that does not match, a kind the agent does not apply).
+    Rejected,
+    /// A phase this build does not know.
+    #[serde(other)]
+    Unknown,
+}
+
+/// What the agent observed of a target's runtime, agent to hub.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Observation {
+    pub target: String,
+    /// The generation the observation is about.
+    pub generation: i64,
+    pub phase: RuntimePhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 /// One AgentLink message.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
@@ -84,6 +135,11 @@ pub enum Message {
     HeartbeatAck {
         seq: u64,
     },
+    /// An execution envelope for the agent to carry out
+    /// ([`APPLICATION_RUNTIME`]).
+    Apply(Apply),
+    /// What the agent observed of an envelope ([`APPLICATION_RUNTIME`]).
+    Observed(Observation),
     /// A message type this build does not know.
     #[serde(other)]
     Unknown,
@@ -313,6 +369,43 @@ mod tests {
         a.write_all(&2_u32.to_be_bytes()).await.expect("header");
         a.write_all(b"[]").await.expect("body");
         assert!(matches!(read_frame(&mut b).await, Err(FrameError::Malformed(_))));
+    }
+
+    #[test]
+    fn envelopes_and_observations_have_a_stable_shape() {
+        let apply = serde_json::to_value(Message::Apply(Apply {
+            target: "t".into(),
+            namespace: "kb-shop-prod".into(),
+            name: "web".into(),
+            spec: "{}".into(),
+        }))
+        .expect("json");
+        assert_eq!(
+            apply,
+            serde_json::json!({ "type": "apply", "target": "t", "namespace": "kb-shop-prod", "name": "web", "spec": "{}" })
+        );
+        let observed = serde_json::to_value(Message::Observed(Observation {
+            target: "t".into(),
+            generation: 3,
+            phase: RuntimePhase::Ready,
+            reason: None,
+            message: None,
+        }))
+        .expect("json");
+        assert_eq!(
+            observed,
+            serde_json::json!({ "type": "observed", "target": "t", "generation": 3, "phase": "ready" })
+        );
+        let later: Message =
+            serde_json::from_str(r#"{"type":"observed","target":"t","generation":3,"phase":"hibernating"}"#)
+                .expect("parse");
+        assert!(matches!(
+            later,
+            Message::Observed(Observation {
+                phase: RuntimePhase::Unknown,
+                ..
+            })
+        ));
     }
 
     #[test]

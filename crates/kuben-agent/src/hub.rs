@@ -13,6 +13,9 @@
 //!   and when it last heard from each cluster.
 //! * A linked agent renews its certificate over the link, for the device
 //!   key the link authenticated with ([`Enrollment::renew`]).
+//! * [`Hub::send`] hands a linked agent an execution envelope, when both
+//!   sides negotiated [`APPLICATION_RUNTIME`]; the agent's observations go to
+//!   [`Registry::observed`].
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -23,13 +26,19 @@ use std::{
 
 use rustls::pki_types::CertificateDer;
 use time::OffsetDateTime;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, split},
+    sync::mpsc,
+};
 use tokio_rustls::server::TlsStream;
 use x509_parser::prelude::{FromDer, GeneralName, ParsedExtension, X509Certificate};
 
 use crate::{
     enroll::{Enrollment, TokenStore, device_id_of, serve_enrollment},
-    protocol::{FrameError, Message, Refusal, SUPPORTED_VERSIONS, negotiate, read_frame, write_frame},
+    protocol::{
+        APPLICATION_RUNTIME, Apply, FrameError, Message, Observation, Refusal, SUPPORTED_VERSIONS, negotiate,
+        read_frame, write_frame,
+    },
     tls::peer_certificate,
 };
 
@@ -84,6 +93,14 @@ pub trait Registry: Send + Sync {
 
     /// A heartbeat of `device` of `cluster` arrived.
     fn heard(&self, cluster: &str, device: &str) -> impl Future<Output = ()> + Send;
+
+    /// `device` of `cluster` reported `observation` of an envelope.
+    fn observed(
+        &self,
+        cluster: &str,
+        device: &str,
+        observation: &Observation,
+    ) -> impl Future<Output = ()> + Send;
 }
 
 fn lock<V>(m: &Mutex<V>) -> MutexGuard<'_, V> {
@@ -95,9 +112,17 @@ fn lock<V>(m: &Mutex<V>) -> MutexGuard<'_, V> {
 pub struct MemoryRegistry {
     /// Cluster → its agent device and whether that device is revoked.
     devices: Mutex<HashMap<String, (String, bool)>>,
+    /// Cluster → the observations its agent reported, oldest first.
+    observations: Mutex<HashMap<String, Vec<Observation>>>,
 }
 
 impl MemoryRegistry {
+    /// What the agent of `cluster` reported, oldest first.
+    #[must_use]
+    pub fn observations(&self, cluster: &str) -> Vec<Observation> {
+        lock(&self.observations).get(cluster).cloned().unwrap_or_default()
+    }
+
     /// Revoke the current device of `cluster`.
     pub fn revoke(&self, cluster: &str) {
         if let Some(entry) = lock(&self.devices).get_mut(cluster) {
@@ -140,6 +165,27 @@ impl Registry for MemoryRegistry {
     fn heard(&self, _cluster: &str, _device: &str) -> impl Future<Output = ()> + Send {
         std::future::ready(())
     }
+
+    fn observed(
+        &self,
+        cluster: &str,
+        _device: &str,
+        observation: &Observation,
+    ) -> impl Future<Output = ()> + Send {
+        lock(&self.observations)
+            .entry(cluster.to_owned())
+            .or_default()
+            .push(observation.clone());
+        std::future::ready(())
+    }
+}
+
+/// A cluster's latest link: what it negotiated, and the way to send it
+/// envelopes.
+#[derive(Debug)]
+struct Linked {
+    info: SessionInfo,
+    outbox: mpsc::Sender<Message>,
 }
 
 /// The hub's AgentLink endpoint.
@@ -148,7 +194,7 @@ pub struct Hub<T, R> {
     enrollment: Enrollment<T>,
     registry: R,
     settings: HubSettings,
-    sessions: Mutex<HashMap<String, SessionInfo>>,
+    sessions: Mutex<HashMap<String, Linked>>,
 }
 
 /// The cluster a certificate the hub issued names.
@@ -216,13 +262,29 @@ impl<T: TokenStore, R: Registry> Hub<T, R> {
     /// The latest link of `cluster` this hub served, if any.
     #[must_use]
     pub fn session(&self, cluster: &str) -> Option<SessionInfo> {
-        lock(&self.sessions).get(cluster).cloned()
+        lock(&self.sessions)
+            .get(cluster)
+            .map(|linked| linked.info.clone())
+    }
+
+    /// Hand the agent of `cluster` the envelope `apply` over its live link.
+    /// False when it is not linked, or did not negotiate
+    /// [`APPLICATION_RUNTIME`].
+    pub async fn send(&self, cluster: &str, apply: Apply) -> bool {
+        let outbox = {
+            let sessions = lock(&self.sessions);
+            match sessions.get(cluster) {
+                Some(linked) if linked.info.features.contains(APPLICATION_RUNTIME) => linked.outbox.clone(),
+                _ => return false,
+            }
+        };
+        outbox.send(Message::Apply(apply)).await.is_ok()
     }
 
     /// Serve one accepted TLS connection until it ends.
     pub async fn serve<S>(&self, mut tls: TlsStream<S>) -> Result<(), FrameError>
     where
-        S: AsyncRead + AsyncWrite + Unpin,
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
         let Some(certificate) = peer_certificate(tls.get_ref().1) else {
             let now = OffsetDateTime::now_utc();
@@ -289,52 +351,120 @@ impl<T: TokenStore, R: Registry> Hub<T, R> {
             last_seen: Instant::now(),
         };
         self.registry.linked(&cluster, &device, &session).await;
-        lock(&self.sessions).insert(cluster.clone(), session);
-        self.converse(&mut tls, &cluster, &device).await
+        let (outbox, commands) = mpsc::channel(16);
+        lock(&self.sessions).insert(
+            cluster.clone(),
+            Linked {
+                info: session,
+                outbox,
+            },
+        );
+        self.converse(tls, &cluster, &device, commands).await
     }
 
-    /// The linked part of a connection: heartbeats and renewals until the
-    /// agent hangs up.
-    async fn converse<S>(&self, tls: &mut TlsStream<S>, cluster: &str, device: &str) -> Result<(), FrameError>
+    /// The linked part of a connection until the agent hangs up. Frames are
+    /// read by a task of their own, so none is lost halfway while an envelope
+    /// goes out.
+    async fn converse<S>(
+        &self,
+        tls: TlsStream<S>,
+        cluster: &str,
+        device: &str,
+        mut commands: mpsc::Receiver<Message>,
+    ) -> Result<(), FrameError>
     where
-        S: AsyncRead + AsyncWrite + Unpin,
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
-        loop {
-            match read_frame(tls).await? {
-                Some(Message::Heartbeat { seq }) => {
-                    if let Some(session) = lock(&self.sessions).get_mut(cluster) {
-                        session.heartbeats += 1;
-                        session.last_seen = Instant::now();
-                    }
-                    self.registry.heard(cluster, device).await;
-                    write_frame(tls, &Message::HeartbeatAck { seq }).await?;
+        let (mut reader, mut writer) = split(tls);
+        let (tx, mut frames) = mpsc::channel(16);
+        let reading = tokio::spawn(async move {
+            loop {
+                let frame = read_frame(&mut reader).await;
+                let last = !matches!(frame, Ok(Some(_)));
+                if tx.send(frame).await.is_err() || last {
+                    break;
                 }
-                Some(Message::Renew { csr }) => {
-                    if !self.registry.admits(cluster, device).await {
-                        return refuse(tls, Refusal::Revoked, NOT_THE_AGENT).await;
+            }
+        });
+        let result = loop {
+            let frame = tokio::select! {
+                Some(command) = commands.recv() => {
+                    if let Err(e) = write_frame(&mut writer, &command).await {
+                        break Err(e);
                     }
-                    let issued = match self
-                        .enrollment
-                        .renew(cluster, &csr, device, OffsetDateTime::now_utc())
-                    {
-                        Ok(issued) => issued,
-                        Err(reason) => {
-                            return refuse(tls, reason, "a renewal is for the device key of this link").await;
-                        }
-                    };
-                    self.registry.certified(cluster, device, issued.not_after).await;
-                    write_frame(
-                        tls,
-                        &Message::Enrolled {
-                            certificate: issued.certificate_pem,
-                            not_after: issued.not_after.unix_timestamp(),
-                        },
-                    )
-                    .await?;
+                    continue;
                 }
-                Some(Message::Unknown) => {}
-                Some(_) => return refuse(tls, Refusal::BadRequest, "unexpected message").await,
-                None => return Ok(()),
+                frame = frames.recv() => frame,
+            };
+            match frame {
+                None | Some(Ok(None)) => break Ok(()),
+                Some(Err(e)) => break Err(e),
+                Some(Ok(Some(message))) => match self.handle(&mut writer, message, cluster, device).await {
+                    Ok(true) => {}
+                    Ok(false) => break Ok(()),
+                    Err(e) => break Err(e),
+                },
+            }
+        };
+        reading.abort();
+        result
+    }
+
+    /// One message of a linked agent; false when the link must close.
+    async fn handle<W>(
+        &self,
+        writer: &mut W,
+        message: Message,
+        cluster: &str,
+        device: &str,
+    ) -> Result<bool, FrameError>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        match message {
+            Message::Heartbeat { seq } => {
+                if let Some(linked) = lock(&self.sessions).get_mut(cluster) {
+                    linked.info.heartbeats += 1;
+                    linked.info.last_seen = Instant::now();
+                }
+                self.registry.heard(cluster, device).await;
+                write_frame(writer, &Message::HeartbeatAck { seq }).await?;
+                Ok(true)
+            }
+            Message::Renew { csr } => {
+                if !self.registry.admits(cluster, device).await {
+                    refuse(writer, Refusal::Revoked, NOT_THE_AGENT).await?;
+                    return Ok(false);
+                }
+                let issued = match self
+                    .enrollment
+                    .renew(cluster, &csr, device, OffsetDateTime::now_utc())
+                {
+                    Ok(issued) => issued,
+                    Err(reason) => {
+                        refuse(writer, reason, "a renewal is for the device key of this link").await?;
+                        return Ok(false);
+                    }
+                };
+                self.registry.certified(cluster, device, issued.not_after).await;
+                write_frame(
+                    writer,
+                    &Message::Enrolled {
+                        certificate: issued.certificate_pem,
+                        not_after: issued.not_after.unix_timestamp(),
+                    },
+                )
+                .await?;
+                Ok(true)
+            }
+            Message::Observed(observation) => {
+                self.registry.observed(cluster, device, &observation).await;
+                Ok(true)
+            }
+            Message::Unknown => Ok(true),
+            _ => {
+                refuse(writer, Refusal::BadRequest, "unexpected message").await?;
+                Ok(false)
             }
         }
     }

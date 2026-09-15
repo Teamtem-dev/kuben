@@ -14,10 +14,15 @@
 //! * Certificates are short-lived. Two thirds into its certificate's life (up
 //!   to a tenth earlier at random) the agent asks for a fresh one over the
 //!   link, stores it, and dials with it from then on ([`Credentials`]).
+//! * Execution envelopes ([`Message::Apply`]) go to the [`Executor`], one
+//!   task per target: a newer envelope for a target replaces the one still
+//!   running. Its observations go back over the link. Without the
+//!   negotiated feature, or without an executor, an envelope is rejected.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     fmt, io,
+    pin::Pin,
     sync::{Arc, Mutex, MutexGuard, PoisonError},
     time::Duration,
 };
@@ -31,13 +36,15 @@ use tokio::{
     io::{AsyncRead, AsyncWrite, split},
     net::TcpStream,
     sync::mpsc,
+    task::JoinHandle,
     time::{Instant, MissedTickBehavior, interval, sleep},
 };
 use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
 
 use crate::protocol::{
-    FrameError, Message, Negotiated, Refusal, SUPPORTED_VERSIONS, read_frame, write_frame,
+    APPLICATION_RUNTIME, Apply, FrameError, Message, Negotiated, Observation, Refusal, RuntimePhase,
+    SUPPORTED_VERSIONS, read_frame, write_frame,
 };
 use crate::{
     enroll::DeviceKey,
@@ -151,6 +158,15 @@ pub fn renew_at(lifetime: &Lifetime, jitter: f64) -> OffsetDateTime {
     lifetime.not_before + life * (2.0 / 3.0 - 0.1 * jitter.clamp(0.0, 1.0))
 }
 
+/// Where an envelope's observations go, back to the hub.
+pub type Reports = mpsc::Sender<Observation>;
+
+/// Carries out the envelopes the hub hands the agent: the cluster side.
+pub trait Executor: Send + Sync + fmt::Debug + 'static {
+    /// Act on `apply`, sending every observation along the way to `reports`.
+    fn apply(&self, apply: Apply, reports: Reports) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+}
+
 /// Who the agent is and how it talks to the hub.
 #[derive(Clone, Debug)]
 pub struct LinkConfig {
@@ -164,6 +180,8 @@ pub struct LinkConfig {
     pub credentials: Arc<Credentials>,
     /// Renew the certificate over the link; `None` never renews.
     pub renewal: Option<Renewal>,
+    /// Carries out envelopes; `None` rejects them.
+    pub executor: Option<Arc<dyn Executor>>,
     pub min_backoff: Duration,
     pub max_backoff: Duration,
 }
@@ -185,6 +203,7 @@ impl LinkConfig {
             hub_name,
             credentials,
             renewal: None,
+            executor: None,
             min_backoff: Duration::from_secs(1),
             max_backoff: Duration::from_mins(5),
         }
@@ -276,6 +295,57 @@ where
 
 type Frames = mpsc::Receiver<Result<Option<Message>, FrameError>>;
 
+/// The envelopes a link is carrying out, and their observations.
+struct Work {
+    reports: Reports,
+    observations: mpsc::Receiver<Observation>,
+    running: HashMap<String, JoinHandle<()>>,
+}
+
+impl Work {
+    fn new() -> Self {
+        let (reports, observations) = mpsc::channel(64);
+        Self {
+            reports,
+            observations,
+            running: HashMap::new(),
+        }
+    }
+
+    /// Hand `apply` to the executor in place of an older envelope of the same
+    /// target; the observation to send at once when the agent cannot take it.
+    fn start(&mut self, config: &LinkConfig, session: &Session, apply: Apply) -> Option<Observation> {
+        let rejected = |reason: &str| Observation {
+            target: apply.target.clone(),
+            generation: 0,
+            phase: RuntimePhase::Rejected,
+            reason: Some(reason.to_owned()),
+            message: None,
+        };
+        if session.negotiated.require(APPLICATION_RUNTIME).is_err() {
+            return Some(rejected("UnsupportedCapability"));
+        }
+        let Some(executor) = config.executor.clone() else {
+            return Some(rejected("NoExecutor"));
+        };
+        if let Some(older) = self.running.remove(&apply.target) {
+            older.abort();
+        }
+        let target = apply.target.clone();
+        self.running
+            .insert(target, tokio::spawn(executor.apply(apply, self.reports.clone())));
+        None
+    }
+}
+
+impl Drop for Work {
+    fn drop(&mut self) {
+        for (_, task) in self.running.drain() {
+            task.abort();
+        }
+    }
+}
+
 /// Keep an established link alive until `token` is cancelled (`Ok`) or the
 /// link fails. Frames are read by a task of their own, so a frame is never
 /// lost halfway through while a heartbeat goes out.
@@ -299,7 +369,8 @@ where
             }
         }
     });
-    let result = heartbeats(&mut writer, &mut rx, session, config, token).await;
+    let mut work = Work::new();
+    let result = heartbeats(&mut writer, &mut rx, session, config, &mut work, token).await;
     reading.abort();
     result
 }
@@ -309,6 +380,7 @@ async fn heartbeats<W>(
     frames: &mut Frames,
     session: &Session,
     config: &LinkConfig,
+    work: &mut Work,
     token: &CancellationToken,
 ) -> Result<(), LinkError>
 where
@@ -324,6 +396,9 @@ where
     loop {
         tokio::select! {
             () = token.cancelled() => return Ok(()),
+            Some(observation) = work.observations.recv() => {
+                write_frame(writer, &Message::Observed(observation)).await?;
+            }
             _ = tick.tick() => {
                 if last_answer.elapsed() > dead_after {
                     return Err(LinkError::HeartbeatTimeout(dead_after));
@@ -346,6 +421,11 @@ where
                     renewing = false;
                     if let Err(error) = adopt(config, &certificate) {
                         tracing::warn!(%error, "cannot use the renewed certificate");
+                    }
+                }
+                Some(Ok(Some(Message::Apply(apply)))) => {
+                    if let Some(rejected) = work.start(config, session, apply) {
+                        write_frame(writer, &Message::Observed(rejected)).await?;
                     }
                 }
                 Some(Ok(Some(Message::Refused { reason, message }))) => {
