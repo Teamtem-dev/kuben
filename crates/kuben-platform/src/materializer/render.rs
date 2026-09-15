@@ -36,6 +36,10 @@ pub mod annotations {
     pub const LIFECYCLE_UID: &str = "kuben.dev/lifecycle-uid";
     /// The SQL id the object was rendered from: project, environment or target.
     pub const ID: &str = "kuben.dev/id";
+    /// On an App handed over to the cluster's agent (M1.9): the target id.
+    /// The App controller leaves such an App alone, so it never writes its
+    /// workloads again while the App goes.
+    pub const HANDOVER: &str = "kuben.dev/handover";
 }
 
 /// Grace period before a deleted production environment is purged, as the

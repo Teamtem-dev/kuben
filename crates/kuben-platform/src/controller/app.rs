@@ -77,7 +77,23 @@ pub(crate) fn build(app: &App, platform: &Platform, owner: &OwnerReference) -> R
 }
 
 #[allow(clippy::needless_pass_by_value)] // signature required by `Controller::run`
+/// An App this controller no longer writes: one being deleted (it has no
+/// finalizer, so there is nothing to clean up), or one handed over to the
+/// cluster's agent (M1.9). Writing its workloads now would give them back an
+/// owner that is going away, and the garbage collector would take them along.
+pub(crate) fn hands_off(app: &App) -> bool {
+    app.metadata.deletion_timestamp.is_some()
+        || app
+            .metadata
+            .annotations
+            .as_ref()
+            .is_some_and(|a| a.contains_key(crate::materializer::render::annotations::HANDOVER))
+}
+
 async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
+    if hands_off(&app) {
+        return Ok(Action::await_change());
+    }
     let ns = app.namespace().ok_or(Error::Missing("metadata.namespace"))?;
     let owner = app
         .controller_owner_ref(&())
@@ -296,4 +312,34 @@ async fn write_status(
     )
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_deleting_or_handed_over_app_is_left_alone() {
+        let app = |annotations: serde_json::Value, deleting: bool| -> App {
+            let mut value = serde_json::json!({
+                "apiVersion": "kuben.dev/v1alpha1",
+                "kind": "App",
+                "metadata": { "name": "web", "namespace": "kb-shop-prod", "annotations": annotations },
+                "spec": {
+                    "source": { "image": "nginx:1.27" },
+                    "runtime": { "processes": { "web": { "port": 80 } } }
+                }
+            });
+            if deleting {
+                value["metadata"]["deletionTimestamp"] = "2026-09-15T00:00:00Z".into();
+            }
+            serde_json::from_value(value).expect("app")
+        };
+        assert!(!hands_off(&app(serde_json::json!({}), false)));
+        assert!(hands_off(&app(serde_json::json!({}), true)), "being deleted");
+        assert!(
+            hands_off(&app(serde_json::json!({ "kuben.dev/handover": "t" }), false)),
+            "handed over to the agent"
+        );
+    }
 }

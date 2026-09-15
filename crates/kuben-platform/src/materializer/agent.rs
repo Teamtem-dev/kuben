@@ -14,19 +14,21 @@
 //!   failed or rejected → failed with the agent's reason; a newer generation
 //!   → superseded.
 //! * A target handed over from the App controller loses its App object
-//!   first, deleted with orphan propagation: the agent adopts the workloads
-//!   in place instead of making new ones.
+//!   first: marked (the App controller then leaves it alone), then deleted
+//!   with orphan propagation, so the agent adopts the workloads in place
+//!   instead of making new ones.
 
 use std::{convert::Infallible, fmt, pin::Pin, time::Duration};
 
 use kube::{
     Api, Resource, ResourceExt,
-    api::{DeleteParams, PropagationPolicy},
+    api::{DeleteParams, Patch, PatchParams, PropagationPolicy},
 };
 use kuben_agent::protocol::Apply;
 use kuben_core::ops::{RunEvent, RunPhase};
 use kuben_crd::{App, ApplicationRuntimeSpec, Environment, PlanEnvelope, Project};
 use kuben_store::repo::{Claim, Materialization, RunPlan, RuntimeObservation};
+use serde_json::json;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -190,6 +192,20 @@ impl Worker {
             .is_none_or(|id| *id == m.target.to_string());
         if !write::belongs_to(live.meta(), m.org) || !ours {
             return Err(refused("NameTaken"));
+        }
+        if !live.annotations().contains_key(render::annotations::HANDOVER) {
+            // First take the App from its controller, which leaves a marked
+            // App alone; delete it only after a pause, once a write of that
+            // controller already under way has landed. A write after the
+            // orphaning would give the workloads back an owner that is going,
+            // and the garbage collector would take them with it (CI run
+            // 34985518950).
+            let mark = json!({ "metadata": { "annotations": {
+                render::annotations::HANDOVER: m.target.to_string(),
+            } } });
+            apps.patch(&m.application_slug, &PatchParams::default(), &Patch::Merge(&mark))
+                .await?;
+            return Err(Stop::Wait(ORPHAN_WAIT, "HandingOverApp"));
         }
         if live.metadata.deletion_timestamp.is_none() {
             let orphan = DeleteParams {
