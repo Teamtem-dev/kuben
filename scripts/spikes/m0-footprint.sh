@@ -5,8 +5,9 @@
 #   sudo scripts/spikes/m0-footprint.sh > footprint.md
 #
 # Prints a Markdown report: host memory, the resident memory of each
-# platform process, per-namespace pod usage from the Metrics API, and disk
-# used by the datastores. Nothing is changed on the host.
+# platform process, per-namespace pod usage from the Metrics API, the size of
+# Kuben's PostgreSQL database, and disk used by the datastores. Nothing is
+# changed on the host.
 
 set -euo pipefail
 
@@ -58,11 +59,27 @@ else
   echo
 fi
 
+# Kuben's own database (ADR-025), on the host PostgreSQL that `kuben setup`
+# prepares; skipped when the server uses another database.
+if have psql && systemctl is-active --quiet postgresql 2>/dev/null; then
+  size=$(runuser -u postgres -- psql -tAc "SELECT pg_size_pretty(pg_database_size('kuben'))" 2>/dev/null || true)
+  if [[ -n $size ]]; then
+    echo "## PostgreSQL"
+    echo
+    echo "| Item | Value |"
+    echo "|---|---|"
+    echo "| Server | $(runuser -u postgres -- psql -tAc 'SHOW server_version' 2>/dev/null) |"
+    echo "| Database kuben | ${size} |"
+    echo
+  fi
+fi
+
 echo "## Disk used by datastores"
 echo
 echo "| Path | Size |"
 echo "|---|---:|"
-for path in /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/agent/containerd /var/lib/postgresql /var/lib/kuben; do
+# /var/lib/pgsql is where RHEL-family distributions keep PostgreSQL.
+for path in /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/agent/containerd /var/lib/postgresql /var/lib/pgsql /var/lib/kuben; do
   [[ -d $path ]] && echo "| $path | $(du -sh "$path" 2>/dev/null | cut -f1) |"
 done
 echo
