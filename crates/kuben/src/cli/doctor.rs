@@ -48,6 +48,19 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
                     cfg.database.url
                 ),
             );
+            match store.role_bypassing_row_security().await {
+                Ok(Some(role)) => r.line(
+                    Level::Warn,
+                    "database role",
+                    format!(
+                        "`{role}` is a superuser or has BYPASSRLS: row-level security, the second wall \
+                         between organizations, does not apply. Connect as an ordinary role that owns \
+                         the database (the Helm chart and `kuben setup` make one)"
+                    ),
+                ),
+                Ok(None) => r.line(Level::Ok, "database role", "row-level security applies"),
+                Err(e) => r.line(Level::Warn, "database role", format!("cannot read the role: {e}")),
+            }
             let _ = store.close().await;
         }
         // The URL goes through `redact_credentials` like every line.

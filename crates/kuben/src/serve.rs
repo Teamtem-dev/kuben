@@ -51,6 +51,12 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     let store = kuben_store::Store::connect(&cfg.database).await?;
     tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
+    if let Ok(Some(role)) = store.role_bypassing_row_security().await {
+        tracing::warn!(
+            %role,
+            "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
+        );
+    }
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 

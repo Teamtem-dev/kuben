@@ -106,6 +106,19 @@ impl Store {
         "postgres"
     }
 
+    /// The current role, when it bypasses row-level security: a superuser
+    /// or a `BYPASSRLS` role. Tenant isolation then rests on the queries
+    /// alone (migration 0004). `None` for an ordinary role, as production
+    /// should use.
+    pub async fn role_bypassing_row_security(&self) -> Result<Option<String>, StoreError> {
+        let row: Option<(String, bool)> = sqlx::query_as(
+            "SELECT rolname::text, rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.and_then(|(role, bypasses)| bypasses.then_some(role)))
+    }
+
     /// Close the pool. Part of the ordered shutdown (Invariant I-15).
     pub async fn close(&self) -> Result<(), StoreError> {
         self.pool.close().await;
@@ -115,6 +128,16 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn a_superuser_is_reported_as_bypassing_row_security() {
+        let Some(store) = crate::testing::pg_store().await else {
+            crate::testing::skip("database role");
+            return;
+        };
+        // The test server connects as a superuser, as a quick local setup does.
+        assert!(store.role_bypassing_row_security().await.expect("role").is_some());
+    }
+
     use super::*;
 
     fn cfg(url: &str) -> DatabaseCfg {
