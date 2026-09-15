@@ -327,6 +327,10 @@ jobs:
       # `KubenConfig.spec: null`). A dry run creates no namespace, hence default.
       - name: Helm chart validates against the cluster
         run: helm install kuben charts/kuben --namespace default --dry-run=server >/dev/null
+      # M1.10: the chart's own PostgreSQL comes up, Kuben's role is not a
+      # superuser, and uninstall keeps the volume and password for a re-install.
+      - name: Helm chart's PostgreSQL on the cluster
+        run: scripts/chart-postgres-test.sh
 
   budgets:
     name: Binary size budget (static musl)

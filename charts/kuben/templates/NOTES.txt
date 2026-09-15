@@ -17,12 +17,19 @@ Kuben {{ .Chart.AppVersion }} is starting in namespace {{ .Release.Namespace }}.
    kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "kuben.fullname" . }}
    kubectl -n {{ .Release.Namespace }} get secret kuben-initial-admin -o jsonpath='{.data.password}' | base64 -d
    Delete that Secret once you have signed in and changed the password.
-   No Secret after a re-install? The kept volume already has the admin: use the old password, or set a new one:
+   No Secret after a re-install? The kept database already has the admin: use the old password, or set a new one:
    kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "kuben.fullname" . }} -- /kuben reset-admin
 {{- end }}
 
 3. Check the platform prerequisites:
    kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "kuben.fullname" . }} -- /kuben doctor
+{{- if include "kuben.postgresql.bundled" . }}
+
+Data: PostgreSQL in the chart (StatefulSet {{ include "kuben.postgresql.fullname" . }}, one instance).
+`helm uninstall` keeps its volume and its password Secret. To start over, delete both:
+   kubectl -n {{ .Release.Namespace }} delete pvc/data-{{ include "kuben.postgresql.fullname" . }}-0 secret/{{ include "kuben.postgresql.fullname" . }}
+For several replicas or HA, use an external PostgreSQL: --set database.existingSecret=<secret with a url key>
+{{- end }}
 {{- if not .Values.platform.gateway }}
 
 Apps are not exposed publicly until a Gateway is configured:
