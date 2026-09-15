@@ -417,7 +417,12 @@ pub(crate) async fn deploy(tenant: &mut Tenant, authz: &Authz, change: Change<'_
         input_hash,
     };
     let audit = request::audit(authz, "deployment.accepted", "app", change.reference);
-    match tenant.start_deployment(&request, audit, None).await? {
+    started(tenant.start_deployment(&request, audit, None).await?)
+}
+
+/// The answer to a run the API started without an idempotency key.
+pub(crate) fn started(started: Started) -> ApiResult<()> {
+    match started {
         Started::Accepted { .. } | Started::Replayed(_) => Ok(()),
         Started::Rejected(reject) => Err(Error::Conflict(reject.to_string()).into()),
         Started::NotFound => Err(Error::NotFound("that release of this app".into()).into()),

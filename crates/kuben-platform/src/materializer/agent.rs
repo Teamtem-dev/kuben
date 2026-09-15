@@ -281,6 +281,7 @@ mod tests {
             config_revision_number: 1,
             config: json!({}),
             render_plan: None,
+            restarted_at: None,
         }
     }
 

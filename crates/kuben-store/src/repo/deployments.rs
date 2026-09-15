@@ -72,8 +72,10 @@ const SUPERSEDE_OLDER: &str = "UPDATE deployment_runs SET phase = 'superseded', 
      WHERE target_id = $1 AND generation < $2 AND phase <> ALL($4)";
 const INSERT_RUN: &str = "INSERT INTO deployment_runs \
      (id, org_id, project_id, application_id, target_id, release_id, config_revision_id, render_plan_id, \
-      generation, lifecycle_uid, reason, requested_by, operation_id, created_at, updated_at) \
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)";
+      generation, lifecycle_uid, reason, requested_by, operation_id, created_at, updated_at, restarted_at) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, \
+       CASE WHEN $11 = 'restart' THEN $14 ELSE (SELECT d.restarted_at FROM deployment_runs d \
+         WHERE d.target_id = $5 AND d.org_id = $2 ORDER BY d.generation DESC LIMIT 1) END)";
 const SELECT_RUN: &str = "SELECT phase, generation FROM deployment_runs WHERE id = $1 AND org_id = $2";
 const LOCK_RUN_UNDER_FENCE: &str = "SELECT r.phase FROM deployment_runs r \
      JOIN operations o ON o.id = r.operation_id \
@@ -104,6 +106,9 @@ pub enum RunReason {
     Rollback,
     /// The same release and digests on another target, without a build.
     Promotion,
+    /// The same release and configuration with a new restart stamp: every
+    /// pod is replaced (an app its cluster's agent delivers, M1.9).
+    Restart,
 }
 
 impl RunReason {
@@ -113,6 +118,7 @@ impl RunReason {
             Self::Deploy => "deploy",
             Self::Rollback => "rollback",
             Self::Promotion => "promotion",
+            Self::Restart => "restart",
         }
     }
 }
@@ -347,7 +353,7 @@ impl Tenant {
         let mut state = row.state()?;
         let decided = match req.reason {
             RunReason::Rollback => state.rollback(req.lifecycle_uid, req.expected_generation),
-            RunReason::Deploy | RunReason::Promotion => {
+            RunReason::Deploy | RunReason::Promotion | RunReason::Restart => {
                 state.deploy_explicit(req.lifecycle_uid, req.expected_generation)
             }
         };

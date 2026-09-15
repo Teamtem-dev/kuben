@@ -18,7 +18,8 @@
 # login throttling; deploys by digest through `…/deployments` (idempotent
 # replay, a stale expected generation refused, rollback) and a direct App
 # edit replaced as drift (ADR-032); a cluster agent enrolled with a bootstrap
-# token carries a new app out through AgentLink (ADR-027, M1.9); then deletes
+# token carries a new app out through AgentLink (ADR-027, M1.9), reports its
+# status and restarts it through a run; then deletes
 # and garbage collection.
 set -euo pipefail
 
@@ -358,6 +359,18 @@ kubectl -n "$NS" get app edge >/dev/null 2>&1 && fail "an agent-delivered app ha
 kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
 owner=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.ownerReferences[0].kind}')
 [[ $owner == ApplicationRuntime ]] || fail "edge-web is owned by '$owner', not its ApplicationRuntime"
+# Its status comes from the agent's report (no App object), and a restart is a
+# run of the same release that stamps the pod template.
+eventually 60 "edge ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
+before=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.generation}')
+expect 202 POST "$APP/edge/restart"
+eventually 90 "edge restart rolled out" bash -c "[[ \$(kubectl -n $NS get deployment edge-web -o jsonpath='{.metadata.generation}') -gt $before ]]"
+kubectl -n "$NS" get deployment edge-web -o jsonpath='{.spec.template.metadata.annotations.kuben\.dev/restarted-at}' |
+  grep -q . || fail "edge-web has no restart stamp"
+kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
+eventually 90 "edge ready again via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
+expect 200 GET "$APP/edge/releases"
+jq -e '.[0].reason == "restart"' "$work/body" >/dev/null || fail "restart missing from the history: $(cat "$work/body")"
 expect 204 DELETE "$APP/edge"
 eventually 90 "edge runtime gone" bash -c "! kubectl -n $NS get applicationruntime edge"
 eventually 90 "edge deployment gone" bash -c "! kubectl -n $NS get deployment edge-web"

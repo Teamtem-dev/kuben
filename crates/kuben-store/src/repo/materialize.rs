@@ -25,6 +25,7 @@ use super::{Claim, Tenant, product::counter};
 use crate::{Store, StoreError};
 
 const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.lifecycle_uid, r.render_plan_id, \
+     r.restarted_at, \
      pr.id AS project_id, pr.slug AS project_slug, pr.name AS project_name, \
      pr.description AS project_description, \
      e.id AS environment_id, e.slug AS environment_slug, e.name AS environment_name, e.protected, \
@@ -118,6 +119,9 @@ pub struct Materialization {
     pub config: Value,
     /// The run's frozen RenderPlan, once the materializer has frozen it.
     pub render_plan: Option<RenderPlanId>,
+    /// The restart stamp the run renders with (Unix milliseconds): the time
+    /// of the target's latest restart run, if it had one.
+    pub restarted_at: Option<i64>,
 }
 
 /// A run's frozen RenderPlan (ADR-026).
@@ -154,6 +158,7 @@ struct MaterializationRow {
     generation: i64,
     lifecycle_uid: Uuid,
     render_plan_id: Option<Uuid>,
+    restarted_at: Option<i64>,
     project_id: Uuid,
     project_slug: String,
     project_name: String,
@@ -263,6 +268,7 @@ impl MaterializationRow {
             config_revision_number: counter(self.config_revision)?,
             config: json(&self.config)?,
             render_plan: self.render_plan_id.map(RenderPlanId::from_uuid),
+            restarted_at: self.restarted_at,
         })
     }
 }
@@ -512,8 +518,8 @@ mod tests {
         }
     }
 
-    /// Accept a deployment expecting `expected` and claim its operation.
-    async fn deploy(store: &Store, f: &Fixture, expected: u64) -> Claim {
+    /// Accept a run of `reason` expecting `expected`: its operation.
+    async fn start(store: &Store, f: &Fixture, expected: u64, reason: RunReason) -> OperationId {
         let mut t = store.tenant(f.org).await.expect("tenant");
         let started = t
             .start_deployment(
@@ -525,9 +531,9 @@ mod tests {
                     render_plan: None,
                     expected_generation: Generation(expected),
                     lifecycle_uid: f.lifecycle_uid,
-                    reason: RunReason::Deploy,
+                    reason,
                     requested_by: "user:alice".into(),
-                    input_hash: format!("deploy-{expected}").into_bytes(),
+                    input_hash: format!("{}-{expected}", reason.as_str()).into_bytes(),
                 },
                 NewAudit {
                     actor_kind: "user".into(),
@@ -539,8 +545,16 @@ mod tests {
             )
             .await
             .expect("start");
-        assert!(matches!(started, Started::Accepted { .. }), "{started:?}");
+        let Started::Accepted { operation, .. } = started else {
+            panic!("not accepted: {started:?}");
+        };
         t.commit().await.expect("commit");
+        operation
+    }
+
+    /// Accept a deployment expecting `expected` and claim its operation.
+    async fn deploy(store: &Store, f: &Fixture, expected: u64) -> Claim {
+        start(store, f, expected, RunReason::Deploy).await;
         store
             .claim_operation("materializer", &[RUN_KIND], Duration::from_secs(30))
             .await
@@ -594,6 +608,38 @@ mod tests {
             "another organization's run"
         );
         assert_eq!(read(&store, f.org, OperationId::new()).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_restart_stamps_its_run_and_later_runs_keep_the_stamp() {
+        let Some(store) = pg_store().await else {
+            skip("restart runs");
+            return;
+        };
+        let f = fixture(&store, "a").await;
+        let first = start(&store, &f, 0, RunReason::Deploy).await;
+        assert_eq!(read(&store, f.org, first).await.expect("run").restarted_at, None);
+        let restart = start(&store, &f, 1, RunReason::Restart).await;
+        let stamp = read(&store, f.org, restart)
+            .await
+            .expect("run")
+            .restarted_at
+            .expect("a restart run is stamped");
+        let next = start(&store, &f, 2, RunReason::Deploy).await;
+        assert_eq!(
+            read(&store, f.org, next).await.expect("run").restarted_at,
+            Some(stamp),
+            "a later deploy keeps the stamp, so its pods are not restarted again"
+        );
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        assert!(
+            sqlx::query("UPDATE deployment_runs SET restarted_at = 0 WHERE operation_id = $1")
+                .bind(*next.as_uuid())
+                .execute(&mut *t.tx)
+                .await
+                .is_err(),
+            "the stamp is an input of the run"
+        );
     }
 
     async fn app_record(store: &Store, org: OrgId, environment: EnvironmentId) -> crate::repo::AppRecord {

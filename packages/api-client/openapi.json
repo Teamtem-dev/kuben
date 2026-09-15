@@ -3565,7 +3565,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "`create`, `deploy`, `config`, `rollback` or `promote`."
+            "description": "`create`, `deploy`, `config`, `rollback`, `promote` or `restart`."
           },
           "note": {
             "type": [

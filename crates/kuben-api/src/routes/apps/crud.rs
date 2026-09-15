@@ -1,5 +1,6 @@
 //! Apps on the SQL model: create, read, update and delete; rolling restart
-//! and recent logs, which act on the materialized workloads directly.
+//! and recent logs, which act on the materialized workloads directly (an app
+//! its cluster's agent delivers restarts through a run instead).
 
 use axum::{
     Json,
@@ -14,9 +15,10 @@ use kube::{
 use kuben_core::{Error, perm::Perm};
 use kuben_crd::App;
 use kuben_platform::controller::resources::RESTARTED_AT;
-use kuben_store::repo::{RunReason, Subject, TARGET_DELETE};
+use kuben_store::repo::{Delivery, RunReason, StartDeployment, Subject, TARGET_DELETE};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest as _, Sha256};
 use utoipa::{IntoParams, ToSchema};
 
 use super::{
@@ -25,7 +27,7 @@ use super::{
         CreateApp, UpdateApp, apply_update, ensure_domains_free, from_crd_env, spec_from_create,
         validate_spec,
     },
-    spec_json,
+    spec_json, started,
 };
 use crate::{
     authz::Authz,
@@ -303,6 +305,38 @@ pub async fn restart(
 ) -> ApiResult<StatusCode> {
     let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppDeploy, &a.chain())?;
+    if a.app.delivery == Delivery::Agent {
+        // No App object to annotate: a run of the same release and
+        // configuration stamps every pod template instead (M1.9).
+        let (Some(release), Some(config_revision)) = (a.app.release, a.app.config_revision) else {
+            return Err(Error::Conflict(format!("app `{app}` has no release yet")).into());
+        };
+        let (_, actor) = request::actor(&authz);
+        let expected = a.app.desired_generation;
+        let run = StartDeployment {
+            project: a.env.project.id(),
+            target: a.app.target,
+            release,
+            config_revision,
+            render_plan: None,
+            expected_generation: expected,
+            lifecycle_uid: a.app.lifecycle_uid,
+            reason: RunReason::Restart,
+            requested_by: actor,
+            input_hash: Sha256::digest(format!("restart/{release}/{config_revision}/{}", expected.0))
+                .to_vec(),
+        };
+        let audit = request::audit(
+            &authz,
+            "deployment.accepted",
+            "app",
+            format!("{project}/{environment}/{app}"),
+        );
+        let mut tenant = state.store.tenant(a.env.project.org).await?;
+        started(tenant.start_deployment(&run, audit, None).await?)?;
+        tenant.commit().await?;
+        return Ok(StatusCode::ACCEPTED);
+    }
     let now = k8s_openapi::jiff::Timestamp::now()
         .strftime("%Y-%m-%dT%H:%M:%SZ")
         .to_string();

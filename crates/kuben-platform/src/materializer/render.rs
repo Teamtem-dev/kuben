@@ -21,7 +21,7 @@ use kuben_crd::{
 use kuben_store::repo::Materialization;
 use serde_json::{Value, json};
 
-use crate::controller::resources::{self, BuildError};
+use crate::controller::resources::{self, BuildError, RESTARTED_AT};
 
 /// Field manager of every write the materializer makes.
 pub const FIELD_MANAGER: &str = "kuben-materializer";
@@ -159,17 +159,23 @@ pub fn render(m: &Materialization) -> Result<Rendered, RenderError> {
     let environment_name = environment_name(&m.project_slug, &m.environment_slug);
     let mut app_labels = scope_labels(m.org, &m.project_slug);
     app_labels.insert(labels::ENVIRONMENT.to_owned(), environment_name);
+    let mut app_annotations = BTreeMap::from([
+        (annotations::GENERATION.to_owned(), m.generation.0.to_string()),
+        (annotations::OPERATION.to_owned(), m.operation.to_string()),
+        (annotations::LIFECYCLE_UID.to_owned(), m.lifecycle_uid.to_string()),
+        (annotations::ID.to_owned(), m.target.to_string()),
+    ]);
+    if let Some(at) = m.restarted_at {
+        // The builder copies it onto every pod template: a restart run
+        // replaces the pods, a later run with the same stamp does not.
+        app_annotations.insert(RESTARTED_AT.to_owned(), restart_stamp(at));
+    }
     let app = App {
         metadata: ObjectMeta {
             name: Some(m.application_slug.clone()),
             namespace: Some(m.namespace.clone()),
             labels: Some(app_labels),
-            annotations: Some(BTreeMap::from([
-                (annotations::GENERATION.to_owned(), m.generation.0.to_string()),
-                (annotations::OPERATION.to_owned(), m.operation.to_string()),
-                (annotations::LIFECYCLE_UID.to_owned(), m.lifecycle_uid.to_string()),
-                (annotations::ID.to_owned(), m.target.to_string()),
-            ])),
+            annotations: Some(app_annotations),
             ..ObjectMeta::default()
         },
         spec: app_spec(m)?,
@@ -181,6 +187,14 @@ pub fn render(m: &Materialization) -> Result<Rendered, RenderError> {
         environment,
         app,
     })
+}
+
+/// A restart stamp as the API writes it on an App: RFC 3339, in seconds.
+fn restart_stamp(ms: i64) -> String {
+    k8s_openapi::jiff::Timestamp::from_millisecond(ms).map_or_else(
+        |_| ms.to_string(),
+        |t| t.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
+    )
 }
 
 /// The `Project` object of `p`, written by `operation`.
@@ -341,6 +355,7 @@ mod tests {
     fn sample() -> Materialization {
         Materialization {
             render_plan: None,
+            restarted_at: None,
             cluster: kuben_core::ids::ClusterId::new(),
             delivery: kuben_store::repo::Delivery::Controller,
             org: OrgId::new(),
@@ -380,6 +395,24 @@ mod tests {
 
     fn with_config(config: Value) -> Materialization {
         Materialization { config, ..sample() }
+    }
+
+    #[test]
+    fn a_restart_run_stamps_the_app() {
+        let stamp = |m: &Materialization| {
+            render(m)
+                .expect("render")
+                .app
+                .metadata
+                .annotations
+                .and_then(|a| a.get(RESTARTED_AT).cloned())
+        };
+        assert_eq!(stamp(&sample()), None);
+        let restarted = Materialization {
+            restarted_at: Some(1_757_937_600_000),
+            ..sample()
+        };
+        assert_eq!(stamp(&restarted).as_deref(), Some("2025-09-15T12:00:00Z"));
     }
 
     #[test]

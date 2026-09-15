@@ -24,7 +24,7 @@ const ROLLBACK_REACH: i64 = 1000;
 pub struct ReleaseDto {
     pub revision: i64,
     pub image: Option<String>,
-    /// `create`, `deploy`, `config`, `rollback` or `promote`.
+    /// `create`, `deploy`, `config`, `rollback`, `promote` or `restart`.
     pub reason: String,
     pub note: Option<String>,
     /// Email of whoever made the change.
@@ -41,6 +41,7 @@ fn reason(run: &RunRecord, previous: Option<&RunRecord>) -> &'static str {
     match run.reason.as_str() {
         "rollback" => "rollback",
         "promotion" => "promote",
+        "restart" => "restart",
         _ => match previous {
             None => "create",
             Some(p) if p.release == run.release => "config",
@@ -236,5 +237,9 @@ mod tests {
         assert_eq!(reason(&upgraded, Some(&scaled)), "deploy");
         assert_eq!(reason(&run(4, "rollback", first), Some(&upgraded)), "rollback");
         assert_eq!(reason(&run(1, "promotion", first), None), "promote");
+        assert_eq!(
+            reason(&run(2, "restart", first), Some(&run(1, "deploy", first))),
+            "restart"
+        );
     }
 }

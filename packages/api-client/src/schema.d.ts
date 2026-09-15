@@ -942,7 +942,7 @@ export type components = {
             /** Format: int64 */
             revision: number;
             image?: string | null;
-            /** @description `create`, `deploy`, `config`, `rollback` or `promote`. */
+            /** @description `create`, `deploy`, `config`, `rollback`, `promote` or `restart`. */
             reason: string;
             note?: string | null;
             /** @description Email of whoever made the change. */
