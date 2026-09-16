@@ -43,7 +43,7 @@ export function AccountPage() {
     <section className="max-w-xl space-y-6">
       <PageHeader title="Account" subtitle={me.email} />
       {me.must_change_password && (
-        <p role="alert" className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">
+        <p role="alert" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
           You signed in with a temporary password. Choose your own password to continue.
         </p>
       )}
@@ -78,7 +78,7 @@ export function AccountPage() {
             </Button>
             {mismatch && <ErrorNote error={new Error('The new passwords do not match.')} />}
             <ErrorNote error={save.error} />
-            {done && !save.isPending && <span className="text-emerald-300 text-sm">Password changed.</span>}
+            {done && !save.isPending && <span className="text-ok text-sm">Password changed.</span>}
           </div>
         </form>
       </Card>

@@ -10,7 +10,10 @@ use kuben_core::Error;
 
 use crate::error::ApiError;
 
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
+/// Nothing inline: the console has no inline scripts or style attributes
+/// (React sets styles through the CSSOM, which CSP allows), and its tests
+/// keep it so.
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; \
      font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
 
 pub async fn fallback(uri: Uri) -> Response {
@@ -82,4 +85,22 @@ fn apply_security_headers(headers: &mut axum::http::HeaderMap) {
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
     headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CSP;
+
+    #[test]
+    fn the_console_policy_allows_nothing_inline_or_foreign() {
+        assert!(!CSP.contains("unsafe"), "{CSP}");
+        for directive in [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self'",
+            "frame-ancestors 'none'",
+        ] {
+            assert!(CSP.contains(directive), "{directive} missing from {CSP}");
+        }
+    }
 }

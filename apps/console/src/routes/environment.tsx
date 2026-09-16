@@ -52,11 +52,11 @@ export function EnvironmentPage() {
       <PageHeader
         crumbs={
           <>
-            <Link to="/" className="hover:text-slate-200">
+            <Link to="/" className="hover:text-fg">
               Projects
             </Link>
             <span>/</span>
-            <Link to="/projects/$project" params={{ project }} className="hover:text-slate-200">
+            <Link to="/projects/$project" params={{ project }} className="hover:text-fg">
               {p.display_name}
             </Link>
           </>
@@ -79,7 +79,7 @@ export function EnvironmentPage() {
       />
 
       {env.deleting && (
-        <p role="status" className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">
+        <p role="status" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
           This environment is being deleted
           {env.deletion_scheduled_at
             ? ` — its namespace is purged at ${new Date(env.deletion_scheduled_at).toLocaleString()}`
@@ -103,15 +103,15 @@ export function EnvironmentPage() {
               <Link
                 to="/projects/$project/$environment/$app"
                 params={{ project, environment, app: a.name }}
-                className="block rounded-xl border border-white/10 bg-slate-900/50 p-4 transition hover:border-sky-400/40"
+                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate font-medium">{a.name}</span>
                   <Status ready={a.ready} label={a.reason} />
                 </div>
-                <p className="mt-1 truncate font-mono text-slate-500 text-xs">{a.image ?? a.git_repo}</p>
-                {a.url && <p className="mt-1 truncate text-sky-300 text-xs">{a.url}</p>}
-                {!a.ready && a.message && <p className="mt-2 text-amber-300/80 text-xs">{a.message}</p>}
+                <p className="mt-1 truncate font-mono text-subtle text-xs">{a.image ?? a.git_repo}</p>
+                {a.url && <p className="mt-1 truncate text-link text-xs">{a.url}</p>}
+                {!a.ready && a.message && <p className="mt-2 text-warn/80 text-xs">{a.message}</p>}
               </Link>
             </li>
           ))}
@@ -122,7 +122,7 @@ export function EnvironmentPage() {
 
       <Secrets project={project} environment={environment} />
 
-      <div className="border-white/10 border-t pt-6">
+      <div className="border-line border-t pt-6">
         <ConfirmDelete
           name={env.name}
           what="environment"
@@ -186,7 +186,7 @@ function DeployForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-3"
+      className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3"
     >
       <TextField
         label="Name"
@@ -292,12 +292,12 @@ function Secrets({ project, environment }: { project: string; environment: strin
         {secrets.isError ? (
           <ErrorNote error={secrets.error} />
         ) : secrets.data?.length ? (
-          <ul className="divide-y divide-white/5">
+          <ul className="divide-y divide-line-soft">
             {secrets.data.map((s) => (
               <li key={s.name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <span className="font-mono text-sm">{s.name}</span>
-                  <p className="truncate text-slate-500 text-xs">{s.keys.join(', ')}</p>
+                  <p className="truncate text-subtle text-xs">{s.keys.join(', ')}</p>
                 </div>
                 <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(s.name)}>
                   Remove
@@ -306,7 +306,7 @@ function Secrets({ project, environment }: { project: string; environment: strin
             ))}
           </ul>
         ) : (
-          <p className="text-slate-500 text-sm">
+          <p className="text-subtle text-sm">
             No secrets. Values are write-only: they can be replaced, never read back.
           </p>
         )}
@@ -363,10 +363,7 @@ function Templates({ project, environment }: { project: string; environment: str
   return (
     <Card title="One-click templates">
       {deployed && (
-        <div
-          role="status"
-          className="mb-4 rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm"
-        >
+        <div role="status" className="mb-4 rounded-lg border border-ok/30 bg-ok/5 p-3 text-sm">
           Deployed <strong>{deployed.app.name}</strong>. Credentials are in the secret{' '}
           <code className="font-mono">{deployed.credentials_secret}</code>
           {deployed.connection_keys.includes('url') && (
@@ -381,13 +378,13 @@ function Templates({ project, environment }: { project: string; environment: str
       )}
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {templates.data?.map((t) => (
-          <li key={t.id} className="flex flex-col gap-2 rounded-lg border border-white/10 p-3">
+          <li key={t.id} className="flex flex-col gap-2 rounded-lg border border-line p-3">
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-sm">{t.name}</span>
               <Badge>{t.protocol}</Badge>
             </div>
-            <p className="flex-1 text-slate-400 text-xs">{t.description}</p>
-            <p className="truncate font-mono text-slate-500 text-xs">{t.image}</p>
+            <p className="flex-1 text-muted text-xs">{t.description}</p>
+            <p className="truncate font-mono text-subtle text-xs">{t.image}</p>
             {chosen === t.id ? (
               <form onSubmit={(e) => onSubmit(e, t.id)} className="space-y-2">
                 <TextField

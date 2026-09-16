@@ -19,6 +19,7 @@ import {
   setupQuery,
   tokensQuery,
 } from './lib/api'
+import { usePrefs } from './lib/prefs'
 import { problemMessage } from './lib/problem'
 import { AccountPage } from './routes/account'
 import { AppPage } from './routes/app'
@@ -42,18 +43,20 @@ export function safeRedirect(value: unknown): string | undefined {
 }
 
 function RouteError({ error }: ErrorComponentProps) {
+  const { t } = usePrefs()
   return (
-    <div role="alert" className="space-y-3 rounded-xl border border-red-500/30 bg-red-500/5 p-6">
+    <div role="alert" className="space-y-3 rounded-xl border border-danger/30 bg-danger/5 p-6">
       <p className="font-medium">{problemMessage(error)}</p>
-      <Link to="/" className="text-sky-300 text-sm hover:underline">
-        Back to projects
+      <Link to="/" className="text-link text-sm hover:underline">
+        {t('common.backToProjects')}
       </Link>
     </div>
   )
 }
 
 function Pending() {
-  return <p className="text-slate-500 text-sm">Loading…</p>
+  const { t } = usePrefs()
+  return <p className="text-subtle text-sm">{t('common.loading')}</p>
 }
 
 const rootRoute = createRootRouteWithContext<RouterContext>()()

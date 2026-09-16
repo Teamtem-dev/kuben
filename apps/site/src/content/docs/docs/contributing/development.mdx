@@ -88,6 +88,13 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 | `bun turbo run test --filter=kuben-store` | one package |
 | `bun turbo run kuben#size` | release build with the embedded console, checked against the 28 MiB budget |
 
+## The console
+
+- **Tokens, not colours.** Pages use the semantic names in `apps/console/src/styles.css` (`bg-canvas`, `bg-surface`, `text-fg`, `text-muted`, `border-line`, `bg-accent`, `text-ok`, `text-warn`, `text-danger`, …). The dark and light themes are two blocks of values; a raw palette colour (`text-slate-400`) would look wrong in one of them.
+- **Both directions.** Persian is right to left: use logical utilities (`ms-`, `pe-`, `start-`, `border-e`) and mark code, commands and addresses `dir="ltr"`. Interface text lives in `src/lib/messages.ts`; the Persian table has the English table's type, so a missing translation does not compile.
+- **Components are written here.** The spike for M2.15 weighed shadcn and Base UI against small components of our own: the console needs few widgets, stays under its size budget, and keeps the strict content security policy (`script-src 'self'; style-src 'self'`, nothing inline) without an exception. A library comes in only for a widget that is hard to make accessible by hand (a combobox, a date picker), and only if it sets styles through the CSSOM, never inline markup. `src/lib/csp.test.ts` fails on inline scripts, style attributes or injected HTML.
+- **Self-hosted fonts only.** Inter's Latin subsets ship in `src/assets/fonts` with their licence; nothing is loaded from another origin (`font-src 'self'`).
+
 ## Rules
 
 - **Dependencies.** Rust versions live only in `[workspace.dependencies]`; JS versions only in the root `package.json` catalog (packages write `catalog:`). Every new crate must pass `cargo deny check`.

@@ -3,25 +3,25 @@ import { Button, Card, Empty, ErrorNote, PageHeader } from '../components/ui'
 import { type AuditEvent, auditPage } from '../lib/api'
 
 const outcomeStyle: Record<string, string> = {
-  success: 'text-emerald-300',
-  denied: 'text-red-300',
-  throttled: 'text-amber-300',
-  failure: 'text-amber-300',
-  error: 'text-red-300',
+  success: 'text-ok',
+  denied: 'text-danger',
+  throttled: 'text-warn',
+  failure: 'text-warn',
+  error: 'text-danger',
 }
 
 function Row({ e }: { e: AuditEvent }) {
   return (
     <tr>
-      <td className="whitespace-nowrap py-2 pe-4 text-slate-400">{new Date(e.at).toLocaleString()}</td>
+      <td className="whitespace-nowrap py-2 pe-4 text-muted">{new Date(e.at).toLocaleString()}</td>
       <td className="py-2 pe-4">{e.actor ?? e.actor_kind}</td>
       <td className="py-2 pe-4 font-mono text-xs">{e.action}</td>
-      <td className="py-2 pe-4 font-mono text-slate-400 text-xs">{e.target ?? '—'}</td>
+      <td className="py-2 pe-4 font-mono text-muted text-xs">{e.target ?? '—'}</td>
       <td className={`py-2 pe-4 ${outcomeStyle[e.outcome] ?? ''}`}>
         {e.outcome}
         {e.status ? ` (${e.status})` : ''}
       </td>
-      <td className="py-2 font-mono text-slate-500 text-xs">{e.ip ?? '—'}</td>
+      <td className="py-2 font-mono text-subtle text-xs">{e.ip ?? '—'}</td>
     </tr>
   )
 }
@@ -50,7 +50,7 @@ export function AuditPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-500 text-xs">
+              <thead className="text-subtle text-xs">
                 <tr>
                   <th className="pb-2 font-medium">When</th>
                   <th className="pb-2 font-medium">Who</th>
@@ -60,7 +60,7 @@ export function AuditPage() {
                   <th className="pb-2 font-medium">IP</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-line-soft">
                 {events.map((e) => (
                   <Row key={e.id} e={e} />
                 ))}

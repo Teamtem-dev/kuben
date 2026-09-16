@@ -71,16 +71,13 @@ export function TokensPage() {
         <div className="mt-3 space-y-3">
           <ErrorNote error={create.error} />
           {created && (
-            <div
-              role="status"
-              className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm"
-            >
+            <div role="status" className="space-y-2 rounded-lg border border-ok/30 bg-ok/5 p-3 text-sm">
               <p>Copy the token now — it is shown only once.</p>
-              <code className="block select-all break-all rounded bg-black/40 px-2 py-1 font-mono">
+              <code className="block select-all break-all rounded bg-inset px-2 py-1 font-mono">
                 {created}
               </code>
-              <p className="text-slate-400 text-xs">GitHub Actions (store it as the secret KUBEN_TOKEN):</p>
-              <pre className="overflow-x-auto rounded bg-black/40 p-2 font-mono text-slate-300 text-xs">{`curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api" \\
+              <p className="text-muted text-xs">GitHub Actions (store it as the secret KUBEN_TOKEN):</p>
+              <pre className="overflow-x-auto rounded bg-inset p-2 font-mono text-fg-soft text-xs">{`curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api" \\
   -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \\
   -d "{\\"image\\": \\"ghcr.io/acme/api:$GITHUB_SHA\\"}"`}</pre>
             </div>
@@ -95,7 +92,7 @@ export function TokensPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-500 text-xs">
+              <thead className="text-subtle text-xs">
                 <tr>
                   <th className="pb-2 font-medium">Name</th>
                   <th className="pb-2 font-medium">Scope</th>
@@ -104,21 +101,21 @@ export function TokensPage() {
                   <th className="pb-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-line-soft">
                 {tokens.map((t) => (
                   <tr key={t.id} className={t.revoked ? 'opacity-50' : ''}>
                     <td className="py-2 pe-4">
                       <span className="font-medium">{t.name}</span>{' '}
-                      <span className="font-mono text-slate-500 text-xs">{t.prefix}…</span>
+                      <span className="font-mono text-subtle text-xs">{t.prefix}…</span>
                     </td>
                     <td className="py-2 pe-4">
                       <Badge>{t.role}</Badge> {t.environment ?? t.project ?? 'organization'}
                     </td>
-                    <td className="py-2 pe-4 text-slate-400">{when(t.last_used_at)}</td>
-                    <td className="py-2 pe-4 text-slate-400">{when(t.expires_at)}</td>
+                    <td className="py-2 pe-4 text-muted">{when(t.last_used_at)}</td>
+                    <td className="py-2 pe-4 text-muted">{when(t.expires_at)}</td>
                     <td className="py-2 text-end">
                       {t.revoked ? (
-                        <span className="text-slate-500 text-xs">revoked</span>
+                        <span className="text-subtle text-xs">revoked</span>
                       ) : (
                         <Button
                           variant="ghost"
