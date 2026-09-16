@@ -379,6 +379,41 @@ jobs:
       - name: kuben setup provisions PostgreSQL and runs Kuben
         run: scripts/host-install-test.sh
 
+  # M2.10: `kuben setup` on a runner with nothing installed: a pinned k3s,
+  # the platform (Traefik Gateway, Gateway API, cert-manager), the cluster
+  # agent, an app over HTTPS through Kuben's Gateway, a repeat run that
+  # changes nothing, and `kuben uninstall --purge` removing k3s.
+  k3s-install:
+    name: Host install on k3s (kuben setup)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+        with:
+          rust-toolchain: stable
+          rust-cache-key: k3s-install
+      - run: bun turbo run kuben#build
+      # k3s imports the images in its airgap directory when it starts, so the
+      # agent's pod finds this build's image without a registry.
+      - name: Agent image for k3s
+        run: |
+          cargo build --package kuben-agent --locked
+          context="$RUNNER_TEMP/agent-image"
+          mkdir -p "$context"
+          cp target/debug/kuben-agent "$context/"
+          docker build -q -f deploy/e2e-agent.Dockerfile -t kuben-agent:e2e "$context"
+          sudo mkdir -p /var/lib/rancher/k3s/agent/images
+          docker save kuben-agent:e2e | sudo tee /var/lib/rancher/k3s/agent/images/kuben-agent.tar >/dev/null
+      - name: kuben setup installs k3s and serves an app over HTTPS
+        run: scripts/k3s-install-test.sh
+        env:
+          KUBEN_AGENT_IMAGE: docker.io/library/kuben-agent:e2e
+
   budgets:
     name: Binary size budget (static musl)
     needs: changes
@@ -437,7 +472,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, host-install, zizmor]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
