@@ -1189,6 +1189,87 @@
       }
     },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The app's newest deployment runs, each with its timeline.",
+        "operationId": "listDeployments",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many runs, newest first (1–50, default 10).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeploymentSummary"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "apps"
@@ -3211,6 +3292,66 @@
           }
         }
       },
+      "DeploymentSummary": {
+        "type": "object",
+        "description": "A deployment run with how it went.",
+        "required": [
+          "run",
+          "generation",
+          "reason",
+          "phase",
+          "requested_by",
+          "created_at",
+          "timeline"
+        ],
+        "properties": {
+          "run": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The target generation (the app's revision) this run owns.",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "`deploy`, `rollback` or `promotion`."
+          },
+          "phase": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`succeeded`, `failed` or `cancelled` once it ended."
+          },
+          "requested_by": {
+            "type": "string",
+            "description": "Email of whoever asked for it."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhaseStep"
+            },
+            "description": "Every phase it entered, oldest first."
+          }
+        }
+      },
       "DoctorCheck": {
         "type": "object",
         "required": [
@@ -3639,6 +3780,24 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "PhaseStep": {
+        "type": "object",
+        "description": "One step of a run's timeline.",
+        "required": [
+          "phase",
+          "at"
+        ],
+        "properties": {
+          "phase": {
+            "type": "string"
+          },
+          "at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the run entered it, Unix milliseconds."
           }
         }
       },

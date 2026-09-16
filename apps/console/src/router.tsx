@@ -24,6 +24,7 @@ import { problemMessage } from './lib/problem'
 import { AccountPage } from './routes/account'
 import { AppPage } from './routes/app'
 import { AuditPage } from './routes/audit'
+import { DoctorPage } from './routes/doctor'
 import { EnvironmentPage } from './routes/environment'
 import { LoginPage } from './routes/login'
 import { ProjectPage } from './routes/project'
@@ -147,6 +148,12 @@ const appRoute = createRoute({
   component: AppPage,
 })
 
+const doctorRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/projects/$project/$environment/$app/doctor',
+  component: DoctorPage,
+})
+
 const teamRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/team',
@@ -181,6 +188,7 @@ const routeTree = rootRoute.addChildren([
     projectRoute,
     environmentRoute,
     appRoute,
+    doctorRoute,
     teamRoute,
     tokensRoute,
     auditRoute,

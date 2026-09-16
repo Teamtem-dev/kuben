@@ -1499,6 +1499,25 @@ async fn a_deployment_is_accepted_once_and_can_be_polled() {
     assert_eq!(second["generation"], 2);
     let (_, first_now) = send(&app.router, get(&location, &cookie)).await;
     assert_eq!(first_now["phase"], "superseded", "the newer run owns the app");
+
+    // M2.16: the runs, newest first, each with the phases it went through.
+    let (status, list) = send(&app.router, get(&format!("{DEPLOYMENTS}?limit=5"), &cookie)).await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    let runs = list.as_array().expect("runs");
+    assert_eq!(runs.len(), 2);
+    assert_eq!(
+        (runs[0]["generation"].clone(), runs[1]["run"].clone()),
+        (json!(2), first["run"].clone())
+    );
+    assert_eq!(runs[0]["requested_by"], "alice@example.com");
+    let phases: Vec<&str> = runs[1]["timeline"]
+        .as_array()
+        .expect("timeline")
+        .iter()
+        .filter_map(|s| s["phase"].as_str())
+        .collect();
+    assert_eq!(phases.first(), Some(&"planned"), "{phases:?}");
+    assert_eq!(phases.last(), Some(&"superseded"), "{phases:?}");
 }
 
 /// A deployment whose answer was lost (plan §18.1 crash/ACK replay, I17):

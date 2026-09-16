@@ -18,7 +18,6 @@ import {
   checkDomains,
   deleteApp,
   environmentsQuery,
-  logsQuery,
   type PromoteResult,
   promoteApp,
   releasesQuery,
@@ -30,6 +29,9 @@ import {
   type Volume,
 } from '../lib/api'
 import { formatEnvLines, parseEnvLines } from '../lib/env'
+import { usePrefs } from '../lib/prefs'
+import { DeploymentsCard } from './app-deployments'
+import { LiveLogs } from './app-logs'
 
 const route = getRouteApi('/_authed/projects/$project/$environment/$app')
 
@@ -40,6 +42,7 @@ export function AppPage() {
   const web = a.processes[0]
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { t } = usePrefs()
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] })
 
   const update = useMutation({
@@ -64,7 +67,7 @@ export function AppPage() {
         crumbs={
           <>
             <Link to="/" className="hover:text-fg">
-              Projects
+              {t('nav.projects')}
             </Link>
             <span>/</span>
             <Link to="/projects/$project" params={{ project }} className="hover:text-fg">
@@ -101,6 +104,13 @@ export function AppPage() {
                 {run.isPending ? 'Starting…' : 'Run now'}
               </Button>
             )}
+            <Link
+              to="/projects/$project/$environment/$app/doctor"
+              params={{ project, environment, app }}
+              className="inline-flex items-center rounded-lg border border-line px-3 py-1.5 font-medium text-sm transition hover:bg-hover"
+            >
+              {t('doctor.open')}
+            </Link>
             <Button variant="secondary" disabled={restart.isPending} onClick={() => restart.mutate()}>
               {restart.isPending ? 'Restarting…' : 'Restart'}
             </Button>
@@ -134,6 +144,8 @@ export function AppPage() {
           onSave={(body) => update.mutate(body)}
         />
       </div>
+
+      <DeploymentsCard project={project} environment={environment} app={app} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ReleasesCard project={project} environment={environment} app={app} />
@@ -178,7 +190,12 @@ export function AppPage() {
         onSave={(env) => update.mutate({ env })}
       />
 
-      <Logs project={project} environment={environment} app={app} />
+      <LiveLogs
+        project={project}
+        environment={environment}
+        app={app}
+        processes={a.processes.filter((p) => !p.schedule).map((p) => p.name)}
+      />
 
       <DomainsCard
         project={project}
@@ -322,53 +339,6 @@ function EnvCard({
           <ErrorNote error={error} />
         </div>
       </form>
-    </Card>
-  )
-}
-
-function Logs({ project, environment, app }: { project: string; environment: string; app: string }) {
-  const [tail, setTail] = useState(200)
-  const logs = useQuery({ ...logsQuery(project, environment, app, tail), retry: false })
-  return (
-    <Card
-      title="Logs"
-      actions={
-        <label className="flex items-center gap-2 text-muted text-xs">
-          Lines
-          <select
-            value={tail}
-            onChange={(e) => setTail(Number(e.target.value))}
-            className="rounded-md border border-line bg-canvas px-2 py-1"
-          >
-            {[100, 200, 500, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-      }
-    >
-      {logs.isError ? (
-        <ErrorNote error={logs.error} />
-      ) : !logs.data?.length ? (
-        <p className="text-subtle text-sm">{logs.isLoading ? 'Loading…' : 'No pods to read logs from.'}</p>
-      ) : (
-        <div className="space-y-4">
-          {logs.data.map((pod) => (
-            <div key={pod.pod} className="space-y-1">
-              <p className="font-mono text-muted text-xs">{pod.pod}</p>
-              {pod.error ? (
-                <p className="text-warn text-xs">{pod.error}</p>
-              ) : (
-                <pre className="max-h-96 overflow-auto rounded-lg bg-inset p-3 font-mono text-fg-soft text-xs leading-relaxed">
-                  {pod.lines.join('\n') || '(no output yet)'}
-                </pre>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </Card>
   )
 }

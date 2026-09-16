@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, time::Duration};
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
@@ -26,9 +26,10 @@ use kuben_store::repo::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use super::releases::Actors;
 use crate::{authz::Authz, error::ApiResult, routes::scope, state::ApiState};
 
 /// How long an `Idempotency-Key` receipt is kept; the run itself stays.
@@ -306,6 +307,93 @@ pub async fn start(
         StatusCode::ACCEPTED,
         [(header::LOCATION, location)],
         Json(DeploymentDto::from(summary)),
+    ))
+}
+
+/// One step of a run's timeline.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PhaseStep {
+    pub phase: String,
+    /// When the run entered it, Unix milliseconds.
+    pub at: i64,
+}
+
+/// A deployment run with how it went.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeploymentSummary {
+    pub run: Uuid,
+    /// The target generation (the app's revision) this run owns.
+    pub generation: u64,
+    /// `deploy`, `rollback` or `promotion`.
+    pub reason: String,
+    pub phase: String,
+    /// `succeeded`, `failed` or `cancelled` once it ended.
+    pub outcome: Option<String>,
+    /// Email of whoever asked for it.
+    pub requested_by: String,
+    pub created_at: i64,
+    pub image: Option<String>,
+    /// Every phase it entered, oldest first.
+    pub timeline: Vec<PhaseStep>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DeploymentsQuery {
+    /// How many runs, newest first (1–50, default 10).
+    pub limit: Option<i64>,
+}
+
+/// The app's newest deployment runs, each with its timeline.
+#[utoipa::path(
+    get,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/deployments", operation_id = "listDeployments",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+        DeploymentsQuery,
+    ),
+    responses(
+        (status = 200, body = Vec<DeploymentSummary>),
+        (status = 403, body = crate::error::Problem),
+        (status = 404, body = crate::error::Problem),
+    )
+)]
+pub async fn list(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app)): Path<(String, String, String)>,
+    Query(q): Query<DeploymentsQuery>,
+) -> ApiResult<Json<Vec<DeploymentSummary>>> {
+    let t = scope::sql_target(&state, &authz, &project, &environment, &app).await?;
+    let _proof = authz.require(&state, Perm::AppRead, &t.chain())?;
+    let mut tenant = state.store.tenant(t.org).await?;
+    let runs = tenant.runs(t.target, q.limit.unwrap_or(10).clamp(1, 50)).await?;
+    let ids: Vec<DeploymentRunId> = runs.iter().map(|r| r.run).collect();
+    let mut phases = tenant.run_phases(t.target, &ids).await?;
+    drop(tenant);
+    let actors = Actors::load(&state).await?;
+    Ok(Json(
+        runs.into_iter()
+            .map(|r| DeploymentSummary {
+                run: *r.run.as_uuid(),
+                generation: r.generation.0,
+                reason: r.reason,
+                phase: r.phase.as_str().to_owned(),
+                outcome: r.outcome,
+                requested_by: actors.name(&r.requested_by),
+                created_at: r.created_at,
+                image: r.image,
+                timeline: phases
+                    .remove(&r.run)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(phase, at)| PhaseStep { phase, at })
+                    .collect(),
+            })
+            .collect(),
     ))
 }
 

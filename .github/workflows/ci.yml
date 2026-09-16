@@ -205,7 +205,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,6 +216,14 @@ jobs:
           rust-toolchain: stable
           rust-cache-key: web
       - run: bun turbo run biome:check check test build size --filter=// --filter='@kuben/*'
+      # M2.16: the built console in a browser, English and Persian (LTR and
+      # RTL), dark and light: axe (WCAG 2.1 AA) and Kuben's CSP, API mocked.
+      - name: Console in a browser (Playwright, axe)
+        working-directory: apps/console/e2e
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npx playwright install --with-deps chromium-headless-shell
+          npx playwright test
 
   drift:
     name: Generated files up to date

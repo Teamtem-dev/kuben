@@ -279,7 +279,8 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The app's newest deployment runs, each with its timeline. */
+        get: operations["listDeployments"];
         put?: never;
         /**
          * Accept a deployment of this app.
@@ -840,6 +841,28 @@ export type components = {
              */
             phase: string;
         };
+        /** @description A deployment run with how it went. */
+        DeploymentSummary: {
+            /** Format: uuid */
+            run: string;
+            /**
+             * Format: int64
+             * @description The target generation (the app's revision) this run owns.
+             */
+            generation: number;
+            /** @description `deploy`, `rollback` or `promotion`. */
+            reason: string;
+            phase: string;
+            /** @description `succeeded`, `failed` or `cancelled` once it ended. */
+            outcome?: string | null;
+            /** @description Email of whoever asked for it. */
+            requested_by: string;
+            /** Format: int64 */
+            created_at: number;
+            image?: string | null;
+            /** @description Every phase it entered, oldest first. */
+            timeline: components["schemas"]["PhaseStep"][];
+        };
         DoctorCheck: {
             /**
              * @description `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
@@ -979,6 +1002,15 @@ export type components = {
             /** @description Invited and has not replaced the temporary password yet. */
             must_change_password: boolean;
             active: boolean;
+        };
+        /** @description One step of a run's timeline. */
+        PhaseStep: {
+            phase: string;
+            /**
+             * Format: int64
+             * @description When the run entered it, Unix milliseconds.
+             */
+            at: number;
         };
         PodDto: {
             name: string;
@@ -2105,6 +2137,51 @@ export interface operations {
             };
             /** @description The image's registry cannot be reached */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDeployments: {
+        parameters: {
+            query?: {
+                /** @description How many runs, newest first (1–50, default 10). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentSummary"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

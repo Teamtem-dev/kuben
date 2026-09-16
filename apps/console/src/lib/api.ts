@@ -12,6 +12,11 @@ export type App = Schemas['AppDto']
 export type AppDetail = Schemas['AppDetail']
 export type Pod = Schemas['PodDto']
 export type PodLogs = Schemas['PodLogs']
+export type LogLine = Schemas['LogLine']
+export type LogEnd = Schemas['LogEnd']
+export type Deployment = Schemas['DeploymentSummary']
+export type DoctorReport = Schemas['DoctorReport']
+export type DoctorCheck = Schemas['DoctorCheck']
 export type Secret = Schemas['SecretDto']
 export type EnvVar = Schemas['EnvVarDto']
 export type Volume = Schemas['VolumeDto']
@@ -164,16 +169,63 @@ export const appQuery = (project: string, environment: string, app: string) =>
       ),
   })
 
-export const logsQuery = (project: string, environment: string, app: string, tail: number) =>
+export interface LogOptions {
+  tail: number
+  previous: boolean
+  process?: string
+}
+
+export const logsQuery = (project: string, environment: string, app: string, options: LogOptions) =>
   queryOptions({
-    queryKey: ['logs', project, environment, app, tail],
+    queryKey: ['logs', project, environment, app, options],
     queryFn: () =>
       unwrap(
         api.GET('/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs', {
-          params: { path: { project, environment, app }, query: { tail } },
+          params: { path: { project, environment, app }, query: options },
         }),
       ),
-    refetchInterval: 5_000,
+  })
+
+/** The address of an app's followed log (server-sent events). */
+export function followLogsUrl(
+  project: string,
+  environment: string,
+  app: string,
+  options: LogOptions,
+): string {
+  const query = new URLSearchParams({ follow: 'true', tail: String(options.tail) })
+  if (options.process) query.set('process', options.process)
+  const path = [project, environment, app].map(encodeURIComponent)
+  return `/api/v1/projects/${path[0]}/environments/${path[1]}/apps/${path[2]}/logs?${query}`
+}
+
+/** Phases a run can still leave. */
+const FINAL = new Set(['succeeded', 'failed', 'superseded', 'cancelled', 'recovered', 'recoveryFailed'])
+export const isFinalPhase = (phase: string) => FINAL.has(phase)
+
+export const deploymentsQuery = (project: string, environment: string, app: string) =>
+  queryOptions({
+    queryKey: ['app', project, environment, app, 'deployments'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments', {
+          params: { path: { project, environment, app }, query: { limit: 10 } },
+        }),
+      ),
+    // While a run is under way, follow it.
+    refetchInterval: (query) => (query.state.data?.some((d) => !isFinalPhase(d.phase)) ? 3_000 : false),
+  })
+
+export const doctorQuery = (project: string, environment: string, app: string) =>
+  queryOptions({
+    queryKey: ['app', project, environment, app, 'doctor'],
+    queryFn: () =>
+      unwrap(
+        api.GET(
+          '/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor',
+          appPath(project, environment, app),
+        ),
+      ),
   })
 
 export const createApp = (project: string, environment: string, body: CreateApp) =>

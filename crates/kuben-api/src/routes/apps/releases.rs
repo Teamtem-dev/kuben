@@ -51,6 +51,28 @@ fn reason(run: &RunRecord, previous: Option<&RunRecord>) -> &'static str {
     }
 }
 
+/// Who requested runs: `user:<id>` and `token:<id>` shown by the user's email.
+pub(super) struct Actors(HashMap<String, String>);
+
+impl Actors {
+    pub(super) async fn load(state: &ApiState) -> ApiResult<Self> {
+        Ok(Self(
+            state
+                .store
+                .list_users()
+                .await?
+                .into_iter()
+                .map(|u| (u.id.to_string(), u.email))
+                .collect(),
+        ))
+    }
+
+    pub(super) fn name(&self, requested_by: &str) -> String {
+        let id = requested_by.split_once(':').map_or(requested_by, |(_, id)| id);
+        self.0.get(id).cloned().unwrap_or_else(|| id.to_owned())
+    }
+}
+
 /// Release history, newest first (50 revisions).
 #[utoipa::path(
     get,
@@ -74,32 +96,20 @@ pub async fn releases(
     // One more than shown: the oldest shown run needs its predecessor.
     let runs = tenant.runs(a.app.target, RELEASE_PAGE + 1).await?;
     drop(tenant);
-    let emails: HashMap<String, String> = state
-        .store
-        .list_users()
-        .await?
-        .into_iter()
-        .map(|u| (u.id.to_string(), u.email))
-        .collect();
+    let actors = Actors::load(&state).await?;
     let shown = usize::try_from(RELEASE_PAGE).unwrap_or(usize::MAX);
     Ok(Json(
         runs.iter()
             .enumerate()
             .take(shown)
-            .map(|(i, run)| {
-                let id = run
-                    .requested_by
-                    .split_once(':')
-                    .map_or(run.requested_by.as_str(), |(_, id)| id);
-                ReleaseDto {
-                    revision: i64::try_from(run.generation.0).unwrap_or(i64::MAX),
-                    image: run.image.clone(),
-                    reason: reason(run, runs.get(i + 1)).to_owned(),
-                    note: None,
-                    actor: Some(emails.get(id).cloned().unwrap_or_else(|| id.to_owned())),
-                    created_at: run.created_at,
-                    current: i == 0,
-                }
+            .map(|(i, run)| ReleaseDto {
+                revision: i64::try_from(run.generation.0).unwrap_or(i64::MAX),
+                image: run.image.clone(),
+                reason: reason(run, runs.get(i + 1)).to_owned(),
+                note: None,
+                actor: Some(actors.name(&run.requested_by)),
+                created_at: run.created_at,
+                current: i == 0,
             })
             .collect(),
     ))

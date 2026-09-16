@@ -73,6 +73,8 @@ interface PrefsValue extends Prefs {
   setLocale: (locale: Locale) => void
   setTheme: (theme: Theme) => void
   t: (key: MessageKey) => string
+  /** A message whose key is made at run time (a phase, a check), else `fallback`. */
+  tOr: (key: string, fallback: string) => string
 }
 
 const PrefsContext = createContext<PrefsValue | null>(null)
@@ -97,7 +99,13 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const setLocale = useCallback((locale: Locale) => setPrefs((p) => ({ ...p, locale })), [])
   const setTheme = useCallback((theme: Theme) => setPrefs((p) => ({ ...p, theme })), [])
   const value = useMemo<PrefsValue>(
-    () => ({ ...prefs, setLocale, setTheme, t: (key) => locales[prefs.locale][key] }),
+    () => ({
+      ...prefs,
+      setLocale,
+      setTheme,
+      t: (key) => locales[prefs.locale][key],
+      tOr: (key, fallback) => (locales[prefs.locale] as Record<string, string>)[key] ?? fallback,
+    }),
     [prefs, setLocale, setTheme],
   )
   return <PrefsContext.Provider value={value}>{children}</PrefsContext.Provider>
