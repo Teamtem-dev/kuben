@@ -9,20 +9,22 @@ use axum::{
 };
 use kuben_core::{
     Error,
-    ids::OperationId,
+    ids::{OperationId, ProjectId, TargetId},
     perm::Perm,
     source::{BranchName, BuildRecipe, BuildStrategy, RepoName, RepoPath},
 };
-use kuben_store::repo::{Bound, NewAudit, NewBinding, SourceBinding};
+use kuben_crd::{AppSpec, Build, BuildStrategy as CrdStrategy, GitSource};
+use kuben_store::repo::{Bound, NewAudit, NewBinding, SourceBinding, Tenant};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use utoipa::ToSchema;
 
+use super::{AppDto, config_of, ensure_domains_free, validate_spec};
 use crate::{
     authz::Authz,
     error::{ApiError, ApiResult},
     oci,
-    routes::{git::github, scope},
+    routes::{git::github, request, scope, scope::EnvScope},
     state::ApiState,
 };
 
@@ -56,7 +58,7 @@ impl From<BuildStrategy> for StrategyDto {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Clone, Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PutSource {
     /// A GitHub App installation linked to this organization.
@@ -145,6 +147,112 @@ fn new_binding(body: &PutSource) -> Result<NewBinding, ApiError> {
     })
 }
 
+/// The App spec's view of a Git source (the binding is the authority).
+pub(crate) fn git_source(body: &PutSource) -> GitSource {
+    GitSource {
+        repo: body.repository.trim().to_ascii_lowercase(),
+        branch: body.branch.trim().to_owned(),
+        path: body.context.trim().to_owned(),
+        build: Build {
+            strategy: match body.strategy {
+                StrategyDto::Auto => CrdStrategy::Auto,
+                StrategyDto::Dockerfile => CrdStrategy::Dockerfile,
+                StrategyDto::Railpack => CrdStrategy::Railpack,
+            },
+            dockerfile: body.dockerfile.clone().filter(|d| !d.trim().is_empty()),
+        },
+    }
+}
+
+/// Bind the target `t` to `new` and ask for a sync, in `tenant`.
+async fn bind_and_sync(
+    tenant: &mut Tenant,
+    authz: &Authz,
+    t: (ProjectId, TargetId),
+    new: &NewBinding,
+    reference: String,
+) -> ApiResult<(SourceBinding, OperationId)> {
+    let bound = tenant.bind_source(t.0, t.1, new).await?;
+    let id = match bound {
+        Bound::InstallationMissing => {
+            return Err(invalid(format!(
+                "installation {} is not linked to this organization",
+                new.installation_id
+            )));
+        }
+        Bound::NotFound => return Err(ApiError(Error::NotFound("the app".into()))),
+        Bound::Created(id) | Bound::Changed(id) | Bound::Unchanged(id) => id,
+    };
+    let binding = tenant
+        .binding(id)
+        .await?
+        .ok_or_else(|| ApiError(Error::Internal("the bound source is missing".into())))?;
+    let data = json!({
+        "repository": new.repository,
+        "branch": new.branch,
+        "changed": !matches!(bound, Bound::Unchanged(_)),
+    });
+    let requested_by = format!("user:{}", authz.current.user.id);
+    let sync = tenant
+        .request_sync(
+            &binding,
+            &requested_by,
+            audit(authz, "syncSource", reference, data),
+        )
+        .await?;
+    Ok((binding, sync))
+}
+
+/// Create an app that builds from Git: its target and configuration now,
+/// its first release when the first build of the branch head is verified.
+pub(crate) async fn create_git_app(
+    state: &ApiState,
+    authz: &Authz,
+    e: &EnvScope,
+    name: &str,
+    spec: AppSpec,
+    git: &PutSource,
+) -> ApiResult<AppDto> {
+    github(state)?;
+    validate_spec(&spec)?;
+    let new = new_binding(git)?;
+    if e.deleting() {
+        return Err(Error::Conflict(format!("environment `{}` is being deleted", e.short_name())).into());
+    }
+    ensure_domains_free(state, e.project.org, &e.namespace(), name, &spec).await?;
+    let placement = e
+        .env
+        .placement
+        .ok_or_else(|| Error::Conflict(format!("environment `{}` has no placement", e.short_name())))?;
+    let project = e.project.id();
+    let what = format!("app `{name}`");
+    let (_, actor) = request::actor(authz);
+    let mut tenant = state.store.tenant(e.project.org).await?;
+    let application = match tenant.application(project, name).await? {
+        Some(id) => id,
+        None => tenant
+            .create_application(project, name, name)
+            .await
+            .map_err(|er| request::duplicate(er, &what))?,
+    };
+    let target = tenant
+        .create_target(project, application, placement)
+        .await
+        .map_err(|er| request::duplicate(er, &what))?;
+    tenant
+        .create_config_revision(project, target, &config_of(&spec)?, &actor)
+        .await?
+        .ok_or_else(|| ApiError(Error::Internal("the new app is missing".into())))?;
+    let reference = format!("{}/{}/{name}", e.project.slug(), e.short_name());
+    bind_and_sync(&mut tenant, authz, (project, target), &new, reference).await?;
+    let record = tenant
+        .app(e.id(), name)
+        .await?
+        .ok_or_else(|| Error::Internal("the new app is missing".into()))?;
+    tenant.commit().await?;
+    Ok(AppDto::of(e.project.slug(), e.short_name(), &record, None))
+}
+
 fn audit(authz: &Authz, action: &str, reference: String, data: serde_json::Value) -> NewAudit {
     NewAudit {
         actor_kind: authz.current.via.to_owned(),
@@ -222,31 +330,8 @@ pub async fn put(
     github(&state)?;
     let new = new_binding(&body)?;
     let mut tenant = state.store.tenant(t.org).await?;
-    let bound = tenant.bind_source(t.project, t.target, &new).await?;
-    let id = match bound {
-        Bound::InstallationMissing => {
-            return Err(invalid(format!(
-                "installation {} is not linked to this organization",
-                new.installation_id
-            )));
-        }
-        Bound::NotFound => return Err(ApiError(Error::NotFound(format!("app `{app}`")))),
-        Bound::Created(id) | Bound::Changed(id) | Bound::Unchanged(id) => id,
-    };
-    let binding = tenant
-        .binding(id)
-        .await?
-        .ok_or_else(|| ApiError(Error::Internal("the bound source is missing".into())))?;
     let reference = format!("{project}/{environment}/{app}");
-    let data = json!({ "repository": new.repository, "branch": new.branch, "changed": !matches!(bound, Bound::Unchanged(_)) });
-    let requested_by = format!("user:{}", authz.current.user.id);
-    let sync = tenant
-        .request_sync(
-            &binding,
-            &requested_by,
-            audit(&authz, "syncSource", reference, data),
-        )
-        .await?;
+    let (binding, sync) = bind_and_sync(&mut tenant, &authz, (t.project, t.target), &new, reference).await?;
     tenant.commit().await?;
     Ok(Json(SourceDto::new(&binding, Some(sync))))
 }
@@ -327,6 +412,15 @@ mod tests {
             new_binding(&body("acme/shop")).expect("hub").image_repository,
             "docker.io/acme/shop"
         );
+    }
+
+    #[test]
+    fn the_spec_mirrors_the_binding() {
+        let git = git_source(&body("ghcr.io/acme/shop"));
+        assert_eq!(git.repo, "acme/shop");
+        assert_eq!(git.path, "./apps/web/");
+        assert_eq!(git.build.strategy, CrdStrategy::Dockerfile);
+        assert_eq!(git.build.dockerfile, None);
     }
 
     #[test]

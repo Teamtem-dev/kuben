@@ -61,6 +61,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::deployments::get))
         .routes(routes!(apps::source::get, apps::source::put))
         .routes(routes!(apps::source::sync))
+        .routes(routes!(apps::builds::list))
+        .routes(routes!(apps::builds::get))
         .routes(routes!(git::list, git::link))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
@@ -116,6 +118,8 @@ mod tests {
             &format!("{app}/promote"),
             &format!("{app}/source"),
             &format!("{app}/source/sync"),
+            &format!("{app}/builds"),
+            &format!("{app}/builds/{{build}}"),
             "/api/v1/git/installations",
             "/api/v1/projects/{project}/environments/{environment}/secrets",
             "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}",

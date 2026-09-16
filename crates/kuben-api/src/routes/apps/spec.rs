@@ -33,8 +33,14 @@ fn default_size() -> String {
 pub struct CreateApp {
     #[schema(example = "api")]
     pub name: String,
+    /// The image to run; give this or `git`.
     #[schema(example = "ghcr.io/acme/api:1.4.2")]
-    pub image: String,
+    #[serde(default)]
+    pub image: Option<String>,
+    /// Build the app from a Git repository instead (M3); its first build
+    /// deploys it.
+    #[serde(default)]
+    pub git: Option<super::source::PutSource>,
     /// Port the process listens on; omit for workers and scheduled jobs.
     #[schema(example = 8080)]
     pub port: Option<u16>,
@@ -307,7 +313,17 @@ fn non_empty(s: Option<&str>) -> Option<String> {
 }
 
 pub(super) fn spec_from_create(body: &CreateApp) -> Result<AppSpec, Error> {
-    validate::image(&body.image)?;
+    let source = match (non_empty(body.image.as_deref()), &body.git) {
+        (Some(image), None) => {
+            validate::image(&image)?;
+            Source::from_image(image)
+        }
+        (None, Some(git)) => Source {
+            image: None,
+            git: Some(super::source::git_source(git)),
+        },
+        _ => return Err(Error::Validation("give exactly one of `image` and `git`".into())),
+    };
     validate::dns_label("size", &body.size, 30)?;
     let min = body.replicas;
     let max = body.max_replicas.unwrap_or(min).max(min);
@@ -323,7 +339,7 @@ pub(super) fn spec_from_create(body: &CreateApp) -> Result<AppSpec, Error> {
     let schedule = non_empty(body.schedule.as_deref());
     let process = if schedule.is_some() { JOB } else { WEB };
     Ok(AppSpec {
-        source: Source::from_image(body.image.trim()),
+        source,
         runtime: Runtime {
             processes: BTreeMap::from([(
                 process.to_owned(),
@@ -588,7 +604,8 @@ mod tests {
         let body =
             |schedule: Option<&str>, port: Option<u16>, replicas: u32, volumes: Vec<VolumeDto>| CreateApp {
                 name: "api".into(),
-                image: "nginx:1.27".into(),
+                image: Some("nginx:1.27".into()),
+                git: None,
                 port,
                 command: vec![],
                 replicas,
@@ -615,5 +632,30 @@ mod tests {
         };
         let scaled = spec_from_create(&body(None, Some(80), 2, vec![vol])).expect("fields ok");
         assert!(validate_spec(&scaled).is_err(), "volume needs one replica");
+
+        let mut git = body(None, Some(8080), 1, vec![]);
+        git.image = None;
+        git.git = Some(super::super::source::PutSource {
+            installation_id: 7,
+            repository: "acme/shop".into(),
+            branch: "main".into(),
+            strategy: super::super::source::StrategyDto::Auto,
+            context: String::new(),
+            dockerfile: None,
+            image_repository: "ghcr.io/acme/shop".into(),
+        });
+        let from_git = spec_from_create(&git).expect("git");
+        assert!(from_git.source.image.is_none());
+        assert_eq!(
+            from_git.source.git.as_ref().map(|g| g.repo.as_str()),
+            Some("acme/shop")
+        );
+        validate_spec(&from_git).expect("a git app awaits its build");
+        let mut both = git;
+        both.image = Some("nginx:1.27".into());
+        assert!(spec_from_create(&both).is_err(), "image and git together");
+        both.git = None;
+        both.image = Some("  ".into());
+        assert!(spec_from_create(&both).is_err(), "neither");
     }
 }

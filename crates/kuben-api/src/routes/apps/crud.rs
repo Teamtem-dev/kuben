@@ -66,8 +66,9 @@ pub async fn list(
     Ok(Json(items))
 }
 
-/// Deploy a new app from a container image. A tag is resolved to a digest at
-/// its registry.
+/// Deploy a new app from a container image, or from a Git repository. A tag
+/// is resolved to a digest at its registry; a Git app deploys with its first
+/// build.
 #[utoipa::path(
     post,
     path = "/projects/{project}/environments/{environment}/apps", operation_id = "createApp",
@@ -95,7 +96,10 @@ pub async fn create(
     let _proof = authz.require(&state, Perm::AppWrite, &e.chain())?;
     validate::dns_label("name", &body.name, 40)?;
     let spec = spec_from_create(&body)?;
-    let dto = create_app(&state, &authz, &e, &body.name, spec).await?;
+    let dto = match &body.git {
+        Some(git) => super::source::create_git_app(&state, &authz, &e, &body.name, spec, git).await?,
+        None => create_app(&state, &authz, &e, &body.name, spec).await?,
+    };
     Ok((StatusCode::CREATED, Json(dto)))
 }
 

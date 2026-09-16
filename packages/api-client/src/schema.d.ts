@@ -255,8 +255,9 @@ export type paths = {
         get: operations["listApps"];
         put?: never;
         /**
-         * Deploy a new app from a container image. A tag is resolved to a digest at
-         *     its registry.
+         * Deploy a new app from a container image, or from a Git repository. A tag
+         *     is resolved to a digest at its registry; a Git app deploys with its first
+         *     build.
          */
         post: operations["createApp"];
         delete?: never;
@@ -291,6 +292,40 @@ export type paths = {
          *     deployment run; a new tag is resolved to a digest at its registry.
          */
         patch: operations["updateApp"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The app's newest builds. */
+        get: operations["listBuilds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One build of the app. */
+        get: operations["getBuild"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
@@ -764,6 +799,48 @@ export type components = {
              */
             next_before?: number | null;
         };
+        BuildDto: {
+            id: string;
+            /**
+             * Format: int32
+             * @description 1 for the first attempt; an infrastructure retry is the next one.
+             */
+            attempt: number;
+            repository: string;
+            branch: string;
+            commit: string;
+            /** @description `auto`, `dockerfile` or `railpack`, as configured. */
+            strategy: string;
+            /**
+             * @description `queued`, `blocked`, `preparing`, `running`, `publishing`,
+             *     `verifyingOutput`, `cancelRequested`, `cancelling`, `succeeded`,
+             *     `failed` or `cancelled`.
+             */
+            phase: string;
+            blockedReason?: string | null;
+            /**
+             * @description `BuildError`, `OutOfMemory`, `DiskFull`, `DeadlineExceeded`,
+             *     `LostWorker`, `SourceUnavailable`, `OutputRejected`, …
+             */
+            failure?: string | null;
+            failureDetail?: string | null;
+            /** @description `repository@digest`, once the registry confirmed it. */
+            image?: string | null;
+            release?: string | null;
+            deployment?: string | null;
+            /**
+             * @description `deployed`, or why the build did not deploy (`StaleSource`,
+             *     `BuildConfigChanged`, `NotAutomatic`, …).
+             */
+            deployDecision?: string | null;
+            cancelRequested: boolean;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            startedAt?: number | null;
+            /** Format: int64 */
+            finishedAt?: number | null;
+        };
         ChangePassword: {
             /** Format: password */
             current_password: string;
@@ -773,8 +850,12 @@ export type components = {
         CreateApp: {
             /** @example api */
             name: string;
-            /** @example ghcr.io/acme/api:1.4.2 */
-            image: string;
+            /**
+             * @description The image to run; give this or `git`.
+             * @example ghcr.io/acme/api:1.4.2
+             */
+            image?: string | null;
+            git?: null | components["schemas"]["PutSource"];
             /**
              * Format: int32
              * @description Port the process listens on; omit for workers and scheduled jobs.
@@ -2334,6 +2415,95 @@ export interface operations {
             };
             /** @description The image's registry cannot be reached */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listBuilds: {
+        parameters: {
+            query?: {
+                /** @description Newest first; 20 unless given, at most 100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Build id */
+                build: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

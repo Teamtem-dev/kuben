@@ -43,6 +43,7 @@ fn reason(run: &RunRecord, previous: Option<&RunRecord>) -> &'static str {
         "promotion" => "promote",
         "restart" => "restart",
         "handover" => "handover",
+        "build" => "build",
         _ => match previous {
             None => "create",
             Some(p) if p.release == run.release => "config",

@@ -9,6 +9,7 @@
 //! * [`promote`] — promotion between environments (scenario 10);
 //! * [`deployments`] — deploy acceptance by digest or release;
 //! * [`source`] — the Git repository and branch an app builds from (M3);
+//! * [`builds`] — the app's builds, their outcome, release and run (M3);
 //! * [`spec`] — request bodies, validation and spec construction. Cross-field
 //!   rules are the controller's own (`resources::validate`), so the API
 //!   rejects exactly what the controller could never build.
@@ -21,6 +22,7 @@
 //! the agent's last report, from SQL). An image given as a tag is resolved to a
 //! digest at its registry first (option A).
 
+pub mod builds;
 pub mod crud;
 pub mod deployments;
 pub mod doctor;
