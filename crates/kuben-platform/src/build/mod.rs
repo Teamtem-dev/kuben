@@ -8,12 +8,19 @@
 //! are the failure boundary to the outside world; their HTTP
 //! implementations live with the API's transport.
 
+pub mod job;
+pub mod observe;
+pub mod steps;
+pub mod worker;
+
 use std::{fmt, time::SystemTime};
 
 use kuben_core::{
     artifact::Digest,
     source::{BranchName, CommitSha, RepoName},
 };
+
+pub use worker::{BuildWorker, run};
 
 /// A branch head read from the provider.
 #[derive(Clone, Debug, PartialEq, Eq)]

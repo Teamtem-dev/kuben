@@ -424,6 +424,9 @@ pub struct BuildCfg {
     pub fetch_image: String,
     /// Railpack's BuildKit frontend image.
     pub railpack_frontend: String,
+    /// Image with `sh` and the `railpack` CLI that writes the build plan;
+    /// unset, only Dockerfile builds run.
+    pub railpack_image: Option<String>,
     pub cpu_request: String,
     pub cpu_limit: String,
     /// Memory request and limit are equal (ADR-028).
@@ -450,9 +453,10 @@ impl Default for BuildCfg {
         Self {
             enabled: false,
             namespace: None,
-            buildkit_image: "moby/buildkit:v0.23.2-rootless".into(),
+            buildkit_image: "moby/buildkit:v0.33.0-rootless".into(),
             fetch_image: "alpine/git:2.49.1".into(),
-            railpack_frontend: "ghcr.io/railwayapp/railpack-frontend:v0.2.2".into(),
+            railpack_frontend: "ghcr.io/railwayapp/railpack-frontend".into(),
+            railpack_image: None,
             cpu_request: "500m".into(),
             cpu_limit: "2".into(),
             memory: "2Gi".into(),
