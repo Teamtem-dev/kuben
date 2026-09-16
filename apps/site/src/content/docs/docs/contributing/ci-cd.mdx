@@ -23,7 +23,7 @@ Every CI job calls the same Turborepo task a developer runs locally. Pull reques
 | **Web** | Biome, `tsc`, `bun test`, the Vite build, the Astro build, and **size-limit** (200 kB JS, 25 kB CSS, brotli) |
 | **Generated files** | regenerates `openapi.json`, `schema.d.ts` and the CRDs and fails on any diff |
 | **Shell scripts** | execute bits, shellcheck, `install.sh` under sh/dash/bash, change-detection tests, `helm lint --strict`, `helm template`, and a Trivy misconfiguration scan of the rendered chart |
-| **Binary size budget** | a static musl release build with the embedded console and dependency list, gated at 28 MiB, then a Trivy scan of the binary |
+| **Binary size budget** | a static musl release build with the embedded console and dependency list, gated at 30 MiB, then a Trivy scan of the binary |
 | **End-to-end (kind)** | login → project → environment → namespace with quota and NetworkPolicy → deploy → scale → logs → restart → delete and GC |
 | **Workflow security** | [zizmor](https://docs.zizmor.sh) on the workflows and the setup action: template injection, excessive permissions, cache poisoning, unpinned actions |
 | **CI success** | fails if any job failed or was cancelled. This is the only required check in branch protection |
@@ -43,7 +43,7 @@ Details that matter:
 tag v1.0.2 ─► plan (tag == Cargo version)
                ├─► web (bun: vite build + size-limit) ─► build ×5 (cargo auditable) ─┬─► publish (checksums, attestations, GitHub Release)
                │                                                                     │        └─► verify-install ×3 (install.sh against the real release)
-               │                                                                     └─► image (budget ≤ 32 MiB → Trivy → push amd64+arm64, SBOM, provenance)
+               │                                                                     └─► image (budget ≤ 42 MiB → Trivy → push amd64+arm64, SBOM, provenance)
                │                                                                              └─► chart (helm push oci://ghcr.io/teamtem-dev/charts)
 ```
 

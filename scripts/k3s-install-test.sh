@@ -44,6 +44,10 @@ diagnose() {
     sudo k3s kubectl get pods -A -o wide 2>/dev/null || true
     sudo k3s kubectl get gatewayclass,gateway,httproute,certificate,clusterissuer -A 2>/dev/null || true
     sudo k3s kubectl -n kuben-system logs deploy/kuben-agent --tail=30 2>/dev/null || true
+    for job in helm-install-traefik-crd helm-install-traefik helm-install-kuben-cert-manager; do
+      echo "---- ${job} ----"
+      sudo k3s kubectl -n kube-system logs "job/${job}" --tail=20 2>/dev/null || true
+    done
     sudo journalctl -u k3s --no-pager -n 30 -o cat 2>/dev/null || true
   fi
   rm -rf "$work"

@@ -423,12 +423,15 @@ pub fn ensure_platform(
     let result: anyhow::Result<(bool, Vec<String>)> = runtime.block_on(async {
         let mut changed = false;
         let mut notes = Vec::new();
-        if !eventually(Duration::from_mins(3), || k3s_chart_done(&client, "traefik-crd")).await {
-            notes.push("k3s's traefik-crd chart has not finished yet".into());
+        // k3s writes its bundled charts a few seconds after it starts.
+        let bundled = Path::new(K3S_TRAEFIK_MANIFEST).exists();
+        if eventually(Duration::from_mins(5), || k3s_chart_done(&client, "traefik-crd", bundled)).await {
+            let crds = ensure_gateway_api(&client, book).await?;
+            changed |= crds.ends_with("installed");
+            notes.push(crds);
+        } else {
+            notes.push("k3s's traefik-crd chart has not finished yet: run kuben setup again to add the Gateway API CRDs".into());
         }
-        let crds = ensure_gateway_api(&client, book).await?;
-        changed |= crds.ends_with("installed");
-        notes.push(crds);
         changed |= ensure_object(&client, book, TRAEFIK_CONFIG, traefik_config()).await?;
         if !book.journal().owns(Kind::KubernetesObject, TRAEFIK_CONFIG) {
             notes.push(
@@ -768,24 +771,29 @@ async fn deployment_available(client: &Client, namespace: &str, selector: &str) 
         })
 }
 
+/// k3s's manifest of its bundled Traefik; its HelmCharts follow from it.
+const K3S_TRAEFIK_MANIFEST: &str = "/var/lib/rancher/k3s/server/manifests/traefik.yaml";
+
 /// k3s installs its bundled charts with Jobs; `traefik-crd` brings CRDs of
 /// its own (the Gateway API's among them on some releases) and fails on any
 /// it did not create. So setup waits for it before it adds what is missing.
-/// True when there is no such chart or its Job completed.
-async fn k3s_chart_done(client: &Client, chart: &str) -> bool {
+/// True when the chart's Job completed, or when there is no such chart and
+/// none is `expected` (a k3s without Traefik, or not k3s).
+async fn k3s_chart_done(client: &Client, chart: &str, expected: bool) -> bool {
     let helm_chart = json!({
         "apiVersion": "helm.cattle.io/v1",
         "kind": "HelmChart",
         "metadata": { "name": chart, "namespace": "kube-system" },
     });
     let Ok(object) = object(helm_chart) else {
-        return true;
+        return !expected;
     };
+    // Until k3s registered its HelmChart kind, or wrote the chart.
     let Ok(api) = dynamic_api(client, &object).await else {
-        return true; // Not k3s.
+        return !expected;
     };
     let Ok(Some(live)) = api.get_opt(chart).await else {
-        return true;
+        return !expected;
     };
     let Some(job) = live.data.pointer("/status/jobName").and_then(Value::as_str) else {
         return false; // Not started yet.
