@@ -207,15 +207,27 @@ async fn existing(client: &Client, object: &DynamicObject) -> anyhow::Result<Opt
     }))
 }
 
+/// What tells whether an object was changed: its generation where it has
+/// one (status updates leave it alone), else its resource version.
+fn revision(object: &DynamicObject) -> (Option<i64>, Option<String>) {
+    let meta = &object.metadata;
+    match meta.generation {
+        Some(generation) => (Some(generation), None),
+        None => (None, meta.resource_version.clone()),
+    }
+}
+
 /// Apply `object` as setup; `force` takes fields over from other managers
-/// (only for objects setup created).
-async fn apply(client: &Client, object: &DynamicObject, force: bool) -> anyhow::Result<()> {
+/// (only for objects setup created). Whether it changed anything: created
+/// it, or changed what it holds.
+async fn apply(client: &Client, object: &DynamicObject, force: bool) -> anyhow::Result<bool> {
     let api = dynamic_api(client, object).await?;
+    let name = object.name_any();
+    let before = api.get_opt(&name).await?.map(|live| revision(&live));
     let mut params = PatchParams::apply(MANAGER);
     params.force = force;
-    api.patch(&object.name_any(), &params, &Patch::Apply(object))
-        .await?;
-    Ok(())
+    let after = api.patch(&name, &params, &Patch::Apply(object)).await?;
+    Ok(before != Some(revision(&after)))
 }
 
 /// Poll `check` every two seconds until it says yes or `timeout` passes.
@@ -369,8 +381,7 @@ async fn ensure_object(client: &Client, book: &mut Book, name: &str, value: Valu
     };
     book.claim(Kind::KubernetesObject, name, created)?;
     if book.journal().owns(Kind::KubernetesObject, name) {
-        apply(client, &object, true).await?;
-        return Ok(created);
+        return apply(client, &object, true).await;
     }
     Ok(false)
 }
@@ -537,7 +548,7 @@ pub fn ensure_kuben_config(
         let before = existing(&client, &object).await?;
         book.claim(Kind::KubernetesObject, KUBEN_CONFIG, before.is_none())?;
         match apply(&client, &object, false).await {
-            Ok(()) => Ok(before.is_none() || before == Some(false)),
+            Ok(changed) => Ok(changed),
             // Someone else set these fields (kubectl, the chart): theirs.
             Err(e)
                 if e.downcast_ref::<kube::Error>()
@@ -630,10 +641,11 @@ async fn ensure_set(
     if !book.journal().owns(Kind::KubernetesObject, name) {
         return Ok(false);
     }
+    let mut changed = false;
     for value in objects {
-        apply(client, &object(value)?, true).await?;
+        changed |= apply(client, &object(value)?, true).await?;
     }
-    Ok(present.is_none())
+    Ok(changed)
 }
 
 /// The console behind Kuben's Gateway at `https://{host}`: a route in
