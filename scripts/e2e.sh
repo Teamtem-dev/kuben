@@ -108,7 +108,12 @@ cleanup() {
       echo "---- agent pod log (last 40 lines) ----"
       kubectl -n "$AGENT_NS" logs deploy/kuben-agent --tail=40 2>/dev/null || true
     fi
-    kubectl -n "$AGENT_NS" delete deploy/kuben-agent secret/kuben-agent-identity secret/kuben-agent-enrollment \
+    # Everything the chart's template made, the cluster-wide role included:
+    # the chart is installed on this cluster next.
+    if [[ -s $work/agent.yaml ]]; then
+      kubectl -n "$AGENT_NS" delete -f "$work/agent.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    fi
+    kubectl -n "$AGENT_NS" delete secret/kuben-agent-identity secret/kuben-agent-enrollment \
       --ignore-not-found >/dev/null 2>&1 || true
   fi
   if [[ -n $GATEWAY_CLASS ]]; then
@@ -507,8 +512,9 @@ cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
 if [[ -n $AGENT_IMAGE ]]; then
   # M2.8: the agent as a pod from the chart's own template; no token copied.
   helm template kuben "$ROOT/charts/kuben" --namespace "$AGENT_NS" --show-only templates/agent.yaml \
-    --set image.repository="${AGENT_IMAGE%:*}" --set image.tag="${AGENT_IMAGE##*:}" --set image.pullPolicy=Never |
-    kubectl -n "$AGENT_NS" apply -f - >/dev/null
+    --set image.repository="${AGENT_IMAGE%:*}" --set image.tag="${AGENT_IMAGE##*:}" --set image.pullPolicy=Never \
+    >"$work/agent.yaml"
+  kubectl -n "$AGENT_NS" apply -f "$work/agent.yaml" >/dev/null
   eventually 120 "enrollment published with a token" bash -c \
     "kubectl -n $AGENT_NS get secret kuben-agent-enrollment -o jsonpath='{.data.token}' | grep -q ."
   [[ $(kubectl -n "$AGENT_NS" get secret kuben-agent-enrollment -o jsonpath='{.data.cluster}' | base64 -d) == "$cluster" ]] ||
