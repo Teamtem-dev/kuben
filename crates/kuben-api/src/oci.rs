@@ -10,26 +10,17 @@
 //! gives a digest instead. Registries are reached through the proxy the
 //! environment names (`HTTPS_PROXY`, `NO_PROXY`), as curl does.
 
-use std::{collections::BTreeMap, fmt, fmt::Write as _, future::Future, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt, fmt::Write as _, time::Duration};
 
 use bytes::Bytes;
 use http::{HeaderMap, Method, Request, StatusCode, header};
-use http_body_util::{BodyExt, Empty, Limited};
-use hyper_rustls::HttpsConnector;
-use hyper_util::{
-    client::{
-        legacy::{
-            Client,
-            connect::{HttpConnector, proxy::Tunnel},
-        },
-        proxy::matcher::{Intercept, Matcher},
-    },
-    rt::TokioExecutor,
-};
+use http_body_util::{BodyExt, Full, Limited};
+use hyper_util::client::proxy::matcher::Matcher;
 use kuben_core::artifact::Digest;
-use rustls::crypto::CryptoProvider;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
+
+use crate::transport::{Schemes, Transport, chain};
 
 /// Registry host of Docker Hub references without one.
 const DOCKER_HUB: &str = "docker.io";
@@ -239,22 +230,18 @@ impl ImageResolver for FixedImages {
     }
 }
 
-type Direct = Client<HttpsConnector<HttpConnector>, Empty<Bytes>>;
-type Tunneled = Client<HttpsConnector<Tunnel<HttpConnector>>, Empty<Bytes>>;
-
 /// Asks the image's registry over HTTPS (OCI distribution API). Like curl,
 /// it goes through the proxy `HTTPS_PROXY` (or `ALL_PROXY`) names, unless
 /// `NO_PROXY` exempts the registry.
 #[derive(Clone)]
 pub struct RegistryResolver {
-    direct: Result<Direct, Arc<str>>,
-    proxies: Arc<Matcher>,
+    transport: Transport,
 }
 
 impl fmt::Debug for RegistryResolver {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RegistryResolver")
-            .field("ready", &self.direct.is_ok())
+            .field("transport", &self.transport)
             .finish_non_exhaustive()
     }
 }
@@ -271,50 +258,6 @@ struct TokenResponse {
     access_token: Option<String>,
 }
 
-fn no_roots(e: impl fmt::Display) -> Arc<str> {
-    Arc::from(format!("no root certificates: {e}"))
-}
-
-fn crypto() -> Arc<CryptoProvider> {
-    Arc::new(rustls::crypto::ring::default_provider())
-}
-
-fn direct() -> Result<Direct, Arc<str>> {
-    let connector = hyper_rustls::HttpsConnectorBuilder::new()
-        .with_provider_and_native_roots(crypto())
-        .map_err(no_roots)?
-        .https_only()
-        .enable_http1()
-        .build();
-    Ok(Client::builder(TokioExecutor::new()).build(connector))
-}
-
-/// A client whose connections are tunnelled through `proxy` (HTTP CONNECT).
-fn tunneled(proxy: &Intercept) -> Result<Tunneled, Arc<str>> {
-    let mut tunnel = Tunnel::new(proxy.uri().clone(), HttpConnector::new());
-    if let Some(auth) = proxy.basic_auth() {
-        tunnel = tunnel.with_auth(auth.clone());
-    }
-    let connector = hyper_rustls::HttpsConnectorBuilder::new()
-        .with_provider_and_native_roots(crypto())
-        .map_err(no_roots)?
-        .https_only()
-        .enable_http1()
-        .wrap_connector(tunnel);
-    Ok(Client::builder(TokioExecutor::new()).build(connector))
-}
-
-/// `future` within the timeout, its error told with its sources.
-async fn within<T, E>(future: impl Future<Output = Result<T, E>>) -> Result<T, String>
-where
-    E: std::error::Error + 'static,
-{
-    tokio::time::timeout(TIMEOUT, future)
-        .await
-        .map_err(|_| "timed out".to_owned())?
-        .map_err(|e| chain(&e))
-}
-
 impl RegistryResolver {
     /// A resolver trusting the system's root certificates, with the proxy
     /// rules of the environment. When the certificates cannot be loaded,
@@ -328,8 +271,7 @@ impl RegistryResolver {
     #[must_use]
     pub fn with_proxies(proxies: Matcher) -> Self {
         Self {
-            direct: direct(),
-            proxies: Arc::new(proxies),
+            transport: Transport::with_proxies(proxies, Schemes::HttpsOnly, TIMEOUT),
         }
     }
 
@@ -353,19 +295,9 @@ impl RegistryResolver {
             request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
         let request = request
-            .body(Empty::new())
+            .body(Full::new(Bytes::new()))
             .map_err(|e| unreachable(e.to_string()))?;
-        let response = match self.proxies.intercept(request.uri()) {
-            None => {
-                let client = self.direct.as_ref().map_err(|e| unreachable(e.to_string()))?;
-                within(client.request(request)).await
-            }
-            Some(proxy) => {
-                let client = tunneled(&proxy).map_err(|e| unreachable(e.to_string()))?;
-                within(client.request(request)).await
-            }
-        }
-        .map_err(unreachable)?;
+        let response = self.transport.send(request).await.map_err(unreachable)?;
         let (parts, body) = response.into_parts();
         let body = tokio::time::timeout(TIMEOUT, Limited::new(body, MAX_BODY).collect())
             .await
@@ -475,19 +407,6 @@ impl ImageResolver for RegistryResolver {
             given: image.to_owned(),
         })
     }
-}
-
-/// An error with its sources: hyper's own message is only
-/// "client error (Connect)", the cause (DNS, TCP, TLS) is in the chain.
-fn chain(e: &(dyn std::error::Error + 'static)) -> String {
-    let mut out = e.to_string();
-    let mut source = e.source();
-    while let Some(cause) = source {
-        out.push_str(": ");
-        out.push_str(&cause.to_string());
-        source = cause.source();
-    }
-    out
 }
 
 /// Percent-encode a query value (RFC 3986 unreserved characters stay).

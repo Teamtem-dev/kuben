@@ -362,7 +362,9 @@ grep '^data:' "$work/follow.txt" | grep 'e2e-follow-marker' | sed 's/^data://' |
 expect 200 GET "$APP/web/events"
 jq -e 'any(.[]; .kind == "Pod" and .reason == "Scheduled") and any(.[]; .kind == "Deployment" and .name == "web-web")' \
   "$work/body" >/dev/null || fail "events: $(cat "$work/body")"
-jq -e 'all(.[]; .name | startswith("web"))' "$work/body" >/dev/null || fail "events of other objects: $(cat "$work/body")"
+# Web's own objects, and the certificates of its hosts beside the Gateway.
+jq -e 'all(.[]; (.name | startswith("web")) or (.kind == "Certificate" and (.name | startswith("kuben-tls-"))))' \
+  "$work/body" >/dev/null || fail "events of other objects: $(cat "$work/body")"
 
 step "scale to 2"
 expect 200 PATCH "$APP/web" '{"replicas":2}'
@@ -425,6 +427,31 @@ step "a direct App edit is drift: replaced from SQL"
 kubectl -n "$NS" patch app web --type merge -p '{"spec":{"source":{"image":"evil.example.com/web:latest"}}}' >/dev/null
 eventually 60 "edited image replaced" bash -c "[[ \$(kubectl -n $NS get app web -o jsonpath='{.spec.source.image}') == '$pinned' ]]"
 kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
+
+step "M2.14: the kuben client: login, apps, status, logs, deploy, rollback"
+expect 201 POST /tokens "{\"name\":\"cli\",\"role\":\"developer\",\"project\":\"${P}\"}"
+cli_token=$(jq -r .token "$work/body")
+cli_token_id=$(jq -r .info.id "$work/body")
+cli() { KUBEN_CONTEXT_FILE="$work/contexts.json" "$BIN" "$@"; }
+printf '%s\n' "$cli_token" | cli login "http://127.0.0.1:${PORT}" --name e2e --project "$P" --environment dev >"$work/cli.txt" ||
+  fail "kuben login: $(cat "$work/cli.txt")"
+[[ $(stat -c %a "$work/contexts.json" 2>/dev/null || stat -f %Lp "$work/contexts.json") == 600 ]] ||
+  fail "the context file is readable by others"
+grep -q "$cli_token" "$work/cli.txt" && fail "kuben login printed the token"
+cli apps | grep -qE "^${P}/dev/web +ready" || fail "kuben apps: $(cli apps 2>&1)"
+cli status web --json | jq -e '.app.ready and (.doctor.checks | length > 0)' >/dev/null ||
+  fail "kuben status: $(cli status web --json 2>&1)"
+cli logs web --tail 5 | grep -q . || fail "kuben logs printed nothing"
+cli deploy web --image "$IMAGE" --timeout 240 >"$work/cli.txt" 2>&1 || fail "kuben deploy: $(cat "$work/cli.txt")"
+grep -q "web: deployed" "$work/cli.txt" || fail "kuben deploy: $(cat "$work/cli.txt")"
+before=$(cli status web --json | jq -r '[.releases[] | select(.current)][0].revision')
+cli rollback web >"$work/cli.txt" || fail "kuben rollback: $(cat "$work/cli.txt")"
+after=$(cli status web --json | jq -r '[.releases[] | select(.current)][0].revision')
+((after > before)) || fail "kuben rollback made no new revision: ${before} → ${after}"
+cli status web --json | jq -e '.releases[0].reason == "rollback"' >/dev/null ||
+  fail "kuben rollback is not in the history: $(cli status web --json 2>&1)"
+expect 204 DELETE "/tokens/${cli_token_id}"
+cli apps >/dev/null 2>&1 && fail "a revoked token still works for the client"
 
 step "scenario 2: audit log"
 expect 200 GET "/audit?limit=200"

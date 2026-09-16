@@ -82,7 +82,7 @@ pub struct StartDeploymentRequest {
 }
 
 /// A deployment run and where it stands.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DeploymentDto {
     pub run: Uuid,
     pub operation: Uuid,

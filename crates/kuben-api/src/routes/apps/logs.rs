@@ -72,7 +72,7 @@ pub struct LogQuery {
     pub follow: Option<bool>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PodLogs {
     pub pod: String,
     pub process: Option<String>,
@@ -82,7 +82,7 @@ pub struct PodLogs {
 }
 
 /// One line of a followed log.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LogLine {
     pub pod: String,
     pub process: Option<String>,
@@ -94,7 +94,7 @@ pub struct LogLine {
 /// A followed log stopped: one pod's (its container ended or could not be
 /// read; a restarted container is followed again), or all of them (`pod` is
 /// absent: the stream reached its limit).
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LogEnd {
     pub pod: Option<String>,
     pub error: Option<String>,

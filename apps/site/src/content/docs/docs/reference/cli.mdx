@@ -1,9 +1,9 @@
 ---
 title: CLI
-description: Every kuben subcommand (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, version), its options, and how configuration is loaded.
+description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, and how configuration is loaded.
 ---
 
-The `kuben` binary is both the server and the operator's tool. Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
+The `kuben` binary is the server, the operator's tool, and a client of any Kuben server ([below](#client-commands)). Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
 
 ```
 kuben [--config <file>] <command>
@@ -134,7 +134,7 @@ Every run is recorded in the **install journal**, `/var/lib/kuben/install/journa
 
 ## `status`
 
-The service, the admin account, the cluster and the console address of this server.
+Without an app: the service, the admin account, the cluster and the console address of this server. With one, see [`status` of an app](#status-of-an-app).
 
 ```bash
 kuben status
@@ -174,6 +174,62 @@ Prints the version, the git commit and the build target.
 kuben version
 kuben --version
 ```
+
+## Client commands
+
+These talk to a Kuben server over its API, from your computer or a CI job, with an API token (console → Account → API tokens). A token scoped to a project and a role can do what that role can there, nothing else.
+
+An app is named `project/environment/app`; with a default project and environment (`--project`, `--environment`, or saved by `login`), `app` or `environment/app` is enough. Every client command takes `--context`, `--project` and `--environment` (also `KUBEN_CONTEXT`, `KUBEN_PROJECT`, `KUBEN_ENVIRONMENT`).
+
+### `login`
+
+```bash
+kuben login https://kuben.example.com [--token <token>] [--name <context>] [--project shop] [--environment prod]
+```
+
+Checks the token against the server and saves it as a context in `~/.config/kuben/contexts.json` (`$XDG_CONFIG_HOME` is honoured; `KUBEN_CONTEXT_FILE` names another file), readable by you only; the newest login is the current context. Without `--token` (or `KUBEN_TOKEN`) the token is read from standard input, without echo on a terminal. A plain `http://` address other than localhost gets a warning: the token would cross the network unencrypted.
+
+In CI, set `KUBEN_URL` and `KUBEN_TOKEN` instead: no file is read or written.
+
+### `apps`
+
+```bash
+kuben apps [--json]
+```
+
+Every app you can see (only the default project and environment, when set), with its state, image and address.
+
+### `deploy`
+
+```bash
+kuben deploy shop/prod/web --image ghcr.io/acme/web:1.4.2 [--no-wait] [--timeout 600] [--idempotency-key <key>]
+```
+
+A tag is resolved to its digest at the registry first; the deployment carries the digest. It is accepted only on top of the revision the command saw, so a deploy never silently replaces a newer one. The command then follows the run until it succeeds (exit 0) or ends otherwise (exit 1); `--no-wait` returns once it is accepted. Retrying with the same `--idempotency-key` returns the same run instead of a second one.
+
+### `status` of an app
+
+```bash
+kuben status shop/prod/web [--json]
+```
+
+The app's state, image, address, current revision, pods, and its [Doctor](/docs/operations/troubleshooting/#an-apps-doctor): every check between a visitor and the app, with what to do about each that is not fine.
+
+### `logs`
+
+```bash
+kuben logs shop/prod/web [-f] [--previous] [--tail 100] [--process worker]
+```
+
+The recent lines of the app's pods (`[pod]` in front when there are several); `--previous` those of the container before its last restart. `-f` keeps printing new lines, from new pods of a rollout too, until you stop it or the server ends the stream after an hour.
+
+### `rollback`
+
+```bash
+kuben rollback shop/prod/web [--to <revision>]
+```
+
+A new revision with the image and configuration of an earlier one, by default the one before the current. Domains and volumes stay as they are.
 
 ## Exit codes and logs
 

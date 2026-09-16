@@ -86,7 +86,7 @@ impl From<ProtocolDto> for Protocol {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ProcessDto {
     pub name: String,
     pub command: Vec<String>,
@@ -134,7 +134,7 @@ pub struct VolumeDto {
     pub size: String,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AppDto {
     pub name: String,
     pub project: String,
@@ -160,7 +160,7 @@ pub struct AppDto {
 }
 
 /// How an app is reached through the gateway.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ExposureDto {
     /// The gateway accepted the route and resolved its references; null
     /// until a gateway controller answered.
@@ -170,7 +170,7 @@ pub struct ExposureDto {
 }
 
 /// One hostname of an app.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HostDto {
     pub host: String,
     /// `auto` (certificate from the cluster issuer), `secret` (the app's own
@@ -311,7 +311,7 @@ fn runtime_reason(runtime: &RuntimeStatus) -> Option<String> {
     })
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PodDto {
     pub name: String,
     pub process: Option<String>,
@@ -346,7 +346,7 @@ impl From<&PodView> for PodDto {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AppDetail {
     pub app: AppDto,
     pub pods: Vec<PodDto>,

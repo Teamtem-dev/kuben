@@ -14,7 +14,7 @@ use kuben_platform::{
     registry::ClusterId,
 };
 use kuben_store::repo::Delivery;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::domains::app_hosts;
@@ -25,7 +25,7 @@ use crate::{
     state::ApiState,
 };
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DoctorCheck {
     /// `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
     /// `certificate`, `dns` or `agent`.
@@ -39,7 +39,7 @@ pub struct DoctorCheck {
     pub hint: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DoctorReport {
     /// The worst status of the checks; `unknown` is never `ok`.
     pub status: String,

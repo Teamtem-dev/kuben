@@ -20,7 +20,7 @@ const RELEASE_PAGE: i64 = 50;
 /// How far back a rollback may reach.
 const ROLLBACK_REACH: i64 = 1000;
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ReleaseDto {
     pub revision: i64,
     pub image: Option<String>,
@@ -105,7 +105,7 @@ pub async fn releases(
     ))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Rollback {
     /// Revision to restore.
     pub revision: i64,

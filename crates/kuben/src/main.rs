@@ -1,5 +1,6 @@
-//! `kuben` — the single binary. Sub-commands: `serve`, `migrate`, `doctor`,
-//! `reset-admin`, `backup`, `restore`, `version`.
+//! `kuben` — the single binary: the server (`serve`, `migrate`, `doctor`,
+//! `setup`, `backup`, …) and a client of one (`login`, `apps`, `deploy`,
+//! `status`, `logs`, `rollback`).
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -18,7 +19,12 @@ fn main() -> anyhow::Result<()> {
     let quiet = matches!(
         args.command,
         cli::Command::Setup(_)
-            | cli::Command::Status
+            | cli::Command::Status(_)
+            | cli::Command::Login(_)
+            | cli::Command::Apps(_)
+            | cli::Command::Deploy(_)
+            | cli::Command::Logs(_)
+            | cli::Command::Rollback(_)
             | cli::Command::Uninstall(_)
             | cli::Command::SetupToken
             | cli::Command::AgentToken(_)
@@ -30,7 +36,15 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         cli::Command::Setup(opts) => cli::setup::setup(&opts),
-        cli::Command::Status => cli::setup::status(),
+        cli::Command::Status(opts) => match opts.app.clone() {
+            None => cli::setup::status(),
+            Some(app) => serve::block_on(&runtime, cli::client::status(opts, &app)),
+        },
+        cli::Command::Login(opts) => serve::block_on(&runtime, cli::client::login(opts)),
+        cli::Command::Apps(opts) => serve::block_on(&runtime, cli::client::apps(opts)),
+        cli::Command::Deploy(opts) => serve::block_on(&runtime, cli::client::deploy(opts)),
+        cli::Command::Logs(opts) => serve::block_on(&runtime, cli::client::logs(opts)),
+        cli::Command::Rollback(opts) => serve::block_on(&runtime, cli::client::rollback(opts)),
         cli::Command::Uninstall(opts) => cli::setup::uninstall(&opts),
         cli::Command::Serve(_) => serve::run(cfg),
         cli::Command::Migrate => serve::block_on(&runtime, async move {

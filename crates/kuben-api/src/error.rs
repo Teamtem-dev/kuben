@@ -6,11 +6,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use kuben_core::Error;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Problem Details body.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Problem {
     /// Stable machine-readable code, e.g. `forbidden`.
     #[schema(example = "forbidden")]
