@@ -127,6 +127,109 @@
         }
       }
     },
+    "/api/v1/git/installations": {
+      "get": {
+        "tags": [
+          "git"
+        ],
+        "summary": "GitHub App installations linked to the caller's organization.",
+        "operationId": "listGitInstallations",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InstallationDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Link a GitHub App installation to the caller's organization. GitHub is\nasked first; an installation stays with the organization that linked it.",
+        "operationId": "linkGitInstallation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkInstallation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Linked to another organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/healthz/details": {
       "get": {
         "tags": [
@@ -2217,6 +2320,245 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/source": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The app's Git source.",
+        "operationId": "getAppSource",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such app, or it has no Git source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Build the app from a Git repository and branch, or change how.",
+        "description": "A change stops earlier builds from deploying themselves and builds the\nbranch head again.",
+        "operationId": "putAppSource",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutSource"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/source/sync": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Read the branch head from GitHub now and build it if it is new.",
+        "operationId": "syncAppSource",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/secrets": {
       "get": {
         "tags": [
@@ -3633,6 +3975,28 @@
           }
         }
       },
+      "InstallationDto": {
+        "type": "object",
+        "required": [
+          "installationId",
+          "account",
+          "suspended"
+        ],
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "account": {
+            "type": "string",
+            "description": "The GitHub user or organization the App is installed on."
+          },
+          "suspended": {
+            "type": "boolean"
+          }
+        }
+      },
       "InviteMember": {
         "type": "object",
         "required": [
@@ -3681,6 +4045,20 @@
         "properties": {
           "job": {
             "type": "string"
+          }
+        }
+      },
+      "LinkInstallation": {
+        "type": "object",
+        "required": [
+          "installationId"
+        ],
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The id GitHub shows after the App is installed.",
+            "minimum": 0
           }
         }
       },
@@ -4106,6 +4484,51 @@
           }
         }
       },
+      "PutSource": {
+        "type": "object",
+        "required": [
+          "installationId",
+          "repository",
+          "branch",
+          "imageRepository"
+        ],
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "A GitHub App installation linked to this organization.",
+            "minimum": 0
+          },
+          "repository": {
+            "type": "string",
+            "example": "acme/shop"
+          },
+          "branch": {
+            "type": "string",
+            "example": "main"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/StrategyDto"
+          },
+          "context": {
+            "type": "string",
+            "description": "Build context inside the repository; the root when empty.",
+            "example": "apps/web"
+          },
+          "dockerfile": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Dockerfile relative to the context; `Dockerfile` when unset."
+          },
+          "imageRepository": {
+            "type": "string",
+            "description": "Where builds push, without tag or digest.",
+            "example": "registry.example.com/acme/shop"
+          }
+        }
+      },
       "QuotaInput": {
         "type": "object",
         "properties": {
@@ -4296,6 +4719,59 @@
           }
         }
       },
+      "SourceDto": {
+        "type": "object",
+        "required": [
+          "installationId",
+          "repository",
+          "branch",
+          "strategy",
+          "context",
+          "imageRepository"
+        ],
+        "properties": {
+          "installationId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "repository": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/StrategyDto"
+          },
+          "context": {
+            "type": "string"
+          },
+          "dockerfile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageRepository": {
+            "type": "string"
+          },
+          "head": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last head read from GitHub."
+          },
+          "syncOperation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The sync this change or request queued, if any."
+          }
+        }
+      },
       "StartDeploymentRequest": {
         "type": "object",
         "required": [
@@ -4336,6 +4812,14 @@
           }
         },
         "additionalProperties": false
+      },
+      "StrategyDto": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "dockerfile",
+          "railpack"
+        ]
       },
       "TemplateDto": {
         "type": "object",
@@ -4654,6 +5138,10 @@
     {
       "name": "secrets",
       "description": "Write-only environment secrets"
+    },
+    {
+      "name": "git",
+      "description": "GitHub App installations for Git sources"
     },
     {
       "name": "templates",

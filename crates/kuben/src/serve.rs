@@ -76,6 +76,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     // AgentLink: the hub's endpoint for cluster agents (ADR-027). It needs no
     // kubeconfig of its own; the materializer hands it envelopes.
     let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
+    let github = github_app(&cfg)?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -127,7 +128,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             health.clone(),
             Arc::new(StaticPolicy),
         );
-        let app = kuben_api::router(state);
+        let app = kuben_api::router(state.with_github(github.clone()));
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -154,6 +155,19 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     store.close().await?;
     tracing::info!("bye");
     Ok(())
+}
+
+/// The GitHub App of Git sources (M3), when configured. A configured App
+/// whose key cannot be read stops the server instead of silently building
+/// nothing.
+fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubApp>> {
+    let git = &cfg.git;
+    if git.github_app_id.is_none() && git.github_private_key_file.is_none() {
+        return Ok(None);
+    }
+    let app = kuben_api::github::GithubApp::from_config(git).context("Git sources")?;
+    tracing::info!(api = %git.github_api_url, "GitHub App ready for Git sources");
+    Ok(Some(app))
 }
 
 /// What runs on one replica at a time: the controllers and the materializer's

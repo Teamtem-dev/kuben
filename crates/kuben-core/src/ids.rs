@@ -91,6 +91,10 @@ id_type!(
     BuildAttemptId
 );
 id_type!(
+    /// A target's binding to one Git repository and branch (M3).
+    SourceBindingId
+);
+id_type!(
     /// A project: owns applications and environments.
     ProjectId
 );

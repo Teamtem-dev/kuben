@@ -80,6 +80,26 @@ impl BuildPhase {
         }
     }
 
+    pub const ALL: [Self; 11] = [
+        Self::Queued,
+        Self::Blocked,
+        Self::Preparing,
+        Self::Running,
+        Self::Publishing,
+        Self::VerifyingOutput,
+        Self::CancelRequested,
+        Self::Cancelling,
+        Self::Succeeded,
+        Self::Failed,
+        Self::Cancelled,
+    ];
+
+    /// The phase named by [`BuildPhase::as_str`], as stored.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+
     /// No event changes a terminal phase.
     #[must_use]
     pub const fn is_terminal(self) -> bool {
@@ -197,6 +217,14 @@ mod tests {
 
     fn run(events: &[BuildEvent]) -> Result<BuildPhase, IllegalTransition> {
         events.iter().try_fold(P::Queued, |p, e| p.apply(*e))
+    }
+
+    #[test]
+    fn phases_round_trip_through_their_names() {
+        for phase in BuildPhase::ALL {
+            assert_eq!(BuildPhase::parse(phase.as_str()), Some(phase));
+        }
+        assert_eq!(BuildPhase::parse("done"), None);
     }
 
     #[test]

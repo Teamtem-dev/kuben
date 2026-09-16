@@ -16,7 +16,8 @@ use kuben_core::{
         TargetId,
     },
     ops::{
-        DeployPolicy, Generation, IllegalTransition, Reject, RunEvent, RunPhase, SourceEpoch, TargetState,
+        AutodeployRequest, DeployPolicy, Generation, IllegalTransition, Reject, RunEvent, RunPhase,
+        SourceEpoch, TargetState,
     },
     time::now_ms,
 };
@@ -113,6 +114,9 @@ pub enum RunReason {
     /// The same release and configuration, now through the cluster's agent,
     /// which adopts the workloads the App controller made (M1.9).
     Handover,
+    /// A verified build of the target's current source head, deployed by the
+    /// compare-and-set of [`TargetState::try_autodeploy`] (M3).
+    Build,
 }
 
 impl RunReason {
@@ -124,6 +128,7 @@ impl RunReason {
             Self::Promotion => "promotion",
             Self::Restart => "restart",
             Self::Handover => "handover",
+            Self::Build => "build",
         }
     }
 }
@@ -338,6 +343,53 @@ impl Tenant {
         audit: NewAudit,
         idempotency: Option<&IdempotencyKey>,
     ) -> Result<Started, StoreError> {
+        let reason = req.reason;
+        self.start_with(
+            req,
+            audit,
+            idempotency,
+            |state, lifecycle, expected| match reason {
+                RunReason::Rollback => state.rollback(lifecycle, expected),
+                RunReason::Deploy
+                | RunReason::Promotion
+                | RunReason::Restart
+                | RunReason::Handover
+                | RunReason::Build => state.deploy_explicit(lifecycle, expected),
+            },
+        )
+        .await
+    }
+
+    /// Accept the automatic deploy of a verified build (M3). The target must
+    /// still be on `source_epoch` and `build_config_revision` and follow
+    /// automatic deploys; otherwise the result is [`Started::Rejected`] and
+    /// nothing is written. `req.expected_generation` is the generation read
+    /// under the same row lock, so only these checks decide.
+    pub async fn start_build_deployment(
+        &mut self,
+        req: &StartDeployment,
+        source_epoch: SourceEpoch,
+        build_config_revision: u64,
+        audit: NewAudit,
+    ) -> Result<Started, StoreError> {
+        self.start_with(req, audit, None, |state, lifecycle_uid, expected_generation| {
+            state.try_autodeploy(AutodeployRequest {
+                lifecycle_uid,
+                source_epoch,
+                build_config_revision,
+                expected_generation,
+            })
+        })
+        .await
+    }
+
+    async fn start_with(
+        &mut self,
+        req: &StartDeployment,
+        audit: NewAudit,
+        idempotency: Option<&IdempotencyKey>,
+        decide: impl FnOnce(&mut TargetState, Uuid, Generation) -> Result<Generation, Reject>,
+    ) -> Result<Started, StoreError> {
         // The row lock serializes every decision about this target.
         let row: Option<LockedTarget> = sqlx::query_as(LOCK_TARGET)
             .bind(*req.target.as_uuid())
@@ -356,13 +408,7 @@ impl Tenant {
         }
 
         let mut state = row.state()?;
-        let decided = match req.reason {
-            RunReason::Rollback => state.rollback(req.lifecycle_uid, req.expected_generation),
-            RunReason::Deploy | RunReason::Promotion | RunReason::Restart | RunReason::Handover => {
-                state.deploy_explicit(req.lifecycle_uid, req.expected_generation)
-            }
-        };
-        let generation = match decided {
+        let generation = match decide(&mut state, req.lifecycle_uid, req.expected_generation) {
             Ok(generation) => generation,
             Err(reject) => return Ok(Started::Rejected(reject)),
         };

@@ -80,6 +80,8 @@ rand = "0.10"
 secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
 base64 = "0.23"
+# GitHub App JWTs (RS256) and webhook HMACs; the same crate rustls already uses.
+ring = "0.17"
 # AgentLink certificates: the hub reads the cluster from a peer certificate.
 x509-parser = "0.18"
 

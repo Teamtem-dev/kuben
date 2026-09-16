@@ -11,6 +11,7 @@ pub mod auth;
 pub mod authz;
 pub mod client;
 pub mod error;
+pub mod github;
 pub mod host;
 pub mod oci;
 pub mod openapi;
@@ -23,7 +24,12 @@ pub mod web;
 
 use std::time::Duration;
 
-use axum::{Router, middleware, routing::get};
+use axum::{
+    Router,
+    extract::DefaultBodyLimit,
+    middleware,
+    routing::{get, post},
+};
 use tower_http::{
     compression::CompressionLayer,
     limit::RequestBodyLimitLayer,
@@ -77,6 +83,12 @@ pub fn router(state: ApiState) -> Router {
         // Added after the layers, so outside them: probes are polled every
         // second or so, and a 503 from `/readyz` while the informers sync is
         // an answer, not an error to log each time.
+        // Signed by GitHub, not by a session: outside the CSRF and session
+        // layers, with a body limit of its own.
+        .route(
+            routes::git::WEBHOOK_PATH,
+            post(routes::git::webhook).layer(DefaultBodyLimit::max(routes::git::WEBHOOK_BODY_LIMIT)),
+        )
         .route("/livez", get(routes::health::livez))
         .route("/readyz", get(routes::health::readyz))
         .with_state(state)

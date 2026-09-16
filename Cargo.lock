@@ -2198,6 +2198,7 @@ dependencies = [
  "hyper",
  "hyper-rustls",
  "hyper-util",
+ "jiff",
  "k8s-openapi",
  "kube",
  "kuben-core",
@@ -2208,6 +2209,7 @@ dependencies = [
  "mime_guess",
  "moka",
  "rand 0.10.2",
+ "ring",
  "rust-embed",
  "rustls",
  "secrecy",
@@ -2263,6 +2265,7 @@ name = "kuben-platform"
 version = "1.1.2"
 dependencies = [
  "anyhow",
+ "async-trait",
  "backon",
  "dashmap",
  "futures",

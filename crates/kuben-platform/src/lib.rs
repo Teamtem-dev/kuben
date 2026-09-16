@@ -10,11 +10,13 @@
 //! * [`doctor`] — why an app is or is not reachable, check by check.
 //! * [`materializer`] — writes the resources of accepted deployment runs
 //!   from SQL, the only desired-state writer (ADR-032).
+//! * [`build`] — Git sources and isolated builds (ADR-028).
 //! * [`supervise`] / [`health`] — every long-running task is supervised and
 //!   reports into a health registry; a panic in one subsystem never takes
 //!   down the API.
 
 pub mod agentlink;
+pub mod build;
 pub mod controller;
 pub mod discovery;
 pub mod doctor;

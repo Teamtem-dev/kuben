@@ -7,10 +7,12 @@
 //! [`TargetState`]'s methods return; nothing else may write it (I-19).
 
 pub mod build;
+pub mod outcome;
 pub mod run;
 pub mod target;
 
 pub use build::{BuildEvent, BuildPhase};
+pub use outcome::{BuildFailure, JobVerdict};
 pub use run::{RunEvent, RunPhase};
 pub use target::{AutodeployRequest, DeployPolicy, Generation, Reject, SourceEpoch, TargetState};
 

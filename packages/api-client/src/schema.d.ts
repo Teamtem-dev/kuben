@@ -58,6 +58,27 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/git/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GitHub App installations linked to the caller's organization. */
+        get: operations["listGitInstallations"];
+        put?: never;
+        /**
+         * Link a GitHub App installation to the caller's organization. GitHub is
+         *     asked first; an installation stays with the organization that linked it.
+         */
+        post: operations["linkGitInstallation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/healthz/details": {
         parameters: {
             query?: never;
@@ -496,6 +517,45 @@ export type paths = {
         put?: never;
         /** Run a scheduled process now (a Job from its CronJob template). */
         post: operations["runApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The app's Git source. */
+        get: operations["getAppSource"];
+        /**
+         * Build the app from a Git repository and branch, or change how.
+         * @description A change stops earlier builds from deploying themselves and builds the
+         *     branch head again.
+         */
+        put: operations["putAppSource"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/source/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read the branch head from GitHub now and build it if it is new. */
+        post: operations["syncAppSource"];
         delete?: never;
         options?: never;
         head?: never;
@@ -950,6 +1010,13 @@ export type components = {
             certificate_ready?: boolean | null;
             certificate_message?: string | null;
         };
+        InstallationDto: {
+            /** Format: int64 */
+            installationId: number;
+            /** @description The GitHub user or organization the App is installed on. */
+            account: string;
+            suspended: boolean;
+        };
         InviteMember: {
             /** @example carol@example.com */
             email: string;
@@ -967,6 +1034,13 @@ export type components = {
         };
         JobStarted: {
             job: string;
+        };
+        LinkInstallation: {
+            /**
+             * Format: int64
+             * @description The id GitHub shows after the App is installed.
+             */
+            installationId: number;
         };
         /**
          * @description A followed log stopped: one pod's (its container ended or could not be
@@ -1103,6 +1177,30 @@ export type components = {
                 [key: string]: string;
             };
         };
+        PutSource: {
+            /**
+             * Format: int64
+             * @description A GitHub App installation linked to this organization.
+             */
+            installationId: number;
+            /** @example acme/shop */
+            repository: string;
+            /** @example main */
+            branch: string;
+            strategy?: components["schemas"]["StrategyDto"];
+            /**
+             * @description Build context inside the repository; the root when empty.
+             * @example apps/web
+             */
+            context?: string;
+            /** @description Dockerfile relative to the context; `Dockerfile` when unset. */
+            dockerfile?: string | null;
+            /**
+             * @description Where builds push, without tag or digest.
+             * @example registry.example.com/acme/shop
+             */
+            imageRepository: string;
+        };
         QuotaInput: {
             /** @example 4 */
             cpu?: string | null;
@@ -1170,6 +1268,20 @@ export type components = {
              */
             secure: boolean;
         };
+        SourceDto: {
+            /** Format: int64 */
+            installationId: number;
+            repository: string;
+            branch: string;
+            strategy: components["schemas"]["StrategyDto"];
+            context: string;
+            dockerfile?: string | null;
+            imageRepository: string;
+            /** @description The last head read from GitHub. */
+            head?: string | null;
+            /** @description The sync this change or request queued, if any. */
+            syncOperation?: string | null;
+        };
         StartDeploymentRequest: {
             /**
              * @description Image by digest: `registry/repository@sha256:…`. Give either `image`
@@ -1195,6 +1307,8 @@ export type components = {
              */
             expected_generation: number;
         };
+        /** @enum {string} */
+        StrategyDto: "auto" | "dockerfile" | "railpack";
         TemplateDto: {
             id: string;
             name: string;
@@ -1378,6 +1492,89 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listGitInstallations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    linkGitInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkInstallation"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Linked to another organization */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
             };
         };
     };
@@ -2731,6 +2928,153 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such app, or it has no Git source */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putAppSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutSource"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    syncAppSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

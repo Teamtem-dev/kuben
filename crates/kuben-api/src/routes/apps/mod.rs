@@ -8,6 +8,7 @@
 //! * [`doctor`] — why an app is or is not reachable, check by check;
 //! * [`promote`] — promotion between environments (scenario 10);
 //! * [`deployments`] — deploy acceptance by digest or release;
+//! * [`source`] — the Git repository and branch an app builds from (M3);
 //! * [`spec`] — request bodies, validation and spec construction. Cross-field
 //!   rules are the controller's own (`resources::validate`), so the API
 //!   rejects exactly what the controller could never build.
@@ -28,6 +29,7 @@ pub mod jobs;
 pub mod logs;
 pub mod promote;
 pub mod releases;
+pub mod source;
 pub mod spec;
 
 use std::collections::BTreeMap;
