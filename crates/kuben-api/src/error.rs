@@ -55,7 +55,7 @@ impl ApiError {
             Error::NotFound(_) => StatusCode::NOT_FOUND,
             Error::Conflict(_) => StatusCode::CONFLICT,
             Error::Unauthorized => StatusCode::UNAUTHORIZED,
-            Error::Forbidden => StatusCode::FORBIDDEN,
+            Error::Forbidden | Error::InsecureTransport(_) => StatusCode::FORBIDDEN,
             Error::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Error::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Error::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,

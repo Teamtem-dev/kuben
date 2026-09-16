@@ -138,10 +138,25 @@ fn lines(opts: &SetupOpts, journal: &Journal) -> Vec<Line> {
             )
         },
     ));
+    plan.push(console(opts));
     if journal.unfinished().is_some() {
         plan.push(line("Last run", "did not finish: every step is checked again"));
     }
     plan
+}
+
+fn console(opts: &SetupOpts) -> Line {
+    let action = match opts.console_host() {
+        Some(host) if opts.kubeconfig.is_none() => {
+            format!("https://{host} through Kuben's Gateway; the first admin over HTTPS or an SSH tunnel")
+        }
+        _ if opts.allow_http_setup => {
+            "plain HTTP on the port, the first admin included (--allow-http-setup)".to_owned()
+        }
+        _ => "plain HTTP on the port; the first admin over an SSH tunnel (or --domain with --acme-email)"
+            .to_owned(),
+    };
+    line("Console", action)
 }
 
 fn cluster(opts: &SetupOpts) -> Line {
@@ -218,6 +233,7 @@ mod tests {
             acme_email: None,
             acme_staging: false,
             datastore: super::super::platform::Datastore::default(),
+            allow_http_setup: false,
         };
         let plan = lines(&opts, &Journal::default());
         let whats: Vec<&str> = plan.iter().map(|l| l.what).collect();
@@ -232,7 +248,8 @@ mod tests {
                 "Port",
                 "Service",
                 "Firewall",
-                "Platform"
+                "Platform",
+                "Console"
             ]
         );
         assert_eq!(plan[2].action, "use the cluster in /nonexistent/kubeconfig");

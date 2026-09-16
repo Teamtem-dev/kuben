@@ -134,13 +134,21 @@ pub fn print_setup_token(cfg: &Config) -> anyhow::Result<()> {
 }
 
 fn setup_banner(cfg: &Config, token: Option<&str>) -> String {
-    let url = kuben_api::setup::setup_url(cfg, token);
-    let validity = if token.is_some() {
-        "\n\n  The link is valid for 30 minutes; print a new one with `kuben setup-token`."
-    } else {
-        ""
-    };
-    format!("\n  No admin account yet. Finish the setup in your browser:\n\n    {url}{validity}\n")
+    let (url, notes) = kuben_api::setup::setup_guide(cfg, token);
+    let mut lines = vec![
+        String::new(),
+        "  No admin account yet. Finish the setup in your browser:".to_owned(),
+        String::new(),
+        format!("    {url}"),
+        String::new(),
+    ];
+    lines.extend(notes.into_iter().map(|n| format!("  {n}")));
+    if token.is_some() {
+        lines
+            .push("  The link is valid for 30 minutes; print a new one with `kuben setup-token`.".to_owned());
+    }
+    lines.push(String::new());
+    lines.join("\n")
 }
 
 fn hand_over_locally(cfg: &Config, email: &str, password: &str) {
@@ -254,14 +262,40 @@ mod tests {
     }
 
     #[test]
-    fn setup_banner_carries_the_token_only_when_there_is_one() {
+    fn setup_banner_carries_the_token_only_over_a_secure_path() {
         let mut cfg = Config::default();
+        cfg.server.bind = "0.0.0.0:3000".into();
         cfg.server.public_url = Some("http://203.0.113.7:3000".into());
-        let with = setup_banner(&cfg, Some("abc"));
-        assert!(with.contains("http://203.0.113.7:3000/setup?token=abc"), "{with}");
-        assert!(with.contains("30 minutes"));
+        let tunnel = setup_banner(&cfg, Some("abc"));
+        assert!(
+            tunnel.contains("    http://localhost:3000/setup#token=abc\n"),
+            "{tunnel}"
+        );
+        assert!(tunnel.contains("ssh -L 3000:127.0.0.1:3000"), "{tunnel}");
+        assert!(!tunnel.contains("203.0.113.7:3000/setup"), "{tunnel}");
+        assert!(tunnel.contains("30 minutes"));
         let without = setup_banner(&cfg, None);
-        assert!(without.contains("http://203.0.113.7:3000/setup\n"), "{without}");
+        assert!(without.contains("http://localhost:3000/setup\n"), "{without}");
         assert!(!without.contains("token"));
+
+        cfg.security.insecure_setup = true;
+        let direct = setup_banner(&cfg, Some("abc"));
+        assert!(
+            direct.contains("http://203.0.113.7:3000/setup#token=abc"),
+            "{direct}"
+        );
+        assert!(!direct.contains("ssh"), "{direct}");
+
+        cfg.security.insecure_setup = false;
+        cfg.server.public_url = Some("https://kuben.apps.example.com".into());
+        let https = setup_banner(&cfg, Some("abc"));
+        assert!(
+            https.contains("    https://kuben.apps.example.com/setup#token=abc\n"),
+            "{https}"
+        );
+        assert!(
+            https.contains("http://localhost:3000/setup#token=abc"),
+            "the tunnel until DNS is ready: {https}"
+        );
     }
 }

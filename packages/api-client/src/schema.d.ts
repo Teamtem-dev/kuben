@@ -1033,6 +1033,11 @@ export type components = {
             needed: boolean;
             /** @description `POST /setup` must carry the token the installer printed. */
             token_required: boolean;
+            /**
+             * @description The admin may be created over this connection (HTTPS, this machine,
+             *     or allowed by configuration); otherwise `POST /setup` answers 403.
+             */
+            secure: boolean;
         };
         StartDeploymentRequest: {
             /**
@@ -2682,7 +2687,7 @@ export interface operations {
                     "application/json": components["schemas"]["UserDto"];
                 };
             };
-            /** @description Missing, wrong or expired setup token */
+            /** @description Missing, wrong or expired setup token, or plain HTTP from another machine (`insecure_transport`) */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -68,7 +68,7 @@ Resetting the password revokes the account's sessions.
 
 ## `setup-token`
 
-On a first start outside a cluster with no `KUBEN_BOOTSTRAP__ADMIN_PASSWORD`, no admin is seeded: the console shows **/setup**, where the first admin account and the organization are created. On any address but loopback that page needs a setup token, so nobody who finds the port first can claim the installation. `serve` prints the link with the token to its terminal on that first start; this command prints a fresh one whenever you need it:
+On a first start outside a cluster with no `KUBEN_BOOTSTRAP__ADMIN_PASSWORD`, no admin is seeded: the console shows **/setup**, where the first admin account and the organization are created. On any address but loopback that page needs a setup token, so nobody who finds the port first can claim the installation, and it takes the password only over HTTPS or from the server itself (an SSH tunnel), unless `security.insecure_setup` is set. `serve` prints the link with the token to its terminal on that first start; this command prints a fresh one whenever you need it:
 
 ```bash
 kuben setup-token
@@ -77,10 +77,14 @@ kuben setup-token
 ```text
   No admin account yet. Finish the setup in your browser:
 
-    http://203.0.113.7:3000/setup?token=8f2c…d1
+    http://localhost:3000/setup#token=8f2c…d1
 
+  Run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer first; the admin password never travels over plain HTTP.
+  For an HTTPS console: kuben setup --domain <domain> --acme-email <email>. On a network you trust: kuben setup --allow-http-setup.
   The link is valid for 30 minutes; print a new one with `kuben setup-token`.
 ```
+
+With an `https://` public URL the link points there instead, with the tunnel as the way in until DNS and the certificate are ready. The token follows `#`, so browsers never send it to a server or write it to a proxy log.
 
 The token lives in `setup-token` in Kuben's state directory (`/var/lib/kuben` on a server set up by `kuben setup`), readable by Kuben's user only, and is deleted once the account exists. After that, `/setup` answers 404 and the page redirects to the sign-in.
 
@@ -90,7 +94,7 @@ Makes the Linux server it runs on a Kuben server. The one-line installer runs it
 
 ```bash
 sudo kuben setup [--plan] [--domain <domain>] [--acme-email <email>] [--acme-staging] [--datastore sqlite|etcd]
-                 [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--yes]
+                 [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--allow-http-setup] [--yes]
 ```
 
 `--plan` shows what a run would do, from the same checks, and changes nothing.
@@ -105,13 +109,14 @@ Every run is recorded in the **install journal**, `/var/lib/kuben/install/journa
 | PostgreSQL | installs it from the distribution's packages when it is missing (apt, dnf, zypper), starts it and creates the role and database `kuben`. Kuben connects over the Unix socket with peer authentication, so there is no password. A config that already names another PostgreSQL is kept as is |
 | Cluster | uses `--kubeconfig`, an installed k3s, or the kubeconfig of the current user; otherwise installs [k3s](https://k3s.io) v1.36.4+k3s1 with its installer for that release, checked against a pinned SHA-256, with reserved CPU and memory and eviction thresholds, SQLite or (`--datastore etcd`) embedded etcd, and waits for the node to be Ready (`--no-k3s` fails instead). A copy of the kubeconfig, readable by `kuben` only, goes to `/var/lib/kuben/kubeconfig` |
 | Platform | on this server's k3s only (never on a `--kubeconfig` cluster): Traefik as the Gateway API provider, the Gateway API v1.5.1 CRDs (checksum-verified) and cert-manager v1.21.2 with Gateway API support when missing, the namespace `kuben-system`, and with `--acme-email` the ClusterIssuer `letsencrypt` (HTTP-01 through Kuben's Gateway). What exists is used, never upgraded |
-| Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig); an existing file is kept |
+| Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig, and `[security]`: the Gateway's pod network `10.42.0.0/16` as the only trusted proxy when the console gets an HTTPS address, `insecure_setup` with `--allow-http-setup`); an existing file is kept, and a file setup wrote gains missing sections once |
 | Port | refuses a port another process holds and names it |
 | Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz`. A `kuben.service` that setup did not write is never replaced: setup stops and says so |
 | Agent | on this server's k3s: the cluster agent in `kuben-system` (the chart's manifest), enrolled automatically from what Kuben publishes; `[agent]` in the config makes Kuben listen on port 7443, and with ufw or firewalld active that port is opened for the pod network `10.42.0.0/16` only |
 | KubenConfig | after the service started: gateway class `traefik` with Traefik's ports, the issuer, and `--domain` as the base domain. Fields someone else set are kept, with a warning |
+| Console | with `--domain` and `--acme-email` on this server's k3s: the console at `https://kuben.<domain>` through Kuben's Gateway (namespace `kuben-console`: a route, and a Service whose endpoint is this server's port), with a certificate like any app's; `public_url` is that address |
 | Firewall | opens the port in ufw or firewalld when one is active |
-| Link | the setup page with its token on a first install, the console address afterwards |
+| Link | the setup page with its token on a first install (over HTTPS, or through an SSH tunnel), the console address afterwards |
 
 | Option | Meaning |
 |---|---|
@@ -119,6 +124,7 @@ Every run is recorded in the **install journal**, `/var/lib/kuben/install/journa
 | `--kubeconfig <file>` | manage this cluster instead of installing k3s (`KUBEN_KUBECONFIG`) |
 | `--no-k3s` | never install k3s |
 | `--bind-local` | listen on `127.0.0.1` only; reach the console through an SSH tunnel |
+| `--allow-http-setup` | let the first admin be created over plain HTTP from another machine, on a network you trust (`security.insecure_setup`) |
 | `--yes` | go ahead on warnings without asking |
 | `--plan` | print what a run would do; change nothing |
 | `--domain <domain>` | base domain for app hostnames (`KUBEN_DOMAIN`); point `*.<domain>` at the server |

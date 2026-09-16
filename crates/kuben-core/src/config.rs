@@ -115,7 +115,53 @@ pub struct SecurityCfg {
     /// behind a proxy that appends it (the Helm chart does); otherwise the
     /// TCP peer address is used.
     pub trust_forwarded_for: bool,
+    /// With `trust_forwarded_for`: the proxies (CIDRs, e.g. the pod network
+    /// `10.42.0.0/16`) whose `X-Forwarded-*` headers are believed. Empty:
+    /// every peer's, for a proxy that is the only way in (the Helm chart).
+    pub trusted_proxies: Vec<String>,
+    /// Let the first admin be created over plain HTTP from another machine.
+    /// Off (the default): only over HTTPS (a trusted proxy's
+    /// `X-Forwarded-Proto`), from this machine (an SSH tunnel), or when the
+    /// console listens on loopback only (ADR-031).
+    pub insecure_setup: bool,
     pub password_min_length: usize,
+}
+
+impl SecurityCfg {
+    /// Whether the `X-Forwarded-*` headers of a request from `peer` are
+    /// believed.
+    #[must_use]
+    pub fn trusts_forwarded(&self, peer: Option<std::net::IpAddr>) -> bool {
+        self.trust_forwarded_for
+            && (self.trusted_proxies.is_empty()
+                || peer.is_some_and(|ip| self.trusted_proxies.iter().any(|cidr| cidr_contains(cidr, ip))))
+    }
+}
+
+/// Whether `ip` lies in `cidr` (`10.42.0.0/16`, `fd00::/8`, or one address).
+#[must_use]
+pub fn cidr_contains(cidr: &str, ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    let (network, bits) = match cidr.split_once('/') {
+        Some((network, bits)) => (network, bits.parse::<u32>().ok()),
+        None => (cidr, None),
+    };
+    let Ok(network) = network.trim().parse::<IpAddr>() else {
+        return false;
+    };
+    match (network, ip) {
+        (IpAddr::V4(net), IpAddr::V4(ip)) => {
+            let bits = bits.unwrap_or(32).min(32);
+            let mask = u32::MAX.checked_shl(32 - bits).unwrap_or(0);
+            u32::from(net) & mask == u32::from(ip) & mask
+        }
+        (IpAddr::V6(net), IpAddr::V6(ip)) => {
+            let bits = bits.unwrap_or(128).min(128);
+            let mask = u128::MAX.checked_shl(128 - bits).unwrap_or(0);
+            u128::from(net) & mask == u128::from(ip) & mask
+        }
+        _ => false,
+    }
 }
 
 /// Whether the session cookie carries `Secure` (and the `__Host-` prefix).
@@ -253,6 +299,8 @@ impl Default for SecurityCfg {
             login_max_failures_per_account: 100,
             login_window_secs: 900,
             trust_forwarded_for: false,
+            trusted_proxies: Vec::new(),
+            insecure_setup: false,
             password_min_length: 12,
         }
     }
@@ -433,6 +481,33 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forwarded_headers_are_believed_only_from_trusted_proxies() {
+        let ip = |s: &str| s.parse::<std::net::IpAddr>().expect("ip");
+        assert!(cidr_contains("10.42.0.0/16", ip("10.42.3.7")));
+        assert!(!cidr_contains("10.42.0.0/16", ip("10.43.0.1")));
+        assert!(cidr_contains("203.0.113.7", ip("203.0.113.7")));
+        assert!(cidr_contains("0.0.0.0/0", ip("198.51.100.1")));
+        assert!(cidr_contains("fd00::/8", ip("fd12::1")));
+        assert!(!cidr_contains("fd00::/8", ip("10.42.0.1")), "families never mix");
+        assert!(!cidr_contains("not a network", ip("10.42.0.1")));
+
+        let mut sec = SecurityCfg::default();
+        assert!(!sec.trusts_forwarded(Some(ip("10.42.0.5"))), "off by default");
+        sec.trust_forwarded_for = true;
+        assert!(
+            sec.trusts_forwarded(None),
+            "no list: every peer (the chart's proxy)"
+        );
+        sec.trusted_proxies = vec!["10.42.0.0/16".into()];
+        assert!(sec.trusts_forwarded(Some(ip("10.42.0.5"))));
+        assert!(
+            !sec.trusts_forwarded(Some(ip("203.0.113.9"))),
+            "a direct client is not a proxy"
+        );
+        assert!(!sec.trusts_forwarded(None));
+    }
 
     #[test]
     fn defaults_are_sane() {

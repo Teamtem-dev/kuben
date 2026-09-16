@@ -61,6 +61,10 @@ pub const NAMESPACE: &str = "namespace/kuben-system";
 pub const CLUSTER_ISSUER: &str = "clusterissuer/letsencrypt";
 pub const KUBEN_CONFIG: &str = "kubenconfig/kuben";
 pub const AGENT: &str = "agent/kuben-system/kuben-agent";
+pub const CONSOLE: &str = "console/kuben-console/kuben-console";
+/// Where the console's route lives: a namespace of Kuben's own label, which
+/// the listeners of Kuben's Gateway accept routes from.
+pub const CONSOLE_NAMESPACE: &str = "kuben-console";
 /// The agent's manifest, shared with the Helm chart.
 const AGENT_MANIFEST: &str = include_str!("../../../../../charts/kuben/files/agent.yaml");
 
@@ -401,7 +405,7 @@ pub fn ensure_platform(
         }
         changed |= ensure_object(&client, book, NAMESPACE, namespace()).await?;
         if agent {
-            changed |= ensure_agent(&client, book).await?;
+            changed |= ensure_set(&client, book, AGENT, "Deployment", agent_objects()?).await?;
         }
         let cert_manager_present = crd_established(&client, "clusterissuers.cert-manager.io").await;
         if cert_manager_present && !book.journal().owns(Kind::KubernetesObject, CERT_MANAGER) {
@@ -558,28 +562,134 @@ pub fn agent_objects() -> anyhow::Result<Vec<Value>> {
     Ok(objects)
 }
 
-/// Deploy the agent when this cluster has none from setup; a Deployment
-/// someone else made under that name is left alone.
-async fn ensure_agent(client: &Client, book: &mut Book) -> anyhow::Result<bool> {
-    let objects = agent_objects()?;
-    let deployment = objects
+/// Apply `objects`, recorded together as `name`, when this cluster has no
+/// object of `anchor`'s kind and name yet or setup made it; one someone else
+/// made is left alone. `true` when they were created now.
+async fn ensure_set(
+    client: &Client,
+    book: &mut Book,
+    name: &str,
+    anchor: &str,
+    objects: Vec<Value>,
+) -> anyhow::Result<bool> {
+    let first = objects
         .iter()
-        .find(|o| o["kind"] == "Deployment")
+        .find(|o| o["kind"] == anchor)
         .cloned()
-        .context("the agent manifest has no Deployment")?;
-    let present = existing(client, &object(deployment)?).await?;
+        .with_context(|| format!("{name} has no {anchor}"))?;
+    let present = existing(client, &object(first)?).await?;
     let created = match present {
         None => true,
-        Some(ours) => ours && book.journal().owns(Kind::KubernetesObject, AGENT),
+        Some(ours) => ours && book.journal().owns(Kind::KubernetesObject, name),
     };
-    book.claim(Kind::KubernetesObject, AGENT, created)?;
-    if !book.journal().owns(Kind::KubernetesObject, AGENT) {
+    book.claim(Kind::KubernetesObject, name, created)?;
+    if !book.journal().owns(Kind::KubernetesObject, name) {
         return Ok(false);
     }
     for value in objects {
         apply(client, &object(value)?, true).await?;
     }
     Ok(present.is_none())
+}
+
+/// The console behind Kuben's Gateway at `https://{host}`: a route in
+/// [`CONSOLE_NAMESPACE`] to a Service whose one endpoint is this server
+/// (`hub`, `port`), where `kuben serve` listens outside the cluster. The
+/// Gateway gives `host` a listener and a certificate like any app's domain.
+#[must_use]
+pub fn console_objects(host: &str, hub: &str, port: u16) -> Vec<Value> {
+    let kuben = json!({ MANAGED_BY: kuben_crd::labels::MANAGER });
+    let gateway = kuben_platform::controller::resources::GatewayRef::owned_default();
+    let family = if hub.contains(':') { "IPv6" } else { "IPv4" };
+    let domains = json!([{ "host": host, "tls": "auto" }]).to_string();
+    vec![
+        json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": { "name": CONSOLE_NAMESPACE, "labels": kuben },
+        }),
+        json!({
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": { "name": "kuben-console", "namespace": CONSOLE_NAMESPACE, "labels": kuben },
+            "spec": { "ports": [{ "name": "http", "port": 80, "protocol": "TCP" }] },
+        }),
+        json!({
+            "apiVersion": "discovery.k8s.io/v1",
+            "kind": "EndpointSlice",
+            "metadata": {
+                "name": "kuben-console-host",
+                "namespace": CONSOLE_NAMESPACE,
+                "labels": {
+                    "kubernetes.io/service-name": "kuben-console",
+                    "endpointslice.kubernetes.io/managed-by": MANAGER,
+                    MANAGED_BY: kuben_crd::labels::MANAGER,
+                },
+            },
+            "addressType": family,
+            "endpoints": [{ "addresses": [hub], "conditions": { "ready": true } }],
+            "ports": [{ "name": "http", "port": port, "protocol": "TCP" }],
+        }),
+        json!({
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "HTTPRoute",
+            "metadata": {
+                "name": "kuben-console",
+                "namespace": CONSOLE_NAMESPACE,
+                "labels": kuben,
+                "annotations": { kuben_platform::controller::resources::DOMAINS_ANNOTATION: domains },
+            },
+            "spec": {
+                "parentRefs": [{
+                    "name": gateway.name,
+                    "namespace": gateway.namespace,
+                    "sectionName": kuben_platform::controller::gateway::host_listener_name(host),
+                }],
+                "hostnames": [host],
+                "rules": [{
+                    "matches": [{ "path": { "type": "PathPrefix", "value": "/" } }],
+                    "backendRefs": [{ "name": "kuben-console", "port": 80 }],
+                }],
+            },
+        }),
+    ]
+}
+
+/// After the Gateway exists: the console's HTTPS address (M2.11).
+pub fn ensure_console(
+    ui: Ui,
+    kubeconfig: &Path,
+    host: &str,
+    hub: &str,
+    port: u16,
+    book: &mut Book,
+) -> anyhow::Result<()> {
+    let step = ui.step(format!("The console at https://{host}"));
+    let runtime = runtime()?;
+    let client = connect(&runtime, kubeconfig)?;
+    let result = runtime.block_on(ensure_set(
+        &client,
+        book,
+        CONSOLE,
+        "HTTPRoute",
+        console_objects(host, hub, port),
+    ));
+    match result {
+        Ok(changed) if book.journal().owns(Kind::KubernetesObject, CONSOLE) => {
+            let detail = format!("point DNS for {host} at this server; the certificate follows");
+            step.done(&detail);
+            book.done(changed, detail)
+        }
+        Ok(_) => {
+            let detail = format!("a route {CONSOLE_NAMESPACE}/kuben-console is someone else's; kept");
+            step.warn(&detail);
+            book.done(false, detail)
+        }
+        Err(e) => {
+            step.fail("not written");
+            Err(e)
+        }
+    }
 }
 
 async fn gateway_class_accepted(client: &Client) -> bool {
@@ -635,6 +745,8 @@ pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal) -> Vec<&'stat
     }
     removable.extend(
         [
+            // The namespace takes the console's route and Service with it.
+            (CONSOLE, console_objects("", "", 0).swap_remove(0)),
             (KUBEN_CONFIG, kuben_config(&Wanted::default(), false)),
             (CLUSTER_ISSUER, cluster_issuer("", false)),
             (TRAEFIK_CONFIG, traefik_config()),
@@ -685,6 +797,43 @@ mod tests {
         assert!(single.contains("eviction-hard=memory.available<100Mi"));
         assert!(!single.contains("--cluster-init"));
         assert!(k3s_exec(Datastore::Etcd).ends_with("--cluster-init"));
+    }
+
+    #[test]
+    fn the_console_route_points_the_gateway_at_this_server() {
+        let objects = console_objects("kuben.apps.example.com", "203.0.113.7", 3000);
+        let kinds: Vec<&str> = objects.iter().filter_map(|o| o["kind"].as_str()).collect();
+        assert_eq!(kinds, ["Namespace", "Service", "EndpointSlice", "HTTPRoute"]);
+        assert_eq!(
+            objects[0]["metadata"]["labels"][MANAGED_BY], "kuben",
+            "the Gateway admits it"
+        );
+        let slice = &objects[2];
+        assert_eq!(
+            slice["metadata"]["labels"]["kubernetes.io/service-name"],
+            "kuben-console"
+        );
+        assert_eq!(
+            slice["metadata"]["labels"]["endpointslice.kubernetes.io/managed-by"],
+            MANAGER
+        );
+        assert_eq!(slice["addressType"], "IPv4");
+        assert_eq!(slice["endpoints"][0]["addresses"][0], "203.0.113.7");
+        assert_eq!(slice["ports"][0]["port"], 3000);
+        let route = &objects[3];
+        let view = kuben_platform::projection::RouteView::from(&object(route.clone()).expect("a route"));
+        assert_eq!(view.gateways, ["kuben-system/kuben"]);
+        assert_eq!(view.domains[0].host, "kuben.apps.example.com");
+        assert_eq!(
+            view.sections,
+            [kuben_platform::controller::gateway::host_listener_name(
+                "kuben.apps.example.com"
+            )]
+        );
+        assert_eq!(
+            console_objects("kuben.x", "2001:db8::7", 3000)[2]["addressType"],
+            "IPv6"
+        );
     }
 
     #[test]

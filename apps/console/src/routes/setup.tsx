@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useRouter } from '@tanstack/react-router'
-import { type FormEvent, useId } from 'react'
+import { type FormEvent, useEffect, useId, useState } from 'react'
 import { completeSetup, meQuery, setupQuery } from '../lib/api'
 import { ApiError, problemMessage } from '../lib/problem'
+import { setupTokenFrom, tunnelFor } from '../lib/setupToken'
 
 const route = getRouteApi('/setup')
 
@@ -12,10 +13,16 @@ const inputClass =
 /**
  * First run: create the organization and its admin account. On a public
  * address the request carries the token from the installer's link
- * (`?token=`); without one in the link, the form asks for it.
+ * (`#token=`, taken out of the address bar once read); without one in the
+ * link, the form asks for it. Over plain HTTP from another machine the
+ * password is never asked for: the page explains the secure ways in.
  */
 export function SetupPage() {
-  const { token } = route.useSearch()
+  const { token: queryToken } = route.useSearch()
+  const [token] = useState(() => setupTokenFrom(window.location.hash, queryToken))
+  useEffect(() => {
+    if (window.location.hash || window.location.search) window.history.replaceState(null, '', '/setup')
+  }, [])
   const router = useRouter()
   const queryClient = useQueryClient()
   const status = useQuery(setupQuery)
@@ -28,7 +35,7 @@ export function SetupPage() {
     mutationFn: completeSetup,
     onSuccess: (user) => {
       queryClient.setQueryData(meQuery.queryKey, user)
-      queryClient.setQueryData(setupQuery.queryKey, { needed: false, token_required: false })
+      queryClient.setQueryData(setupQuery.queryKey, { needed: false, token_required: false, secure: true })
       router.history.push('/')
     },
   })
@@ -47,12 +54,53 @@ export function SetupPage() {
 
   const askForToken = status.data?.token_required === true && !token
   const error = mutation.error
+  const insecure =
+    status.data?.secure === false || (error instanceof ApiError && error.code === 'insecure_transport')
   const message =
-    error instanceof ApiError && error.status === 403
+    error instanceof ApiError && error.status === 403 && !insecure
       ? 'The setup link has expired or its token is wrong. Print a new one on the server with `kuben setup-token`.'
-      : error
+      : error && !insecure
         ? problemMessage(error)
         : null
+
+  if (insecure) {
+    const tunnel = tunnelFor(window.location.hostname, window.location.port, token)
+    return (
+      <main className="grid min-h-dvh place-items-center p-6">
+        <section className="w-full max-w-lg space-y-4 rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl shadow-black/40">
+          <h1 className="font-semibold text-2xl tracking-tight">Finish the setup securely</h1>
+          <p className="text-slate-300 text-sm">
+            This page is served over plain HTTP, so the admin password is not asked for here. Use one of
+            these:
+          </p>
+          <ol className="list-decimal space-y-3 ps-5 text-slate-300 text-sm">
+            <li>
+              Through an SSH tunnel from your computer:
+              <code className="mt-1 block rounded-lg bg-slate-950 px-3 py-2 font-mono text-xs">
+                {tunnel.command}
+              </code>
+              then open{' '}
+              <code className="rounded bg-slate-950 px-1 font-mono text-xs" dir="ltr">
+                {tunnel.link}
+              </code>
+            </li>
+            <li>
+              Over HTTPS: run{' '}
+              <code className="font-mono text-xs">
+                kuben setup --domain apps.example.com --acme-email you@example.com
+              </code>{' '}
+              on the server and open <code className="font-mono text-xs">https://kuben.apps.example.com</code>
+              .
+            </li>
+            <li>
+              On a network you trust, allow plain HTTP with{' '}
+              <code className="font-mono text-xs">security.insecure_setup = true</code>.
+            </li>
+          </ol>
+        </section>
+      </main>
+    )
+  }
 
   return (
     <main className="grid min-h-dvh place-items-center p-6">

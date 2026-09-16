@@ -83,7 +83,9 @@ The container image sets no database; the Helm chart sets `KUBEN_DATABASE__URL`,
 | `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_IP` | `30` | |
 | `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_ACCOUNT` | `100` | |
 | `KUBEN_SECURITY__LOGIN_WINDOW_SECS` | `900` | 15 minutes |
-| `KUBEN_SECURITY__TRUST_FORWARDED_FOR` | `false` (`true` in the chart) | use the last `X-Forwarded-For` hop as the client address. Only behind a proxy that appends it |
+| `KUBEN_SECURITY__TRUST_FORWARDED_FOR` | `false` (`true` in the chart) | use the last `X-Forwarded-For` hop as the client address, and `X-Forwarded-Proto` for whether the request came over HTTPS. Only behind a proxy that sets them |
+| `KUBEN_SECURITY__TRUSTED_PROXIES` | empty | addresses or CIDRs (`10.42.0.0/16`) whose forwarded headers are believed; empty: every peer's, once `trust_forwarded_for` is on. `kuben setup` sets the pod network when the console sits behind Kuben's Gateway |
+| `KUBEN_SECURITY__INSECURE_SETUP` | `false` | let `/setup` take the first admin's password over plain HTTP from another machine. Otherwise only HTTPS (directly or through a trusted proxy) or a loopback client (an SSH tunnel) may; the page says how |
 
 See [Sign-in and throttling](/docs/guides/sign-in-security/).
 

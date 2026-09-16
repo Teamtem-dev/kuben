@@ -122,8 +122,12 @@ pub async fn csrf_guard(req: Request, next: Next) -> Response {
 /// is the proxy, so the **last** `X-Forwarded-For` hop (appended by that
 /// proxy) is used. The first hops are client-controlled and never trusted.
 #[must_use]
-pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>, trust_forwarded_for: bool) -> Option<String> {
-    if trust_forwarded_for {
+pub fn client_ip(
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    security: &kuben_core::config::SecurityCfg,
+) -> Option<String> {
+    if security.trusts_forwarded(peer.map(|p| p.ip())) {
         let last = headers
             .get_all("x-forwarded-for")
             .iter()
@@ -234,7 +238,7 @@ pub async fn login(
 
     let email = body.email.trim().to_ascii_lowercase();
     let peer = peer.map(|Extension(ConnectInfo(addr))| addr);
-    let ip = client_ip(&headers, peer, state.cfg.security.trust_forwarded_for);
+    let ip = client_ip(&headers, peer, &state.cfg.security);
     if let Err(retry_after_secs) = state.throttle.check(&email, ip.as_deref()).await {
         audit_login(&state, None, false, &email, ip, "throttled").await;
         return Err(ApiError(Error::RateLimited { retry_after_secs }));
@@ -418,12 +422,25 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert("x-forwarded-for", HeaderValue::from_static("1.2.3.4, 10.0.0.7"));
         let peer: SocketAddr = "10.1.1.1:5000".parse().expect("addr");
-        assert_eq!(client_ip(&h, Some(peer), true).as_deref(), Some("10.0.0.7"));
+        let trusting = kuben_core::config::SecurityCfg {
+            trust_forwarded_for: true,
+            ..Default::default()
+        };
+        assert_eq!(client_ip(&h, Some(peer), &trusting).as_deref(), Some("10.0.0.7"));
         assert_eq!(
-            client_ip(&h, Some(peer), false).as_deref(),
+            client_ip(&h, Some(peer), &kuben_core::config::SecurityCfg::default()).as_deref(),
             Some("10.1.1.1"),
             "not trusted → peer"
         );
-        assert_eq!(client_ip(&HeaderMap::new(), None, true), None);
+        let elsewhere = kuben_core::config::SecurityCfg {
+            trusted_proxies: vec!["10.42.0.0/16".into()],
+            ..trusting.clone()
+        };
+        assert_eq!(
+            client_ip(&h, Some(peer), &elsewhere).as_deref(),
+            Some("10.1.1.1"),
+            "a peer outside the trusted proxies"
+        );
+        assert_eq!(client_ip(&HeaderMap::new(), None, &trusting), None);
     }
 }

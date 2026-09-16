@@ -91,9 +91,22 @@ pub struct SetupOpts {
     /// server that will grow).
     #[arg(long, value_enum, default_value_t)]
     pub datastore: platform::Datastore,
+    /// Let the first admin be created over plain HTTP from another machine,
+    /// on a network you trust. Without it: HTTPS or an SSH tunnel.
+    #[arg(long)]
+    pub allow_http_setup: bool,
 }
 
 impl SetupOpts {
+    /// The console's own HTTPS host, when setup gives it one: a domain for
+    /// apps and an ACME account (the console needs a trusted certificate).
+    fn console_host(&self) -> Option<String> {
+        match (&self.domain, &self.acme_email, self.bind_local) {
+            (Some(domain), Some(_), false) => Some(format!("kuben.{domain}")),
+            _ => None,
+        }
+    }
+
     fn wanted(&self) -> platform::Wanted<'_> {
         platform::Wanted {
             domain: self.domain.as_deref(),
@@ -182,15 +195,13 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
         .then(kuben_api::host::advertise_ip)
         .flatten()
         .map(|ip| ip.to_string());
-    let config_changed = write_config(
-        ui,
-        opts,
-        &kubeconfig,
-        configured.as_deref(),
-        port,
-        hub.as_deref(),
-        book,
-    )?;
+    let console = hub.as_ref().and_then(|_| opts.console_host());
+    let wants = ConfigWants {
+        hub: hub.as_deref(),
+        console: console.as_deref(),
+        insecure_setup: opts.allow_http_setup,
+    };
+    let config_changed = write_config(ui, opts, &kubeconfig, configured.as_deref(), port, &wants, book)?;
     if managed {
         book.start("platform");
         platform::ensure_platform(ui, &kubeconfig, &opts.wanted(), hub.is_some(), book)?;
@@ -202,6 +213,10 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
     if managed {
         book.start("kubenconfig");
         platform::ensure_kuben_config(ui, &kubeconfig, &opts.wanted(), book)?;
+    }
+    if let (Some(console), Some(hub)) = (&console, &hub) {
+        book.start("console");
+        platform::ensure_console(ui, &kubeconfig, console, hub, port, book)?;
     }
     book.start("firewall");
     open_firewall(ui, port, hub.is_some(), book)?;
@@ -784,7 +799,7 @@ fn write_config(
     kubeconfig: &Path,
     existing: Option<&str>,
     port: u16,
-    hub: Option<&str>,
+    wants: &ConfigWants<'_>,
     book: &mut Book,
 ) -> anyhow::Result<bool> {
     let step = ui.step(format!("Writing {CONFIG_FILE}"));
@@ -794,11 +809,15 @@ fn write_config(
             Some(old) if old != port => with_port(text, old, port),
             _ => text.to_owned(),
         };
-        // A configuration setup wrote gains the local agent once.
-        let agent =
-            hub.filter(|_| book.journal().owns(Kind::File, CONFIG_FILE) && !has_section(text, "agent"));
+        // A configuration setup wrote gains its later sections once; one
+        // someone else wrote is theirs.
+        let owned = book.journal().owns(Kind::File, CONFIG_FILE);
+        let agent = wants.hub.filter(|_| owned && !has_section(text, "agent"));
         if let Some(hub) = agent {
             updated.push_str(&agent_section(hub));
+        }
+        if owned && !has_section(text, "security") {
+            updated.push_str(&security_section(wants));
         }
         let changed = updated != text;
         if changed {
@@ -811,6 +830,9 @@ fn write_config(
                     ""
                 }
             ));
+            if wants.console.is_some() && !has_section(text, "security") {
+                ui.note("Set server.public_url to the console's https:// address in the configuration.");
+            }
         } else {
             step.done("kept; edit it to change the public URL");
         }
@@ -823,10 +845,14 @@ fn write_config(
         kuben_api::host::advertise_ip().map_or_else(|| "localhost".to_owned(), |ip| ip.to_string())
     };
     let bind_host = if opts.bind_local { "127.0.0.1" } else { "0.0.0.0" };
-    let mut content = config_template(bind_host, port, &host, kubeconfig);
-    if let Some(hub) = hub {
+    let public_url = wants
+        .console
+        .map_or_else(|| format!("http://{host}:{port}"), |c| format!("https://{c}"));
+    let mut content = config_template(bind_host, port, &public_url, kubeconfig);
+    if let Some(hub) = wants.hub {
         content.push_str(&agent_section(hub));
     }
+    content.push_str(&security_section(wants));
     std::fs::write(CONFIG_FILE, content)?;
     set_mode(Path::new(CONFIG_FILE), 0o644)?;
     book.claim(Kind::File, CONFIG_FILE, true)?;
@@ -837,6 +863,43 @@ fn write_config(
 
 /// The port AgentLink listens on for the agent in this server's k3s.
 pub const AGENT_PORT: u16 = 7443;
+
+/// What setup adds to the configuration beyond the basics.
+#[derive(Debug, Default)]
+struct ConfigWants<'a> {
+    /// The local agent dials this address of the server.
+    hub: Option<&'a str>,
+    /// The console's HTTPS host through Kuben's Gateway.
+    console: Option<&'a str>,
+    /// `--allow-http-setup`.
+    insecure_setup: bool,
+}
+
+/// The `[security]` section: behind Kuben's Gateway, the forwarded headers
+/// of the pod network are believed (HTTPS, client address); with
+/// `--allow-http-setup` the first admin may be made over plain HTTP. Empty
+/// when neither applies.
+fn security_section(wants: &ConfigWants<'_>) -> String {
+    let mut lines = Vec::new();
+    if wants.console.is_some() {
+        lines.push(
+            "# The console is reached through Kuben's Gateway; its proxies run in the pod network."
+                .to_owned(),
+        );
+        lines.push("trust_forwarded_for = true".to_owned());
+        lines.push(format!("trusted_proxies = [\"{POD_NETWORK}\"]"));
+    }
+    if wants.insecure_setup {
+        lines.push(
+            "# kuben setup --allow-http-setup: the first admin may be made over plain HTTP.".to_owned(),
+        );
+        lines.push("insecure_setup = true".to_owned());
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    format!("\n[security]\n{}\n", lines.join("\n"))
+}
 
 /// The `[agent]` section of the local agent (M2.8): pods dial `hub`, an
 /// address of this server.
@@ -908,7 +971,7 @@ fn with_port(text: &str, old: u16, new: u16) -> String {
     out
 }
 
-fn config_template(bind_host: &str, port: u16, public_host: &str, kubeconfig: &Path) -> String {
+fn config_template(bind_host: &str, port: u16, public_url: &str, kubeconfig: &Path) -> String {
     format!(
         "# Written by `kuben setup`. Every kuben command reads this file; restart the\n\
          # service after a change: systemctl restart kuben\n\
@@ -918,7 +981,7 @@ fn config_template(bind_host: &str, port: u16, public_host: &str, kubeconfig: &P
          metrics_bind = \"127.0.0.1:9090\"\n\
          # Set to the https:// address once Kuben sits behind TLS; the session cookie\n\
          # then becomes Secure on its own.\n\
-         public_url = \"http://{public_host}:{port}\"\n\
+         public_url = \"{public_url}\"\n\
          # The setup token and a generated first admin password go here.\n\
          state_dir = \"{STATE_DIR}\"\n\
          \n\
@@ -1199,9 +1262,12 @@ fn announce(
         } else {
             None
         };
-        let url = kuben_api::setup::setup_url(cfg, token.as_deref());
+        let (url, notes) = kuben_api::setup::setup_guide(cfg, token.as_deref());
         ui.heading("Kuben is running. Finish the setup in your browser:");
         eprintln!("\n    {url}\n");
+        for note in notes {
+            ui.note(&note);
+        }
         if token.is_some() {
             ui.note("The link is valid for 30 minutes; print a new one with `kuben setup-token`.");
         }
@@ -1765,7 +1831,7 @@ mod tests {
         let toml = config_template(
             "0.0.0.0",
             3000,
-            "203.0.113.7",
+            "http://203.0.113.7:3000",
             Path::new("/var/lib/kuben/kubeconfig"),
         );
         let cfg: Config = Figment::from(Serialized::defaults(Config::default()))
@@ -1792,7 +1858,7 @@ mod tests {
         let written = config_template(
             "0.0.0.0",
             3000,
-            "localhost",
+            "http://localhost:3000",
             Path::new("/var/lib/kuben/kubeconfig"),
         );
         assert_eq!(data_home(Some(&written)), DataHome::Local);
@@ -1832,7 +1898,7 @@ mod tests {
         let text = config_template(
             "0.0.0.0",
             3000,
-            "203.0.113.7",
+            "http://203.0.113.7:3000",
             Path::new("/var/lib/kuben/kubeconfig"),
         );
         assert_eq!(config_port(&text), Some(3000), "bind, not metrics_bind");
@@ -1869,7 +1935,7 @@ mod tests {
         let mut config = config_template(
             "0.0.0.0",
             3000,
-            "203.0.113.7",
+            "http://203.0.113.7:3000",
             Path::new("/var/lib/kuben/kubeconfig"),
         );
         assert!(!has_section(&config, "agent"));
@@ -1889,6 +1955,66 @@ mod tests {
         );
         let back = with_port(&moved, 7443, 3000);
         assert_eq!(back, config, "only [server] lines moved");
+    }
+
+    #[test]
+    fn the_security_section_trusts_only_the_gateway_and_opens_http_only_when_asked() {
+        use figment::{
+            Figment,
+            providers::{Format as _, Serialized, Toml},
+        };
+        let read = |wants: &ConfigWants<'_>| -> Config {
+            let mut toml = config_template(
+                "0.0.0.0",
+                3000,
+                &wants.console.map_or_else(
+                    || "http://203.0.113.7:3000".to_owned(),
+                    |c| format!("https://{c}"),
+                ),
+                Path::new("/var/lib/kuben/kubeconfig"),
+            );
+            toml.push_str(&security_section(wants));
+            Figment::from(Serialized::defaults(Config::default()))
+                .merge(Toml::string(&toml))
+                .extract()
+                .expect("a valid Kuben config")
+        };
+        assert_eq!(security_section(&ConfigWants::default()), "");
+        let plain = read(&ConfigWants::default());
+        assert!(!plain.security.insecure_setup);
+        assert!(
+            !plain
+                .security
+                .trusts_forwarded(Some(std::net::IpAddr::from([10, 42, 0, 9])))
+        );
+
+        let gateway = read(&ConfigWants {
+            console: Some("kuben.apps.example.com"),
+            ..ConfigWants::default()
+        });
+        assert!(gateway.cookie_secure(), "an https console gets Secure cookies");
+        assert!(
+            gateway
+                .security
+                .trusts_forwarded(Some(std::net::IpAddr::from([10, 42, 3, 4])))
+        );
+        assert!(
+            !gateway
+                .security
+                .trusts_forwarded(Some(std::net::IpAddr::from([203, 0, 113, 9])))
+        );
+        assert!(!gateway.security.insecure_setup);
+
+        let open = read(&ConfigWants {
+            insecure_setup: true,
+            ..ConfigWants::default()
+        });
+        assert!(open.security.insecure_setup);
+        assert!(
+            !open
+                .security
+                .trusts_forwarded(Some(std::net::IpAddr::from([10, 42, 3, 4])))
+        );
     }
 
     #[test]

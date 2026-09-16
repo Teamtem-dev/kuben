@@ -1239,12 +1239,21 @@ async fn scenario8_template_catalogue() {
 /// An empty store, as on a fresh install; `bind` decides whether the setup
 /// token is required, `dir` is where the token file goes.
 async fn empty_app(bind: &str, dir: &std::path::Path) -> Option<Router> {
+    empty_app_with(bind, dir, |_| {}).await
+}
+
+async fn empty_app_with(
+    bind: &str,
+    dir: &std::path::Path,
+    tweak: impl FnOnce(&mut Config),
+) -> Option<Router> {
     let mut cfg = Config::default();
     cfg.security.cookie_secure = kuben_core::config::CookieSecure::Fixed(false);
     cfg.server.bind = bind.into();
     // Where the setup-token file goes; the store is the isolated PostgreSQL
     // schema below.
     cfg.server.state_dir = Some(dir.display().to_string());
+    tweak(&mut cfg);
     let Some(store) = kuben_store::testing::pg_store().await else {
         kuben_store::testing::skip("setup");
         return None;
@@ -1282,7 +1291,10 @@ async fn setup_creates_the_admin_and_signs_in() {
 
     let (status, body) = send(&app, get("/api/v1/setup", "")).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!({"needed": true, "token_required": false}));
+    assert_eq!(
+        body,
+        json!({"needed": true, "token_required": false, "secure": true})
+    );
 
     let resp = app
         .clone()
@@ -1314,23 +1326,51 @@ async fn setup_on_a_public_address_needs_the_installer_token() {
         return;
     }
     let dir = scratch_dir("token");
-    let Some(app) = empty_app("0.0.0.0:3000", &dir).await else {
-        return;
-    };
-    let (_, body) = send(&app, get("/api/v1/setup", "")).await;
-    assert_eq!(body, json!({"needed": true, "token_required": true}));
-
-    let (status, _) = send(&app, post("/api/v1/setup", "", SETUP_BODY)).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "no token at all");
-    let wrong = SETUP_BODY.replace('}', r#","token":"nope"}"#);
-    let (status, _) = send(&app, post("/api/v1/setup", "", &wrong)).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "wrong token");
-
     let mut cfg = Config::default();
     cfg.server.state_dir = Some(dir.display().to_string());
     let token = kuben_api::setup::issue_token(&cfg).expect("token");
     let right = SETUP_BODY.replace('}', &format!(r#","token":"{token}"}}"#));
-    let (status, _) = send(&app, post("/api/v1/setup", "", &right)).await;
+
+    // Plain HTTP from another machine: no password travels, token or not.
+    let Some(plain) = empty_app("0.0.0.0:3000", &dir).await else {
+        return;
+    };
+    let (_, body) = send(&plain, get("/api/v1/setup", "")).await;
+    assert_eq!(
+        body,
+        json!({"needed": true, "token_required": true, "secure": false})
+    );
+    let (status, problem) = send(&plain, post("/api/v1/setup", "", &right)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(problem["code"], "insecure_transport");
+    assert!(
+        problem["detail"].as_str().is_some_and(|d| d.contains("ssh -L")),
+        "{problem}"
+    );
+
+    // Behind the TLS proxy: the token decides.
+    let Some(app) = empty_app_with("0.0.0.0:3000", &dir, |c| c.security.trust_forwarded_for = true).await
+    else {
+        return;
+    };
+    let over_https = |mut req: axum::http::Request<axum::body::Body>| {
+        req.headers_mut()
+            .insert("x-forwarded-proto", axum::http::HeaderValue::from_static("https"));
+        req
+    };
+    let (_, body) = send(&app, over_https(get("/api/v1/setup", ""))).await;
+    assert_eq!(
+        body,
+        json!({"needed": true, "token_required": true, "secure": true})
+    );
+    let (status, _) = send(&app, over_https(post("/api/v1/setup", "", SETUP_BODY))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "no token at all");
+    let wrong = SETUP_BODY.replace('}', r#","token":"nope"}"#);
+    let (status, problem) = send(&app, over_https(post("/api/v1/setup", "", &wrong))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "wrong token");
+    assert_eq!(problem["code"], "forbidden");
+
+    let (status, _) = send(&app, over_https(post("/api/v1/setup", "", &right))).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
         !kuben_api::setup::token_file(&cfg).exists(),

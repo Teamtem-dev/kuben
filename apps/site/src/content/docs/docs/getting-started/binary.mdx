@@ -43,11 +43,13 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ✔ Starting kuben.service. running · 4s
 ✔ Kuben's Gateway (KubenConfig). Gateway class traefik, HTTPS through Let's Encrypt, apps under apps.example.com
 ✔ Opening port 3000 in the firewall. ufw
+✔ The console at https://kuben.apps.example.com. point DNS for kuben.apps.example.com at this server; the certificate follows
 
 Kuben is running. Finish the setup in your browser:
 
-    http://203.0.113.7:3000/setup?token=8f2c…d1
+    https://kuben.apps.example.com/setup#token=8f2c…d1
 
+  Until DNS and the certificate are ready: run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer, then open http://localhost:3000/setup#token=8f2c…d1
   The link is valid for 30 minutes; print a new one with `kuben setup-token`.
 ```
 
@@ -57,7 +59,7 @@ That run was started with a base domain and an email for Let's Encrypt, so apps 
 curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --domain apps.example.com --acme-email ops@example.com
 ```
 
-Point a wildcard DNS record, `*.apps.example.com`, at the server. Setup installs a **pinned k3s** with a checksum-verified installer and reserved CPU and memory, turns on k3s's Traefik as the Gateway API provider, adds the Gateway API CRDs and cert-manager when the cluster has none (it never upgrades what is there), creates a Let's Encrypt `ClusterIssuer` that answers HTTP-01 through Kuben's Gateway, and writes the `KubenConfig` that has Kuben create and own that Gateway. Without `--acme-email`, apps are served over plain HTTP until you run setup again with it; without `--domain`, apps get addresses once one is set.
+Point a wildcard DNS record, `*.apps.example.com`, at the server; it covers the console too, which setup serves at `https://kuben.apps.example.com` through the same Gateway. Setup installs a **pinned k3s** with a checksum-verified installer and reserved CPU and memory, turns on k3s's Traefik as the Gateway API provider, adds the Gateway API CRDs and cert-manager when the cluster has none (it never upgrades what is there), creates a Let's Encrypt `ClusterIssuer` that answers HTTP-01 through Kuben's Gateway, and writes the `KubenConfig` that has Kuben create and own that Gateway. Without `--acme-email`, apps are served over plain HTTP until you run setup again with it; without `--domain`, apps get addresses once one is set.
 
 When port 3000 is taken (the Dokploy console uses it, for one), setup says who holds it and asks which port to use, with the next free one already filled in:
 
@@ -70,6 +72,16 @@ When port 3000 is taken (the Dokploy console uses it, for one), setup says who h
 Without a terminal, or with `--yes`, it takes that free port on its own; `--port` chooses one up front, and on an existing install moves it. When another web server holds ports 80 and 443, setup also warns that apps will not get public addresses until they are free; the console is not affected.
 
 Open the link and create the admin account: organization, email, password. The token in the link is what keeps a stranger who finds the port first from doing the same; `kuben setup-token` prints a fresh link when it has expired. Nothing is seeded and nothing is written to the log.
+
+The password never crosses plain HTTP from another machine. The page accepts it over HTTPS (the console's own address above), or from the server itself. Without a domain, setup therefore prints the link through an SSH tunnel:
+
+```text
+    http://localhost:3000/setup#token=8f2c…d1
+
+  Run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer first; the admin password never travels over plain HTTP.
+```
+
+The token rides in the part of the link after `#`, which the browser never sends to a server or a proxy log, and the page drops it from the address bar once read. On a network you trust, `kuben setup --allow-http-setup` lets the page accept the password over plain HTTP as well.
 
 The same command **upgrades**: it installs the new binary, keeps the configuration and the data, restarts the service and reports `Kuben is up to date and running`. Everything it did is listed under [`kuben setup`](/docs/reference/cli/#setup); `kuben status` shows the state of the server, and [`kuben uninstall`](/docs/reference/cli/#uninstall) takes it away again.
 
