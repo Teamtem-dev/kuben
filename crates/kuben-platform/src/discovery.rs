@@ -433,7 +433,9 @@ pub async fn run(
     token: CancellationToken,
 ) -> anyhow::Result<()> {
     let client = registry.primary();
-    let mut written: Option<(Arc<ClusterFacts>, Instant)> = None;
+    // What was written last, when, and for how many organizations: a new
+    // organization gets the facts at once, not at the next rewrite.
+    let mut written: Option<(Arc<ClusterFacts>, Instant, usize)> = None;
     loop {
         let facts = Arc::new(discover(&client).await);
         let changed = tx.borrow().as_deref() != Some(facts.as_ref());
@@ -441,9 +443,10 @@ pub async fn run(
             tracing::info!(capabilities = %facts.summary(), "cluster capabilities");
             tx.send_replace(Some(facts.clone()));
         }
+        let orgs = store.org_ids().await.map_or(0, |o| o.len());
         let due = written
             .as_ref()
-            .is_none_or(|(last, at)| last != &facts || at.elapsed() >= REWRITE);
+            .is_none_or(|(last, at, seen)| last != &facts || at.elapsed() >= REWRITE || *seen != orgs);
         if due {
             let json = serde_json::to_value(facts.as_ref())?;
             match store
@@ -454,7 +457,7 @@ pub async fn run(
                 )
                 .await
             {
-                Ok(_) => written = Some((facts.clone(), Instant::now())),
+                Ok(_) => written = Some((facts.clone(), Instant::now(), orgs)),
                 Err(e) => tracing::warn!(error = %e, "cannot record the cluster capabilities"),
             }
         }

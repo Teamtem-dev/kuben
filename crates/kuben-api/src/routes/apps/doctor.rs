@@ -1,8 +1,6 @@
 //! Doctor of an app (M2.13): every check between the app and a visitor, from
 //! the Gateway's class to the agent that delivers it.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use axum::{
     Json,
     extract::{Path, State},
@@ -92,7 +90,7 @@ pub async fn doctor(
     let client = scope::cluster(&state)?;
     let platform = doctor::read_platform(&client).await;
     let gateway = doctor::read_gateway(&client, &platform).await;
-    let facts = facts(&state, &a).await?;
+    let facts = facts(&state, &a, &client).await?;
     let addresses = gateway.addresses().to_vec();
 
     let mut checks = doctor::platform_checks(facts.as_ref(), &platform, &gateway);
@@ -124,20 +122,30 @@ pub async fn doctor(
     }))
 }
 
-/// What discovery last recorded of the app's cluster.
-async fn facts(state: &ApiState, a: &AppScope) -> ApiResult<Option<ClusterFacts>> {
+/// A recorded observation older than this is asked again.
+const FACTS_FRESH_MS: i64 = 5 * 60 * 1000;
+
+/// What discovery recorded of the app's cluster, or, when that is missing
+/// or old, what the cluster says now.
+async fn facts(state: &ApiState, a: &AppScope, client: &kube::Client) -> ApiResult<Option<ClusterFacts>> {
     let mut tenant = state.store.tenant(a.env.project.org).await?;
     let record = tenant.cluster_capabilities(ClusterId::PRIMARY).await?;
-    Ok(record.and_then(|r| serde_json::from_value(r.facts).ok()))
+    drop(tenant);
+    let now = kuben_core::time::now_ms();
+    if let Some(facts) = record
+        .filter(|r| now - r.observed_at < FACTS_FRESH_MS)
+        .and_then(|r| serde_json::from_value(r.facts).ok())
+    {
+        return Ok(Some(facts));
+    }
+    Ok(Some(kuben_platform::discovery::discover(client).await))
 }
 
 async fn agent(state: &ApiState, a: &AppScope) -> ApiResult<AgentState> {
     let mut tenant = state.store.tenant(a.env.project.org).await?;
     let cluster = tenant.ensure_cluster(ClusterId::PRIMARY).await?;
     drop(tenant);
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+    let now = kuben_core::time::now_ms();
     Ok(match state.store.cluster_agent(cluster).await? {
         None => AgentState::None,
         Some(agent) if agent.revoked_at.is_some() => AgentState::Revoked,
