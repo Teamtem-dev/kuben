@@ -1,6 +1,7 @@
 //! Apps of an environment on the SQL model (ADR-032), one module per concern:
 //!
-//! * [`crud`] — create, read, update and delete, rolling restart and logs;
+//! * [`crud`] — create, read, update and delete, rolling restart;
+//! * [`logs`] — log lines, once or followed live, and Kubernetes events;
 //! * [`releases`] — release history and rollback (scenario 5);
 //! * [`jobs`] — scheduled runs, "run now" (scenario 7);
 //! * [`domains`] — DNS checks of an app's hostnames (scenario 9);
@@ -22,6 +23,7 @@ pub mod crud;
 pub mod deployments;
 pub mod domains;
 pub mod jobs;
+pub mod logs;
 pub mod promote;
 pub mod releases;
 pub mod spec;

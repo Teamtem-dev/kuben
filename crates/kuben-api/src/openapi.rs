@@ -30,7 +30,8 @@ use crate::{
         (name = "audit", description = "Audit log of every mutation"),
         (name = "system", description = "Health and diagnostics"),
     ),
-    components(schemas(crate::error::Problem))
+    // The events of a followed log (`text/event-stream`), for clients.
+    components(schemas(crate::error::Problem, apps::logs::LogLine, apps::logs::LogEnd))
 )]
 pub struct ApiDoc;
 
@@ -47,7 +48,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::crud::get, apps::crud::update, apps::crud::delete))
         .routes(routes!(apps::crud::restart))
         .routes(routes!(apps::crud::hand_over))
-        .routes(routes!(apps::crud::logs))
+        .routes(routes!(apps::logs::logs))
+        .routes(routes!(apps::logs::events))
         .routes(routes!(apps::releases::releases))
         .routes(routes!(apps::releases::rollback))
         .routes(routes!(apps::jobs::run))
@@ -100,6 +102,7 @@ mod tests {
             &format!("{app}/restart"),
             &format!("{app}/handover"),
             &format!("{app}/logs"),
+            &format!("{app}/events"),
             &format!("{app}/releases"),
             &format!("{app}/rollback"),
             &format!("{app}/run"),

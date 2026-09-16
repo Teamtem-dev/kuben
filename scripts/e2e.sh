@@ -306,6 +306,38 @@ step "logs"
 expect 200 GET "$APP/web/logs?tail=20"
 jq -e 'length == 1 and .[0].error == null' "$work/body" >/dev/null || fail "logs: $(cat "$work/body")"
 
+step "M2.12: followed logs: capped per user, alive past the request timeout; events"
+follow() { # <file> <seconds>: follow web's log in the background
+  curl -sS -N --max-time "$2" -b "$work/cookies" -o "$1" -w '%{http_code}' \
+    "$BASE$APP/web/logs?follow=true&tail=1" >"$1.status" &
+}
+followers=()
+for i in 1 2 3 4; do
+  follow "$work/follow-$i.txt" 60
+  followers+=($!)
+done
+eventually 20 "four followed logs open" bash -c "grep -l '^event: line' $work/follow-[1-4].txt | wc -l | grep -qx 4"
+fifth=$(curl -sS -o "$work/body" -w '%{http_code}' --max-time 10 -b "$work/cookies" "$BASE$APP/web/logs?follow=true")
+[[ $fifth == 429 ]] || fail "a fifth followed log of one user → HTTP ${fifth} (want 429)"
+kill "${followers[@]}" 2>/dev/null || true
+wait "${followers[@]}" 2>/dev/null || true
+# The server lets a place go at its next write to the closed connection
+# (a keep-alive every 15 seconds at the latest).
+sleep 20
+follow "$work/follow.txt" 50
+follower=$!
+sleep 35 # longer than the request timeout of the REST routes
+kubectl -n "$NS" exec deploy/web-web -- wget -qO- http://127.0.0.1:8080/e2e-follow-marker >/dev/null 2>&1 || true
+eventually 30 "the new line in the followed log" grep -q 'e2e-follow-marker' "$work/follow.txt"
+kill "$follower" 2>/dev/null || true
+wait "$follower" 2>/dev/null || true
+grep '^data:' "$work/follow.txt" | grep 'e2e-follow-marker' | sed 's/^data://' |
+  jq -e '.pod | startswith("web-web-")' >/dev/null || fail "followed line: $(tail -n 5 "$work/follow.txt")"
+expect 200 GET "$APP/web/events"
+jq -e 'any(.[]; .kind == "Pod" and .reason == "Scheduled") and any(.[]; .kind == "Deployment" and .name == "web-web")' \
+  "$work/body" >/dev/null || fail "events: $(cat "$work/body")"
+jq -e 'all(.[]; .name | startswith("web"))' "$work/body" >/dev/null || fail "events of other objects: $(cat "$work/body")"
+
 step "scale to 2"
 expect 200 PATCH "$APP/web" '{"replicas":2}'
 eventually 120 "2 ready replicas" bash -c "kubectl -n $NS get deployment web-web -o jsonpath='{.status.readyReplicas}' | grep -qx 2"

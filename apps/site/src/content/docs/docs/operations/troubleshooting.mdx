@@ -53,7 +53,24 @@ Kuben exposes Prometheus metrics on `KUBEN_SERVER__METRICS_BIND` (`0.0.0.0:9090`
 
 Alerting rules that pay off: `increase(kuben_audit_write_errors_total[5m]) > 0`, `sum(kuben_leader) != 1` for more than a minute, and `rate(kuben_reconcile_errors_total[10m]) > 0`.
 
-## Logs
+## An app's logs and events
+
+Anyone who may read an app's logs gets its recent lines, per pod (at most ten pods, 200 lines each by default), and the lines of the crashed container before the current one:
+
+```bash
+curl -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?tail=100"
+curl -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?previous=true"
+```
+
+With `follow=true` the answer stays open as server-sent events: a `line` event for every new line (`pod`, `process`, `time`, `line`), and an `end` event when a pod's log stops (a restarted container and the pods of a new rollout are followed on their own). Each user may follow four logs at once and a replica a hundred; more answer `429`. A followed log ends after an hour, and closing the connection stops the reads at once.
+
+```bash
+curl -N -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?follow=true&tail=10"
+```
+
+`…/events` lists the Kubernetes events of the app's own objects, newest first: pods, Deployments, ReplicaSets, Jobs and CronJobs, its route, and the certificates of its hosts (image pulls, failed probes, scheduling, HTTP-01 challenges). Kubernetes keeps events for about an hour.
+
+## Kuben's own logs
 
 Kuben logs structured JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=json`; `pretty` for a terminal). Every request carries a request id, which the audit log records too.
 

@@ -32,6 +32,8 @@ pub struct ApiState {
     pub setup_lock: Arc<tokio::sync::Mutex<()>>,
     /// Resolves image tags to digests when an app is created or changed.
     pub images: Arc<dyn ImageResolver>,
+    /// Followed logs open on this replica (M2.12).
+    pub log_streams: Arc<crate::routes::apps::logs::LogStreams>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -72,6 +74,7 @@ impl ApiState {
             throttle,
             setup_lock: Arc::default(),
             images: Arc::new(RegistryResolver::new()),
+            log_streams: Arc::default(),
         }
     }
 

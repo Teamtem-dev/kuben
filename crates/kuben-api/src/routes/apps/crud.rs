@@ -1,25 +1,24 @@
-//! Apps on the SQL model: create, read, update and delete; rolling restart
-//! and recent logs, which act on the materialized workloads directly (an app
-//! its cluster's agent delivers restarts through a run instead).
+//! Apps on the SQL model: create, read, update and delete, and rolling
+//! restart, which acts on the materialized workloads directly (an app its
+//! cluster's agent delivers restarts through a run instead).
 
 use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Api,
-    api::{LogParams, Patch, PatchParams},
+    api::{Patch, PatchParams},
 };
 use kuben_core::{Error, perm::Perm};
 use kuben_crd::App;
 use kuben_platform::controller::resources::RESTARTED_AT;
 use kuben_store::repo::{Delivery, RunReason, StartDeployment, Subject, TARGET_DELETE};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
-use utoipa::{IntoParams, ToSchema};
+use utoipa::IntoParams;
 
 use super::{
     AppDetail, AppDto, Artifact, Change, PodDto, create_app, deploy, desired_spec, resolve,
@@ -35,8 +34,6 @@ use crate::{
     routes::{request, scope, validate},
     state::ApiState,
 };
-
-const MAX_LOG_PODS: usize = 10;
 
 /// List the apps of an environment.
 #[utoipa::path(
@@ -411,87 +408,4 @@ fn rerun(a: &scope::AppScope, authz: &Authz, reason: RunReason, app: &str) -> Ap
         ))
         .to_vec(),
     })
-}
-
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct LogQuery {
-    /// Lines per pod (1–2000, default 200).
-    pub tail: Option<i64>,
-    /// Only pods of this process.
-    pub process: Option<String>,
-    /// Logs of the previous (crashed) container instance.
-    pub previous: Option<bool>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct PodLogs {
-    pub pod: String,
-    pub process: Option<String>,
-    pub lines: Vec<String>,
-    /// Why no logs could be read (e.g. the container is still starting).
-    pub error: Option<String>,
-}
-
-/// Recent log lines of the app's pods (at most 10 pods).
-#[utoipa::path(
-    get,
-    path = "/projects/{project}/environments/{environment}/apps/{app}/logs", operation_id = "getAppLogs",
-    tag = "apps",
-    params(
-        ("project" = String, Path, description = "Project name"),
-        ("environment" = String, Path, description = "Environment short name"),
-        ("app" = String, Path, description = "App name"),
-        LogQuery,
-    ),
-    responses((status = 200, body = Vec<PodLogs>), (status = 503, body = crate::error::Problem))
-)]
-pub async fn logs(
-    State(state): State<ApiState>,
-    authz: Authz,
-    Path((project, environment, app)): Path<(String, String, String)>,
-    Query(q): Query<LogQuery>,
-) -> ApiResult<Json<Vec<PodLogs>>> {
-    let a = scope::app(&state, &authz, &project, &environment, &app).await?;
-    let _proof = authz.require(&state, Perm::AppLogsRead, &a.chain())?;
-    let pods_api = Api::<Pod>::namespaced(scope::cluster(&state)?, a.namespace());
-    let tail = q.tail.unwrap_or(200).clamp(1, 2000);
-    let previous = q.previous.unwrap_or(false);
-    let pods: Vec<_> = state
-        .projections
-        .pods_of_app(a.namespace(), a.slug())
-        .into_iter()
-        .filter(|p| {
-            q.process
-                .as_deref()
-                .is_none_or(|want| p.process.as_deref() == Some(want))
-        })
-        .take(MAX_LOG_PODS)
-        .collect();
-    let fetches = pods.iter().map(|pod| {
-        let api = pods_api.clone();
-        let params = LogParams {
-            container: pod.process.clone(),
-            tail_lines: Some(tail),
-            timestamps: true,
-            previous,
-            limit_bytes: Some(1 << 20),
-            ..LogParams::default()
-        };
-        async move {
-            let result = api.logs(&pod.name, &params).await;
-            let (lines, error) = match result {
-                Ok(text) => (text.lines().map(str::to_owned).collect(), None),
-                Err(kube::Error::Api(s)) => (Vec::new(), Some(s.message.clone())),
-                Err(e) => (Vec::new(), Some(e.to_string())),
-            };
-            PodLogs {
-                pod: pod.name.clone(),
-                process: pod.process.clone(),
-                lines,
-                error,
-            }
-        }
-    });
-    Ok(Json(futures::future::join_all(fetches).await))
 }

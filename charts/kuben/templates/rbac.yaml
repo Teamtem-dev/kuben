@@ -40,7 +40,8 @@ rules:
     verbs: [list]
   - apiGroups: [""]
     resources: [events]
-    verbs: [create, patch]
+    # list: an app's events in the API (M2.12).
+    verbs: [create, patch, list]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]

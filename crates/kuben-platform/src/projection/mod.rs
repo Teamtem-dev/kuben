@@ -469,6 +469,12 @@ impl Projections {
         self.resync();
     }
 
+    /// The route of the app `namespace/name`.
+    #[must_use]
+    pub fn route(&self, namespace: &str, name: &str) -> Option<Arc<RouteView>> {
+        self.routes.get(&format!("{namespace}/{name}"))
+    }
+
     /// Every app route, sorted by key.
     #[must_use]
     pub fn routes(&self) -> Vec<Arc<RouteView>> {
@@ -519,7 +525,7 @@ impl Projections {
     /// a route without listener names is served without TLS.
     #[must_use]
     pub fn exposure(&self, namespace: &str, name: &str) -> Option<ExposureView> {
-        let route = self.routes.get(&format!("{namespace}/{name}"))?;
+        let route = self.route(namespace, name)?;
         let gateway_ns = route
             .gateways
             .first()

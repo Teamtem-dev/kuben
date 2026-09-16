@@ -330,6 +330,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The app's Kubernetes events (pods, workloads, route, certificates),
+         *     newest first, at most 100. Kubernetes keeps events for about an hour.
+         */
+        get: operations["getAppEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/handover": {
         parameters: {
             query?: never;
@@ -359,7 +379,10 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /** Recent log lines of the app's pods (at most 10 pods). */
+        /**
+         * Log lines of the app's pods (at most 10 pods): the recent ones, or with
+         *     `follow=true` a live stream of new ones.
+         */
         get: operations["getAppLogs"];
         put?: never;
         post?: never;
@@ -607,6 +630,25 @@ export type components = {
             volumes: components["schemas"]["VolumeDto"][];
             created_at?: string | null;
             exposure?: null | components["schemas"]["ExposureDto"];
+        };
+        /** @description A Kubernetes event about one of the app's objects. */
+        AppEvent: {
+            /**
+             * @description Kind and name of the object (`Pod`, `Deployment`, `HTTPRoute`,
+             *     `Certificate`, …).
+             */
+            kind: string;
+            name: string;
+            /** @description `Normal` or `Warning`. */
+            type: string;
+            reason?: string | null;
+            message?: string | null;
+            /** Format: int32 */
+            count: number;
+            first_seen?: string | null;
+            last_seen?: string | null;
+            /** @description The component that reported it. */
+            source?: string | null;
         };
         AuditEventDto: {
             /** Format: int64 */
@@ -862,6 +904,23 @@ export type components = {
         };
         JobStarted: {
             job: string;
+        };
+        /**
+         * @description A followed log stopped: one pod's (its container ended or could not be
+         *     read; a restarted container is followed again), or all of them (`pod` is
+         *     absent: the stream reached its limit).
+         */
+        LogEnd: {
+            pod?: string | null;
+            error?: string | null;
+        };
+        /** @description One line of a followed log. */
+        LogLine: {
+            pod: string;
+            process?: string | null;
+            /** @description When the container wrote it (RFC 3339). */
+            time?: string | null;
+            line: string;
         };
         LoginRequest: {
             /** @example admin@kuben.local */
@@ -2160,6 +2219,40 @@ export interface operations {
             };
         };
     };
+    getAppEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppEvent"][];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     handOverApp: {
         parameters: {
             query?: never;
@@ -2211,6 +2304,12 @@ export interface operations {
                 process?: string;
                 /** @description Logs of the previous (crashed) container instance. */
                 previous?: boolean;
+                /**
+                 * @description Keep the connection open and send new lines as `text/event-stream`:
+                 *     `line` events (a [`LogLine`]) and an `end` event (a [`LogEnd`]) when a
+                 *     pod's log stops or the stream reaches its hour.
+                 */
+                follow?: boolean;
             };
             header?: never;
             path: {
@@ -2225,12 +2324,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Recent lines per pod; with `follow`, `text/event-stream` of `line` (LogLine) and `end` (LogEnd) events */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PodLogs"][];
+                };
+            };
+            /** @description Too many followed logs open */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
             503: {

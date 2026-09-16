@@ -1444,6 +1444,69 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The app's Kubernetes events (pods, workloads, route, certificates),\nnewest first, at most 100. Kubernetes keeps events for about an hour.",
+        "operationId": "getAppEvents",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppEvent"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/handover": {
       "post": {
         "tags": [
@@ -1512,7 +1575,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "Recent log lines of the app's pods (at most 10 pods).",
+        "summary": "Log lines of the app's pods (at most 10 pods): the recent ones, or with\n`follow=true` a live stream of new ones.",
         "operationId": "getAppLogs",
         "parameters": [
           {
@@ -1569,11 +1632,20 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "follow",
+            "in": "query",
+            "description": "Keep the connection open and send new lines as `text/event-stream`:\n`line` events (a [`LogLine`]) and an `end` event (a [`LogEnd`]) when a\npod's log stops or the stream reaches its hour.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "Recent lines per pod; with `follow`, `text/event-stream` of `line` (LogLine) and `end` (LogEnd) events",
             "content": {
               "application/json": {
                 "schema": {
@@ -1581,6 +1653,16 @@
                   "items": {
                     "$ref": "#/components/schemas/PodLogs"
                   }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many followed logs open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -2607,6 +2689,64 @@
           }
         }
       },
+      "AppEvent": {
+        "type": "object",
+        "description": "A Kubernetes event about one of the app's objects.",
+        "required": [
+          "kind",
+          "name",
+          "type",
+          "count"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Kind and name of the object (`Pod`, `Deployment`, `HTTPRoute`,\n`Certificate`, …)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "`Normal` or `Warning`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "first_seen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The component that reported it."
+          }
+        }
+      },
       "AuditEventDto": {
         "type": "object",
         "required": [
@@ -3287,6 +3427,53 @@
         ],
         "properties": {
           "job": {
+            "type": "string"
+          }
+        }
+      },
+      "LogEnd": {
+        "type": "object",
+        "description": "A followed log stopped: one pod's (its container ended or could not be\nread; a restarted container is followed again), or all of them (`pod` is\nabsent: the stream reached its limit).",
+        "properties": {
+          "pod": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "LogLine": {
+        "type": "object",
+        "description": "One line of a followed log.",
+        "required": [
+          "pod",
+          "line"
+        ],
+        "properties": {
+          "pod": {
+            "type": "string"
+          },
+          "process": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the container wrote it (RFC 3339)."
+          },
+          "line": {
             "type": "string"
           }
         }
