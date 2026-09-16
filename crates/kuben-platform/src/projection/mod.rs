@@ -15,7 +15,13 @@ use dashmap::DashMap;
 use serde::Serialize;
 use tokio::sync::{broadcast, watch};
 pub use views::{
-    AppView, EnvVarRef, EnvironmentView, PodPhase, PodView, ProcessView, ProjectView, VolumeView,
+    AppView, CertificateView, EnvVarRef, EnvironmentView, ExposureView, HostExposure, PodPhase, PodView,
+    ProcessView, ProjectView, RouteView, VolumeView,
+};
+
+use crate::controller::{
+    gateway::{host_listener_name, host_secret_name},
+    resources::TlsMode,
 };
 
 /// A change notification. Every delta carries the global sequence number so
@@ -55,6 +61,11 @@ pub enum Delta {
         seq: u64,
         key: String,
     },
+    /// An app's route or one of its certificates changed: its exposure did.
+    ExposureChanged {
+        seq: u64,
+        key: String,
+    },
     /// A watch was re-listed; clients must refetch the snapshot.
     Resync {
         seq: u64,
@@ -73,6 +84,7 @@ impl Delta {
             | Self::EnvironmentDelete { seq, .. }
             | Self::AppUpsert { seq, .. }
             | Self::AppDelete { seq, .. }
+            | Self::ExposureChanged { seq, .. }
             | Self::Resync { seq } => *seq,
         }
     }
@@ -127,6 +139,18 @@ impl Keyed for AppView {
     }
 }
 
+impl Keyed for RouteView {
+    fn key(&self) -> &str {
+        &self.key
+    }
+}
+
+impl Keyed for CertificateView {
+    fn key(&self) -> &str {
+        &self.key
+    }
+}
+
 /// One kind's views, keyed by [`Keyed::key`].
 #[derive(Debug)]
 struct Table<V>(DashMap<String, Arc<V>>);
@@ -175,6 +199,9 @@ pub struct Projections {
     projects: Table<ProjectView>,
     environments: Table<EnvironmentView>,
     apps: Table<AppView>,
+    /// Optional kinds (Gateway API, cert-manager): never part of readiness.
+    routes: Table<RouteView>,
+    certificates: Table<CertificateView>,
     seq: AtomicU64,
     tx: broadcast::Sender<Arc<Delta>>,
     /// `SYNCED_*` bits. Until every informer has listed once, the tables are
@@ -197,6 +224,8 @@ impl Projections {
             projects: Table::new(),
             environments: Table::new(),
             apps: Table::new(),
+            routes: Table::new(),
+            certificates: Table::new(),
             seq: AtomicU64::new(0),
             tx,
             synced: watch::Sender::new(0),
@@ -413,6 +442,121 @@ impl Projections {
         self.mark_synced(SYNCED_APPS);
         self.resync();
     }
+
+    // ---- routes and certificates (M2.3) ----
+
+    fn exposure_changed(&self, key: &str) {
+        self.publish(|seq| Delta::ExposureChanged {
+            seq,
+            key: key.to_owned(),
+        });
+    }
+
+    pub fn upsert_route(&self, route: RouteView) {
+        if let Some(route) = self.routes.upsert(route) {
+            self.exposure_changed(&route.key);
+        }
+    }
+
+    pub fn remove_route(&self, key: &str) {
+        if self.routes.remove(key) {
+            self.exposure_changed(key);
+        }
+    }
+
+    pub fn replace_routes(&self, routes: Vec<RouteView>) {
+        self.routes.replace(routes);
+        self.resync();
+    }
+
+    /// Every app route, sorted by key.
+    #[must_use]
+    pub fn routes(&self) -> Vec<Arc<RouteView>> {
+        self.routes.sorted()
+    }
+
+    /// The routes whose hosts use the certificate `namespace/name`.
+    fn routes_using(&self, certificate: &str) -> Vec<String> {
+        let Some((namespace, name)) = certificate.split_once('/') else {
+            return Vec::new();
+        };
+        self.routes
+            .sorted()
+            .into_iter()
+            .filter(|r| {
+                r.gateways
+                    .iter()
+                    .any(|g| g.split_once('/').is_some_and(|(ns, _)| ns == namespace))
+            })
+            .filter(|r| r.domains.iter().any(|d| host_secret_name(&d.host) == name))
+            .map(|r| r.key.clone())
+            .collect()
+    }
+
+    pub fn upsert_certificate(&self, certificate: CertificateView) {
+        if let Some(certificate) = self.certificates.upsert(certificate) {
+            for route in self.routes_using(&certificate.key) {
+                self.exposure_changed(&route);
+            }
+        }
+    }
+
+    pub fn remove_certificate(&self, key: &str) {
+        if self.certificates.remove(key) {
+            for route in self.routes_using(key) {
+                self.exposure_changed(&route);
+            }
+        }
+    }
+
+    pub fn replace_certificates(&self, certificates: Vec<CertificateView>) {
+        self.certificates.replace(certificates);
+        self.resync();
+    }
+
+    /// How the app `namespace/name` is reached, once its route exists. A host
+    /// with a listener of its own (`h-<hash>`) has a certificate of its own;
+    /// a route without listener names is served without TLS.
+    #[must_use]
+    pub fn exposure(&self, namespace: &str, name: &str) -> Option<ExposureView> {
+        let route = self.routes.get(&format!("{namespace}/{name}"))?;
+        let gateway_ns = route
+            .gateways
+            .first()
+            .and_then(|g| g.split_once('/'))
+            .map(|(ns, _)| ns.to_owned());
+        let hosts = route
+            .domains
+            .iter()
+            .map(|domain| {
+                let tls = match (route.sections.is_empty(), domain.mode()) {
+                    (true, _) | (false, TlsMode::Plain) => "none",
+                    (false, TlsMode::Secret(_)) => "secret",
+                    (false, TlsMode::Auto) => "auto",
+                };
+                let own = tls == "auto" && route.sections.contains(&host_listener_name(&domain.host));
+                let certificate = gateway_ns.as_ref().filter(|_| own).and_then(|ns| {
+                    self.certificates
+                        .get(&format!("{ns}/{}", host_secret_name(&domain.host)))
+                });
+                HostExposure {
+                    host: domain.host.clone(),
+                    tls,
+                    certificate_ready: own.then(|| certificate.as_ref().is_some_and(|c| c.ready)),
+                    certificate_message: match &certificate {
+                        Some(c) => c.message.clone(),
+                        None if own => Some("not issued yet".into()),
+                        None => None,
+                    },
+                }
+            })
+            .collect();
+        Some(ExposureView {
+            accepted: route.accepted,
+            message: route.message.clone(),
+            hosts,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -551,5 +695,92 @@ mod tests {
         other.app = Some("worker".into());
         p.upsert_pod(other);
         assert_eq!(p.pods_of_app("ns", "api").len(), 1);
+    }
+
+    fn route_object(status: &serde_json::Value) -> kube::api::DynamicObject {
+        let mut route: kube::api::DynamicObject = serde_json::from_value(serde_json::json!({
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "HTTPRoute",
+            "metadata": {
+                "name": "api", "namespace": "kb-shop-prod",
+                "annotations": { crate::controller::resources::DOMAINS_ANNOTATION:
+                    r#"[{"host":"shop.acme.com","tls":"auto"},{"host":"old.acme.com","tls":"none"}]"# }
+            },
+        }))
+        .expect("route");
+        route.data = serde_json::json!({
+            "spec": {
+                "hostnames": ["shop.acme.com", "old.acme.com"],
+                "parentRefs": [
+                    { "name": "kuben", "namespace": "kuben-system", "sectionName": host_listener_name("shop.acme.com") },
+                    { "name": "kuben", "namespace": "kuben-system", "sectionName": "p-x" }
+                ]
+            },
+            "status": status,
+        });
+        route
+    }
+
+    #[test]
+    fn exposure_joins_the_route_and_its_certificates() {
+        let p = Projections::new();
+        assert!(p.exposure("kb-shop-prod", "api").is_none(), "no route yet");
+        let refused = RouteView::from(&route_object(&serde_json::json!({ "parents": [{ "conditions": [
+            { "type": "Accepted", "status": "True" },
+            { "type": "ResolvedRefs", "status": "False", "reason": "RefNotPermitted", "message": "" }
+        ] }] })));
+        assert_eq!(refused.accepted, Some(false));
+        assert_eq!(refused.message.as_deref(), Some("RefNotPermitted"));
+        assert_eq!(refused.gateways, ["kuben-system/kuben"]);
+
+        let mut rx = p.subscribe();
+        p.upsert_route(RouteView::from(&route_object(
+            &serde_json::json!({ "parents": [{ "conditions": [
+            { "type": "Accepted", "status": "True" },
+            { "type": "ResolvedRefs", "status": "True" }
+        ] }] }),
+        )));
+        assert!(
+            matches!(&*rx.try_recv().expect("delta"), Delta::ExposureChanged { key, .. } if key == "kb-shop-prod/api")
+        );
+        let exposure = p.exposure("kb-shop-prod", "api").expect("exposure");
+        assert_eq!(exposure.accepted, Some(true));
+        assert_eq!(
+            exposure
+                .hosts
+                .iter()
+                .map(|h| (h.host.as_str(), h.tls, h.certificate_ready))
+                .collect::<Vec<_>>(),
+            [
+                ("shop.acme.com", "auto", Some(false)),
+                ("old.acme.com", "none", None)
+            ]
+        );
+        assert_eq!(
+            exposure.hosts[0].certificate_message.as_deref(),
+            Some("not issued yet")
+        );
+
+        // The certificate is issued: the app's exposure changes, under the app's key.
+        p.upsert_certificate(CertificateView {
+            key: format!("kuben-system/{}", host_secret_name("shop.acme.com")),
+            ready: true,
+            message: None,
+            not_after: Some("2027-01-01T00:00:00Z".into()),
+        });
+        assert!(
+            matches!(&*rx.try_recv().expect("delta"), Delta::ExposureChanged { key, .. } if key == "kb-shop-prod/api")
+        );
+        assert_eq!(
+            p.exposure("kb-shop-prod", "api").expect("exposure").hosts[0].certificate_ready,
+            Some(true)
+        );
+        p.upsert_certificate(CertificateView {
+            key: "kuben-system/kuben-tls-unrelated".into(),
+            ready: true,
+            message: None,
+            not_after: None,
+        });
+        assert!(rx.try_recv().is_err(), "an unrelated certificate names no app");
     }
 }

@@ -63,7 +63,7 @@ pub async fn list(
         .iter()
         .map(|a| {
             let view = state.projections.app(&a.namespace, &a.slug);
-            AppDto::of(e.project.slug(), e.short_name(), a, view.as_deref())
+            AppDto::of(e.project.slug(), e.short_name(), a, view.as_deref()).with_exposure(&state.projections)
         })
         .collect();
     Ok(Json(items))
@@ -128,7 +128,8 @@ pub async fn get(
         a.env.short_name(),
         &a.app,
         a.view.as_deref(),
-    );
+    )
+    .with_exposure(&state.projections);
     if let Some(spec) = desired_spec(&a.app) {
         dto.env = spec.env.iter().map(|e| from_crd_env(e, with_values)).collect();
     }

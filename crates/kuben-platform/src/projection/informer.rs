@@ -7,17 +7,25 @@ use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     Api, Client, Resource, ResourceExt,
+    api::{ApiResource, DynamicObject, GroupVersionKind},
     runtime::{WatchStreamExt, watcher},
 };
 use kuben_crd::{App, Environment, Project, labels};
 use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 
-use super::{AppView, EnvironmentView, PodView, ProjectView, Projections};
-use crate::registry::ClusterRegistry;
+use super::{AppView, CertificateView, EnvironmentView, PodView, ProjectView, Projections, RouteView};
+use crate::{
+    controller::gateway::TLS_SECRET_PREFIX,
+    discovery::{CERT_MANAGER_GROUP, GATEWAY_GROUP},
+    registry::ClusterRegistry,
+};
 
 /// Page size for the initial LIST. Keeps CPU bursts bounded on large clusters.
 const PAGE_SIZE: u32 = 500;
+
+/// How often an optional kind's API group is looked for until it appears.
+const OPTIONAL_CHECK: Duration = Duration::from_mins(1);
 
 /// How long the informers get for their first LIST before they are started
 /// over. A request that hangs on an API server that has only just come up
@@ -37,7 +45,9 @@ pub async fn run(
         () = watch_pods(client.clone(), projections.clone(), token.child_token()) => Ok(()),
         () = watch_projects(client.clone(), projections.clone(), token.child_token()) => Ok(()),
         () = watch_environments(client.clone(), projections.clone(), token.child_token()) => Ok(()),
-        () = watch_apps(client, projections, token.child_token()) => Ok(()),
+        () = watch_apps(client.clone(), projections.clone(), token.child_token()) => Ok(()),
+        () = watch_routes(client.clone(), projections.clone(), token.child_token()) => Ok(()),
+        () = watch_certificates(client, projections, token.child_token()) => Ok(()),
         e = deadline => Err(e),
         () = token.cancelled() => Ok(()),
     }
@@ -65,6 +75,20 @@ where
     F: FnMut(Event<K>) + Send,
 {
     let kind = K::kind(&K::DynamicType::default()).into_owned();
+    watch_named(api, cfg, &kind, token, &mut on_event).await;
+}
+
+/// [`watch_kind`] for any object, named `kind` in the logs.
+async fn watch_named<K, F>(
+    api: Api<K>,
+    cfg: watcher::Config,
+    kind: &str,
+    token: CancellationToken,
+    on_event: &mut F,
+) where
+    K: Resource + Clone + DeserializeOwned + Debug + Send + 'static,
+    F: FnMut(Event<K>) + Send,
+{
     let stream = watcher(api, cfg)
         .default_backoff()
         .modify(|obj| obj.managed_fields_mut().clear())
@@ -169,6 +193,81 @@ async fn watch_apps(client: Client, projections: Arc<Projections>, token: Cancel
         Event::Delete(a) => {
             projections.remove_app(&format!("{}/{}", a.namespace().unwrap_or_default(), a.name_any()));
         }
+    })
+    .await;
+}
+
+/// Watch a kind that may not be installed (Gateway API, cert-manager): look
+/// for its API group every minute and watch once it is served. Optional kinds
+/// never hold back readiness.
+async fn watch_optional<F>(
+    client: Client,
+    resource: ApiResource,
+    cfg: watcher::Config,
+    token: CancellationToken,
+    mut on_event: F,
+) where
+    F: FnMut(Event<DynamicObject>) + Send,
+{
+    loop {
+        match client.list_api_groups().await {
+            Ok(groups) if groups.groups.iter().any(|g| g.name == resource.group) => break,
+            Ok(_) => {}
+            Err(e) => tracing::debug!(error = %e, group = %resource.group, "cannot list API groups"),
+        }
+        tokio::select! {
+            () = token.cancelled() => return,
+            () = tokio::time::sleep(OPTIONAL_CHECK) => {}
+        }
+    }
+    let kind = resource.kind.clone();
+    let api = Api::<DynamicObject>::all_with(client, &resource);
+    watch_named(api, cfg, &kind, token, &mut on_event).await;
+}
+
+async fn watch_routes(client: Client, projections: Arc<Projections>, token: CancellationToken) {
+    let gvk = GroupVersionKind::gvk(GATEWAY_GROUP, "v1", "HTTPRoute");
+    let resource = ApiResource::from_gvk_with_plural(&gvk, "httproutes");
+    let cfg = watcher::Config::default()
+        .labels(labels::MANAGED_SELECTOR)
+        .page_size(PAGE_SIZE);
+    let mut staging: Vec<RouteView> = Vec::new();
+    watch_optional(client, resource, cfg, token, move |ev| match ev {
+        Event::Init => staging.clear(),
+        Event::InitApply(r) => staging.push(RouteView::from(&r)),
+        Event::InitDone => {
+            tracing::info!(routes = staging.len(), "route informer synced");
+            projections.replace_routes(std::mem::take(&mut staging));
+        }
+        Event::Apply(r) => projections.upsert_route(RouteView::from(&r)),
+        Event::Delete(r) => {
+            projections.remove_route(&format!("{}/{}", r.namespace().unwrap_or_default(), r.name_any()));
+        }
+    })
+    .await;
+}
+
+/// Only the certificates Kuben's gateway orders; a cluster may hold many
+/// others.
+async fn watch_certificates(client: Client, projections: Arc<Projections>, token: CancellationToken) {
+    let gvk = GroupVersionKind::gvk(CERT_MANAGER_GROUP, "v1", "Certificate");
+    let resource = ApiResource::from_gvk_with_plural(&gvk, "certificates");
+    let cfg = watcher::Config::default().page_size(PAGE_SIZE);
+    let ours = |c: &DynamicObject| c.name_any().starts_with(TLS_SECRET_PREFIX);
+    let mut staging: Vec<CertificateView> = Vec::new();
+    watch_optional(client, resource, cfg, token, move |ev| match ev {
+        Event::Init => staging.clear(),
+        Event::InitApply(c) if ours(&c) => staging.push(CertificateView::from(&c)),
+        Event::InitDone => projections.replace_certificates(std::mem::take(&mut staging)),
+        Event::Apply(c) if ours(&c) => projections.upsert_certificate(CertificateView::from(&c)),
+        Event::Delete(c) if ours(&c) => {
+            projections.remove_certificate(&format!(
+                "{}/{}",
+                c.namespace().unwrap_or_default(),
+                c.name_any()
+            ));
+        }
+        Event::InitApply(_) | Event::Apply(_) | Event::Delete(_) => {}
     })
     .await;
 }

@@ -34,7 +34,7 @@ use kuben_core::{
     ops::Generation,
 };
 use kuben_crd::{App, AppSpec, Protocol, Runtime, Source};
-use kuben_platform::projection::{AppView, PodPhase, PodView};
+use kuben_platform::projection::{AppView, ExposureView, PodPhase, PodView, Projections};
 use kuben_store::repo::{
     AppRecord, Delivery, PortableRelease, RunReason, RuntimeStatus, StartDeployment, Started, Tenant,
 };
@@ -150,9 +150,62 @@ pub struct AppDto {
     pub domains: Vec<String>,
     pub volumes: Vec<VolumeDto>,
     pub created_at: Option<String>,
+    /// Whether the app can be reached through the gateway, apart from
+    /// whether it runs (null while it has no route).
+    pub exposure: Option<ExposureDto>,
+}
+
+/// How an app is reached through the gateway.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ExposureDto {
+    /// The gateway accepted the route and resolved its references; null
+    /// until a gateway controller answered.
+    pub routed: Option<bool>,
+    pub message: Option<String>,
+    pub hosts: Vec<HostDto>,
+}
+
+/// One hostname of an app.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HostDto {
+    pub host: String,
+    /// `auto` (certificate from the cluster issuer), `secret` (the app's own
+    /// certificate) or `none` (plain HTTP).
+    pub tls: String,
+    /// For `auto` hosts with a certificate of their own: whether it is issued.
+    pub certificate_ready: Option<bool>,
+    pub certificate_message: Option<String>,
+}
+
+impl From<ExposureView> for ExposureDto {
+    fn from(v: ExposureView) -> Self {
+        Self {
+            routed: v.accepted,
+            message: v.message,
+            hosts: v
+                .hosts
+                .into_iter()
+                .map(|h| HostDto {
+                    host: h.host,
+                    tls: h.tls.to_owned(),
+                    certificate_ready: h.certificate_ready,
+                    certificate_message: h.certificate_message,
+                })
+                .collect(),
+        }
+    }
 }
 
 impl AppDto {
+    /// Add what the cluster says about reaching the app.
+    #[must_use]
+    pub fn with_exposure(mut self, projections: &Projections) -> Self {
+        self.exposure = projections
+            .exposure(&self.namespace, &self.name)
+            .map(ExposureDto::from);
+        self
+    }
+
     fn from_view(v: &AppView, project: &str, environment: &str) -> Self {
         Self {
             name: v.name.clone(),
@@ -206,6 +259,7 @@ impl AppDto {
                 })
                 .collect(),
             created_at: v.created_at.clone(),
+            exposure: None,
         }
     }
 

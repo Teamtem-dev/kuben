@@ -606,6 +606,7 @@ export type components = {
             domains: string[];
             volumes: components["schemas"]["VolumeDto"][];
             created_at?: string | null;
+            exposure?: null | components["schemas"]["ExposureDto"];
         };
         AuditEventDto: {
             /** Format: int64 */
@@ -813,6 +814,16 @@ export type components = {
             deletion_scheduled_at?: string | null;
             created_at?: string | null;
         };
+        /** @description How an app is reached through the gateway. */
+        ExposureDto: {
+            /**
+             * @description The gateway accepted the route and resolved its references; null
+             *     until a gateway controller answered.
+             */
+            routed?: boolean | null;
+            message?: string | null;
+            hosts: components["schemas"]["HostDto"][];
+        };
         HealthDetails: {
             ready: boolean;
             database: string;
@@ -821,6 +832,18 @@ export type components = {
             seq: number;
             pods: number;
             subsystems: Record<string, never>;
+        };
+        /** @description One hostname of an app. */
+        HostDto: {
+            host: string;
+            /**
+             * @description `auto` (certificate from the cluster issuer), `secret` (the app's own
+             *     certificate) or `none` (plain HTTP).
+             */
+            tls: string;
+            /** @description For `auto` hosts with a certificate of their own: whether it is issued. */
+            certificate_ready?: boolean | null;
+            certificate_message?: string | null;
         };
         InviteMember: {
             /** @example carol@example.com */

@@ -37,11 +37,11 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     Ctx, condition, is_not_found,
-    resources::{GatewayRef, Platform, hostnames_for},
+    resources::{DomainClaim, GatewayRef, Platform, TlsMode},
 };
 use crate::{
     discovery::{self, Availability, ClusterFacts},
-    projection::{AppView, Projections},
+    projection::{Projections, RouteView},
 };
 
 pub const HTTP_LISTENER: &str = "http";
@@ -75,9 +75,19 @@ pub fn host_listener_name(host: &str) -> String {
     format!("h-{}", host_hash(host))
 }
 
+/// Prefix of the certificate Secrets (and cert-manager Certificates) Kuben's
+/// gateway orders.
+pub const TLS_SECRET_PREFIX: &str = "kuben-tls-";
+
 #[must_use]
 pub fn host_secret_name(host: &str) -> String {
-    format!("kuben-tls-{}", host_hash(host))
+    format!("{TLS_SECRET_PREFIX}{}", host_hash(host))
+}
+
+/// The plain-HTTP listener of a `tls: none` host.
+#[must_use]
+pub fn plain_listener_name(host: &str) -> String {
+    format!("p-{}", host_hash(host))
 }
 
 /// `*.base` matches exactly one additional DNS label.
@@ -98,6 +108,17 @@ pub fn section_for_host(host: &str, platform: &Platform) -> String {
         WILDCARD_LISTENER.to_owned()
     } else {
         host_listener_name(host)
+    }
+}
+
+/// Listener an app route attaches to for `claim` while TLS is on: its own
+/// certificate always gets a listener of its own.
+#[must_use]
+pub fn section_for(claim: &DomainClaim, platform: &Platform) -> String {
+    match claim.mode() {
+        TlsMode::Auto => section_for_host(&claim.host, platform),
+        TlsMode::Secret(_) => host_listener_name(&claim.host),
+        TlsMode::Plain => plain_listener_name(&claim.host),
     }
 }
 
@@ -122,10 +143,10 @@ fn kuben_namespaces() -> Value {
     } } })
 }
 
-/// `hosts`: `(hostname, namespace)` for every routed app. Deterministic:
-/// the same input always yields the same listeners in the same order.
+/// `hosts`: every routed domain with its namespace. Deterministic: the same
+/// input always yields the same listeners in the same order.
 #[must_use]
-pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> ListenerPlan {
+pub fn plan_listeners(hosts: &[(DomainClaim, String)], platform: &Platform) -> ListenerPlan {
     let http_routes = if platform.tls {
         json!({ "namespaces": { "from": "Same" } })
     } else {
@@ -144,18 +165,21 @@ pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> Listen
         };
     }
 
-    let mut sorted: Vec<&(String, String)> = hosts.iter().collect();
+    let mut sorted: Vec<&(DomainClaim, String)> = hosts.iter().collect();
     sorted.sort();
-    let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut owners: BTreeMap<&str, (&str, TlsMode)> = BTreeMap::new();
     let mut conflicts = Vec::new();
-    for (host, ns) in sorted {
-        match owners.get(host.as_str()) {
-            Some(existing) if *existing != ns.as_str() => {
-                conflicts.push(format!("{host}: owned by {existing}, also requested by {ns}"));
+    for (claim, ns) in sorted {
+        match owners.get(claim.host.as_str()) {
+            Some((existing, _)) if *existing != ns.as_str() => {
+                conflicts.push(format!(
+                    "{}: owned by {existing}, also requested by {ns}",
+                    claim.host
+                ));
             }
             Some(_) => {}
             None => {
-                owners.insert(host, ns);
+                owners.insert(&claim.host, (ns, claim.mode()));
             }
         }
     }
@@ -170,24 +194,44 @@ pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> Listen
         }));
     }
     let mut skipped = Vec::new();
-    for (host, ns) in owners {
-        if covered_by_wildcard(host, platform) {
+    for (host, (ns, mode)) in owners {
+        if mode == TlsMode::Auto && covered_by_wildcard(host, platform) {
             continue;
         }
         if listeners.len() >= MAX_LISTENERS {
             skipped.push(host.to_owned());
             continue;
         }
-        listeners.push(json!({
-            "name": host_listener_name(host),
-            "protocol": "HTTPS",
-            "port": 443,
-            "hostname": host,
-            "tls": tls(&host_secret_name(host)),
-            "allowedRoutes": { "namespaces": { "from": "Selector", "selector": {
-                "matchLabels": { "kubernetes.io/metadata.name": ns }
-            } } },
-        }));
+        let only_owner = json!({ "namespaces": { "from": "Selector", "selector": {
+            "matchLabels": { "kubernetes.io/metadata.name": ns }
+        } } });
+        listeners.push(match mode {
+            TlsMode::Plain => json!({
+                "name": plain_listener_name(host),
+                "protocol": "HTTP",
+                "port": 80,
+                "hostname": host,
+                "allowedRoutes": only_owner,
+            }),
+            TlsMode::Auto | TlsMode::Secret(_) => {
+                let certificate = match &mode {
+                    // The app's own certificate, readable through its ReferenceGrant.
+                    TlsMode::Secret(secret) => json!({
+                        "mode": "Terminate",
+                        "certificateRefs": [{ "kind": "Secret", "name": secret, "namespace": ns }]
+                    }),
+                    _ => tls(&host_secret_name(host)),
+                };
+                json!({
+                    "name": host_listener_name(host),
+                    "protocol": "HTTPS",
+                    "port": 443,
+                    "hostname": host,
+                    "tls": certificate,
+                    "allowedRoutes": only_owner,
+                })
+            }
+        });
     }
     ListenerPlan {
         listeners,
@@ -334,24 +378,16 @@ pub fn readiness(live: &DynamicObject, platform: &Platform, facts: Option<&Clust
     }
 }
 
-/// `(hostname, namespace)` of every app whose web process is routed over HTTP.
+/// Every domain routed to `gateway`, with its route's namespace. Routes of
+/// both delivery paths carry their domains (M2.3).
 #[must_use]
-pub fn routed_hosts(apps: &[Arc<AppView>], platform: &Platform) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for app in apps {
-        let routed = app
-            .processes
-            .iter()
-            .any(|p| p.port.is_some() && p.schedule.is_none() && p.protocol == "http");
-        if !routed {
-            continue;
-        }
-        let domains = app.domains.iter().map(String::as_str);
-        for host in hostnames_for(&app.name, app.environment.as_deref(), domains, platform) {
-            out.push((host, app.namespace.clone()));
-        }
-    }
-    out
+pub fn routed_hosts(routes: &[Arc<RouteView>], gateway: &GatewayRef) -> Vec<(DomainClaim, String)> {
+    let key = format!("{}/{}", gateway.namespace, gateway.name);
+    routes
+        .iter()
+        .filter(|r| r.gateways.contains(&key))
+        .flat_map(|r| r.domains.iter().map(|d| (d.clone(), r.namespace.clone())))
+        .collect()
 }
 
 fn dynamic_api(ctx: &Ctx, ns: &str, kind: &str, plural: &str) -> Api<DynamicObject> {
@@ -446,7 +482,7 @@ async fn reconcile(ctx: &Ctx, projections: &Projections, last: &mut Option<Value
         return report(ctx, Some(verdict)).await;
     }
 
-    let plan = plan_listeners(&routed_hosts(&projections.apps(), &platform), &platform);
+    let plan = plan_listeners(&routed_hosts(&projections.routes(), gateway), &platform);
     for conflict in &plan.conflicts {
         tracing::warn!(%conflict, "hostname requested by two namespaces; the first keeps it");
     }
@@ -520,7 +556,6 @@ mod tests {
     use kuben_crd::KubenConfigSpec;
 
     use super::*;
-    use crate::projection::ProcessView;
 
     fn platform(wildcard: bool) -> Platform {
         let mut spec = json!({
@@ -536,10 +571,18 @@ mod tests {
         ))
     }
 
-    fn hosts(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    fn hosts(pairs: &[(&str, &str)]) -> Vec<(DomainClaim, String)> {
         pairs
             .iter()
-            .map(|(h, n)| ((*h).to_owned(), (*n).to_owned()))
+            .map(|(h, n)| {
+                (
+                    DomainClaim {
+                        host: (*h).to_owned(),
+                        tls: "auto".into(),
+                    },
+                    (*n).to_owned(),
+                )
+            })
             .collect()
     }
 
@@ -617,9 +660,9 @@ mod tests {
         assert_eq!(plan.listeners.len(), 2, "http + wildcard only");
         assert_eq!(plan.listeners[1]["hostname"], "*.apps.example.com");
 
-        let many: Vec<(String, String)> = (0..70)
-            .map(|i| (format!("h{i}.acme.com"), "kb-x".to_owned()))
-            .collect();
+        let names: Vec<String> = (0..70).map(|i| format!("h{i}.acme.com")).collect();
+        let pairs: Vec<(&str, &str)> = names.iter().map(|n| (n.as_str(), "kb-x")).collect();
+        let many = hosts(&pairs);
         let capped = plan_listeners(&many, &platform(false));
         assert_eq!(capped.listeners.len(), MAX_LISTENERS);
         assert_eq!(capped.skipped.len(), 70 - (MAX_LISTENERS - 1));
@@ -762,54 +805,99 @@ mod tests {
         assert_eq!(readiness(&fresh, &owned, None).1, "Pending");
     }
 
+    fn route(namespace: &str, gateway: &str, domains: &[(&str, &str)]) -> Arc<RouteView> {
+        Arc::new(RouteView {
+            key: format!("{namespace}/api"),
+            namespace: namespace.into(),
+            name: "api".into(),
+            gateways: vec![gateway.into()],
+            sections: vec![],
+            domains: domains
+                .iter()
+                .map(|(host, tls)| DomainClaim {
+                    host: (*host).into(),
+                    tls: (*tls).into(),
+                })
+                .collect(),
+            accepted: None,
+            message: None,
+        })
+    }
+
     #[test]
-    fn only_http_web_processes_are_routed() {
-        let view = |name: &str, protocol: &str, schedule: Option<&str>| {
-            Arc::new(AppView {
-                key: format!("kb-shop-prod/{name}"),
-                namespace: "kb-shop-prod".into(),
-                name: name.into(),
-                uid: None,
-                org: None,
-                project: Some("shop".into()),
-                environment: Some("shop-prod".into()),
-                image: None,
-                git_repo: None,
-                url: None,
-                ready: true,
-                reason: None,
-                message: None,
-                processes: vec![ProcessView {
-                    name: "web".into(),
-                    command: vec![],
-                    port: schedule.is_none().then_some(80),
-                    size: "small".into(),
-                    min_replicas: 1,
-                    max_replicas: 1,
-                    schedule: schedule.map(str::to_owned),
-                    protocol: protocol.into(),
-                }],
-                env: vec![],
-                domains: vec![format!("{name}.acme.com")],
-                volumes: vec![],
-                created_at: None,
-            })
-        };
-        let apps = vec![
-            view("api", "http", None),
-            view("db", "tcp", None),
-            view("job", "http", Some("@daily")),
+    fn hosts_come_from_the_routes_of_this_gateway() {
+        let gw = platform(false).gateway.expect("gateway");
+        let routes = vec![
+            route(
+                "kb-a",
+                "kuben-system/kuben",
+                &[("api.acme.com", "auto"), ("old.acme.com", "none")],
+            ),
+            route("kb-b", "other/edge", &[("edge.acme.com", "auto")]),
         ];
-        let got = routed_hosts(&apps, &platform(false));
+        let got = routed_hosts(&routes, &gw);
+        assert_eq!(got.len(), 2, "only routes of Kuben's gateway: {got:?}");
+        assert!(got.iter().all(|(_, ns)| ns == "kb-a"));
+    }
+
+    #[test]
+    fn each_tls_mode_gets_its_listener() {
+        let p = platform(false);
+        let claim = |host: &str, tls: &str| DomainClaim {
+            host: host.into(),
+            tls: tls.into(),
+        };
+        let hosts = vec![
+            (claim("auto.acme.com", "auto"), "kb-a".to_owned()),
+            (claim("plain.acme.com", "none"), "kb-a".to_owned()),
+            (claim("own.acme.com", "acme-cert"), "kb-a".to_owned()),
+        ];
+        let plan = plan_listeners(&hosts, &p);
+        let by_host = |host: &str| {
+            plan.listeners
+                .iter()
+                .find(|l| l["hostname"] == host)
+                .cloned()
+                .expect("listener")
+        };
+        let http_only = by_host("plain.acme.com");
         assert_eq!(
-            got,
-            vec![
-                ("api.acme.com".to_owned(), "kb-shop-prod".to_owned()),
-                (
-                    "api-shop-prod.apps.example.com".to_owned(),
-                    "kb-shop-prod".to_owned()
-                ),
-            ]
+            (
+                http_only["name"].as_str(),
+                http_only["protocol"].as_str(),
+                http_only["port"].as_i64()
+            ),
+            (
+                Some(plain_listener_name("plain.acme.com").as_str()),
+                Some("HTTP"),
+                Some(80)
+            )
+        );
+        let own = by_host("own.acme.com");
+        assert_eq!(
+            own["tls"]["certificateRefs"][0],
+            json!({ "kind": "Secret", "name": "acme-cert", "namespace": "kb-a" })
+        );
+        assert_eq!(
+            by_host("auto.acme.com")["tls"]["certificateRefs"][0]["name"],
+            host_secret_name("auto.acme.com")
+        );
+        assert_eq!(
+            section_for(&claim("plain.acme.com", "none"), &p),
+            plain_listener_name("plain.acme.com")
+        );
+        assert_eq!(
+            section_for(&claim("own.acme.com", "acme-cert"), &p),
+            host_listener_name("own.acme.com")
+        );
+
+        // A wildcard covers generated hosts but never an app's own certificate.
+        let wild = platform(true);
+        let generated = "api-shop-prod.apps.example.com";
+        assert_eq!(section_for(&claim(generated, "auto"), &wild), WILDCARD_LISTENER);
+        assert_eq!(
+            section_for(&claim(generated, "acme-cert"), &wild),
+            host_listener_name(generated)
         );
     }
 }

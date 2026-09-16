@@ -102,6 +102,16 @@ helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reus
   --set platform.wildcardTlsSecret=apps-wildcard
 ```
 
+## TLS per domain
+
+Each custom domain of an app sets `tls`:
+
+- **`auto`** (the default): a certificate from the ClusterIssuer, on a listener of its own. Generated hostnames are always `auto`.
+- **`none`:** plain HTTP only. The hostname gets an HTTP listener of its own, so the platform's HTTPS redirect does not apply to it.
+- **the name of a Secret** in the app's namespace: the app brings its own certificate. Kuben creates a `ReferenceGrant` named `<app>-tls` that lets the Gateway read exactly that Secret, and the listener uses it. cert-manager does not touch it.
+
+The route carries its domains in the annotation `kuben.dev/domains`, so the Gateway gets the same listeners whether the App controller or the cluster's agent wrote the route.
+
 ## Honest limits
 
 - A Gateway holds at most **64 listeners**; Kuben uses at most 60. Beyond that, use the wildcard listener for generated hosts. ListenerSet support (experimental in Gateway API) is on the roadmap.
@@ -118,6 +128,8 @@ Each app reports its exposure in the `Exposed` condition:
 | `NoGateway` | neither `KubenConfig.spec.gatewayClassName` nor `spec.gateway` is set; the `Gateway` condition of `KubenConfig` says more |
 | `NoHostname` | the app has no domain and no base domain is configured |
 | `GatewayAPIMissing` | the Gateway API CRDs are not installed |
+
+The API reports reachability apart from health (an app can run and still be unreachable). Each app in `GET …/apps` and `GET …/apps/{app}` has an `exposure` object: `routed` says whether the Gateway accepted the route and resolved its references, and each host lists its `tls` mode and, for `auto` hosts, whether its certificate is issued (`certificateReady`, with cert-manager's message while it is not).
 
 The **Check DNS** button (`GET …/apps/{app}/domains`) tells you whether each hostname already points at the Gateway. See [Custom domains and HTTPS](/docs/guides/custom-domains/) for the user-facing flow.
 

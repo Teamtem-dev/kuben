@@ -52,7 +52,7 @@ pub struct Kind {
 }
 
 /// Every kind the agent applies; anything else in a plan is refused.
-pub const KINDS: [Kind; 6] = [
+pub const KINDS: [Kind; 7] = [
     Kind {
         api_version: "v1",
         kind: "PersistentVolumeClaim",
@@ -81,6 +81,12 @@ pub const KINDS: [Kind; 6] = [
         api_version: "v1",
         kind: "Service",
         plural: "services",
+        prune: true,
+    },
+    Kind {
+        api_version: "gateway.networking.k8s.io/v1beta1",
+        kind: "ReferenceGrant",
+        plural: "referencegrants",
         prune: true,
     },
     Kind {
@@ -329,7 +335,9 @@ impl KubeExecutor {
             {
                 Ok(_) => {}
                 // The Gateway API is not installed: nothing is routed.
-                Err(e) if is_status(&e, 404) && allowed.kind == "HTTPRoute" => {}
+                Err(e)
+                    if is_status(&e, 404)
+                        && allowed.api_version.starts_with("gateway.networking.k8s.io/") => {}
                 Err(e) => return Err(Refused::new("KubernetesError", format!("{kind}/{name}: {e}"))),
             }
         }

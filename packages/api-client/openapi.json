@@ -2593,6 +2593,17 @@
               "string",
               "null"
             ]
+          },
+          "exposure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExposureDto",
+                "description": "Whether the app can be reached through the gateway, apart from\nwhether it runs (null while it has no route)."
+              }
+            ]
           }
         }
       },
@@ -3137,6 +3148,34 @@
           }
         }
       },
+      "ExposureDto": {
+        "type": "object",
+        "description": "How an app is reached through the gateway.",
+        "required": [
+          "hosts"
+        ],
+        "properties": {
+          "routed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The gateway accepted the route and resolved its references; null\nuntil a gateway controller answered."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostDto"
+            }
+          }
+        }
+      },
       "HealthDetails": {
         "type": "object",
         "required": [
@@ -3168,6 +3207,36 @@
           },
           "subsystems": {
             "type": "object"
+          }
+        }
+      },
+      "HostDto": {
+        "type": "object",
+        "description": "One hostname of an app.",
+        "required": [
+          "host",
+          "tls"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "tls": {
+            "type": "string",
+            "description": "`auto` (certificate from the cluster issuer), `secret` (the app's own\ncertificate) or `none` (plain HTTP)."
+          },
+          "certificate_ready": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "For `auto` hosts with a certificate of their own: whether it is issued."
+          },
+          "certificate_message": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

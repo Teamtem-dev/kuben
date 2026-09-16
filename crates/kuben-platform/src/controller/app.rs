@@ -59,6 +59,8 @@ pub(crate) struct Desired {
     pub(crate) volumes: Vec<PersistentVolumeClaim>,
     pub(crate) service: Option<Service>,
     pub(crate) route: Option<serde_json::Value>,
+    /// Lets the Gateway read the app's own certificate Secrets.
+    pub(crate) grant: Option<serde_json::Value>,
     /// The web process is HTTP and should be reachable through the gateway.
     pub(crate) exposes_http: bool,
 }
@@ -72,6 +74,7 @@ pub(crate) fn build(app: &App, platform: &Platform, owner: &OwnerReference) -> R
         volumes: resources::persistent_volume_claims(app),
         service: resources::service(app, owner)?,
         route: resources::http_route(app, platform, owner)?,
+        grant: resources::reference_grant(app, platform, owner)?,
         exposes_http: matches!(resources::web_process(app)?, Some((_, p)) if p.protocol.is_http()),
     })
 }
@@ -139,7 +142,10 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
         None => delete_if_exists(&services, &app.name_any()).await?,
     }
 
-    let routed = sync_route(client, &ns, &app.name_any(), desired.route.as_ref()).await?;
+    let grant_name = format!("{}{}", app.name_any(), resources::GRANT_SUFFIX);
+    sync_gateway_object(client, &ns, REFERENCE_GRANT, &grant_name, desired.grant.as_ref()).await?;
+    let routed =
+        sync_gateway_object(client, &ns, HTTP_ROUTE, &app.name_any(), desired.route.as_ref()).await?;
     let (ready, mut reason, message) = rollout(&deployments, &desired.deployments).await?;
     if ready && desired.deployments.is_empty() && !desired.cron_jobs.is_empty() {
         reason = "Scheduled";
@@ -223,18 +229,24 @@ where
     }
 }
 
-/// Apply or remove the HTTPRoute. `Ok(false)` when there is nothing routed
-/// (no route desired, or the Gateway API CRDs are missing).
-async fn sync_route(
+/// A Gateway API kind the App controller writes: `(version, kind, plural)`.
+type GatewayKind = (&'static str, &'static str, &'static str);
+const HTTP_ROUTE: GatewayKind = ("v1", "HTTPRoute", "httproutes");
+const REFERENCE_GRANT: GatewayKind = ("v1beta1", "ReferenceGrant", "referencegrants");
+
+/// Apply `body`, or delete the object when there is none. False when the
+/// Gateway API (or this kind of it) is not installed.
+async fn sync_gateway_object(
     client: &Client,
     ns: &str,
+    (version, kind, plural): GatewayKind,
     name: &str,
-    route: Option<&serde_json::Value>,
+    body: Option<&serde_json::Value>,
 ) -> Result<bool> {
-    let gvk = GroupVersionKind::gvk("gateway.networking.k8s.io", "v1", "HTTPRoute");
-    let resource = ApiResource::from_gvk_with_plural(&gvk, "httproutes");
+    let gvk = GroupVersionKind::gvk("gateway.networking.k8s.io", version, kind);
+    let resource = ApiResource::from_gvk_with_plural(&gvk, plural);
     let api: Api<DynamicObject> = Api::namespaced_with(client.clone(), ns, &resource);
-    let Some(body) = route else {
+    let Some(body) = body else {
         delete_if_exists(&api, name).await?;
         return Ok(false);
     };

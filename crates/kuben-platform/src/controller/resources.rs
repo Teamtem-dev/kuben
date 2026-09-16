@@ -29,6 +29,7 @@ use k8s_openapi::{
 };
 use kube::ResourceExt;
 use kuben_crd::{App, Environment, EnvironmentType, KubenConfigSpec, Process, SizePreset, labels};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// Finalizer that implements the environment deletion policy.
@@ -45,6 +46,67 @@ pub const RETAIN: &str = "kuben.dev/retain";
 
 /// Port every app Service listens on; the gateway routes here.
 pub const SERVICE_PORT: i32 = 80;
+/// Annotation on an app's `HTTPRoute`: its domains and how each is secured
+/// (M2.3), read by the gateway controller and the exposure view whichever
+/// path (App controller or agent) wrote the route.
+pub const DOMAINS_ANNOTATION: &str = "kuben.dev/domains";
+/// Name suffix of the `ReferenceGrant` that lets the Gateway read an app's
+/// own certificate Secrets.
+pub const GRANT_SUFFIX: &str = "-tls";
+
+/// How one hostname is served.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TlsMode {
+    /// A certificate from the configured ClusterIssuer.
+    Auto,
+    /// Plain HTTP only (`tls: none`).
+    Plain,
+    /// The app's own certificate, in this Secret of its namespace.
+    Secret(String),
+}
+
+impl TlsMode {
+    /// `auto` (or empty), `none`, or a Secret name.
+    pub fn parse(tls: &str) -> Option<Self> {
+        match tls {
+            "" | "auto" => Some(Self::Auto),
+            "none" => Some(Self::Plain),
+            name if is_dns_label(name) => Some(Self::Secret(name.to_owned())),
+            _ => None,
+        }
+    }
+}
+
+/// A DNS-1123 subdomain, as Kubernetes object names are.
+fn is_dns_label(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 253
+        && name.split('.').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                && !part.starts_with('-')
+                && !part.ends_with('-')
+        })
+}
+
+/// A hostname of an app and its `tls` setting, as the route annotation
+/// carries them.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct DomainClaim {
+    pub host: String,
+    pub tls: String,
+}
+
+impl DomainClaim {
+    /// The TLS mode; an unreadable setting counts as `auto` (validation
+    /// refuses it before anything is built).
+    #[must_use]
+    pub fn mode(&self) -> TlsMode {
+        TlsMode::parse(&self.tls).unwrap_or(TlsMode::Auto)
+    }
+}
 
 /// Why an App cannot be turned into workloads (surfaced as a condition).
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -65,6 +127,8 @@ pub enum BuildError {
     ScheduledWithPort(String),
     #[error("process `{process}` has an invalid schedule `{schedule}`")]
     InvalidSchedule { process: String, schedule: String },
+    #[error("domain `{host}` has tls `{tls}`: use `auto`, `none` or the name of a Secret")]
+    InvalidDomainTls { host: String, tls: String },
 }
 
 impl BuildError {
@@ -80,6 +144,7 @@ impl BuildError {
             Self::VolumeNeedsSingleReplica => "VolumeNeedsSingleReplica",
             Self::ScheduledWithPort(_) => "ScheduledWithPort",
             Self::InvalidSchedule { .. } => "InvalidSchedule",
+            Self::InvalidDomainTls { .. } => "InvalidDomainTls",
         }
     }
 }
@@ -446,6 +511,14 @@ pub fn validate(app: &App) -> Result<(), BuildError> {
                     schedule: schedule.clone(),
                 });
             }
+        }
+    }
+    for domain in &app.spec.domains {
+        if TlsMode::parse(&domain.tls).is_none() {
+            return Err(BuildError::InvalidDomainTls {
+                host: domain.host.clone(),
+                tls: domain.tls.clone(),
+            });
         }
     }
     if !app.spec.volumes.is_empty() {
@@ -989,13 +1062,51 @@ pub fn hostnames(app: &App, platform: &Platform) -> Vec<String> {
     )
 }
 
-/// Public URL shown in the UI (first hostname).
+/// Hostnames with their TLS setting: explicit domains first, then the
+/// generated one (always `auto`).
+#[must_use]
+pub fn domain_claims(app: &App, platform: &Platform) -> Vec<DomainClaim> {
+    let explicit: BTreeMap<String, &str> = app
+        .spec
+        .domains
+        .iter()
+        .map(|d| (d.host.to_ascii_lowercase(), d.tls.as_str()))
+        .collect();
+    hostnames(app, platform)
+        .into_iter()
+        .map(|host| {
+            let tls = explicit.get(&host).copied().unwrap_or("auto");
+            DomainClaim {
+                tls: if tls.is_empty() {
+                    "auto".into()
+                } else {
+                    tls.to_owned()
+                },
+                host,
+            }
+        })
+        .collect()
+}
+
+/// Whether `claim` is served over HTTPS on `platform`.
+#[must_use]
+pub fn secured(claim: &DomainClaim, platform: &Platform) -> bool {
+    platform.tls && claim.mode() != TlsMode::Plain
+}
+
+/// Public URL shown in the UI (first hostname, with the scheme it is
+/// served with).
 #[must_use]
 pub fn url(app: &App, platform: &Platform) -> Option<String> {
-    let scheme = if platform.tls { "https" } else { "http" };
-    hostnames(app, platform)
-        .first()
-        .map(|h| format!("{scheme}://{h}"))
+    domain_claims(app, platform).first().map(|claim| {
+        let scheme = if secured(claim, platform) { "https" } else { "http" };
+        format!("{scheme}://{}", claim.host)
+    })
+}
+
+/// The app's web process is served over HTTP through the gateway.
+fn routes_http(app: &App) -> Result<bool, BuildError> {
+    Ok(matches!(web_process(app)?, Some((_, p)) if p.protocol.is_http()))
 }
 
 /// Gateway API `HTTPRoute` (as JSON: the Gateway API types are not part of
@@ -1010,18 +1121,17 @@ pub fn http_route(
     let Some(gateway) = &platform.gateway else {
         return Ok(None);
     };
-    match web_process(app)? {
-        Some((_, p)) if p.protocol.is_http() => {}
-        _ => return Ok(None),
+    if !routes_http(app)? {
+        return Ok(None);
     }
-    let hosts = hostnames(app, platform);
-    if hosts.is_empty() {
+    let claims = domain_claims(app, platform);
+    if claims.is_empty() {
         return Ok(None);
     }
     let parent_refs: Vec<serde_json::Value> = if platform.tls {
-        let sections: BTreeSet<String> = hosts
+        let sections: BTreeSet<String> = claims
             .iter()
-            .map(|h| super::gateway::section_for_host(h, platform))
+            .map(|c| super::gateway::section_for(c, platform))
             .collect();
         sections
             .into_iter()
@@ -1030,6 +1140,8 @@ pub fn http_route(
     } else {
         vec![json!({ "name": gateway.name, "namespace": gateway.namespace })]
     };
+    let hosts: Vec<&str> = claims.iter().map(|c| c.host.as_str()).collect();
+    let domains = serde_json::to_string(&claims).unwrap_or_default();
     Ok(Some(json!({
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "HTTPRoute",
@@ -1037,6 +1149,7 @@ pub fn http_route(
             "name": app.name_any(),
             "namespace": app.namespace(),
             "labels": app_labels(app, None),
+            "annotations": { DOMAINS_ANNOTATION: domains },
             "ownerReferences": [owner],
         },
         "spec": {
@@ -1046,6 +1159,50 @@ pub fn http_route(
                 "matches": [{ "path": { "type": "PathPrefix", "value": "/" } }],
                 "backendRefs": [{ "name": app.name_any(), "port": SERVICE_PORT }],
             }],
+        },
+    })))
+}
+
+/// A `ReferenceGrant` that lets the Gateway read the Secrets of the app's
+/// own certificates (`tls: <secret>`), in the app's namespace. `None` when no
+/// domain brings its own certificate or TLS is off.
+pub fn reference_grant(
+    app: &App,
+    platform: &Platform,
+    owner: &OwnerReference,
+) -> Result<Option<serde_json::Value>, BuildError> {
+    let Some(gateway) = &platform.gateway else {
+        return Ok(None);
+    };
+    if !platform.tls || !routes_http(app)? {
+        return Ok(None);
+    }
+    let secrets: BTreeSet<String> = domain_claims(app, platform)
+        .iter()
+        .filter_map(|c| match c.mode() {
+            TlsMode::Secret(name) => Some(name),
+            TlsMode::Auto | TlsMode::Plain => None,
+        })
+        .collect();
+    if secrets.is_empty() {
+        return Ok(None);
+    }
+    let to: Vec<serde_json::Value> = secrets
+        .into_iter()
+        .map(|name| json!({ "group": "", "kind": "Secret", "name": name }))
+        .collect();
+    Ok(Some(json!({
+        "apiVersion": "gateway.networking.k8s.io/v1beta1",
+        "kind": "ReferenceGrant",
+        "metadata": {
+            "name": format!("{}{GRANT_SUFFIX}", app.name_any()),
+            "namespace": app.namespace(),
+            "labels": app_labels(app, None),
+            "ownerReferences": [owner],
+        },
+        "spec": {
+            "from": [{ "group": "gateway.networking.k8s.io", "kind": "Gateway", "namespace": gateway.namespace }],
+            "to": to,
         },
     })))
 }
@@ -1465,5 +1622,89 @@ mod tests {
         let p = Platform::default();
         assert!(p.size("small").is_some());
         assert!(p.gateway.is_none() && !p.tls);
+    }
+
+    #[test]
+    fn domains_carry_their_tls_mode_into_the_route_and_a_grant() {
+        let a = app(json!({
+            "source": { "image": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+            "runtime": { "processes": { "web": { "port": 3000 } } },
+            "domains": [
+                { "host": "Shop.acme.com" },
+                { "host": "legacy.acme.com", "tls": "none" },
+                { "host": "own.acme.com", "tls": "acme-cert" }
+            ]
+        }));
+        validate(&a).expect("valid");
+        let p = platform();
+        let o = owner(&a);
+        let claims = domain_claims(&a, &p);
+        assert_eq!(
+            claims
+                .iter()
+                .map(|c| (c.host.as_str(), c.tls.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("shop.acme.com", "auto"),
+                ("legacy.acme.com", "none"),
+                ("own.acme.com", "acme-cert"),
+                ("api-shop-prod.apps.example.com", "auto"),
+            ]
+        );
+        assert_eq!(url(&a, &p).as_deref(), Some("https://shop.acme.com"));
+
+        let route = http_route(&a, &p, &o).expect("ok").expect("route");
+        let annotation = route["metadata"]["annotations"][DOMAINS_ANNOTATION]
+            .as_str()
+            .expect("annotation");
+        assert_eq!(
+            serde_json::from_str::<Vec<DomainClaim>>(annotation).expect("claims"),
+            claims
+        );
+        let sections: BTreeSet<&str> = route["spec"]["parentRefs"]
+            .as_array()
+            .expect("parents")
+            .iter()
+            .filter_map(|r| r["sectionName"].as_str())
+            .collect();
+        assert!(sections.contains(super::super::gateway::plain_listener_name("legacy.acme.com").as_str()));
+        assert!(sections.contains(super::super::gateway::host_listener_name("own.acme.com").as_str()));
+        assert_eq!(sections.len(), 4, "{sections:?}");
+
+        let grant = reference_grant(&a, &p, &o).expect("ok").expect("grant");
+        assert_eq!(grant["kind"], "ReferenceGrant");
+        assert_eq!(grant["metadata"]["name"], "api-tls");
+        assert_eq!(grant["spec"]["from"][0]["namespace"], "kuben-system");
+        assert_eq!(
+            grant["spec"]["to"],
+            json!([{ "group": "", "kind": "Secret", "name": "acme-cert" }])
+        );
+
+        // TLS unavailable: no grant, no listener names, plain URLs.
+        let mut off = platform();
+        off.tls = false;
+        assert!(reference_grant(&a, &off, &o).expect("ok").is_none());
+        let plain = http_route(&a, &off, &o).expect("ok").expect("route");
+        assert!(plain["spec"]["parentRefs"][0].get("sectionName").is_none());
+        assert_eq!(url(&a, &off).as_deref(), Some("http://shop.acme.com"));
+    }
+
+    #[test]
+    fn a_domain_tls_that_is_no_secret_name_is_refused() {
+        assert_eq!(TlsMode::parse(""), Some(TlsMode::Auto));
+        assert_eq!(TlsMode::parse("none"), Some(TlsMode::Plain));
+        assert_eq!(
+            TlsMode::parse("certs.acme"),
+            Some(TlsMode::Secret("certs.acme".into()))
+        );
+        for bad in ["Bad_Name", "-x", "a..b", "UPPER"] {
+            assert_eq!(TlsMode::parse(bad), None, "{bad}");
+        }
+        let a = app(json!({
+            "source": { "image": "nginx@sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+            "runtime": { "processes": { "web": { "port": 80 } } },
+            "domains": [{ "host": "a.acme.com", "tls": "Bad_Name" }]
+        }));
+        assert_eq!(validate(&a).map_err(|e| e.reason()), Err("InvalidDomainTls"),);
     }
 }

@@ -35,7 +35,7 @@ use crate::controller::{
 
 /// Recorded with every plan; a renderer change that alters output is a new
 /// version, and older plans are never rendered again with it.
-pub const RENDERER_VERSION: &str = "kuben-renderer/1";
+pub const RENDERER_VERSION: &str = "kuben-renderer/2";
 
 /// The cluster facts a plan depends on (ADR-026's capability snapshot): the
 /// size presets, domains, gateway and TLS settings of `KubenConfig`, narrowed
@@ -179,6 +179,9 @@ pub fn render(app: &App, capabilities: &Capabilities) -> Result<Plan, RenderPlan
     if let Some(s) = &desired.service {
         objects.push(serde_json::to_value(s)?);
     }
+    if let Some(g) = &desired.grant {
+        objects.push(g.clone());
+    }
     if let Some(r) = &desired.route {
         objects.push(r.clone());
     }
@@ -276,7 +279,10 @@ fn rank(kind: &str) -> u8 {
         "HorizontalPodAutoscaler" => 2,
         "CronJob" => 3,
         "Service" => 4,
-        "HTTPRoute" => 5,
+        // The grant first: a listener can read the app's certificate once the
+        // route arrives.
+        "ReferenceGrant" => 5,
+        "HTTPRoute" => 6,
         _ => 9,
     }
 }
