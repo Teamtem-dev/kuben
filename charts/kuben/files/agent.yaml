@@ -138,7 +138,9 @@ spec:
           args:
             - --enrollment-dir=/etc/kuben-agent/enrollment
             - --identity-secret=kuben-agent-identity
-            - --state-dir=/var/lib/kuben-agent
+            # A directory the agent makes itself inside the volume, so it owns it
+            # and can keep it private (the mount point belongs to root).
+            - --state-dir=/var/lib/kuben-agent/state
           resources:
             requests:
               cpu: 10m
