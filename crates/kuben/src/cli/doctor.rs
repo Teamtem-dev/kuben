@@ -5,7 +5,10 @@
 use std::path::PathBuf;
 
 use kuben_core::config::{Config, KubeCfg, in_cluster};
-use kuben_platform::registry::{ClusterRegistry, redact_credentials};
+use kuben_platform::{
+    discovery::{self, ClusterFacts, Readiness},
+    registry::{ClusterRegistry, redact_credentials},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Level {
@@ -134,30 +137,7 @@ async fn check_cluster(r: &mut Report, cfg: &Config) {
                 Ok(v) => r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version)),
                 Err(e) => r.line(Level::Fail, "kubernetes", e),
             }
-            check_api_group(
-                r,
-                &client,
-                "gateway.networking.k8s.io",
-                "gateway-api",
-                "install Gateway API CRDs",
-            )
-            .await;
-            check_api_group(
-                r,
-                &client,
-                "cert-manager.io",
-                "cert-manager",
-                "install cert-manager for TLS",
-            )
-            .await;
-            check_api_group(
-                r,
-                &client,
-                "metrics.k8s.io",
-                "metrics-server",
-                "install metrics-server for autoscaling",
-            )
-            .await;
+            check_capabilities(r, &discovery::discover(&client).await);
         }
         Err(e) if !cfg.kube.required => {
             r.line(
@@ -172,11 +152,84 @@ async fn check_cluster(r: &mut Report, cfg: &Config) {
     }
 }
 
-async fn check_api_group(r: &mut Report, client: &kube::Client, group: &str, name: &str, hint: &str) {
-    match client.list_api_groups().await {
-        Ok(groups) if groups.groups.iter().any(|g| g.name == group) => r.line(Level::Ok, name, "present"),
-        Ok(_) => r.line(Level::Warn, name, format!("not found — {hint}")),
-        Err(e) => r.line(Level::Fail, name, e),
+/// What the cluster can do (ADR-031), as the controllers see it: unknown
+/// facts are warnings, never OK.
+fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
+    if !facts.unknown.is_empty() {
+        r.line(
+            Level::Warn,
+            "capabilities",
+            format!("unknown (probes failed: {})", facts.unknown.join(", ")),
+        );
+    }
+    match &facts.gateway_api {
+        Some(api) => r.line(
+            Level::Ok,
+            "gateway-api",
+            format!(
+                "{} ({} channel)",
+                api.bundle_version.as_deref().unwrap_or("unknown version"),
+                api.channel.as_deref().unwrap_or("unknown")
+            ),
+        ),
+        None => r.line(
+            Level::Warn,
+            "gateway-api",
+            "not installed — install the Gateway API CRDs (standard channel) to expose apps",
+        ),
+    }
+    if facts.gateway_api.is_some() {
+        readiness_line(
+            r,
+            "gateway-class",
+            &facts.gateway_classes,
+            "no GatewayClass is Accepted",
+        );
+    }
+    if facts.cert_manager {
+        r.line(Level::Ok, "cert-manager", "present");
+        readiness_line(
+            r,
+            "cluster-issuer",
+            &facts.cluster_issuers,
+            "no ClusterIssuer is Ready",
+        );
+    } else {
+        r.line(
+            Level::Warn,
+            "cert-manager",
+            "not found — install cert-manager for automatic HTTPS",
+        );
+    }
+    if facts.metrics_api {
+        r.line(Level::Ok, "metrics-server", "present");
+    } else {
+        r.line(
+            Level::Warn,
+            "metrics-server",
+            "not found — install metrics-server for autoscaling",
+        );
+    }
+}
+
+fn readiness_line(r: &mut Report, name: &str, list: &[Readiness], none: &str) {
+    let ready: Vec<&str> = list.iter().filter(|x| x.ready).map(|x| x.name.as_str()).collect();
+    if !ready.is_empty() {
+        r.line(Level::Ok, name, ready.join(", "));
+    }
+    for x in list.iter().filter(|x| !x.ready) {
+        r.line(
+            Level::Warn,
+            name,
+            format!(
+                "{} not ready: {}",
+                x.name,
+                x.message.as_deref().unwrap_or("no status yet")
+            ),
+        );
+    }
+    if list.is_empty() {
+        r.line(Level::Warn, name, none);
     }
 }
 

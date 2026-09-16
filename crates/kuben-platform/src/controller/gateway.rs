@@ -233,8 +233,9 @@ fn dynamic_api(ctx: &Ctx, ns: &str, kind: &str, plural: &str) -> Api<DynamicObje
 
 async fn reconcile(ctx: &Ctx, projections: &Projections, last: &mut Option<Value>) -> anyhow::Result<()> {
     let platform = ctx.platform();
-    let (Some(gateway), Some(issuer)) = (&platform.gateway, &platform.cluster_issuer) else {
-        return Ok(()); // TLS off: the Gateway is left untouched.
+    let (Some(gateway), Some(issuer), true) = (&platform.gateway, &platform.cluster_issuer, platform.tls)
+    else {
+        return Ok(()); // TLS off or its issuer not Ready: the Gateway is left untouched.
     };
     let plan = plan_listeners(&routed_hosts(&projections.apps(), &platform), &platform);
     for conflict in &plan.conflicts {

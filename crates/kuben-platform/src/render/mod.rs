@@ -38,7 +38,8 @@ use crate::controller::{
 pub const RENDERER_VERSION: &str = "kuben-renderer/1";
 
 /// The cluster facts a plan depends on (ADR-026's capability snapshot): the
-/// size presets, domains, gateway and TLS settings of `KubenConfig`.
+/// size presets, domains, gateway and TLS settings of `KubenConfig`, narrowed
+/// to what the cluster can do (`Platform::gated`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Capabilities {
@@ -52,6 +53,10 @@ pub struct Capabilities {
     pub cluster_issuer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wildcard_tls_secret: Option<String>,
+    /// A ClusterIssuer is configured but was not Ready when the plan was
+    /// rendered (M2.1): routes are served over plain HTTP.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tls_unavailable: bool,
 }
 
 impl Capabilities {
@@ -67,6 +72,7 @@ impl Capabilities {
                 .map(|g| format!("{}/{}", g.namespace, g.name)),
             cluster_issuer: platform.cluster_issuer.clone(),
             wildcard_tls_secret: platform.wildcard_tls_secret.clone(),
+            tls_unavailable: platform.cluster_issuer.is_some() && !platform.tls,
         }
     }
 
@@ -83,7 +89,7 @@ impl Capabilities {
                     name: name.into(),
                 })
             }),
-            tls: self.cluster_issuer.is_some(),
+            tls: self.cluster_issuer.is_some() && !self.tls_unavailable,
             cluster_issuer: self.cluster_issuer.clone(),
             wildcard_tls_secret: self.wildcard_tls_secret.clone(),
         }
@@ -375,6 +381,62 @@ mod tests {
         assert!(platform.tls, "a cluster issuer means TLS routes");
         let json = serde_json::to_value(&caps).expect("json");
         assert_eq!(serde_json::from_value::<Capabilities>(json).expect("back"), caps);
+    }
+
+    #[test]
+    fn an_issuer_that_is_not_ready_blocks_only_tls() {
+        use crate::discovery::{ClusterFacts, Readiness};
+
+        let spec = serde_json::from_value::<KubenConfigSpec>(json!({
+            "baseDomain": "apps.example.com",
+            "gateway": "kuben-system/kuben",
+            "clusterIssuer": "letsencrypt"
+        }))
+        .expect("config");
+        let issuer = |ready| ClusterFacts {
+            cert_manager: true,
+            cluster_issuers: vec![Readiness {
+                name: "letsencrypt".into(),
+                ready,
+                ..Readiness::default()
+            }],
+            ..ClusterFacts::default()
+        };
+
+        let blocked = Capabilities::of(&Platform::from_spec(Some(&spec)).gated(Some(&issuer(false))));
+        assert!(blocked.tls_unavailable && !blocked.platform().tls);
+        let json = serde_json::to_value(&blocked).expect("json");
+        assert_eq!(json["tlsUnavailable"], true);
+        assert_eq!(
+            serde_json::from_value::<Capabilities>(json).expect("back"),
+            blocked
+        );
+        let plan = render(&web_app(), &blocked).expect("render");
+        let route = plan
+            .resources()
+            .expect("resources")
+            .as_array()
+            .and_then(|r| r.iter().find(|o| o["kind"] == "HTTPRoute").cloned())
+            .expect("the route is still rendered");
+        assert!(
+            route["spec"]["parentRefs"][0].get("sectionName").is_none(),
+            "plain HTTP: the route attaches to the gateway, not to an HTTPS listener"
+        );
+
+        let ready = Capabilities::of(&Platform::from_spec(Some(&spec)).gated(Some(&issuer(true))));
+        assert_eq!(ready, capabilities(), "a Ready issuer changes nothing");
+        assert_eq!(
+            Capabilities::of(&Platform::from_spec(Some(&spec)).gated(None)),
+            capabilities(),
+            "unknown facts keep the configured intent"
+        );
+        assert!(
+            serde_json::to_value(&ready)
+                .expect("json")
+                .get("tlsUnavailable")
+                .is_none(),
+            "older snapshots stay byte-identical"
+        );
     }
 
     #[test]

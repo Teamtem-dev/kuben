@@ -21,7 +21,12 @@ use kuben_crd::{Condition, KubenConfig};
 pub use resources::Platform;
 use tokio_util::sync::CancellationToken;
 
-use crate::{health::Health, projection::Projections, registry::ClusterRegistry};
+use crate::{
+    discovery::{self, Facts},
+    health::Health,
+    projection::Projections,
+    registry::ClusterRegistry,
+};
 
 /// Name of the cluster-scoped `KubenConfig` singleton.
 pub const KUBEN_CONFIG_NAME: &str = "kuben";
@@ -53,6 +58,7 @@ pub fn platform_of<'a>(configs: impl IntoIterator<Item = &'a KubenConfig>) -> Pl
 pub struct Ctx {
     pub client: Client,
     config: reflector::Store<KubenConfig>,
+    facts: Facts,
     failures: DashMap<String, u32>,
 }
 
@@ -66,19 +72,28 @@ impl std::fmt::Debug for Ctx {
 
 impl Ctx {
     #[must_use]
-    pub fn new(client: Client, config: reflector::Store<KubenConfig>) -> Self {
+    pub fn new(client: Client, config: reflector::Store<KubenConfig>, facts: Facts) -> Self {
         Self {
             client,
             config,
+            facts,
             failures: DashMap::new(),
         }
     }
 
-    /// Platform settings from the `KubenConfig` singleton, or defaults.
+    /// Platform settings from the `KubenConfig` singleton, or defaults,
+    /// gated on the cluster's discovered capabilities.
     #[must_use]
     pub fn platform(&self) -> Platform {
         let configs = self.config.state();
         platform_of(configs.iter().map(std::sync::Arc::as_ref))
+            .gated(discovery::current(&self.facts).as_deref())
+    }
+
+    /// The cluster's capabilities, once discovered.
+    #[must_use]
+    pub fn facts(&self) -> Option<Arc<discovery::ClusterFacts>> {
+        discovery::current(&self.facts)
     }
 
     fn key<K: Resource<DynamicType = ()>>(obj: &K) -> String {
@@ -171,13 +186,15 @@ pub fn condition(
 pub async fn run_all(
     registry: ClusterRegistry,
     projections: Arc<Projections>,
+    facts: Facts,
     health: Health,
     token: CancellationToken,
 ) -> anyhow::Result<()> {
     let client = registry.primary();
     crd_apply::ensure(client.clone()).await?;
 
-    // Platform config is mirrored in memory; a change re-reconciles every App.
+    // Platform config is mirrored in memory; a change to it or to the
+    // cluster's capabilities re-reconciles every App.
     let (config, writer) = reflector::store::<KubenConfig>();
     let config_changes = reflector(
         writer,
@@ -189,14 +206,15 @@ pub async fn run_all(
     .default_backoff()
     .applied_objects()
     .filter_map(|r| std::future::ready(r.ok().map(|_| ())));
-    let ctx = Arc::new(Ctx::new(client, config));
+    let changes = futures::stream::select(config_changes, discovery::changes(facts.clone()));
+    let ctx = Arc::new(Ctx::new(client, config, facts));
 
     health.ok("controllers");
     tokio::try_join!(
         project::run(ctx.clone(), token.clone()),
         environment::run(ctx.clone(), token.clone()),
         gateway::run(ctx.clone(), projections, token.clone()),
-        app::run(ctx, config_changes, token),
+        app::run(ctx, changes, token),
     )?;
     Ok(())
 }

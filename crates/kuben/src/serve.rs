@@ -10,6 +10,7 @@ use kuben_core::{
     traits::StaticPolicy,
 };
 use kuben_platform::{
+    discovery::{self, Facts},
     health::Health,
     leader::{self, Election},
     projection::Projections,
@@ -158,12 +159,13 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 async fn leading(
     registry: ClusterRegistry,
     projections: Arc<Projections>,
+    facts: Facts,
     health: Health,
     worker: kuben_platform::materializer::Worker,
     token: CancellationToken,
 ) -> anyhow::Result<()> {
     tokio::try_join!(
-        kuben_platform::controller::run_all(registry, projections, health, token.clone()),
+        kuben_platform::controller::run_all(registry, projections, facts, health, token.clone()),
         kuben_platform::materializer::drift::watch(worker, token),
     )?;
     Ok(())
@@ -211,10 +213,16 @@ fn spawn_cluster_tasks(
     });
 
     if cfg.has_role(Role::Controller) {
+        // What the cluster can do (ADR-031), discovered on every controller
+        // replica: rendering and the gateway are gated on it.
+        let (discovery_task, facts) = spawn_discovery(registry, store, health, shutdown);
+        tasks.push(discovery_task);
+
         // SQL is the only desired-state writer; the materializer writes its
         // resources (ADR-032).
         let mut worker =
-            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
+            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity())
+                .with_facts(facts.clone());
         if let Some(agents) = agents {
             // Targets delivered by their cluster's agent go through the hub.
             worker = worker.with_agents(agents);
@@ -228,19 +236,25 @@ fn spawn_cluster_tasks(
         );
         let election = election.cloned();
         tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
-            let (r, p, h, watcher, election) =
-                (r.clone(), p.clone(), h.clone(), watcher.clone(), election.clone());
+            let (r, p, capabilities, h, watcher, election) = (
+                r.clone(),
+                p.clone(),
+                facts.clone(),
+                h.clone(),
+                watcher.clone(),
+                election.clone(),
+            );
             async move {
                 match election {
                     // Several replicas: reconcile only while holding the Lease.
                     Some(election) => {
                         let client = r.primary();
                         leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
-                            leading(r, p, h, watcher, tok)
+                            leading(r, p, capabilities, h, watcher, tok)
                         })
                         .await
                     }
-                    None => Box::pin(leading(r, p, h, watcher, tok)).await,
+                    None => Box::pin(leading(r, p, capabilities, h, watcher, tok)).await,
                 }
             }
         })));
@@ -268,6 +282,26 @@ fn spawn_cluster_tasks(
         })));
     }
     tasks
+}
+
+/// Supervised discovery of the primary cluster's capabilities (ADR-031),
+/// and the channel it publishes them on.
+fn spawn_discovery(
+    registry: &ClusterRegistry,
+    store: &kuben_store::Store,
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> (tokio::task::JoinHandle<()>, Facts) {
+    let (sender, facts) = discovery::channel();
+    let sender = Arc::new(sender);
+    let (registry, store) = (registry.clone(), store.clone());
+    let task = tokio::spawn(supervise(
+        "discovery",
+        shutdown.child_token(),
+        health.clone(),
+        move |token| discovery::run(registry.clone(), store.clone(), sender.clone(), token),
+    ));
+    (task, facts)
 }
 
 /// Leader-election settings, or `None` when `kube.leader_election` is off.

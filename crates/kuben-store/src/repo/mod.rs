@@ -5,6 +5,7 @@
 mod acceptance;
 mod agents;
 mod audit;
+mod capabilities;
 mod catalog;
 mod deployments;
 mod lifecycle;
@@ -23,6 +24,7 @@ pub use agents::{
     ClusterAgent, Delivery, RUNTIME_FEATURE, Redeemed, RuntimeObservation, TokenRedemption, TokenRefusal,
 };
 pub use audit::NewAudit;
+pub use capabilities::CapabilityRecord;
 pub use catalog::{AppRecord, EnvironmentRecord, RunRecord, RuntimeStatus};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use lifecycle::{

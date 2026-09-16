@@ -150,6 +150,20 @@ impl Platform {
         }
     }
 
+    /// Narrow the settings to what the cluster can do (ADR-031's capability
+    /// gate): TLS needs the configured ClusterIssuer to be Ready. Without
+    /// facts, or when the probe failed, the configured intent stands. A
+    /// missing capability blocks only TLS; plain HTTP routing still works.
+    #[must_use]
+    pub fn gated(mut self, facts: Option<&crate::discovery::ClusterFacts>) -> Self {
+        if let (Some(facts), Some(issuer)) = (facts, &self.cluster_issuer)
+            && !facts.issuer(issuer).usable_or_unknown()
+        {
+            self.tls = false;
+        }
+        self
+    }
+
     fn size(&self, name: &str) -> Option<&SizePreset> {
         self.sizes.iter().find(|s| s.name == name)
     }

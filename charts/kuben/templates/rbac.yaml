@@ -52,6 +52,10 @@ rules:
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gatewayclasses]
     verbs: [get, list, watch]
+  # Capability discovery (ADR-031): TLS is offered only with a Ready issuer.
+  - apiGroups: [cert-manager.io]
+    resources: [clusterissuers]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
