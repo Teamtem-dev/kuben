@@ -1,0 +1,10 @@
+{{- if .Values.agent.enabled }}
+{{- /* The manifest is shared with `kuben setup`: files/agent.yaml. */}}
+{{ .Files.Get "files/agent.yaml"
+  | replace "__NAME__" (printf "%s-agent" (include "kuben.fullname" .))
+  | replace "__NAMESPACE__" .Release.Namespace
+  | replace "__INSTANCE__" .Release.Name
+  | replace "__IMAGE__" (include "kuben.image" .)
+  | replace "__PULL_POLICY__" .Values.image.pullPolicy
+  | replace "__MANAGED_BY__" .Release.Service }}
+{{- end }}

@@ -60,6 +60,9 @@ pub const CERT_MANAGER: &str = "helmchart/kube-system/kuben-cert-manager";
 pub const NAMESPACE: &str = "namespace/kuben-system";
 pub const CLUSTER_ISSUER: &str = "clusterissuer/letsencrypt";
 pub const KUBEN_CONFIG: &str = "kubenconfig/kuben";
+pub const AGENT: &str = "agent/kuben-system/kuben-agent";
+/// The agent's manifest, shared with the Helm chart.
+const AGENT_MANIFEST: &str = include_str!("../../../../../charts/kuben/files/agent.yaml");
 
 /// How k3s keeps its own state.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -377,6 +380,7 @@ pub fn ensure_platform(
     ui: Ui,
     kubeconfig: &Path,
     wanted: &Wanted<'_>,
+    agent: bool,
     book: &mut Book,
 ) -> anyhow::Result<()> {
     let step = ui.step("Gateway, TLS and platform components");
@@ -396,6 +400,9 @@ pub fn ensure_platform(
             );
         }
         changed |= ensure_object(&client, book, NAMESPACE, namespace()).await?;
+        if agent {
+            changed |= ensure_agent(&client, book).await?;
+        }
         let cert_manager_present = crd_established(&client, "clusterissuers.cert-manager.io").await;
         if cert_manager_present && !book.journal().owns(Kind::KubernetesObject, CERT_MANAGER) {
             book.claim(Kind::KubernetesObject, CERT_MANAGER, false)?;
@@ -523,6 +530,58 @@ pub fn ensure_kuben_config(
     }
 }
 
+/// The agent's objects, as the chart renders them, in [`GATEWAY_NAMESPACE`].
+/// `KUBEN_AGENT_IMAGE` replaces the release image (tests, mirrors).
+pub fn agent_objects() -> anyhow::Result<Vec<Value>> {
+    let image = std::env::var("KUBEN_AGENT_IMAGE")
+        .ok()
+        .filter(|i| !i.is_empty())
+        .unwrap_or_else(|| format!("ghcr.io/teamtem-dev/kuben:{}", crate::cli::VERSION));
+    let manifest = AGENT_MANIFEST
+        .replace("__NAME__", "kuben-agent")
+        .replace("__NAMESPACE__", GATEWAY_NAMESPACE)
+        .replace("__INSTANCE__", "kuben")
+        .replace("__IMAGE__", &image)
+        .replace("__PULL_POLICY__", "IfNotPresent")
+        .replace("__MANAGED_BY__", MANAGER);
+    let mut objects = Vec::new();
+    for document in serde_yaml_ng::Deserializer::from_str(&manifest) {
+        let mut value = serde_json::to_value(serde_yaml_ng::Value::deserialize(document)?)?;
+        if value.is_null() {
+            continue;
+        }
+        if !matches!(value["kind"].as_str(), Some("ClusterRole" | "ClusterRoleBinding")) {
+            value["metadata"]["namespace"] = json!(GATEWAY_NAMESPACE);
+        }
+        objects.push(value);
+    }
+    Ok(objects)
+}
+
+/// Deploy the agent when this cluster has none from setup; a Deployment
+/// someone else made under that name is left alone.
+async fn ensure_agent(client: &Client, book: &mut Book) -> anyhow::Result<bool> {
+    let objects = agent_objects()?;
+    let deployment = objects
+        .iter()
+        .find(|o| o["kind"] == "Deployment")
+        .cloned()
+        .context("the agent manifest has no Deployment")?;
+    let present = existing(client, &object(deployment)?).await?;
+    let created = match present {
+        None => true,
+        Some(ours) => ours && book.journal().owns(Kind::KubernetesObject, AGENT),
+    };
+    book.claim(Kind::KubernetesObject, AGENT, created)?;
+    if !book.journal().owns(Kind::KubernetesObject, AGENT) {
+        return Ok(false);
+    }
+    for value in objects {
+        apply(client, &object(value)?, true).await?;
+    }
+    Ok(present.is_none())
+}
+
 async fn gateway_class_accepted(client: &Client) -> bool {
     let Ok(object) = object(json!({
         "apiVersion": "gateway.networking.k8s.io/v1",
@@ -565,15 +624,25 @@ pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal) -> Vec<&'stat
     if journal.owns(Kind::KubernetesObject, CERT_MANAGER) {
         kept.push("cert-manager (HelmChart kube-system/kuben-cert-manager)");
     }
-    let removable: Vec<(&str, Value)> = [
-        (KUBEN_CONFIG, kuben_config(&Wanted::default(), false)),
-        (CLUSTER_ISSUER, cluster_issuer("", false)),
-        (TRAEFIK_CONFIG, traefik_config()),
-        (NAMESPACE, namespace()),
-    ]
-    .into_iter()
-    .filter(|(name, _)| journal.owns(Kind::KubernetesObject, name))
-    .collect();
+    let mut removable: Vec<(&str, Value)> = Vec::new();
+    if journal.owns(Kind::KubernetesObject, AGENT) {
+        removable.extend(
+            agent_objects()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|o| (AGENT, o)),
+        );
+    }
+    removable.extend(
+        [
+            (KUBEN_CONFIG, kuben_config(&Wanted::default(), false)),
+            (CLUSTER_ISSUER, cluster_issuer("", false)),
+            (TRAEFIK_CONFIG, traefik_config()),
+            (NAMESPACE, namespace()),
+        ]
+        .into_iter()
+        .filter(|(name, _)| journal.owns(Kind::KubernetesObject, name)),
+    );
     if removable.is_empty() {
         return kept;
     }
@@ -594,7 +663,11 @@ pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal) -> Vec<&'stat
         })
     });
     match outcome {
-        Ok(()) => step.done(removable.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")),
+        Ok(()) => {
+            let mut names: Vec<&str> = removable.iter().map(|(n, _)| *n).collect();
+            names.dedup();
+            step.done(names.join(", "));
+        }
         Err(e) => step.warn(e.to_string()),
     }
     kept
@@ -666,5 +739,42 @@ mod tests {
             hex(&Sha256::digest(b"abc")),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn the_agent_manifest_is_the_charts_with_its_placeholders_filled() {
+        let objects = agent_objects().expect("objects");
+        let kinds: Vec<&str> = objects.iter().filter_map(|o| o["kind"].as_str()).collect();
+        assert_eq!(
+            kinds,
+            [
+                "ServiceAccount",
+                "ClusterRole",
+                "ClusterRoleBinding",
+                "Role",
+                "RoleBinding",
+                "Deployment"
+            ]
+        );
+        let text = serde_json::to_string(&objects).expect("json");
+        assert!(!text.contains("__"), "every placeholder is filled: {text}");
+        let deployment = objects
+            .iter()
+            .find(|o| o["kind"] == "Deployment")
+            .expect("deployment");
+        assert_eq!(deployment["metadata"]["namespace"], GATEWAY_NAMESPACE);
+        assert_eq!(
+            deployment["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/name"],
+            "kuben-agent"
+        );
+        let container = &deployment["spec"]["template"]["spec"]["containers"][0];
+        assert_eq!(container["command"], json!(["/kuben-agent"]));
+        assert!(
+            container["image"]
+                .as_str()
+                .is_some_and(|i| i.starts_with("ghcr.io/teamtem-dev/kuben:"))
+        );
+        let role = objects.iter().find(|o| o["kind"] == "ClusterRole").expect("role");
+        assert!(role["metadata"].get("namespace").is_none(), "cluster-scoped");
     }
 }

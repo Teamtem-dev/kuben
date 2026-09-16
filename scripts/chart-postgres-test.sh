@@ -33,8 +33,9 @@ trap cleanup EXIT
 
 install() {
   # No KubenConfig: the cluster's singleton belongs to the e2e run before.
+  # No agent: the published image of the chart's appVersion predates it.
   helm install "$RELEASE" charts/kuben --namespace "$NS" --create-namespace \
-    --set replicaCount=0 --set platform.create=false --wait --timeout 5m
+    --set replicaCount=0 --set platform.create=false --set agent.enabled=false --wait --timeout 5m
   kubectl -n "$NS" rollout status "statefulset/${PG}" --timeout=180s
 }
 

@@ -19,3 +19,8 @@ misconfigurations:
       Manage networking: environment isolation (NetworkPolicy), app Services,
       and HTTPS routes (Gateway API HTTPRoutes and the listeners of Kuben's own
       Gateway).
+  - id: KSV056
+    paths: ["files/agent.yaml", "templates/agent.yaml"]
+    statement: >-
+      Manage networking: the cluster agent writes the Services, HTTPRoutes and
+      ReferenceGrants of the apps it carries out (ADR-027); nothing else.

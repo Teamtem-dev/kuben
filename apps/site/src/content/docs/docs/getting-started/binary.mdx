@@ -113,7 +113,7 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 | `/var/lib/kuben/` | the kubeconfig copy (readable by `kuben` only), the install journal `install/journal.json` and, until the admin exists, `setup-token`. The data is in PostgreSQL, not here |
 | `kuben.service` | runs `kuben serve` as the system user `kuben`, restarts on failure, starts after k3s |
 | k3s | when there was no cluster: `/etc/rancher/k3s/k3s.yaml` and `k3s.service`; the journal records that setup installed it, so `kuben uninstall --purge` removes it again |
-| In the cluster | the HelmChartConfig `kube-system/traefik` (Gateway provider on), the Gateway API CRDs, cert-manager (HelmChart `kube-system/kuben-cert-manager`), the namespace `kuben-system` with Kuben's Gateway, the ClusterIssuer `letsencrypt`, and the `KubenConfig` `kuben`; each only when it was missing |
+| In the cluster | the HelmChartConfig `kube-system/traefik` (Gateway provider on), the Gateway API CRDs, cert-manager (HelmChart `kube-system/kuben-cert-manager`), the namespace `kuben-system` with Kuben's Gateway and the cluster agent, the ClusterIssuer `letsencrypt`, and the `KubenConfig` `kuben`; each only when it was missing |
 
 Useful commands: `systemctl status kuben`, `journalctl -u kuben -f`, `sudo -u kuben kuben doctor`. Run `doctor` as the service user, as here, so peer authentication lets it into the database.
 

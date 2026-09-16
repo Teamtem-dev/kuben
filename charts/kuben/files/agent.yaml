@@ -1,0 +1,169 @@
+# The cluster agent (ADR-027, M2.8). It holds the only credentials that
+# write app workloads for the agent path, and nothing else. One manifest for
+# the Helm chart (templates/agent.yaml) and `kuben setup`, which both fill in
+# the upper-case placeholders.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: __NAME__
+  labels:
+    app.kubernetes.io/name: kuben-agent
+    app.kubernetes.io/instance: __INSTANCE__
+    app.kubernetes.io/part-of: kuben
+    app.kubernetes.io/managed-by: __MANAGED_BY__
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: __NAME__
+  labels:
+    app.kubernetes.io/name: kuben-agent
+    app.kubernetes.io/instance: __INSTANCE__
+    app.kubernetes.io/part-of: kuben
+    app.kubernetes.io/managed-by: __MANAGED_BY__
+rules:
+  - apiGroups: [kuben.dev]
+    resources: [applicationruntimes, applicationruntimes/status]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [services, persistentvolumeclaims]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [httproutes, referencegrants]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: __NAME__
+  labels:
+    app.kubernetes.io/name: kuben-agent
+    app.kubernetes.io/instance: __INSTANCE__
+    app.kubernetes.io/part-of: kuben
+    app.kubernetes.io/managed-by: __MANAGED_BY__
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: __NAME__
+subjects:
+  - kind: ServiceAccount
+    name: __NAME__
+    namespace: __NAMESPACE__
+---
+# Its identity (device key and certificate) lives in a Secret of its own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: __NAME__
+  labels:
+    app.kubernetes.io/name: kuben-agent
+    app.kubernetes.io/instance: __INSTANCE__
+    app.kubernetes.io/part-of: kuben
+    app.kubernetes.io/managed-by: __MANAGED_BY__
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [kuben-agent-identity]
+    verbs: [get, update, patch]
+  # Server-side apply creates the Secret on the first save.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: __NAME__
+  labels:
+    app.kubernetes.io/name: kuben-agent
+    app.kubernetes.io/instance: __INSTANCE__
+    app.kubernetes.io/part-of: kuben
+    app.kubernetes.io/managed-by: __MANAGED_BY__
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: __NAME__
+subjects:
+  - kind: ServiceAccount
+    name: __NAME__
+    namespace: __NAMESPACE__
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: __NAME__
+  labels:
+    app.kubernetes.io/name: kuben-agent
+    app.kubernetes.io/instance: __INSTANCE__
+    app.kubernetes.io/part-of: kuben
+    app.kubernetes.io/managed-by: __MANAGED_BY__
+spec:
+  replicas: 1
+  # One device at a time: the old pod stops before the new one links.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kuben-agent
+      app.kubernetes.io/instance: __INSTANCE__
+  template:
+    metadata:
+      labels:
+        # Not the server's selector labels: its Service must never pick this pod.
+        app.kubernetes.io/name: kuben-agent
+        app.kubernetes.io/instance: __INSTANCE__
+    spec:
+      serviceAccountName: __NAME__
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: __IMAGE__
+          imagePullPolicy: __PULL_POLICY__
+          command: ["/kuben-agent"]
+          args:
+            - --enrollment-dir=/etc/kuben-agent/enrollment
+            - --identity-secret=kuben-agent-identity
+            - --state-dir=/var/lib/kuben-agent
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              memory: 96Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: enrollment
+              mountPath: /etc/kuben-agent/enrollment
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/kuben-agent
+      volumes:
+        # Published by Kuben; optional, so the pod starts and waits for it.
+        - name: enrollment
+          secret:
+            secretName: kuben-agent-enrollment
+            optional: true
+            defaultMode: 0400
+        - name: state
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi

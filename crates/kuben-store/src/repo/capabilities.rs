@@ -17,6 +17,8 @@ const READ: &str = "SELECT k.facts::text AS facts, k.observed_at FROM cluster_ca
      JOIN clusters c ON c.id = k.cluster_id AND c.org_id = k.org_id \
      WHERE c.org_id = $1 AND c.name = $2";
 const ORGS: &str = "SELECT id FROM organizations ORDER BY id";
+const INSTALLATION_ORG: &str =
+    "SELECT id FROM organizations ORDER BY (slug = $1) DESC, created_at, id LIMIT 1";
 
 /// The capabilities recorded for a cluster.
 #[derive(Clone, Debug, PartialEq)]
@@ -77,6 +79,20 @@ impl Store {
                     .map_err(|e: uuid::Error| StoreError::from(sqlx::Error::Decode(e.into())))
             })
             .collect()
+    }
+
+    /// The organization the installation belongs to: the one named `slug`
+    /// if it exists, else the first one made. `None` before any exists.
+    pub async fn installation_org(&self, slug: &str) -> Result<Option<OrgId>, StoreError> {
+        let id: Option<String> = sqlx::query_scalar(INSTALLATION_ORG)
+            .bind(slug)
+            .fetch_optional(self.pool())
+            .await?;
+        id.map(|id| {
+            id.parse()
+                .map_err(|e: uuid::Error| StoreError::from(sqlx::Error::Decode(e.into())))
+        })
+        .transpose()
     }
 
     /// Record `facts` for the cluster named `cluster` in every organization
@@ -172,5 +188,11 @@ mod tests {
         t.commit().await.expect("commit");
         let orgs = store.org_ids().await.expect("orgs");
         assert!(orgs.contains(&a) && orgs.contains(&b));
+        assert_eq!(store.installation_org("cap-b").await.expect("named"), Some(b));
+        assert_eq!(
+            store.installation_org("missing").await.expect("first"),
+            Some(a),
+            "without the named one, the first organization made"
+        );
     }
 }

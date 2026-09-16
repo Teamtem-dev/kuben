@@ -104,8 +104,14 @@ fn lines(opts: &SetupOpts, journal: &Journal) -> Vec<Line> {
     plan.push(line(
         "Firewall",
         match active_firewall() {
-            Some(firewall) if firewall.is_open(port) => format!("{} already open", firewall.rule(port)),
-            Some(firewall) => format!("open {}", firewall.rule(port)),
+            Some(firewall) => {
+                let opening = super::Opening { port, source: None };
+                if firewall.is_open(opening) {
+                    format!("{} already open", firewall.rule(opening))
+                } else {
+                    format!("open {}", firewall.rule(opening))
+                }
+            }
             None => "nothing (no host firewall is active)".to_owned(),
         },
     ));

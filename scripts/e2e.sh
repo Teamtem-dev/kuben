@@ -29,6 +29,9 @@
 # certificate the test CA signed, and plain HTTP is redirected. M2.5: with
 # Kuben stopped (and its database, when KUBEN_E2E_PG_IMAGE names the
 # container's image), a rescheduled app pod still serves over HTTPS.
+# With KUBEN_E2E_AGENT_IMAGE (M2.8), the agent runs as a pod from the chart's
+# template, enrolls from the Secret Kuben publishes and keeps its identity in
+# a Secret of its own; KUBEN_E2E_HUB is the address pods reach Kuben at.
 set -euo pipefail
 
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
@@ -53,6 +56,8 @@ BASE_DOMAIN=${KUBEN_E2E_BASE_DOMAIN:-e2e.test}
 NODE_IP=${KUBEN_E2E_NODE_IP:-}
 HTTP_NODE_PORT=${KUBEN_E2E_HTTP_NODE_PORT:-30080}
 HTTPS_NODE_PORT=${KUBEN_E2E_HTTPS_NODE_PORT:-30443}
+AGENT_IMAGE=${KUBEN_E2E_AGENT_IMAGE:-}
+AGENT_NS=kuben-system
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
 for c in kubectl curl jq; do need "$c"; done
@@ -98,6 +103,14 @@ cleanup() {
   kubectl delete environment "${P}-dev" "${P}-live" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl delete project "$P" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl -n "$LEASE_NS" delete lease kuben-controller --ignore-not-found >/dev/null 2>&1 || true
+  if [[ -n $AGENT_IMAGE ]]; then
+    if ((status != 0)); then
+      echo "---- agent pod log (last 40 lines) ----"
+      kubectl -n "$AGENT_NS" logs deploy/kuben-agent --tail=40 2>/dev/null || true
+    fi
+    kubectl -n "$AGENT_NS" delete deploy/kuben-agent secret/kuben-agent-identity secret/kuben-agent-enrollment \
+      --ignore-not-found >/dev/null 2>&1 || true
+  fi
   if [[ -n $GATEWAY_CLASS ]]; then
     kubectl delete kubenconfig kuben --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n kuben-system delete gateway kuben --ignore-not-found >/dev/null 2>&1 || true
@@ -193,7 +206,13 @@ served_over_https() {
 }
 
 start_kuben() {
-  KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
+  local agent_env=()
+  if [[ -n $AGENT_IMAGE ]]; then
+    agent_env=(KUBEN_AGENT__LOCAL=true "KUBEN_AGENT__ADVERTISE=${KUBEN_E2E_HUB:?the address pods reach Kuben at}"
+      "KUBEN_AGENT__NAMESPACE=${AGENT_NS}")
+  fi
+  env "${agent_env[@]}" \
+    KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
     KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
     KUBEN_DATABASE__URL="$DATABASE_URL" \
     KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
@@ -203,12 +222,14 @@ start_kuben() {
     KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
     KUBEN_TELEMETRY__LOG_FORMAT=pretty \
     KUBEN_SERVER__STATE_DIR="$work/state" \
-    KUBEN_AGENT__BIND="127.0.0.1:${AGENT_PORT}" \
+    KUBEN_AGENT__BIND="${AGENT_BIND:-127.0.0.1}:${AGENT_PORT}" \
     "$BIN" serve --roles=all >>"$work/kuben.log" 2>&1 &
   pid=$!
 }
 
 step "start kuben"
+# Agent pods reach the hub on the runner through the cluster network's gateway.
+[[ -n $AGENT_IMAGE ]] && AGENT_BIND=0.0.0.0
 start_kuben
 eventually 60 "CRDs applied" kubectl get crd apps.kuben.dev
 eventually 30 "controller lease held" bash -c \
@@ -414,10 +435,6 @@ expect 409 DELETE "/projects/${P}"
 # target of the cluster is delivered by it (the earlier apps stay with the
 # App controller).
 step "M1.9: an enrolled agent carries a new app out (ADR-027)"
-if [[ ! -x $AGENT_BIN ]]; then
-  cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
-fi
-[[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
 KUBEN_SERVER__STATE_DIR="$work/state" KUBEN_DATABASE__URL="$DATABASE_URL" \
   "$BIN" agent-token --cluster primary >"$work/agent-token.out"
 cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
@@ -426,10 +443,37 @@ cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
   sed -n 's/^token: *//p' "$work/agent-token.out" >"$work/token"
 )
 [[ -n $cluster && -s $work/token ]] || fail "agent-token: $(cat "$work/agent-token.out")"
-"$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \
-  --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
-agent_pid=$!
-eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+if [[ -n $AGENT_IMAGE ]]; then
+  # M2.8: the agent as a pod from the chart's own template; no token copied.
+  helm template kuben "$ROOT/charts/kuben" --namespace "$AGENT_NS" --show-only templates/agent.yaml \
+    --set image.repository="${AGENT_IMAGE%:*}" --set image.tag="${AGENT_IMAGE##*:}" --set image.pullPolicy=Never |
+    kubectl -n "$AGENT_NS" apply -f - >/dev/null
+  eventually 120 "enrollment published with a token" bash -c \
+    "kubectl -n $AGENT_NS get secret kuben-agent-enrollment -o jsonpath='{.data.token}' | grep -q ."
+  [[ $(kubectl -n "$AGENT_NS" get secret kuben-agent-enrollment -o jsonpath='{.data.cluster}' | base64 -d) == "$cluster" ]] ||
+    fail "the enrollment names another cluster"
+  eventually 180 "agent linked" grep -q "agent linked" "$work/kuben.log"
+  kubectl -n "$AGENT_NS" get secret kuben-agent-identity -o jsonpath='{.data.agent\.crt}' | grep -q . ||
+    fail "the agent's certificate is not in its Secret"
+  eventually 90 "the spent token is withdrawn" bash -c \
+    "! kubectl -n $AGENT_NS get secret kuben-agent-enrollment -o jsonpath='{.data.token}' | grep -q ."
+  # A new pod keeps the identity: it links again without a token.
+  links=$(grep -c "agent linked" "$work/kuben.log")
+  kubectl -n "$AGENT_NS" delete pod -l app.kubernetes.io/name=kuben-agent --wait=true --timeout=60s >/dev/null
+  eventually 180 "a new agent pod links again with its stored identity" bash -c \
+    "(( \$(grep -c 'agent linked' '$work/kuben.log') > $links ))"
+  kubectl -n "$AGENT_NS" logs deploy/kuben-agent | grep -q "identity restored from its Secret" ||
+    fail "the new pod did not restore its identity"
+else
+  if [[ ! -x $AGENT_BIN ]]; then
+    cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
+  fi
+  [[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
+  "$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \
+    --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
+  agent_pid=$!
+  eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+fi
 # An app the App controller delivers moves to the agent on request: its App
 # object goes, and the agent adopts the same workloads (no new Deployment).
 web_uid=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.uid}')

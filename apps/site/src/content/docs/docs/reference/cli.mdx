@@ -106,6 +106,7 @@ Every run is recorded in the **install journal**, `/var/lib/kuben/install/journa
 | Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig); an existing file is kept |
 | Port | refuses a port another process holds and names it |
 | Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz`. A `kuben.service` that setup did not write is never replaced: setup stops and says so |
+| Agent | on this server's k3s: the cluster agent in `kuben-system` (the chart's manifest), enrolled automatically from what Kuben publishes; `[agent]` in the config makes Kuben listen on port 7443, and with ufw or firewalld active that port is opened for the pod network `10.42.0.0/16` only |
 | KubenConfig | after the service started: gateway class `traefik` with Traefik's ports, the issuer, and `--domain` as the base domain. Fields someone else set are kept, with a warning |
 | Firewall | opens the port in ufw or firewalld when one is active |
 | Link | the setup page with its token on a first install, the console address afterwards |

@@ -13,6 +13,7 @@ use kuben_platform::{
     discovery::{self, Facts},
     health::Health,
     leader::{self, Election},
+    local_agent,
     projection::Projections,
     registry::{ClusterRegistry, own_namespace, redact_credentials},
     supervise::supervise,
@@ -74,11 +75,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     // AgentLink: the hub's endpoint for cluster agents (ADR-027). It needs no
     // kubeconfig of its own; the materializer hands it envelopes.
-    let agent_link = if cfg.has_role(Role::Controller) {
-        kuben_platform::agentlink::AgentLink::build(&cfg.agent, &cfg.state_dir(), store.clone())?
-    } else {
-        None
-    };
+    let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -101,6 +98,10 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         health.set_ready(true);
         Vec::new()
     };
+
+    if let (true, Some(_), Some(registry)) = (cfg.agent.local, &agent_link, &cluster) {
+        tasks.push(spawn_local_agent(&cfg, &store, registry, &health, &shutdown));
+    }
 
     if let Some(link) = agent_link {
         let (h, t) = (health.clone(), shutdown.child_token());
@@ -283,6 +284,60 @@ fn spawn_cluster_tasks(
         })));
     }
     tasks
+}
+
+/// AgentLink of a controller replica (ADR-027), when `agent.bind` is set. In
+/// a pod the state directory is not kept: the CA agents pin lives in a
+/// Secret (M2.8).
+async fn agent_link(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    cluster: Option<&ClusterRegistry>,
+) -> anyhow::Result<Option<kuben_platform::agentlink::AgentLink>> {
+    if !cfg.has_role(Role::Controller) {
+        return Ok(None);
+    }
+    if let (Some(_), Some(registry), true) = (&cfg.agent.bind, cluster, kuben_core::config::in_cluster()) {
+        let namespace = local_agent::namespace(&cfg.agent, cfg.kube.namespace.as_deref());
+        local_agent::sync_ca(registry.primary(), &namespace, &cfg.state_dir())
+            .await
+            .context("keeping the AgentLink CA in its Secret")?;
+    }
+    kuben_platform::agentlink::AgentLink::build(&cfg.agent, &cfg.state_dir(), store.clone())
+}
+
+/// Publish the enrollment of the agent in Kuben's own cluster (M2.8).
+fn spawn_local_agent(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    registry: &ClusterRegistry,
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    let (store, client, agent, slug, dir) = (
+        store.clone(),
+        registry.primary(),
+        cfg.agent.clone(),
+        cfg.bootstrap.org_slug.clone(),
+        cfg.state_dir(),
+    );
+    let namespace = local_agent::namespace(&cfg.agent, cfg.kube.namespace.as_deref());
+    tokio::spawn(supervise(
+        "local-agent",
+        shutdown.child_token(),
+        health.clone(),
+        move |token| {
+            local_agent::run(
+                store.clone(),
+                client.clone(),
+                agent.clone(),
+                slug.clone(),
+                dir.clone(),
+                namespace.clone(),
+                token,
+            )
+        },
+    ))
 }
 
 /// Supervised discovery of the primary cluster's capabilities (ADR-031),

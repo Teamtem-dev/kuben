@@ -6,14 +6,15 @@
 //! process lists and shell history) and enrolls. Later starts use the stored
 //! certificate, which the agent renews over the link before it expires.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use clap::Parser;
 use kuben_agent::{
+    bootstrap::{Enrollment, IdentitySecret, own_namespace},
     link::{Credentials, Lifetime, LinkConfig, Renewal, TcpConnector, run},
     protocol::APPLICATION_RUNTIME,
     runtime::KubeExecutor,
-    state::{HubAddress, State, TokenSource, ensure_identity, pinned_ca, read_token},
+    state::{HubAddress, State, StateError, TokenSource, ensure_identity, pinned_ca, read_token},
     tls::{HUB_NAME, server_name},
 };
 use time::OffsetDateTime;
@@ -28,17 +29,30 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 )]
 struct Args {
     /// The hub's AgentLink address, `host:port`.
-    #[arg(long, env = "KUBEN_AGENT_HUB")]
-    hub: String,
+    #[arg(long, env = "KUBEN_AGENT_HUB", required_unless_present = "enrollment_dir")]
+    hub: Option<String>,
     /// The name the hub's certificate carries.
     #[arg(long, env = "KUBEN_AGENT_HUB_NAME", default_value = HUB_NAME)]
     hub_name: String,
     /// The hub CA to pin, in PEM.
-    #[arg(long, env = "KUBEN_AGENT_HUB_CA")]
-    hub_ca: PathBuf,
+    #[arg(long, env = "KUBEN_AGENT_HUB_CA", required_unless_present = "enrollment_dir")]
+    hub_ca: Option<PathBuf>,
     /// This cluster's id.
-    #[arg(long, env = "KUBEN_AGENT_CLUSTER")]
-    cluster: String,
+    #[arg(long, env = "KUBEN_AGENT_CLUSTER", required_unless_present = "enrollment_dir")]
+    cluster: Option<String>,
+    /// Inside Kuben's own cluster: the directory where the hub publishes its
+    /// address, CA, this cluster's id and a bootstrap token (a mounted
+    /// Secret). Replaces --hub, --hub-ca, --cluster and --token-file.
+    #[arg(
+        long,
+        env = "KUBEN_AGENT_ENROLLMENT_DIR",
+        conflicts_with_all = ["hub", "hub_ca", "cluster", "token_file", "token_stdin"]
+    )]
+    enrollment_dir: Option<PathBuf>,
+    /// Keep the device key and certificate in this Secret of the pod's own
+    /// namespace too, so a new pod keeps the identity.
+    #[arg(long, env = "KUBEN_AGENT_IDENTITY_SECRET")]
+    identity_secret: Option<String>,
     /// Where the device key and the certificate live.
     #[arg(long, env = "KUBEN_AGENT_STATE_DIR", default_value = "/var/lib/kuben-agent")]
     state_dir: PathBuf,
@@ -78,6 +92,49 @@ fn init_logging(format: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Where the agent links to, and how it enrolls.
+struct Target {
+    hub: String,
+    hub_ca: PathBuf,
+    cluster: String,
+    token: TokenSource,
+    /// Published by the hub: wait for a token instead of failing without one.
+    published: bool,
+}
+
+impl Target {
+    async fn resolve(args: &Args, stop: &CancellationToken) -> anyhow::Result<Option<Self>> {
+        if let Some(dir) = &args.enrollment_dir {
+            let Some(e) = Enrollment::wait(dir, stop).await else {
+                return Ok(None);
+            };
+            return Ok(Some(Self {
+                hub: e.hub,
+                hub_ca: e.hub_ca,
+                cluster: e.cluster,
+                token: TokenSource::File(e.token_file),
+                published: true,
+            }));
+        }
+        let missing = |what: &str| anyhow::anyhow!("{what} is required");
+        Ok(Some(Self {
+            hub: args.hub.clone().ok_or_else(|| missing("--hub"))?,
+            hub_ca: args.hub_ca.clone().ok_or_else(|| missing("--hub-ca"))?,
+            cluster: args.cluster.clone().ok_or_else(|| missing("--cluster"))?,
+            token: args.token_source(),
+            published: false,
+        }))
+    }
+
+    /// The token; a published one that is not there yet counts as none.
+    fn token(&self) -> Result<Option<String>, StateError> {
+        match (&self.token, self.published) {
+            (TokenSource::File(path), true) if !path.exists() => Ok(None),
+            (source, _) => read_token(source),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     init_logging(&args.log_format)?;
@@ -87,50 +144,108 @@ fn main() -> anyhow::Result<()> {
         .block_on(agent(args))
 }
 
+/// How long to wait before enrolling again with a published token.
+const ENROLL_RETRY: Duration = Duration::from_secs(10);
+
 async fn agent(args: Args) -> anyhow::Result<()> {
-    let pinned = pinned_ca(&args.hub_ca)?;
-    let hub_name = server_name(&args.hub_name)?;
+    let stop = CancellationToken::new();
+    tokio::spawn(stop_on_signal(stop.clone()));
+    // The cluster's apiserver, with the agent's credentials (in-cluster or
+    // the kubeconfig): the only place they are used.
+    let client = kube::Client::try_default().await?;
+    let secret = match &args.identity_secret {
+        Some(name) => {
+            let namespace =
+                own_namespace().ok_or_else(|| anyhow::anyhow!("--identity-secret needs to run in a pod"))?;
+            Some(IdentitySecret::new(client.clone(), &namespace, name))
+        }
+        None => None,
+    };
     let state = State::open(&args.state_dir)?;
+    if let Some(secret) = &secret
+        && secret.restore(&args.state_dir).await?
+    {
+        tracing::info!("identity restored from its Secret");
+    }
     let key = state.device_key()?;
-    tracing::info!(device = %key.device_id(), cluster = %args.cluster, hub = %args.hub, "kuben-agent starting");
-    let connector = TcpConnector {
-        address: args.hub.clone(),
+    if let Some(secret) = &secret {
+        // Kept before enrolling: a pod that dies after redeeming the token
+        // resumes the enrollment with the same key.
+        secret.save(&args.state_dir).await?;
+    }
+    let Some(mut target) = Target::resolve(&args, &stop).await? else {
+        return Ok(());
     };
-    let source = args.token_source();
-    let hub = HubAddress {
-        connector: &connector,
-        pinned: &pinned,
-        name: &hub_name,
+    let hub_name = server_name(&args.hub_name)?;
+    let identity = loop {
+        let pinned = pinned_ca(&target.hub_ca)?;
+        let connector = TcpConnector {
+            address: target.hub.clone(),
+        };
+        let hub = HubAddress {
+            connector: &connector,
+            pinned: &pinned,
+            name: &hub_name,
+        };
+        let attempt = ensure_identity(
+            &state,
+            &key,
+            &hub,
+            &target.cluster,
+            || target.token(),
+            OffsetDateTime::now_utc(),
+        )
+        .await;
+        match attempt {
+            Ok(identity) => break identity,
+            // Published enrollment: the hub issues a fresh token when this
+            // one is missing, spent or expired.
+            Err(e) if target.published => {
+                tracing::warn!(error = %e, retry_in_s = ENROLL_RETRY.as_secs(), "not enrolled yet");
+                tokio::select! {
+                    () = stop.cancelled() => return Ok(()),
+                    () = tokio::time::sleep(ENROLL_RETRY) => {}
+                }
+                if let Some(again) = Target::resolve(&args, &stop).await? {
+                    target = again;
+                }
+            }
+            Err(e) => return Err(e.into()),
+        }
     };
-    let identity = ensure_identity(
-        &state,
-        &key,
-        &hub,
-        &args.cluster,
-        || read_token(&source),
-        OffsetDateTime::now_utc(),
-    )
-    .await?;
+    if let Some(secret) = &secret {
+        secret.save(&args.state_dir).await?;
+    }
+    tracing::info!(device = %key.device_id(), cluster = %target.cluster, hub = %target.hub, "kuben-agent starting");
+    let pinned = pinned_ca(&target.hub_ca)?;
     let lifetime = state.certificate()?.map(|c| Lifetime {
         not_before: c.not_before,
         not_after: c.not_after,
     });
-    let credentials = Arc::new(Credentials::new(pinned.clone(), identity, lifetime)?);
-    let mut config = LinkConfig::new(args.cluster, hub_name.clone(), credentials);
+    let credentials = Arc::new(Credentials::new(pinned, identity, lifetime)?);
+    let mut config = LinkConfig::new(target.cluster.clone(), hub_name.clone(), credentials);
     let keep = state.clone();
-    // The cluster's apiserver, with the agent's credentials (in-cluster or
-    // the kubeconfig): the only place they are used.
-    let client = kube::Client::try_default().await?;
     config.kubernetes_version = client.apiserver_version().await.ok().map(|v| v.git_version);
     config.capabilities.insert(APPLICATION_RUNTIME.to_owned());
     config.executor = Some(Arc::new(KubeExecutor::new(client)));
+    let dir = args.state_dir.clone();
     config.renewal = Some(Renewal {
         key: Arc::new(key),
-        store: Arc::new(move |pem: &str| keep.save_certificate(pem).map_err(|e| e.to_string())),
+        store: Arc::new(move |pem: &str| {
+            keep.save_certificate(pem).map_err(|e| e.to_string())?;
+            if let (Some(secret), Ok(runtime)) = (secret.clone(), tokio::runtime::Handle::try_current()) {
+                let dir = dir.clone();
+                runtime.spawn(async move {
+                    if let Err(e) = secret.save(&dir).await {
+                        tracing::warn!(error = %e, "the renewed certificate is not in its Secret yet");
+                    }
+                });
+            }
+            Ok(())
+        }),
     });
-    let token = CancellationToken::new();
-    tokio::spawn(stop_on_signal(token.clone()));
-    run(&connector, &config, &token).await;
+    let connector = TcpConnector { address: target.hub };
+    run(&connector, &config, &stop).await;
     tracing::info!("kuben-agent stopped");
     Ok(())
 }
@@ -176,6 +291,20 @@ mod tests {
         let mut with_token = BASE.to_vec();
         with_token.extend(["--token", "kbt_secret"]);
         assert!(Args::try_parse_from(with_token).is_err());
+    }
+
+    #[test]
+    fn an_enrollment_directory_replaces_the_hub_flags() {
+        let args = Args::try_parse_from(["kuben-agent", "--enrollment-dir", "/etc/kuben-agent/enrollment"])
+            .expect("args");
+        assert_eq!(
+            args.enrollment_dir.as_deref(),
+            Some(std::path::Path::new("/etc/kuben-agent/enrollment"))
+        );
+        assert!(Args::try_parse_from(["kuben-agent"]).is_err(), "a hub is needed");
+        let mut both = BASE.to_vec();
+        both.extend(["--enrollment-dir", "/x"]);
+        assert!(Args::try_parse_from(both).is_err(), "one or the other");
     }
 
     #[test]

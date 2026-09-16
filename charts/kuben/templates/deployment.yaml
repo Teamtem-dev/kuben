@@ -76,6 +76,10 @@ spec:
               containerPort: 8080
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
+            {{- if .Values.agent.enabled }}
+            - name: agentlink
+              containerPort: {{ .Values.agent.port }}
+            {{- end }}
           env:
             - name: KUBEN_KUBE__REQUIRED
               value: "true"
@@ -125,6 +129,18 @@ spec:
                   key: password
             - name: KUBEN_DATABASE__URL
               value: "postgres://kuben:$(POSTGRES_PASSWORD)@{{ include "kuben.postgresql.fullname" . }}:5432/kuben"
+            {{- end }}
+            {{- if .Values.agent.enabled }}
+            # M2.8: the hub of the agent in this cluster, which it enrolls
+            # from a Secret the hub keeps up to date.
+            - name: KUBEN_AGENT__BIND
+              value: "0.0.0.0:{{ .Values.agent.port }}"
+            - name: KUBEN_AGENT__LOCAL
+              value: "true"
+            - name: KUBEN_AGENT__ADVERTISE
+              value: "{{ include "kuben.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.agent.port }}"
+            - name: KUBEN_AGENT__NAMESPACE
+              value: {{ .Release.Namespace | quote }}
             {{- end }}
             {{- with .Values.publicUrl }}
             - name: KUBEN_SERVER__PUBLIC_URL

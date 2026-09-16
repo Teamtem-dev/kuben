@@ -16,3 +16,8 @@ spec:
     - name: metrics
       port: {{ .Values.metrics.port }}
       targetPort: metrics
+    {{- if .Values.agent.enabled }}
+    - name: agentlink
+      port: {{ .Values.agent.port }}
+      targetPort: agentlink
+    {{- end }}

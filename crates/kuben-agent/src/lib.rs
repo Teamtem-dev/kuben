@@ -13,8 +13,11 @@
 //! * [`hub`]: the hub's end, a stub `kuben serve` will host;
 //! * [`state`]: the device key and certificate on disk, and enrolling
 //!   when there is no valid certificate;
-//! * [`runtime`]: the executor that carries envelopes out in the cluster.
+//! * [`runtime`]: the executor that carries envelopes out in the cluster;
+//! * [`bootstrap`]: the agent inside Kuben's own cluster, enrolled from what
+//!   the hub publishes and keeping its identity in a Secret.
 
+pub mod bootstrap;
 pub mod enroll;
 pub mod hub;
 pub mod link;

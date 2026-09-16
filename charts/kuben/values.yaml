@@ -79,6 +79,15 @@ platform:
   # cert-manager ClusterIssuer; enables https URLs.
   clusterIssuer: ""
 
+# The cluster agent (ADR-027, M2.8): a separate, unprivileged process that
+# carries apps out in this cluster. It enrolls on its own from a Secret Kuben
+# keeps (no token to copy) and keeps its identity in a Secret of its own.
+# Apps made while it is linked are delivered by it; the others stay with the
+# App controller. Best with replicaCount 1 until HA lands (M7).
+agent:
+  enabled: true
+  port: 7443
+
 # Expose the Kuben UI itself through a Gateway API HTTPRoute.
 route:
   enabled: false

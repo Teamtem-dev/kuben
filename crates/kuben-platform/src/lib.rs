@@ -19,6 +19,7 @@ pub mod discovery;
 pub mod duration;
 pub mod health;
 pub mod leader;
+pub mod local_agent;
 pub mod materializer;
 pub mod projection;
 pub mod registry;

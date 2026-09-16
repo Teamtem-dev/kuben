@@ -291,6 +291,15 @@ pub struct AgentCfg {
     pub certificate_hours: u64,
     /// How often agents send a heartbeat, seconds.
     pub heartbeat_secs: u64,
+    /// Enroll an agent inside Kuben's own cluster (M2.8): the hub publishes
+    /// its address, CA and a bootstrap token in a Secret the agent mounts.
+    pub local: bool,
+    /// The address agents in the cluster dial (`host:port`), e.g. the
+    /// Service of Kuben or the node's address.
+    pub advertise: Option<String>,
+    /// Namespace of the local agent and its Secrets; default: Kuben's own,
+    /// else `kuben-system`.
+    pub namespace: Option<String>,
 }
 
 impl Default for AgentCfg {
@@ -300,6 +309,9 @@ impl Default for AgentCfg {
             hub_name: "hub.kuben.internal".into(),
             certificate_hours: 24,
             heartbeat_secs: 10,
+            local: false,
+            advertise: None,
+            namespace: None,
         }
     }
 }

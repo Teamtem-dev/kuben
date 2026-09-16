@@ -136,6 +136,10 @@ jobs:
           build=build
           if [[ "$USE_ZIG" == "true" ]]; then build=zigbuild; fi
           cargo auditable "$build" -p kuben --release --locked --features embed-ui --target "$TARGET"
+          # The cluster agent (M2.8) runs inside Linux clusters only.
+          if [[ "$TARGET" == *linux* ]]; then
+            cargo auditable "$build" -p kuben-agent --release --locked --target "$TARGET"
+          fi
       - name: Size budget
         if: contains(matrix.target, 'linux')
         run: scripts/check-budgets.sh binary "target/$TARGET/release/kuben"
@@ -158,6 +162,9 @@ jobs:
           if [[ "$TARGET" == *windows* ]]; then
             cp "target/${TARGET}/release/kuben.exe" LICENSE README.md "$stage/"
             (cd "$stage" && 7z a -tzip -bso0 "${GITHUB_WORKSPACE}/dist/${name}.zip" kuben.exe LICENSE README.md)
+          elif [[ "$TARGET" == *linux* ]]; then
+            cp "target/${TARGET}/release/kuben" "target/${TARGET}/release/kuben-agent" LICENSE README.md "$stage/"
+            tar -C "$stage" -czf "dist/${name}.tar.gz" kuben kuben-agent LICENSE README.md
           else
             cp "target/${TARGET}/release/kuben" LICENSE README.md "$stage/"
             tar -C "$stage" -czf "dist/${name}.tar.gz" kuben LICENSE README.md
@@ -238,8 +245,8 @@ jobs:
       - name: Stage binaries per platform
         run: |
           mkdir -p image/linux-amd64 image/linux-arm64
-          tar -xzf dist/kuben-x86_64-unknown-linux-musl.tar.gz -C image/linux-amd64 kuben
-          tar -xzf dist/kuben-aarch64-unknown-linux-musl.tar.gz -C image/linux-arm64 kuben
+          tar -xzf dist/kuben-x86_64-unknown-linux-musl.tar.gz -C image/linux-amd64 kuben kuben-agent
+          tar -xzf dist/kuben-aarch64-unknown-linux-musl.tar.gz -C image/linux-arm64 kuben kuben-agent
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:

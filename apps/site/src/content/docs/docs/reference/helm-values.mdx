@@ -78,6 +78,15 @@ The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits beh
 | `platform.clusterIssuer` | `""` | cert-manager ClusterIssuer; enables HTTPS once it is Ready |
 | `platform.wildcardTlsSecret` | `""` | Secret with a `*.<baseDomain>` certificate; generated hosts then share one listener |
 
+## Cluster agent
+
+| Value | Default | |
+|---|---|---|
+| `agent.enabled` | `true` | run the cluster agent (ADR-027): a separate, unprivileged pod that carries apps out. It enrolls on its own from the Secret `kuben-agent-enrollment` Kuben keeps (a short-lived token until it has a certificate) and keeps its identity in `kuben-agent-identity`. Apps made while it is linked are delivered by it; earlier ones stay with the App controller until handed over |
+| `agent.port` | `7443` | the port Kuben listens on for agents (service port `agentlink`) |
+
+The agent requests 10m CPU and 24 MiB of memory (limit 96 MiB). Kuben keeps the CA agents pin in the Secret `kuben-agentlink-ca`. Run a single Kuben replica with the agent until high availability lands.
+
 ## Console route
 
 | Value | Default | |

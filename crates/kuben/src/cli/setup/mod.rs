@@ -174,13 +174,26 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
         configured.as_deref().and_then(config_port),
         opts.yes,
     )?;
-    let config_changed = write_config(ui, opts, &kubeconfig, configured.as_deref(), port, book)?;
-    // The managed path: this server's k3s gets what exposes apps (ADR-031).
-    // A cluster brought with --kubeconfig is left as it is.
+    // The managed path: this server's k3s gets what exposes apps (ADR-031)
+    // and its own agent (M2.8). A cluster brought with --kubeconfig is left
+    // as it is.
     let managed = opts.kubeconfig.is_none() && Path::new(K3S_KUBECONFIG).exists();
+    let hub = managed
+        .then(kuben_api::host::advertise_ip)
+        .flatten()
+        .map(|ip| ip.to_string());
+    let config_changed = write_config(
+        ui,
+        opts,
+        &kubeconfig,
+        configured.as_deref(),
+        port,
+        hub.as_deref(),
+        book,
+    )?;
     if managed {
         book.start("platform");
-        platform::ensure_platform(ui, &kubeconfig, &opts.wanted(), book)?;
+        platform::ensure_platform(ui, &kubeconfig, &opts.wanted(), hub.is_some(), book)?;
     }
     let cfg = Config::load().context("reading /etc/kuben/config.toml")?;
     let port = cfg.bind_port();
@@ -191,7 +204,7 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
         platform::ensure_kuben_config(ui, &kubeconfig, &opts.wanted(), book)?;
     }
     book.start("firewall");
-    open_firewall(ui, port, book)?;
+    open_firewall(ui, port, hub.is_some(), book)?;
     warn_web_ports(ui);
     let wanted = opts.wanted();
     announce(
@@ -771,22 +784,36 @@ fn write_config(
     kubeconfig: &Path,
     existing: Option<&str>,
     port: u16,
+    hub: Option<&str>,
     book: &mut Book,
 ) -> anyhow::Result<bool> {
     let step = ui.step(format!("Writing {CONFIG_FILE}"));
     if let Some(text) = existing {
         book.claim(Kind::File, CONFIG_FILE, false)?;
-        let changed = match config_port(text) {
-            Some(old) if old != port => {
-                std::fs::write(CONFIG_FILE, with_port(text, old, port))?;
-                step.done(format!("port {old} → {port}, everything else kept"));
-                true
-            }
-            _ => {
-                step.done("kept; edit it to change the public URL");
-                false
-            }
+        let mut updated = match config_port(text) {
+            Some(old) if old != port => with_port(text, old, port),
+            _ => text.to_owned(),
         };
+        // A configuration setup wrote gains the local agent once.
+        let agent =
+            hub.filter(|_| book.journal().owns(Kind::File, CONFIG_FILE) && !has_section(text, "agent"));
+        if let Some(hub) = agent {
+            updated.push_str(&agent_section(hub));
+        }
+        let changed = updated != text;
+        if changed {
+            std::fs::write(CONFIG_FILE, &updated)?;
+            step.done(format!(
+                "port {port}{}, everything else kept",
+                if agent.is_some() {
+                    ", the cluster agent added"
+                } else {
+                    ""
+                }
+            ));
+        } else {
+            step.done("kept; edit it to change the public URL");
+        }
         book.done(changed, format!("port {port}"))?;
         return Ok(changed);
     }
@@ -796,7 +823,10 @@ fn write_config(
         kuben_api::host::advertise_ip().map_or_else(|| "localhost".to_owned(), |ip| ip.to_string())
     };
     let bind_host = if opts.bind_local { "127.0.0.1" } else { "0.0.0.0" };
-    let content = config_template(bind_host, port, &host, kubeconfig);
+    let mut content = config_template(bind_host, port, &host, kubeconfig);
+    if let Some(hub) = hub {
+        content.push_str(&agent_section(hub));
+    }
     std::fs::write(CONFIG_FILE, content)?;
     set_mode(Path::new(CONFIG_FILE), 0o644)?;
     book.claim(Kind::File, CONFIG_FILE, true)?;
@@ -805,9 +835,42 @@ fn write_config(
     Ok(true)
 }
 
+/// The port AgentLink listens on for the agent in this server's k3s.
+pub const AGENT_PORT: u16 = 7443;
+
+/// The `[agent]` section of the local agent (M2.8): pods dial `hub`, an
+/// address of this server.
+fn agent_section(hub: &str) -> String {
+    format!(
+        "\n[agent]\n\
+         # The cluster agent in this server's k3s enrolls from what Kuben publishes.\n\
+         bind = \"0.0.0.0:{AGENT_PORT}\"\n\
+         local = true\n\
+         advertise = \"{hub}:{AGENT_PORT}\"\n\
+         namespace = \"{}\"\n",
+        platform::GATEWAY_NAMESPACE
+    )
+}
+
+fn has_section(text: &str, name: &str) -> bool {
+    text.lines().any(|line| line.trim() == format!("[{name}]"))
+}
+
+/// The lines of the `[server]` section of a config file.
+fn server_lines(text: &str) -> impl Iterator<Item = &str> {
+    let mut in_server = true;
+    text.lines().filter(move |line| {
+        let key = line.trim();
+        if key.starts_with('[') {
+            in_server = key == "[server]";
+        }
+        in_server
+    })
+}
+
 /// The port of `bind` under `[server]` in a config file.
 fn config_port(text: &str) -> Option<u16> {
-    text.lines()
+    server_lines(text)
         .map(str::trim_start)
         .find_map(|line| line.strip_prefix("bind")?.trim_start().strip_prefix('='))?
         .trim()
@@ -823,11 +886,15 @@ fn config_port(text: &str) -> Option<u16> {
 fn with_port(text: &str, old: u16, new: u16) -> String {
     let from = format!(":{old}\"");
     let to = format!(":{new}\"");
+    let mut in_server = true;
     let mut out: String = text
         .lines()
         .map(|line| {
             let key = line.trim_start();
-            if key.starts_with("bind") || key.starts_with("public_url") {
+            if key.starts_with('[') {
+                in_server = key.trim_end() == "[server]";
+            }
+            if in_server && (key.starts_with("bind") || key.starts_with("public_url")) {
                 line.replace(&from, &to)
             } else {
                 line.to_owned()
@@ -958,77 +1025,153 @@ fn active_firewall() -> Option<Firewall> {
     }
 }
 
+/// k3s's default pod network: agent pods reach the hub on this server from
+/// there.
+pub const POD_NETWORK: &str = "10.42.0.0/16";
+
+/// A TCP port setup opens, from anywhere or from one network only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Opening<'a> {
+    port: u16,
+    source: Option<&'a str>,
+}
+
 impl Firewall {
-    /// The journal's name of the rule opening `port`.
-    fn rule(self, port: u16) -> String {
-        match self {
-            Self::Ufw => format!("ufw:{port}/tcp"),
-            Self::Firewalld => format!("firewalld:{port}/tcp"),
+    /// The journal's name of the rule, e.g. `ufw:3000/tcp` or
+    /// `ufw:10.42.0.0/16:7443/tcp`.
+    fn rule(self, opening: Opening<'_>) -> String {
+        let tool = match self {
+            Self::Ufw => "ufw",
+            Self::Firewalld => "firewalld",
+        };
+        match opening.source {
+            Some(source) => format!("{tool}:{source}:{}/tcp", opening.port),
+            None => format!("{tool}:{}/tcp", opening.port),
         }
     }
 
-    fn is_open(self, port: u16) -> bool {
-        match self {
-            Self::Ufw => Command::new("ufw").arg("status").output().is_ok_and(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .any(|l| l.split_whitespace().next() == Some(&format!("{port}/tcp")))
+    /// The firewall and opening a journal rule names.
+    fn parse(rule: &str) -> Option<(Self, Opening<'_>)> {
+        let mut parts = rule.split(':');
+        let tool = match parts.next()? {
+            "ufw" => Self::Ufw,
+            "firewalld" => Self::Firewalld,
+            _ => return None,
+        };
+        let rest: Vec<&str> = parts.collect();
+        let (source, port) = match rest.as_slice() {
+            [port] => (None, *port),
+            [source, port] => (Some(*source), *port),
+            _ => return None,
+        };
+        let port = port.strip_suffix("/tcp")?.parse().ok()?;
+        Some((tool, Opening { port, source }))
+    }
+
+    fn rich_rule(opening: Opening<'_>) -> String {
+        format!(
+            "rule family=ipv4 source address={} port port={} protocol=tcp accept",
+            opening.source.unwrap_or("0.0.0.0/0"),
+            opening.port
+        )
+    }
+
+    fn is_open(self, opening: Opening<'_>) -> bool {
+        let port = format!("{}/tcp", opening.port);
+        match (self, opening.source) {
+            (Self::Ufw, _) => Command::new("ufw").arg("status").output().is_ok_and(|o| {
+                String::from_utf8_lossy(&o.stdout).lines().any(|l| {
+                    l.split_whitespace().next() == Some(port.as_str())
+                        && opening.source.is_none_or(|s| l.contains(s))
+                })
             }),
-            Self::Firewalld => Command::new("firewall-cmd")
-                .arg(format!("--query-port={port}/tcp"))
+            (Self::Firewalld, None) => Command::new("firewall-cmd")
+                .arg(format!("--query-port={port}"))
+                .status()
+                .is_ok_and(|s| s.success()),
+            (Self::Firewalld, Some(_)) => Command::new("firewall-cmd")
+                .arg(format!("--query-rich-rule={}", Self::rich_rule(opening)))
                 .status()
                 .is_ok_and(|s| s.success()),
         }
     }
 
-    fn open(self, port: u16) -> anyhow::Result<()> {
-        match self {
-            Self::Ufw => run(&["ufw", "allow", &format!("{port}/tcp")]).map(drop),
-            Self::Firewalld => run(&["firewall-cmd", "--permanent", &format!("--add-port={port}/tcp")])
-                .and_then(|_| run(&["firewall-cmd", "--reload"]))
-                .map(drop),
+    fn change(self, opening: Opening<'_>, open: bool) -> anyhow::Result<()> {
+        let port = opening.port.to_string();
+        match (self, opening.source) {
+            (Self::Ufw, None) => {
+                let rule = format!("{port}/tcp");
+                if open {
+                    run(&["ufw", "allow", &rule])
+                } else {
+                    run(&["ufw", "delete", "allow", &rule])
+                }
+            }
+            (Self::Ufw, Some(source)) => {
+                let mut args = vec!["ufw"];
+                if !open {
+                    args.push("delete");
+                }
+                args.extend([
+                    "allow", "from", source, "to", "any", "port", &port, "proto", "tcp",
+                ]);
+                run(&args)
+            }
+            (Self::Firewalld, source) => {
+                let arg = match (source, open) {
+                    (None, true) => format!("--add-port={port}/tcp"),
+                    (None, false) => format!("--remove-port={port}/tcp"),
+                    (Some(_), true) => format!("--add-rich-rule={}", Self::rich_rule(opening)),
+                    (Some(_), false) => format!("--remove-rich-rule={}", Self::rich_rule(opening)),
+                };
+                run(&["firewall-cmd", "--permanent", &arg]).and_then(|_| run(&["firewall-cmd", "--reload"]))
+            }
         }
-    }
-
-    fn close(self, port: u16) -> anyhow::Result<()> {
-        match self {
-            Self::Ufw => run(&["ufw", "delete", "allow", &format!("{port}/tcp")]).map(drop),
-            Self::Firewalld => run(&[
-                "firewall-cmd",
-                "--permanent",
-                &format!("--remove-port={port}/tcp"),
-            ])
-            .and_then(|_| run(&["firewall-cmd", "--reload"]))
-            .map(drop),
-        }
+        .map(drop)
     }
 }
 
-fn open_firewall(ui: Ui, port: u16, book: &mut Book) -> anyhow::Result<()> {
+/// Open the console's port, and with the local agent its port for the pod
+/// network only. Each rule setup adds is recorded; one that was open is not.
+fn open_firewall(ui: Ui, port: u16, agent: bool, book: &mut Book) -> anyhow::Result<()> {
     let label = format!("Opening port {port} in the firewall");
     let Some(firewall) = active_firewall() else {
         ui.done(&label, "no host firewall is active");
         return book.done(false, "no host firewall");
     };
-    let rule = firewall.rule(port);
-    if firewall.is_open(port) {
-        book.claim(Kind::FirewallRule, &rule, false)?;
-        ui.done(&label, "already open");
-        return book.done(false, format!("{rule}, already open"));
+    let mut openings = vec![Opening { port, source: None }];
+    if agent {
+        openings.push(Opening {
+            port: AGENT_PORT,
+            source: Some(POD_NETWORK),
+        });
     }
     let step = ui.step(&label);
-    match firewall.open(port) {
-        Ok(()) => {
-            book.claim(Kind::FirewallRule, &rule, true)?;
-            step.done(&rule);
-            book.done(true, rule)
+    let (mut changed, mut notes) = (false, Vec::new());
+    for opening in openings {
+        let rule = firewall.rule(opening);
+        if firewall.is_open(opening) {
+            book.claim(Kind::FirewallRule, &rule, false)?;
+            notes.push(format!("{rule} already open"));
+            continue;
         }
         // A firewall problem never stops the install; it is reported.
-        Err(e) => {
-            step.warn(format!("{rule} failed: {e}"));
-            book.done(false, format!("{rule} failed: {e}"))
+        match firewall.change(opening, true) {
+            Ok(()) => {
+                book.claim(Kind::FirewallRule, &rule, true)?;
+                changed = true;
+                notes.push(rule);
+            }
+            Err(e) => notes.push(format!("{rule} failed: {e}")),
         }
     }
+    let detail = notes.join(", ");
+    if detail.contains("failed") {
+        step.warn(&detail);
+    } else {
+        step.done(&detail);
+    }
+    book.done(changed, detail)
 }
 
 fn announce(
@@ -1307,13 +1450,7 @@ fn purge(ui: Ui, owned: &Owned) {
         }
     }
     for rule in &owned.firewall {
-        let closed = rule
-            .split_once(':')
-            .and_then(|(tool, port)| Some((tool, port.strip_suffix("/tcp")?.parse::<u16>().ok()?)))
-            .map(|(tool, port)| match tool {
-                "ufw" => Firewall::Ufw.close(port),
-                _ => Firewall::Firewalld.close(port),
-            });
+        let closed = Firewall::parse(rule).map(|(firewall, opening)| firewall.change(opening, false));
         match closed {
             Some(Ok(())) => ui.done("Closing the firewall port", rule),
             Some(Err(e)) => ui.warn("Closing the firewall port", format!("{rule}: {e}")),
@@ -1725,5 +1862,54 @@ mod tests {
     #[test]
     fn tail_keeps_the_last_non_empty_lines() {
         assert_eq!(tail(b"a\n\nb\nc\n", b"d\n", 2), "c\nd");
+    }
+
+    #[test]
+    fn the_agent_section_leaves_the_server_port_alone() {
+        let mut config = config_template(
+            "0.0.0.0",
+            3000,
+            "203.0.113.7",
+            Path::new("/var/lib/kuben/kubeconfig"),
+        );
+        assert!(!has_section(&config, "agent"));
+        config.push_str(&agent_section("203.0.113.7"));
+        assert!(has_section(&config, "agent"));
+        assert!(config.contains("advertise = \"203.0.113.7:7443\""));
+        assert_eq!(
+            config_port(&config),
+            Some(3000),
+            "the agent's bind is not the server's"
+        );
+        let moved = with_port(&config, 3000, 7443);
+        assert_eq!(config_port(&moved), Some(7443));
+        assert!(
+            moved.contains("bind = \"0.0.0.0:7443\"\nlocal = true"),
+            "the agent section is untouched"
+        );
+        let back = with_port(&moved, 7443, 3000);
+        assert_eq!(back, config, "only [server] lines moved");
+    }
+
+    #[test]
+    fn firewall_rules_name_their_source_and_read_back() {
+        let open = Opening {
+            port: 3000,
+            source: None,
+        };
+        let pods = Opening {
+            port: AGENT_PORT,
+            source: Some(POD_NETWORK),
+        };
+        assert_eq!(Firewall::Ufw.rule(open), "ufw:3000/tcp");
+        assert_eq!(Firewall::Firewalld.rule(pods), "firewalld:10.42.0.0/16:7443/tcp");
+        for (firewall, opening) in [(Firewall::Ufw, open), (Firewall::Firewalld, pods)] {
+            assert_eq!(
+                Firewall::parse(&firewall.rule(opening)),
+                Some((firewall, opening))
+            );
+        }
+        assert_eq!(Firewall::parse("iptables:22/tcp"), None);
+        assert!(Firewall::rich_rule(pods).contains("source address=10.42.0.0/16 port port=7443"));
     }
 }

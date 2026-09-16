@@ -310,6 +310,22 @@ jobs:
       # the e2e run checks HTTPS from the runner, never through a port-forward.
       - name: Public path (Gateway API, Traefik, cert-manager)
         run: scripts/e2e-gateway.sh
+      # M2.8: the agent runs as a pod in the e2e run, from an image of the
+      # debug build; pods reach the hub on the runner through the kind
+      # network's gateway.
+      - name: Agent image for the cluster
+        run: |
+          cargo build --package kuben-agent --locked
+          context="$RUNNER_TEMP/agent-image"
+          mkdir -p "$context"
+          cp target/debug/kuben-agent "$context/"
+          docker build -q -f deploy/e2e-agent.Dockerfile -t kuben-agent:e2e "$context"
+          kind load docker-image kuben-agent:e2e --name kuben-e2e
+          gateway=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.')
+          {
+            echo "KUBEN_E2E_AGENT_IMAGE=kuben-agent:e2e"
+            echo "KUBEN_E2E_HUB=${gateway}:18082"
+          } >>"$GITHUB_ENV"
       # ADR-032 option A: tags resolve to digests at their registry. First, so
       # a registry problem shows here and not as an e2e failure.
       - name: Registry resolution (network)
