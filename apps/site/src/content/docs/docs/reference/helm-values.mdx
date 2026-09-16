@@ -34,6 +34,7 @@ With `database.url` and `database.existingSecret` both empty, the chart runs its
 |---|---|---|
 | `postgresql.image.repository` | `docker.io/library/postgres` | |
 | `postgresql.image.tag` | `"17-alpine"` | |
+| `postgresql.image.digest` | the release's pin | from the bundle lock (`kuben version --bundle`); empty pulls the tag |
 | `postgresql.image.pullPolicy` | `IfNotPresent` | |
 | `postgresql.persistence.size` | `8Gi` | |
 | `postgresql.persistence.storageClass` | `""` | the cluster default; it must offer `ReadWriteOnce` volumes |

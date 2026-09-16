@@ -128,8 +128,8 @@ fn lines(opts: &SetupOpts, journal: &Journal) -> Vec<Line> {
             format!(
                 "Traefik as the Gateway provider, Gateway API {} CRDs and cert-manager {} when missing \
                  (never upgraded), {issuer}; KubenConfig with gateway class {}{}",
-                super::platform::GATEWAY_API_VERSION,
-                super::platform::CERT_MANAGER_VERSION,
+                crate::bundle::bundle().gateway_api.version,
+                crate::bundle::bundle().cert_manager.version,
                 super::platform::GATEWAY_CLASS,
                 opts.domain
                     .as_deref()
@@ -175,7 +175,7 @@ fn cluster(opts: &SetupOpts) -> Line {
     } else {
         format!(
             "install k3s {} (verified installer, {:?} datastore, reserved CPU and memory)",
-            super::platform::K3S_VERSION,
+            crate::bundle::bundle().k3s.version,
             opts.datastore
         )
     };

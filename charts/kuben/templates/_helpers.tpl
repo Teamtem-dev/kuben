@@ -38,5 +38,5 @@ app.kubernetes.io/component: database
 {{- end -}}
 
 {{- define "kuben.postgresql.image" -}}
-{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}{{ with .Values.postgresql.image.digest }}@{{ . }}{{ end }}
 {{- end -}}

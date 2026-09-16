@@ -198,15 +198,22 @@ jobs:
       - name: Checksums
         working-directory: dist
         run: |
-          cp ../install.sh .
+          cp ../install.sh ../bundle.lock.json .
           for f in *.tar.gz *.zip; do sha256sum -- "$f" >"$f.sha256"; done
-          sha256sum -- *.tar.gz *.zip install.sh >checksums.txt
+          sha256sum -- *.tar.gz *.zip install.sh bundle.lock.json >checksums.txt
           cat checksums.txt
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Keyless (Sigstore): the certificate names this workflow and tag, the
+      # signature is in the public transparency log. Signing checksums.txt
+      # covers every file it lists; install.sh verifies it when cosign is there.
+      - name: Sign the checksums (cosign)
+        working-directory: dist
+        run: cosign sign-blob --yes --bundle checksums.txt.sigstore.json checksums.txt
       - name: Create or update the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -295,6 +302,11 @@ jobs:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign the image (cosign, keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
   chart:
     name: Helm chart (OCI)
@@ -304,12 +316,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.tag }}
           persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Package and push to oci://ghcr.io/teamtem-dev/charts
         env:
           VERSION: ${{ needs.plan.outputs.version }}
@@ -319,7 +333,11 @@ jobs:
           helm lint --strict charts/kuben
           helm package charts/kuben --version "$VERSION" --app-version "$VERSION" --destination dist
           printf '%s' "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
-          helm push "dist/kuben-${VERSION}.tgz" oci://ghcr.io/teamtem-dev/charts
+          helm push "dist/kuben-${VERSION}.tgz" oci://ghcr.io/teamtem-dev/charts 2>&1 | tee push.txt
+          digest=$(sed -n 's/^Digest: *//p' push.txt)
+          [[ $digest == sha256:* ]] || { echo "no digest in the helm push output" >&2; exit 1; }
+          printf '%s' "$REGISTRY_TOKEN" | cosign login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          cosign sign --yes "ghcr.io/teamtem-dev/charts/kuben@${digest}"
 
   verify-install:
     name: install.sh on ${{ matrix.os }}

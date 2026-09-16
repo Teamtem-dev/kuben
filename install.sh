@@ -14,16 +14,21 @@
 #   --dir <path>      KUBEN_INSTALL_DIR=<path>     install directory (default: /usr/local/bin)
 #   --no-sudo         KUBEN_NO_SUDO=1              never escalate; fail if <dir> is not writable
 #   --binary-only     KUBEN_BINARY_ONLY=1          install the binary, do not run `kuben setup`
+#   --require-signature KUBEN_REQUIRE_SIGNATURE=1  refuse to install without a verified signature
 #   --uninstall                                    remove the server set up by `kuben setup`
 #   -h, --help
 #   Every other option goes to `kuben setup`: --plan, --domain <domain>,
 #   --acme-email <email>, --acme-staging, --datastore sqlite|etcd, --port <n>,
-#   --kubeconfig <file>, --no-k3s, --bind-local, --yes.
+#   --kubeconfig <file>, --no-k3s, --bind-local, --allow-http-setup, --yes.
 #
 # Guarantees:
 #   * HTTPS only (TLS >= 1.2), no redirects to plain HTTP.
 #   * The archive is verified against the release's checksums.txt (SHA-256)
-#     BEFORE anything is extracted or installed.
+#     BEFORE anything is extracted or installed. When cosign is installed,
+#     checksums.txt itself is verified first: its keyless Sigstore signature
+#     must come from this repository's release workflow for that tag.
+#   * To read before running: download this file, check it against the
+#     release's checksums.txt (and its signature), then run it.
 #   * The body is wrapped in main(), which runs only on the last line, so a
 #     truncated download cannot execute a partial script.
 #   * No shell state is left behind: everything happens in a temp dir that is
@@ -56,10 +61,11 @@ usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo] [--binary-only] [
   --dir <path>      KUBEN_INSTALL_DIR=<path>   install directory (default: /usr/local/bin)
   --no-sudo         KUBEN_NO_SUDO=1            never escalate; fail if <dir> is not writable
   --binary-only     KUBEN_BINARY_ONLY=1        install the binary, do not run `kuben setup`
+  --require-signature                          KUBEN_REQUIRE_SIGNATURE=1: fail unless cosign verifies the release
   --uninstall                                  remove the server set up by `kuben setup`
 
   Other options go to `kuben setup`: --plan, --domain <domain>, --acme-email <email>, --acme-staging,
-  --datastore sqlite|etcd, --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --yes
+  --datastore sqlite|etcd, --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --allow-http-setup, --yes
 EOF
 }
 
@@ -144,6 +150,29 @@ install_binary() { # <src> <dir>
   $sudo install -m 0755 "$1" "$2/$BIN"
 }
 
+# checksums.txt of <version>, verified with cosign against the release
+# workflow's keyless signature. Without cosign: a note, or a failure when a
+# signature is required.
+verify_signature() { # <checksums> <version>
+  if ! has cosign; then
+    [ "$require_signature" = "1" ] && err "cosign is required to verify the release (https://docs.sigstore.dev/cosign/system_config/installation/)"
+    note "cosign not found: checksums.txt was not signature-checked (install cosign to have it checked)"
+    return 0
+  fi
+  if ! download "${base}/checksums.txt.sigstore.json" "${tmp}/checksums.txt.sigstore.json" 2>/dev/null; then
+    [ "$require_signature" = "1" ] && err "release $2 has no signature (checksums.txt.sigstore.json)"
+    note "release $2 is not signed (it predates signed releases): checksums.txt was not signature-checked"
+    return 0
+  fi
+  # The release workflow, run for this tag (or rebuilt from main).
+  tag_re=$(printf '%s' "$2" | sed 's/[.+]/\\&/g')
+  cosign verify-blob --bundle "${tmp}/checksums.txt.sigstore.json" \
+    --certificate-identity-regexp "^https://github[.]com/${REPO}/[.]github/workflows/release[.]yml@refs/(tags/${tag_re}|heads/main)\$" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    "$1" >/dev/null 2>&1 || err "the signature of checksums.txt does not verify for ${REPO} $2: nothing was installed"
+  say "Signature verified (Sigstore, ${REPO} release workflow, $2)"
+}
+
 # A Linux server with systemd, as root: `kuben setup` can do the rest.
 can_setup() {
   [ "$(uname -s)" = Linux ] && [ "$(id -u)" = 0 ] && [ -d /run/systemd/system ]
@@ -154,6 +183,7 @@ main() {
   dir=${KUBEN_INSTALL_DIR:-/usr/local/bin}
   no_sudo=${KUBEN_NO_SUDO:-0}
   binary_only=${KUBEN_BINARY_ONLY:-0}
+  require_signature=${KUBEN_REQUIRE_SIGNATURE:-0}
   uninstall=0
   setup_args=""
 
@@ -177,6 +207,10 @@ main() {
       binary_only=1
       shift
       ;;
+    --require-signature)
+      require_signature=1
+      shift
+      ;;
     --uninstall)
       uninstall=1
       shift
@@ -185,12 +219,12 @@ main() {
       usage
       exit 0
       ;;
-    --port | --kubeconfig)
+    --port | --kubeconfig | --domain | --acme-email | --datastore)
       [ $# -ge 2 ] || err "$1 needs a value"
       setup_args="$setup_args $1 $2"
       shift 2
       ;;
-    --no-k3s | --bind-local | --yes | -y)
+    --no-k3s | --bind-local | --yes | -y | --plan | --acme-staging | --allow-http-setup)
       setup_args="$setup_args $1"
       shift
       ;;
@@ -222,6 +256,7 @@ main() {
   download "${base}/${archive}" "${tmp}/${archive}" ||
     err "download failed: ${base}/${archive} — release ${version} has no ${archive}; see https://github.com/${REPO}/releases/tag/${version}"
   download "${base}/checksums.txt" "${tmp}/checksums.txt" || err "download failed: ${base}/checksums.txt"
+  verify_signature "${tmp}/checksums.txt" "$version"
 
   expected=$(awk -v f="$archive" '{ n = $2; sub(/^\*/, "", n) } n == f { print $1; exit }' "${tmp}/checksums.txt")
   [ -n "$expected" ] || err "${archive} is not listed in checksums.txt"

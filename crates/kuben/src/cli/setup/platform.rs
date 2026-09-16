@@ -10,7 +10,7 @@
 //! A cluster brought with `--kubeconfig` gets nothing: `kuben doctor` reports
 //! what it lacks.
 
-use std::{path::Path, process::Command, time::Duration};
+use std::{fmt::Write as _, path::Path, process::Command, time::Duration};
 
 use anyhow::{Context as _, bail};
 use k8s_openapi::{
@@ -31,19 +31,12 @@ use super::{
     journal::{Book, Journal, Kind},
     run_env, tail, which,
 };
-use crate::cli::ui::Ui;
+use crate::{bundle::bundle, cli::ui::Ui};
 
-/// The k3s release the managed path installs.
-pub const K3S_VERSION: &str = "v1.36.4+k3s1";
-/// k3s's installer for exactly that release, and its SHA-256: the script
-/// verifies the k3s binary against the release's checksums in turn.
-const K3S_INSTALLER: &str = "https://raw.githubusercontent.com/k3s-io/k3s/v1.36.4%2Bk3s1/install.sh";
-const K3S_INSTALLER_SHA256: &str = "46177d4c99440b4c0311b67233823a8e8a2fc09693f6c89af1a7161e152fbfad";
-pub const GATEWAY_API_VERSION: &str = "v1.5.1";
-const GATEWAY_API_URL: &str =
-    "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml";
-const GATEWAY_API_SHA256: &str = "751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8";
-pub const CERT_MANAGER_VERSION: &str = "v1.21.2";
+// What is installed, and its digests, comes from the bundle lock: k3s by
+// its installer for exactly that release (which verifies the k3s binary
+// against the release's checksums in turn), the Gateway API CRDs, and
+// cert-manager's chart and images.
 /// The GatewayClass of k3s's Traefik, and the entry points its listeners use.
 pub const GATEWAY_CLASS: &str = "traefik";
 const TRAEFIK_PORTS: (u16, u16) = (8000, 8443);
@@ -102,8 +95,8 @@ pub fn k3s_exec(datastore: Datastore) -> String {
     exec.join(" ")
 }
 
-/// Download `url` to `to` and check its SHA-256.
-fn download_verified(url: &str, sha256: &str, to: &Path) -> anyhow::Result<()> {
+/// Download `url` to `to` and check its SHA-256; its content.
+fn download_verified(url: &str, sha256: &str, to: &Path) -> anyhow::Result<Vec<u8>> {
     if which("curl").is_none() {
         bail!("install curl first (apt-get install -y curl), then run kuben setup again");
     }
@@ -127,7 +120,7 @@ fn download_verified(url: &str, sha256: &str, to: &Path) -> anyhow::Result<()> {
         std::fs::remove_file(to).ok();
         bail!("{url} does not match its pinned checksum (sha256 {got}, expected {sha256}); nothing was run");
     }
-    Ok(())
+    Ok(body)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -138,21 +131,23 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Install [`K3S_VERSION`] with its verified installer.
+/// Install the locked k3s with its verified installer.
 pub fn install_k3s(ui: Ui, datastore: Datastore) -> anyhow::Result<()> {
-    let step = ui.step(format!("Installing k3s {K3S_VERSION}"));
+    let k3s = &bundle().k3s;
+    let step = ui.step(format!("Installing k3s {}", k3s.version));
     let script = std::env::temp_dir().join(format!("kuben-k3s-install-{}.sh", std::process::id()));
-    if let Err(e) = download_verified(K3S_INSTALLER, K3S_INSTALLER_SHA256, &script) {
+    if let Err(e) = download_verified(&k3s.installer.url, &k3s.installer.sha256, &script) {
         step.fail("the installer could not be verified");
         return Err(e);
     }
     let exec = k3s_exec(datastore);
     ui.command(&format!(
-        "INSTALL_K3S_VERSION={K3S_VERSION} INSTALL_K3S_EXEC=\"{exec}\" sh install.sh"
+        "INSTALL_K3S_VERSION={} INSTALL_K3S_EXEC=\"{exec}\" sh install.sh",
+        k3s.version
     ));
     let output = Command::new("sh")
         .arg(&script)
-        .env("INSTALL_K3S_VERSION", K3S_VERSION)
+        .env("INSTALL_K3S_VERSION", &k3s.version)
         .env("INSTALL_K3S_EXEC", &exec)
         .output()
         .context("running the k3s installer")?;
@@ -162,7 +157,7 @@ pub fn install_k3s(ui: Ui, datastore: Datastore) -> anyhow::Result<()> {
         ui.note(&tail(&output.stdout, &output.stderr, 12));
         bail!("k3s did not install; the lines above are its last output (journalctl -u k3s has more)");
     }
-    step.done(format!("{K3S_VERSION}, {datastore:?} datastore"));
+    step.done(format!("{}, {datastore:?} datastore", k3s.version));
     Ok(())
 }
 
@@ -255,20 +250,54 @@ fn traefik_config() -> Value {
     }))
 }
 
-fn cert_manager_chart() -> Value {
+/// cert-manager's values: its CRDs, Gateway API support, and every image
+/// pinned by the digest of the bundle lock.
+fn cert_manager_values() -> String {
+    let images = &bundle().cert_manager.images;
+    let digest = |component: &str| images.get(component).map_or("", String::as_str);
+    let mut values = String::from(
+        "crds:\n  enabled: true\n  keep: true\nstartupapicheck:\n  enabled: false\n  image:\n    digest: STARTUP\n\
+         config:\n  apiVersion: controller.config.cert-manager.io/v1alpha1\n  kind: ControllerConfiguration\n  enableGatewayAPI: true\n\
+         image:\n  digest: CONTROLLER\n",
+    );
+    for component in ["webhook", "cainjector", "acmesolver"] {
+        let _ = write!(
+            values,
+            "{component}:\n  image:\n    digest: {}\n",
+            digest(component)
+        );
+    }
+    values
+        .replace("STARTUP", digest("startupapicheck"))
+        .replace("CONTROLLER", digest("controller"))
+}
+
+/// cert-manager from the chart archive setup downloaded and verified
+/// (`chart`, base64): k3s installs exactly those bytes.
+fn cert_manager_chart(chart: &str) -> Value {
     labelled(json!({
         "apiVersion": "helm.cattle.io/v1",
         "kind": "HelmChart",
         "metadata": { "name": "kuben-cert-manager", "namespace": "kube-system" },
         "spec": {
-            "repo": "https://charts.jetstack.io",
             "chart": "cert-manager",
-            "version": CERT_MANAGER_VERSION,
+            "version": bundle().cert_manager.version,
+            "chartContent": chart,
             "targetNamespace": "cert-manager",
             "createNamespace": true,
-            "valuesContent": "crds:\n  enabled: true\n  keep: true\nstartupapicheck:\n  enabled: false\nconfig:\n  apiVersion: controller.config.cert-manager.io/v1alpha1\n  kind: ControllerConfiguration\n  enableGatewayAPI: true\n",
+            "valuesContent": cert_manager_values(),
         },
     }))
+}
+
+/// The pinned cert-manager chart archive, base64.
+fn cert_manager_archive() -> anyhow::Result<String> {
+    use base64::Engine as _;
+    let pinned = &bundle().cert_manager.chart;
+    let file = std::env::temp_dir().join(format!("kuben-cert-manager-{}.tgz", std::process::id()));
+    let body = download_verified(&pinned.url, &pinned.sha256, &file);
+    std::fs::remove_file(&file).ok();
+    Ok(base64::engine::general_purpose::STANDARD.encode(body?))
 }
 
 fn namespace() -> Value {
@@ -364,7 +393,8 @@ async fn ensure_gateway_api(client: &Client, book: &mut Book) -> anyhow::Result<
         return Ok("Gateway API CRDs already installed (kept as they are)".to_owned());
     }
     let file = std::env::temp_dir().join(format!("kuben-gateway-api-{}.yaml", std::process::id()));
-    download_verified(GATEWAY_API_URL, GATEWAY_API_SHA256, &file)?;
+    let pinned = &bundle().gateway_api;
+    download_verified(&pinned.url, &pinned.sha256, &file)?;
     let text = std::fs::read_to_string(&file)?;
     std::fs::remove_file(&file).ok();
     book.claim(Kind::KubernetesObject, CRDS, true)?;
@@ -375,7 +405,7 @@ async fn ensure_gateway_api(client: &Client, book: &mut Book) -> anyhow::Result<
         }
         apply(client, &object(value)?, true).await?;
     }
-    Ok(format!("Gateway API {GATEWAY_API_VERSION} CRDs installed"))
+    Ok(format!("Gateway API {} CRDs installed", pinned.version))
 }
 
 /// Everything before the service starts: Gateway API CRDs, Traefik as the
@@ -415,7 +445,13 @@ pub fn ensure_platform(
             book.claim(Kind::KubernetesObject, CERT_MANAGER, false)?;
             notes.push("cert-manager already installed (kept; it needs Gateway API support enabled)".into());
         } else {
-            changed |= ensure_object(&client, book, CERT_MANAGER, cert_manager_chart()).await?;
+            changed |= ensure_object(
+                &client,
+                book,
+                CERT_MANAGER,
+                cert_manager_chart(&cert_manager_archive()?),
+            )
+            .await?;
         }
         let class_ready = eventually(Duration::from_mins(5), || gateway_class_accepted(&client)).await;
         if !class_ready {
@@ -450,7 +486,9 @@ pub fn ensure_platform(
         Ok((changed, notes)) => {
             let detail = if notes.is_empty() {
                 format!(
-                    "Traefik Gateway, Gateway API {GATEWAY_API_VERSION}, cert-manager {CERT_MANAGER_VERSION}"
+                    "Traefik Gateway, Gateway API {}, cert-manager {}",
+                    bundle().gateway_api.version,
+                    bundle().cert_manager.version
                 )
             } else {
                 notes.join("; ")
@@ -912,16 +950,27 @@ mod tests {
     fn pinned_objects_parse_and_checksums_are_hex() {
         for value in [
             traefik_config(),
-            cert_manager_chart(),
+            cert_manager_chart("H4sI"),
             namespace(),
             cluster_issuer("a@b.c", false),
         ] {
             object(value).expect("a Kubernetes object");
         }
-        for sum in [K3S_INSTALLER_SHA256, GATEWAY_API_SHA256] {
-            assert_eq!(sum.len(), 64);
-            assert!(sum.bytes().all(|b| b.is_ascii_hexdigit()));
+        let values: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&cert_manager_values()).expect("cert-manager values are YAML");
+        let images = &bundle().cert_manager.images;
+        assert_eq!(
+            values["image"]["digest"].as_str(),
+            images.get("controller").map(String::as_str)
+        );
+        for component in ["webhook", "cainjector", "acmesolver", "startupapicheck"] {
+            assert_eq!(
+                values[component]["image"]["digest"].as_str(),
+                images.get(component).map(String::as_str),
+                "{component}"
+            );
         }
+        assert_eq!(values["config"]["enableGatewayAPI"].as_bool(), Some(true));
         assert_eq!(
             hex(&Sha256::digest(b"abc")),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"

@@ -57,11 +57,13 @@ Artifacts of a release:
 | `x86_64-apple-darwin` | `kuben-x86_64-apple-darwin.tar.gz` |
 | `x86_64-pc-windows-msvc` | `kuben-x86_64-pc-windows-msvc.zip` |
 
-plus a `.sha256` per archive, `checksums.txt`, `install.sh`, the image `ghcr.io/teamtem-dev/kuben:{X.Y.Z, X.Y, latest}` and the chart `oci://ghcr.io/teamtem-dev/charts/kuben`. Tags like `v1.1.0-rc.1` become pre-releases and never move `latest`.
+plus a `.sha256` per archive, `checksums.txt` and its keyless Sigstore signature `checksums.txt.sigstore.json`, `install.sh`, `bundle.lock.json` (what setup installs besides Kuben, pinned), the image `ghcr.io/teamtem-dev/kuben:{X.Y.Z, X.Y, latest}` and the chart `oci://ghcr.io/teamtem-dev/charts/kuben`. Tags like `v1.1.0-rc.1` become pre-releases and never move `latest`.
 
 Design decisions worth knowing:
 
 - **The image is built from the published binaries, not from source.** The release Dockerfile is a single `COPY`, so the bytes in the image are exactly the ones that were checksummed and attested.
+- **Everything is signed without a key to lose.** `checksums.txt` (and through it every archive, `install.sh` and the bundle lock), the image and the Helm chart are signed with cosign's keyless flow: the certificate names the release workflow and the tag, and the signature is recorded in Sigstore's transparency log. `install.sh` checks it whenever cosign is installed.
+- **One place for third-party pins.** `bundle.lock.json` holds the versions and digests of k3s, the Gateway API CRDs, cert-manager (chart and images) and the chart's PostgreSQL; the binary embeds it and tests fail when the chart or setup disagree with it.
 - **Every binary carries its dependency list.** `cargo auditable` embeds the exact crate list, so `trivy`, `grype`, `osv-scanner` or `cargo audit bin` can audit a deployed binary or image.
 - **Releases build without a cache.**
 - **The image gates run before the push:** size budget and Trivy on `linux/amd64` first, then the multi-arch push.

@@ -33,6 +33,8 @@ postgresql:
   image:
     repository: docker.io/library/postgres
     tag: "17-alpine"
+    # Pinned by the release's bundle lock (bundle.lock.json); empty pulls the tag.
+    digest: "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
     pullPolicy: IfNotPresent
   persistence:
     size: 8Gi

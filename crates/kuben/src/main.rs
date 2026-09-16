@@ -6,6 +6,7 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod bootstrap;
+mod bundle;
 mod cli;
 mod serve;
 mod telemetry;
@@ -59,8 +60,15 @@ fn main() -> anyhow::Result<()> {
         cli::Command::AgentToken(opts) => serve::block_on(&runtime, cli::agent::token(cfg, opts)),
         cli::Command::Backup(opts) => serve::block_on(&runtime, cli::backup::run(cfg, opts)),
         cli::Command::Restore(opts) => serve::block_on(&runtime, cli::backup::restore(cfg, opts)),
-        cli::Command::Version => {
-            println!("{}", cli::version_string());
+        cli::Command::Version(opts) => {
+            if opts.json {
+                print!("{}", bundle::LOCK);
+            } else {
+                println!("{}", cli::version_string());
+                if opts.bundle {
+                    println!("{}", bundle::summary());
+                }
+            }
             Ok(())
         }
     }

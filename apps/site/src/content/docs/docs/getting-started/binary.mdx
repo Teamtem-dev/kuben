@@ -95,9 +95,10 @@ Until the console has an `https://` address the session cookie is not `Secure` (
 
 - **HTTPS only**, TLS 1.2 or later, no redirects to plain HTTP.
 - **Checksum first.** The archive's SHA-256 is compared with the release's `checksums.txt` *before* anything is extracted or installed.
+- **Signature, when cosign is there.** `checksums.txt` is signed keyless with Sigstore by the release workflow; with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) installed, the script accepts it only with a signature from this repository's release workflow for that tag. `--require-signature` (`KUBEN_REQUIRE_SIGNATURE=1`) refuses to install without one.
 - **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
 - **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
-- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, `get.k3s.io` and the distribution's package mirrors when PostgreSQL is missing.
+- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, the pinned downloads of the bundle lock (k3s's installer, the Gateway API CRDs, cert-manager's chart), the image registries and the distribution's package mirrors when PostgreSQL is missing.
 - **Tested after every release, and every day.** CI runs exactly this command on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
 
 Other options, as flags or environment variables:
@@ -108,11 +109,42 @@ Other options, as flags or environment variables:
 | `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
 | `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
 | `--binary-only` | `KUBEN_BINARY_ONLY=1` | run `kuben setup` on a Linux server as root |
+| `--require-signature` | `KUBEN_REQUIRE_SIGNATURE=1` | check the signature when cosign is installed |
 
-On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases). To go further, verify the build provenance with the GitHub CLI:
+On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases).
+
+### Download, verify, then run
+
+To read the installer before it runs, and check every byte first:
 
 ```bash
+V=v1.2.0
+base=https://github.com/Teamtem-dev/kuben/releases/download/$V
+curl -fsSLO "$base/install.sh" -O "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json"
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/Teamtem-dev/kuben/.github/workflows/release.yml@refs/tags/$V" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+less install.sh
+sudo sh install.sh --version "$V" --require-signature
+```
+
+`cosign verify-blob` proves `checksums.txt` was signed by this repository's release workflow for that tag (the signature is in Sigstore's public transparency log); `sha256sum --check` then proves `install.sh` is the file it lists. The image and the Helm chart are signed the same way:
+
+```bash
+cosign verify ghcr.io/teamtem-dev/kuben:1.2.0 \
+  --certificate-identity-regexp '^https://github.com/Teamtem-dev/kuben/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
+```
+
+### What a release installs besides Kuben
+
+Everything `kuben setup` downloads is pinned in the release's **bundle lock** (`bundle.lock.json`, listed in the signed `checksums.txt` and built into the binary): the k3s release and its installer's SHA-256, the Gateway API CRDs and their SHA-256, cert-manager's chart archive and the digest of each of its images, and the Helm chart's PostgreSQL image digest. A download that does not match stops setup before anything runs.
+
+```bash
+kuben version --bundle          # the pins, readable
+kuben version --bundle --json   # the lock file itself
 ```
 
 ## What is on the server afterwards

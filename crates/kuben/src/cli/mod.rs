@@ -69,8 +69,20 @@ pub enum Command {
     Backup(BackupOpts),
     /// Restore a backup created by `kuben backup`.
     Restore(RestoreOpts),
-    /// Print version information.
-    Version,
+    /// Print version information; `--bundle` adds what a release installs
+    /// besides Kuben, with its digests.
+    Version(VersionOpts),
+}
+
+/// Options of `kuben version`.
+#[derive(Debug, Default, clap::Args)]
+pub struct VersionOpts {
+    /// Also the pinned k3s, Gateway API, cert-manager and PostgreSQL.
+    #[arg(long)]
+    pub bundle: bool,
+    /// With --bundle: the lock file itself (JSON).
+    #[arg(long, requires = "bundle")]
+    pub json: bool,
 }
 
 /// Options of `kuben doctor`.
