@@ -30,6 +30,14 @@ rules:
   - apiGroups: [""]
     resources: [pods, pods/log, nodes]
     verbs: [get, list, watch]
+  # Capability discovery: the default StorageClass, and which CNI enforces
+  # NetworkPolicies (its DaemonSet's name).
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [daemonsets]
+    verbs: [list]
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]

@@ -14,7 +14,10 @@
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use futures::Stream;
-use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
+use k8s_openapi::{
+    api::{apps::v1::DaemonSet, core::v1::Node, storage::v1::StorageClass},
+    apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
+};
 use kube::{
     Api, Client,
     api::{ApiResource, DynamicObject, GroupVersionKind, ListParams},
@@ -58,6 +61,15 @@ pub struct ClusterFacts {
     pub cluster_issuers: Vec<Readiness>,
     #[serde(default)]
     pub metrics_api: bool,
+    /// The API server's version, e.g. `v1.36.4+k3s1`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kubernetes_version: Option<String>,
+    /// The StorageClass volumes get when they name none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_storage_class: Option<String>,
+    /// What enforces NetworkPolicies (e.g. `cilium`, `k3s`), when found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_policy: Option<String>,
     /// Probes that failed; what they would have found is unknown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unknown: Vec<String>,
@@ -257,6 +269,76 @@ async fn gateway_api(client: &Client, versions: &[String], unknown: &mut Vec<Str
     api
 }
 
+const DEFAULT_CLASS: &str = "storageclass.kubernetes.io/is-default-class";
+/// DaemonSets of CNIs that enforce NetworkPolicies, and the name reported.
+const POLICY_ENFORCERS: [(&str, &str); 6] = [
+    ("cilium", "cilium"),
+    ("calico-node", "calico"),
+    ("canal", "canal"),
+    ("antrea-agent", "antrea"),
+    ("kube-router", "kube-router"),
+    ("weave-net", "weave"),
+];
+
+/// The default StorageClass among `classes`.
+fn default_class(classes: &[StorageClass]) -> Option<String> {
+    classes
+        .iter()
+        .find(|c| {
+            c.metadata
+                .annotations
+                .as_ref()
+                .and_then(|a| a.get(DEFAULT_CLASS))
+                .is_some_and(|v| v == "true")
+        })
+        .and_then(|c| c.metadata.name.clone())
+}
+
+/// What enforces NetworkPolicies: a known CNI's DaemonSet, or k3s, whose
+/// embedded controller does unless it was turned off.
+fn policy_enforcer(daemonsets: &[String], kubelet_versions: &[String]) -> Option<String> {
+    POLICY_ENFORCERS
+        .iter()
+        .find(|(daemonset, _)| daemonsets.iter().any(|d| d == daemonset))
+        .map(|(_, name)| (*name).to_owned())
+        .or_else(|| {
+            kubelet_versions
+                .iter()
+                .any(|v| v.contains("+k3s"))
+                .then(|| "k3s".to_owned())
+        })
+}
+
+/// The workload facts: version, storage and NetworkPolicy enforcement.
+async fn workload_facts(client: &Client, facts: &mut ClusterFacts) {
+    match timed(client.apiserver_version()).await {
+        Ok(v) => facts.kubernetes_version = Some(v.git_version),
+        Err(_) => facts.unknown.push("version".into()),
+    }
+    match timed(Api::<StorageClass>::all(client.clone()).list(&ListParams::default())).await {
+        Ok(list) => facts.default_storage_class = default_class(&list.items),
+        Err(_) => facts.unknown.push("storageClasses".into()),
+    }
+    let daemonsets = timed(Api::<DaemonSet>::all(client.clone()).list_metadata(&ListParams::default())).await;
+    let nodes = timed(Api::<Node>::all(client.clone()).list(&ListParams::default())).await;
+    match (daemonsets, nodes) {
+        (Ok(daemonsets), Ok(nodes)) => {
+            let names: Vec<String> = daemonsets
+                .items
+                .into_iter()
+                .filter_map(|d| d.metadata.name)
+                .collect();
+            let versions: Vec<String> = nodes
+                .items
+                .into_iter()
+                .filter_map(|n| n.status?.node_info.map(|i| i.kubelet_version))
+                .collect();
+            facts.network_policy = policy_enforcer(&names, &versions);
+        }
+        _ => facts.unknown.push("networkPolicy".into()),
+    }
+}
+
 /// Discover what `client`'s cluster can do. Never fails: failed probes are
 /// listed in [`ClusterFacts::unknown`].
 pub async fn discover(client: &Client) -> ClusterFacts {
@@ -314,6 +396,7 @@ pub async fn discover(client: &Client) -> ClusterFacts {
         }
     }
     facts.metrics_api = served(METRICS_GROUP).is_some();
+    workload_facts(client, &mut facts).await;
     facts
 }
 
@@ -504,6 +587,37 @@ mod tests {
             serde_json::from_value::<ClusterFacts>(json!({})).expect("empty"),
             ClusterFacts::default(),
             "older or partial records still read"
+        );
+    }
+
+    #[test]
+    fn storage_and_policy_enforcement_are_read_from_the_cluster() {
+        let class = |name: &str, default: bool| {
+            let mut c = StorageClass::default();
+            c.metadata.name = Some(name.into());
+            if default {
+                c.metadata.annotations = Some([(DEFAULT_CLASS.to_owned(), "true".to_owned())].into());
+            }
+            c
+        };
+        assert_eq!(
+            default_class(&[class("slow", false), class("local-path", true)]),
+            Some("local-path".into())
+        );
+        assert_eq!(default_class(&[class("slow", false)]), None);
+
+        let names = |n: &[&str]| n.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            policy_enforcer(&names(&["kube-proxy", "cilium"]), &[]),
+            Some("cilium".into())
+        );
+        assert_eq!(
+            policy_enforcer(&names(&["svclb-traefik"]), &names(&["v1.36.4+k3s1"])),
+            Some("k3s".into())
+        );
+        assert_eq!(
+            policy_enforcer(&names(&["kube-flannel-ds"]), &names(&["v1.34.1"])),
+            None
         );
     }
 }

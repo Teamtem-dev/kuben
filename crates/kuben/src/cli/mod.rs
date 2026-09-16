@@ -37,7 +37,7 @@ pub enum Command {
     /// Apply database migrations and exit.
     Migrate,
     /// Check the environment (database, cluster, gateway, cert-manager) and exit.
-    Doctor,
+    Doctor(DoctorOpts),
     /// Reset (or create) the admin user's password.
     ResetAdmin(ResetAdminOpts),
     /// Print a fresh link to the first-run setup page (`/setup`), with its token.
@@ -58,6 +58,16 @@ pub enum Command {
     Restore(RestoreOpts),
     /// Print version information.
     Version,
+}
+
+/// Options of `kuben doctor`.
+#[derive(Debug, Default, clap::Args)]
+pub struct DoctorOpts {
+    /// Check only the cluster (before installing Kuben into it, BYOK): what
+    /// each feature needs, what is there, and the permissions Kuben needs.
+    /// No database is needed.
+    #[arg(long)]
+    pub cluster: bool,
 }
 
 /// Options of `kuben agent-token`.

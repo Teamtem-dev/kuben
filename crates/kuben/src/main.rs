@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
             store.close().await?;
             Ok(())
         }),
-        cli::Command::Doctor => serve::block_on(&runtime, cli::doctor::run(cfg)),
+        cli::Command::Doctor(opts) => serve::block_on(&runtime, cli::doctor::run(cfg, opts)),
         cli::Command::ResetAdmin(opts) => serve::block_on(&runtime, cli::admin::reset(cfg, opts)),
         cli::Command::SetupToken => bootstrap::print_setup_token(&cfg),
         cli::Command::AgentToken(opts) => serve::block_on(&runtime, cli::agent::token(cfg, opts)),

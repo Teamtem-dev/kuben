@@ -256,6 +256,14 @@ YAML
   kubectl -n kuben-system get gateway kuben -o jsonpath='{.metadata.labels.kuben\.dev/gateway-owner}' | grep -qx kuben ||
     fail "Kuben's Gateway is not labelled as Kuben's"
   grep -q "cluster capabilities" "$work/kuben.log" || fail "capability discovery did not run"
+
+  # M2.9: what a BYOK operator runs before installing (no database needed).
+  step "M2.9: kuben doctor --cluster reports every feature ready"
+  "$BIN" doctor --cluster >"$work/doctor.txt" 2>&1 || fail "doctor --cluster failed: $(cat "$work/doctor.txt")"
+  for feature in "public routes" "HTTPS" "volumes"; do
+    grep -q "^\[OK  \] feature: ${feature}: " "$work/doctor.txt" || fail "doctor: ${feature} not ready: $(cat "$work/doctor.txt")"
+  done
+  grep -q '^\[OK  \] permissions: everything Kuben needs' "$work/doctor.txt" || fail "doctor: $(cat "$work/doctor.txt")"
 fi
 
 step "login"
