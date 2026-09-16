@@ -45,6 +45,26 @@ spec:
                   when it carries the label `kuben.dev/gateway-owner=kuben`.
                 nullable: true
                 type: string
+              gatewayPorts:
+                description: |-
+                  Ports of the listeners Kuben writes on its Gateway. Some Gateway
+                  controllers match listeners to their own entry points: Traefik (and
+                  k3s's bundled Traefik) listens on 8000 and 8443.
+                nullable: true
+                properties:
+                  http:
+                    default: 80
+                    format: uint16
+                    maximum: 65535.0
+                    minimum: 0.0
+                    type: integer
+                  https:
+                    default: 443
+                    format: uint16
+                    maximum: 65535.0
+                    minimum: 0.0
+                    type: integer
+                type: object
               registry:
                 description: Container registry used for build outputs.
                 nullable: true

@@ -28,7 +28,9 @@ use k8s_openapi::{
     },
 };
 use kube::ResourceExt;
-use kuben_crd::{App, Environment, EnvironmentType, KubenConfigSpec, Process, SizePreset, labels};
+use kuben_crd::{
+    App, Environment, EnvironmentType, GatewayPorts, KubenConfigSpec, Process, SizePreset, labels,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -175,6 +177,8 @@ pub struct Platform {
     pub gateway: Option<GatewayRef>,
     /// Kuben creates and owns `gateway` with this class (M2.2).
     pub gateway_class: Option<String>,
+    /// Ports of the listeners Kuben writes on its Gateway.
+    pub gateway_ports: GatewayPorts,
     /// Routes are served over TLS (a ClusterIssuer is configured).
     pub tls: bool,
     pub cluster_issuer: Option<String>,
@@ -205,6 +209,7 @@ impl Platform {
                         base_domain: None,
                         gateway: None,
                         gateway_class: None,
+                        gateway_ports: GatewayPorts::default(),
                         tls: false,
                         cluster_issuer: None,
                         wildcard_tls_secret: None,
@@ -227,6 +232,7 @@ impl Platform {
             base_domain: spec.base_domain.clone().filter(|d| !d.is_empty()),
             gateway,
             gateway_class,
+            gateway_ports: spec.gateway_ports.unwrap_or_default(),
             tls: spec.cluster_issuer.is_some(),
             cluster_issuer: spec.cluster_issuer.clone(),
             wildcard_tls_secret: spec.wildcard_tls_secret.clone().filter(|s| !s.is_empty()),

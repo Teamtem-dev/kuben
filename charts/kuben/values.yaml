@@ -73,6 +73,9 @@ platform:
   # gatewayClassName it defaults to `kuben-system/kuben` and Kuben creates it;
   # without, it must exist and carry the label kuben.dev/gateway-owner=kuben.
   gateway: ""
+  # Listener ports of that Gateway. Traefik (also k3s's) matches listeners to
+  # its entry points: set {http: 8000, https: 8443} there.
+  gatewayPorts: {}
   # cert-manager ClusterIssuer; enables https URLs.
   clusterIssuer: ""
 

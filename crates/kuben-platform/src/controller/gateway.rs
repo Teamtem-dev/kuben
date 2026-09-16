@@ -155,7 +155,7 @@ pub fn plan_listeners(hosts: &[(DomainClaim, String)], platform: &Platform) -> L
     let mut listeners = vec![json!({
         "name": HTTP_LISTENER,
         "protocol": "HTTP",
-        "port": 80,
+        "port": platform.gateway_ports.http,
         "allowedRoutes": http_routes,
     })];
     if !platform.tls {
@@ -187,7 +187,7 @@ pub fn plan_listeners(hosts: &[(DomainClaim, String)], platform: &Platform) -> L
         listeners.push(json!({
             "name": WILDCARD_LISTENER,
             "protocol": "HTTPS",
-            "port": 443,
+            "port": platform.gateway_ports.https,
             "hostname": format!("*.{base}"),
             "tls": tls(secret),
             "allowedRoutes": kuben_namespaces(),
@@ -209,7 +209,7 @@ pub fn plan_listeners(hosts: &[(DomainClaim, String)], platform: &Platform) -> L
             TlsMode::Plain => json!({
                 "name": plain_listener_name(host),
                 "protocol": "HTTP",
-                "port": 80,
+                "port": platform.gateway_ports.http,
                 "hostname": host,
                 "allowedRoutes": only_owner,
             }),
@@ -225,7 +225,7 @@ pub fn plan_listeners(hosts: &[(DomainClaim, String)], platform: &Platform) -> L
                 json!({
                     "name": host_listener_name(host),
                     "protocol": "HTTPS",
-                    "port": 443,
+                    "port": platform.gateway_ports.https,
                     "hostname": host,
                     "tls": certificate,
                     "allowedRoutes": only_owner,
@@ -899,5 +899,19 @@ mod tests {
             section_for(&claim(generated, "acme-cert"), &wild),
             host_listener_name(generated)
         );
+    }
+
+    #[test]
+    fn listeners_use_the_configured_ports() {
+        let mut p = platform(false);
+        p.gateway_ports = kuben_crd::GatewayPorts {
+            http: 8000,
+            https: 8443,
+        };
+        let plan = plan_listeners(&hosts(&[("api.acme.com", "kb-a")]), &p);
+        let ports: Vec<i64> = plan.listeners.iter().filter_map(|l| l["port"].as_i64()).collect();
+        assert_eq!(ports, [8000, 8443]);
+        assert_eq!(platform(false).gateway_ports, kuben_crd::GatewayPorts::default());
+        assert_eq!(kuben_crd::GatewayPorts::default().https, 443);
     }
 }

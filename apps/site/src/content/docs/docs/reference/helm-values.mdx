@@ -74,7 +74,8 @@ The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits beh
 | `platform.baseDomain` | `""` | apps get `<app>-<environment>.<baseDomain>` |
 | `platform.gatewayClassName` | `""` | GatewayClass of the Gateway Kuben creates and owns (`kuben-system/kuben` unless `platform.gateway` is set) |
 | `platform.gateway` | `""` | Gateway API Gateway for app routes, as `namespace/name`. Without `gatewayClassName` it must exist and carry the label `kuben.dev/gateway-owner=kuben` |
-| `platform.clusterIssuer` | `""` | cert-manager ClusterIssuer; enables HTTPS |
+| `platform.gatewayPorts` | `{}` | listener ports of Kuben's Gateway, `{http, https}`; default 80 and 443. Traefik needs `{http: 8000, https: 8443}` |
+| `platform.clusterIssuer` | `""` | cert-manager ClusterIssuer; enables HTTPS once it is Ready |
 | `platform.wildcardTlsSecret` | `""` | Secret with a `*.<baseDomain>` certificate; generated hosts then share one listener |
 
 ## Console route

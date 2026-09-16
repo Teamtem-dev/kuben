@@ -32,6 +32,11 @@ pub struct KubenConfigSpec {
     /// when it carries the label `kuben.dev/gateway-owner=kuben`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway_class_name: Option<String>,
+    /// Ports of the listeners Kuben writes on its Gateway. Some Gateway
+    /// controllers match listeners to their own entry points: Traefik (and
+    /// k3s's bundled Traefik) listens on 8000 and 8443.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway_ports: Option<GatewayPorts>,
     /// cert-manager ClusterIssuer name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_issuer: Option<String>,
@@ -46,6 +51,33 @@ pub struct KubenConfigSpec {
     /// Compute size presets.
     #[serde(default = "default_sizes")]
     pub sizes: Vec<SizePreset>,
+}
+
+/// Listener ports of Kuben's Gateway.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GatewayPorts {
+    #[serde(default = "default_http_port")]
+    pub http: u16,
+    #[serde(default = "default_https_port")]
+    pub https: u16,
+}
+
+impl Default for GatewayPorts {
+    fn default() -> Self {
+        Self {
+            http: default_http_port(),
+            https: default_https_port(),
+        }
+    }
+}
+
+const fn default_http_port() -> u16 {
+    80
+}
+
+const fn default_https_port() -> u16 {
+    443
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

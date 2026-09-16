@@ -89,8 +89,9 @@ impl Capabilities {
                     name: name.into(),
                 })
             }),
-            // Rendering never needs it: the gateway controller owns the Gateway.
+            // Rendering never needs these: the gateway controller owns the Gateway.
             gateway_class: None,
+            gateway_ports: kuben_crd::GatewayPorts::default(),
             tls: self.cluster_issuer.is_some() && !self.tls_unavailable,
             cluster_issuer: self.cluster_issuer.clone(),
             wildcard_tls_secret: self.wildcard_tls_secret.clone(),
