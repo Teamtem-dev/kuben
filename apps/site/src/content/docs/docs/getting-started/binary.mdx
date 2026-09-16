@@ -34,12 +34,14 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ✔ Preflight checks. Ubuntu 24.04.4 LTS, x86_64, 4 GB RAM
 ✔ Creating the kuben system user. kuben (uid 998)
 ✔ PostgreSQL. PostgreSQL 16.9 (Ubuntu 16.9-0ubuntu0.24.04.1), role and database kuben
-❯ curl -sfL https://get.k3s.io | sh -
-✔ Installing k3s. v1.36.4+k3s1 · 38s
+❯ INSTALL_K3S_VERSION=v1.36.4+k3s1 INSTALL_K3S_EXEC="server --kubelet-arg=system-reserved=…" sh install.sh
+✔ Installing k3s v1.36.4+k3s1. Sqlite datastore · 38s
 ✔ Waiting for the cluster. 1 node, Kubernetes v1.36.4+k3s1 · 6s
+✔ Gateway, TLS and platform components. Traefik Gateway, Gateway API v1.5.1, cert-manager v1.21.2 · 52s
 ✔ Checking port 3000. free
 ✔ Writing /etc/kuben/config.toml. port 3000
 ✔ Starting kuben.service. running · 4s
+✔ Kuben's Gateway (KubenConfig). Gateway class traefik, HTTPS through Let's Encrypt, apps under apps.example.com
 ✔ Opening port 3000 in the firewall. ufw
 
 Kuben is running. Finish the setup in your browser:
@@ -48,6 +50,14 @@ Kuben is running. Finish the setup in your browser:
 
   The link is valid for 30 minutes; print a new one with `kuben setup-token`.
 ```
+
+That run was started with a base domain and an email for Let's Encrypt, so apps get HTTPS addresses right away:
+
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --domain apps.example.com --acme-email ops@example.com
+```
+
+Point a wildcard DNS record, `*.apps.example.com`, at the server. Setup installs a **pinned k3s** with a checksum-verified installer and reserved CPU and memory, turns on k3s's Traefik as the Gateway API provider, adds the Gateway API CRDs and cert-manager when the cluster has none (it never upgrades what is there), creates a Let's Encrypt `ClusterIssuer` that answers HTTP-01 through Kuben's Gateway, and writes the `KubenConfig` that has Kuben create and own that Gateway. Without `--acme-email`, apps are served over plain HTTP until you run setup again with it; without `--domain`, apps get addresses once one is set.
 
 When port 3000 is taken (the Dokploy console uses it, for one), setup says who holds it and asks which port to use, with the next free one already filled in:
 
@@ -63,7 +73,7 @@ Open the link and create the admin account: organization, email, password. The t
 
 The same command **upgrades**: it installs the new binary, keeps the configuration and the data, restarts the service and reports `Kuben is up to date and running`. Everything it did is listed under [`kuben setup`](/docs/reference/cli/#setup); `kuben status` shows the state of the server, and [`kuben uninstall`](/docs/reference/cli/#uninstall) takes it away again.
 
-Options go through to `kuben setup`: `--plan` (show what would happen, change nothing), `--port 8080`, `--kubeconfig /path` to manage a cluster you already have, `--no-k3s`, `--bind-local` (SSH tunnel only), `--yes`. `--binary-only` skips the setup, and `--uninstall` runs `kuben uninstall`. Without root, or on macOS, the script installs the binary only.
+Options go through to `kuben setup`: `--plan` (show what would happen, change nothing), `--domain apps.example.com`, `--acme-email you@example.com`, `--acme-staging` (Let's Encrypt's test server), `--datastore etcd` (for a server that will grow), `--port 8080`, `--kubeconfig /path` to manage a cluster you already have, `--no-k3s`, `--bind-local` (SSH tunnel only), `--yes`. `--binary-only` skips the setup, and `--uninstall` runs `kuben uninstall`. Without root, or on macOS, the script installs the binary only.
 
 <Aside type="caution" title="Plain http on a public address">
 Until the console has an `https://` address the session cookie is not `Secure` (`cookie_secure = auto`), so signing in over `http://<ip>:3000` works. That is fine for a first look, not for a team: put the console behind TLS before inviting anyone, and set `public_url` in `/etc/kuben/config.toml` to the `https://` address, which makes the cookie `Secure`. Behind a cloud firewall (Hetzner, AWS, GCP, …), allow the port there as well.
@@ -103,6 +113,7 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 | `/var/lib/kuben/` | the kubeconfig copy (readable by `kuben` only), the install journal `install/journal.json` and, until the admin exists, `setup-token`. The data is in PostgreSQL, not here |
 | `kuben.service` | runs `kuben serve` as the system user `kuben`, restarts on failure, starts after k3s |
 | k3s | when there was no cluster: `/etc/rancher/k3s/k3s.yaml` and `k3s.service`; the journal records that setup installed it, so `kuben uninstall --purge` removes it again |
+| In the cluster | the HelmChartConfig `kube-system/traefik` (Gateway provider on), the Gateway API CRDs, cert-manager (HelmChart `kube-system/kuben-cert-manager`), the namespace `kuben-system` with Kuben's Gateway, the ClusterIssuer `letsencrypt`, and the `KubenConfig` `kuben`; each only when it was missing |
 
 Useful commands: `systemctl status kuben`, `journalctl -u kuben -f`, `sudo -u kuben kuben doctor`. Run `doctor` as the service user, as here, so peer authentication lets it into the database.
 

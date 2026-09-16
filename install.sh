@@ -16,8 +16,9 @@
 #   --binary-only     KUBEN_BINARY_ONLY=1          install the binary, do not run `kuben setup`
 #   --uninstall                                    remove the server set up by `kuben setup`
 #   -h, --help
-#   Every other option goes to `kuben setup`: --port <n>, --kubeconfig <file>,
-#   --no-k3s, --bind-local, --yes.
+#   Every other option goes to `kuben setup`: --plan, --domain <domain>,
+#   --acme-email <email>, --acme-staging, --datastore sqlite|etcd, --port <n>,
+#   --kubeconfig <file>, --no-k3s, --bind-local, --yes.
 #
 # Guarantees:
 #   * HTTPS only (TLS >= 1.2), no redirects to plain HTTP.
@@ -27,8 +28,9 @@
 #     truncated download cannot execute a partial script.
 #   * No shell state is left behind: everything happens in a temp dir that is
 #     removed on exit.
-#   * Nothing but GitHub (the release) and, through `kuben setup`, get.k3s.io
-#     is contacted. No telemetry.
+#   * Nothing but GitHub (the release; through `kuben setup` also k3s's
+#     pinned, checksum-verified installer and the Gateway API CRDs) and, for
+#     cert-manager, charts.jetstack.io is contacted. No telemetry.
 
 set -eu
 
@@ -56,7 +58,8 @@ usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo] [--binary-only] [
   --binary-only     KUBEN_BINARY_ONLY=1        install the binary, do not run `kuben setup`
   --uninstall                                  remove the server set up by `kuben setup`
 
-  Other options go to `kuben setup`: --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --yes
+  Other options go to `kuben setup`: --plan, --domain <domain>, --acme-email <email>, --acme-staging,
+  --datastore sqlite|etcd, --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --yes
 EOF
 }
 

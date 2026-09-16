@@ -34,6 +34,7 @@ use super::ui::Ui;
 
 pub mod journal;
 mod plan;
+pub mod platform;
 
 pub const BIN: &str = "/usr/local/bin/kuben";
 pub const USER: &str = "kuben";
@@ -46,7 +47,6 @@ pub const CONFIG_FILE: &str = "/etc/kuben/config.toml";
 pub const UNIT_FILE: &str = "/etc/systemd/system/kuben.service";
 const UNIT_NAME: &str = "kuben.service";
 pub const K3S_KUBECONFIG: &str = "/etc/rancher/k3s/k3s.yaml";
-pub const K3S_INSTALLER: &str = "https://get.k3s.io";
 pub const K3S_UNINSTALL: &str = "/usr/local/bin/k3s-uninstall.sh";
 /// Written by setup before the install journal existed, when it installed
 /// k3s itself; still honoured for such installs.
@@ -76,6 +76,31 @@ pub struct SetupOpts {
     /// Show what setup would do, and change nothing.
     #[arg(long)]
     pub plan: bool,
+    /// Base domain for app hostnames (`<app>-<environment>.<domain>`); point
+    /// a wildcard DNS record at this server.
+    #[arg(long, env = "KUBEN_DOMAIN")]
+    pub domain: Option<String>,
+    /// Email for Let's Encrypt: apps get HTTPS certificates. Without it they
+    /// are served over plain HTTP.
+    #[arg(long, env = "KUBEN_ACME_EMAIL")]
+    pub acme_email: Option<String>,
+    /// Use Let's Encrypt's staging server (untrusted certificates, for tests).
+    #[arg(long)]
+    pub acme_staging: bool,
+    /// How an installed k3s keeps its state: sqlite (one server) or etcd (a
+    /// server that will grow).
+    #[arg(long, value_enum, default_value_t)]
+    pub datastore: platform::Datastore,
+}
+
+impl SetupOpts {
+    fn wanted(&self) -> platform::Wanted<'_> {
+        platform::Wanted {
+            domain: self.domain.as_deref(),
+            acme_email: self.acme_email.as_deref(),
+            acme_staging: self.acme_staging,
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -150,14 +175,34 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
         opts.yes,
     )?;
     let config_changed = write_config(ui, opts, &kubeconfig, configured.as_deref(), port, book)?;
+    // The managed path: this server's k3s gets what exposes apps (ADR-031).
+    // A cluster brought with --kubeconfig is left as it is.
+    let managed = opts.kubeconfig.is_none() && Path::new(K3S_KUBECONFIG).exists();
+    if managed {
+        book.start("platform");
+        platform::ensure_platform(ui, &kubeconfig, &opts.wanted(), book)?;
+    }
     let cfg = Config::load().context("reading /etc/kuben/config.toml")?;
     let port = cfg.bind_port();
     book.start("service");
     start_service(ui, port, binary_changed || config_changed, book)?;
+    if managed {
+        book.start("kubenconfig");
+        platform::ensure_kuben_config(ui, &kubeconfig, &opts.wanted(), book)?;
+    }
     book.start("firewall");
     open_firewall(ui, port, book)?;
     warn_web_ports(ui);
-    announce(ui, &cfg, uid, gid, configured.is_none(), host)?;
+    let wanted = opts.wanted();
+    announce(
+        ui,
+        &cfg,
+        uid,
+        gid,
+        configured.is_none(),
+        host,
+        managed.then_some(&wanted),
+    )?;
     Ok(())
 }
 
@@ -640,7 +685,7 @@ fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32, book: &mut Book)
         ui.fail("Finding a cluster", "none");
         bail!("no cluster found and --no-k3s given: pass --kubeconfig <file>");
     } else {
-        install_k3s(ui)?;
+        platform::install_k3s(ui, opts.datastore)?;
         book.claim(Kind::Cluster, "k3s", true)?;
         installed = true;
         PathBuf::from(K3S_KUBECONFIG)
@@ -660,34 +705,6 @@ fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32, book: &mut Book)
     chown(&copy, uid, gid)?;
     book.done(installed || copied, format!("kubeconfig {}", source.display()))?;
     Ok(copy)
-}
-
-fn install_k3s(ui: Ui) -> anyhow::Result<()> {
-    let step = ui.step("Installing k3s");
-    if which("curl").is_none() {
-        step.fail("curl is missing");
-        bail!("install curl first (apt-get install -y curl), then run kuben setup again");
-    }
-    ui.command(&format!("curl -sfL {K3S_INSTALLER} | sh -"));
-    // k3s's installer verifies its download against the release's checksum.
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(format!("curl -sfL {K3S_INSTALLER} | sh -"))
-        .output()
-        .context("running the k3s installer")?;
-    if !output.status.success() {
-        step.fail("the k3s installer failed");
-        ui.note(&tail(&output.stdout, &output.stderr, 12));
-        bail!("k3s did not install; the lines above are its last output (journalctl -u k3s has more)");
-    }
-    let version = Command::new("k3s")
-        .arg("--version")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.split_whitespace().nth(2).map(str::to_owned));
-    step.done(version.unwrap_or_default());
-    Ok(())
 }
 
 /// Poll until a node reports Ready; returns a one-line summary.
@@ -1014,7 +1031,15 @@ fn open_firewall(ui: Ui, port: u16, book: &mut Book) -> anyhow::Result<()> {
     }
 }
 
-fn announce(ui: Ui, cfg: &Config, uid: u32, gid: u32, fresh_config: bool, host: &Host) -> anyhow::Result<()> {
+fn announce(
+    ui: Ui,
+    cfg: &Config,
+    uid: u32,
+    gid: u32,
+    fresh_config: bool,
+    host: &Host,
+    managed: Option<&platform::Wanted<'_>>,
+) -> anyhow::Result<()> {
     let port = cfg.bind_port();
     let needed = wait_for_http(port, "/api/v1/setup", Duration::from_secs(10))
         .ok()
@@ -1051,7 +1076,22 @@ fn announce(ui: Ui, cfg: &Config, uid: u32, gid: u32, fresh_config: bool, host: 
     if !cfg.bind_is_loopback() {
         ui.note("Behind a cloud firewall (Hetzner, AWS, GCP, …)? Allow the port there too.");
     }
-    ui.note("Apps get public HTTPS addresses once a Gateway and a base domain are configured; see the docs.");
+    match managed {
+        Some(platform::Wanted {
+            domain: Some(domain),
+            acme_email: Some(_),
+            ..
+        }) => ui.note(&format!(
+            "Apps get HTTPS addresses under {domain}; point a wildcard DNS record (*.{domain}) at this server."
+        )),
+        Some(platform::Wanted { domain: Some(domain), .. }) => ui.note(&format!(
+            "Apps get plain-HTTP addresses under {domain}; add --acme-email you@example.com for HTTPS."
+        )),
+        Some(_) => ui.note(
+            "Apps get public addresses once a base domain is set: kuben setup --domain apps.example.com --acme-email you@example.com",
+        ),
+        None => ui.note("Apps get public HTTPS addresses once a Gateway and a base domain are configured; see the docs."),
+    }
     ui.note(&format!("{DOCS} · {} / {}", host.os, host.arch));
     println!("{url}");
     Ok(())
@@ -1151,6 +1191,16 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
             ui.note("k3s stays as well; --purge removes it too.");
         }
         return Ok(());
+    }
+    let kubeconfig = Path::new(STATE_DIR).join("kubeconfig");
+    if !owned.k3s && kubeconfig.exists() {
+        let kept = platform::purge_objects(ui, &kubeconfig, book.journal());
+        if !kept.is_empty() {
+            ui.note(&format!(
+                "Kept in the cluster, other workloads may use them: {}.",
+                kept.join(", ")
+            ));
+        }
     }
     purge(ui, &owned);
     Ok(())

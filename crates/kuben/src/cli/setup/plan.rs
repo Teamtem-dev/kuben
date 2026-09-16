@@ -109,6 +109,29 @@ fn lines(opts: &SetupOpts, journal: &Journal) -> Vec<Line> {
             None => "nothing (no host firewall is active)".to_owned(),
         },
     ));
+    plan.push(line(
+        "Platform",
+        if opts.kubeconfig.is_some() {
+            "nothing: a cluster brought with --kubeconfig is left as it is (kuben doctor says what it lacks)"
+                .to_owned()
+        } else {
+            let issuer = match (&opts.acme_email, &opts.domain) {
+                (Some(_), _) => "a Let's Encrypt ClusterIssuer (HTTP-01 through Kuben's Gateway)",
+                (None, _) => "no issuer: apps are served over plain HTTP until --acme-email is given",
+            };
+            format!(
+                "Traefik as the Gateway provider, Gateway API {} CRDs and cert-manager {} when missing \
+                 (never upgraded), {issuer}; KubenConfig with gateway class {}{}",
+                super::platform::GATEWAY_API_VERSION,
+                super::platform::CERT_MANAGER_VERSION,
+                super::platform::GATEWAY_CLASS,
+                opts.domain
+                    .as_deref()
+                    .map(|d| format!(" and base domain {d}"))
+                    .unwrap_or_default()
+            )
+        },
+    ));
     if journal.unfinished().is_some() {
         plan.push(line("Last run", "did not finish: every step is checked again"));
     }
@@ -129,7 +152,11 @@ fn cluster(opts: &SetupOpts) -> Line {
     } else if opts.no_k3s {
         "stop: no cluster found and --no-k3s given".to_owned()
     } else {
-        "install k3s".to_owned()
+        format!(
+            "install k3s {} (verified installer, {:?} datastore, reserved CPU and memory)",
+            super::platform::K3S_VERSION,
+            opts.datastore
+        )
     };
     line("Cluster", action)
 }
@@ -181,6 +208,10 @@ mod tests {
             bind_local: false,
             yes: true,
             plan: true,
+            domain: None,
+            acme_email: None,
+            acme_staging: false,
+            datastore: super::super::platform::Datastore::default(),
         };
         let plan = lines(&opts, &Journal::default());
         let whats: Vec<&str> = plan.iter().map(|l| l.what).collect();
@@ -194,7 +225,8 @@ mod tests {
                 "Configuration",
                 "Port",
                 "Service",
-                "Firewall"
+                "Firewall",
+                "Platform"
             ]
         );
         assert_eq!(plan[2].action, "use the cluster in /nonexistent/kubeconfig");
