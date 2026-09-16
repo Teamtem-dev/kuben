@@ -164,7 +164,8 @@ spec:
           secret:
             secretName: kuben-agent-enrollment
             optional: true
-            defaultMode: 0400
+            # 0400, written in decimal: YAML 1.1 (Helm) and 1.2 read it alike.
+            defaultMode: 256
         - name: state
           emptyDir:
             medium: Memory

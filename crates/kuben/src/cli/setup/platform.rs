@@ -907,6 +907,31 @@ mod tests {
         );
         let text = serde_json::to_string(&objects).expect("json");
         assert!(!text.contains("__"), "every placeholder is filled: {text}");
+        // The API server rejects what the typed objects cannot hold.
+        for value in &objects {
+            let typed = match value["kind"].as_str() {
+                Some("Deployment") => serde_json::from_value::<Deployment>(value.clone()).map(drop),
+                Some("ServiceAccount") => {
+                    serde_json::from_value::<k8s_openapi::api::core::v1::ServiceAccount>(value.clone())
+                        .map(drop)
+                }
+                Some("ClusterRole") => {
+                    serde_json::from_value::<k8s_openapi::api::rbac::v1::ClusterRole>(value.clone()).map(drop)
+                }
+                Some("ClusterRoleBinding") => {
+                    serde_json::from_value::<k8s_openapi::api::rbac::v1::ClusterRoleBinding>(value.clone())
+                        .map(drop)
+                }
+                Some("Role") => {
+                    serde_json::from_value::<k8s_openapi::api::rbac::v1::Role>(value.clone()).map(drop)
+                }
+                Some("RoleBinding") => {
+                    serde_json::from_value::<k8s_openapi::api::rbac::v1::RoleBinding>(value.clone()).map(drop)
+                }
+                other => panic!("unexpected kind {other:?}"),
+            };
+            typed.unwrap_or_else(|e| panic!("{} is not a valid object: {e}", value["kind"]));
+        }
         let deployment = objects
             .iter()
             .find(|o| o["kind"] == "Deployment")
