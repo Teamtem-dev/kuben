@@ -20,6 +20,7 @@ metadata:
 {{- $spec := dict }}
 {{- with .Values.platform.baseDomain }}{{ $_ := set $spec "baseDomain" . }}{{ end }}
 {{- with .Values.platform.gateway }}{{ $_ := set $spec "gateway" . }}{{ end }}
+{{- with .Values.platform.gatewayClassName }}{{ $_ := set $spec "gatewayClassName" . }}{{ end }}
 {{- with .Values.platform.clusterIssuer }}{{ $_ := set $spec "clusterIssuer" . }}{{ end }}
 spec:
   {{- toYaml $spec | nindent 2 }}

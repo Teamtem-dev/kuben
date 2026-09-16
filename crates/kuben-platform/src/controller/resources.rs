@@ -91,12 +91,25 @@ pub struct GatewayRef {
     pub name: String,
 }
 
+impl GatewayRef {
+    /// The Gateway Kuben creates when only a GatewayClass is configured.
+    #[must_use]
+    pub fn owned_default() -> Self {
+        Self {
+            namespace: "kuben-system".into(),
+            name: "kuben".into(),
+        }
+    }
+}
+
 /// Platform settings resolved from the `KubenConfig` singleton (or defaults).
 #[derive(Clone, Debug)]
 pub struct Platform {
     pub sizes: Vec<SizePreset>,
     pub base_domain: Option<String>,
     pub gateway: Option<GatewayRef>,
+    /// Kuben creates and owns `gateway` with this class (M2.2).
+    pub gateway_class: Option<String>,
     /// Routes are served over TLS (a ClusterIssuer is configured).
     pub tls: bool,
     pub cluster_issuer: Option<String>,
@@ -126,6 +139,7 @@ impl Platform {
                         sizes: Vec::new(),
                         base_domain: None,
                         gateway: None,
+                        gateway_class: None,
                         tls: false,
                         cluster_issuer: None,
                         wildcard_tls_secret: None,
@@ -133,17 +147,21 @@ impl Platform {
                 }
             }
         };
-        let gateway = spec.gateway.as_deref().and_then(|g| {
-            let (ns, name) = g.split_once('/')?;
-            (!ns.is_empty() && !name.is_empty()).then(|| GatewayRef {
-                namespace: ns.into(),
-                name: name.into(),
-            })
-        });
+        let gateway_class = spec.gateway_class_name.clone().filter(|c| !c.is_empty());
+        let gateway = match spec.gateway.as_deref().filter(|g| !g.is_empty()) {
+            Some(g) => g.split_once('/').and_then(|(ns, name)| {
+                (!ns.is_empty() && !name.is_empty()).then(|| GatewayRef {
+                    namespace: ns.into(),
+                    name: name.into(),
+                })
+            }),
+            None => gateway_class.as_ref().map(|_| GatewayRef::owned_default()),
+        };
         Self {
             sizes: spec.sizes.clone(),
             base_domain: spec.base_domain.clone().filter(|d| !d.is_empty()),
             gateway,
+            gateway_class,
             tls: spec.cluster_issuer.is_some(),
             cluster_issuer: spec.cluster_issuer.clone(),
             wildcard_tls_secret: spec.wildcard_tls_secret.clone().filter(|s| !s.is_empty()),

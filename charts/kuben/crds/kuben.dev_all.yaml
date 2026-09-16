@@ -33,7 +33,16 @@ spec:
                 nullable: true
                 type: string
               gateway:
-                description: Gateway API `Gateway` used for HTTPRoutes (`namespace/name`).
+                description: |-
+                  Gateway API `Gateway` used for HTTPRoutes (`namespace/name`). With
+                  `gatewayClassName` it defaults to `kuben-system/kuben`.
+                nullable: true
+                type: string
+              gatewayClassName:
+                description: |-
+                  GatewayClass of the Gateway Kuben creates and owns. Unset: Kuben uses
+                  the existing Gateway named in `gateway`, and writes its listeners only
+                  when it carries the label `kuben.dev/gateway-owner=kuben`.
                 nullable: true
                 type: string
               registry:

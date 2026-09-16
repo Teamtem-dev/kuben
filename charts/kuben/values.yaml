@@ -65,7 +65,13 @@ platform:
   create: true
   # Apps get `<app>-<environment>.<baseDomain>` hostnames.
   baseDomain: ""
-  # Gateway API Gateway for app routes, as `namespace/name`.
+  # GatewayClass of the Gateway Kuben creates and owns for app routes (e.g.
+  # `traefik` on k3s, `envoy-gateway`). Kuben writes only that Gateway's
+  # listeners; it never touches a Gateway that is not dedicated to it.
+  gatewayClassName: ""
+  # Gateway API Gateway for app routes, as `namespace/name`. With
+  # gatewayClassName it defaults to `kuben-system/kuben` and Kuben creates it;
+  # without, it must exist and carry the label kuben.dev/gateway-owner=kuben.
   gateway: ""
   # cert-manager ClusterIssuer; enables https URLs.
   clusterIssuer: ""

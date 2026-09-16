@@ -157,7 +157,7 @@ async fn reconcile(app: Arc<App>, ctx: Arc<Ctx>) -> Result<Action> {
             (None, _, None) => (
                 false,
                 "NoGateway",
-                "set spec.gateway in KubenConfig to expose apps",
+                "set spec.gatewayClassName (or spec.gateway) in KubenConfig to expose apps",
             ),
             (None, _, Some(_)) => (
                 false,

@@ -89,6 +89,8 @@ impl Capabilities {
                     name: name.into(),
                 })
             }),
+            // Rendering never needs it: the gateway controller owns the Gateway.
+            gateway_class: None,
             tls: self.cluster_issuer.is_some() && !self.tls_unavailable,
             cluster_issuer: self.cluster_issuer.clone(),
             wildcard_tls_secret: self.wildcard_tls_secret.clone(),

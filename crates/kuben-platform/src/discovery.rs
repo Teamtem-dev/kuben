@@ -179,7 +179,7 @@ impl ClusterFacts {
 }
 
 /// The condition `type_` of a status, as `(status is True, message)`.
-fn condition(obj: &Value, type_: &str) -> Option<(bool, Option<String>)> {
+pub(crate) fn condition(obj: &Value, type_: &str) -> Option<(bool, Option<String>)> {
     obj.pointer("/status/conditions")?
         .as_array()?
         .iter()

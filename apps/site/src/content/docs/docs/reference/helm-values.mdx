@@ -72,7 +72,8 @@ The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits beh
 |---|---|---|
 | `platform.create` | `true` | write the `KubenConfig` singleton |
 | `platform.baseDomain` | `""` | apps get `<app>-<environment>.<baseDomain>` |
-| `platform.gateway` | `""` | Gateway API Gateway for app routes, as `namespace/name` |
+| `platform.gatewayClassName` | `""` | GatewayClass of the Gateway Kuben creates and owns (`kuben-system/kuben` unless `platform.gateway` is set) |
+| `platform.gateway` | `""` | Gateway API Gateway for app routes, as `namespace/name`. Without `gatewayClassName` it must exist and carry the label `kuben.dev/gateway-owner=kuben` |
 | `platform.clusterIssuer` | `""` | cert-manager ClusterIssuer; enables HTTPS |
 | `platform.wildcardTlsSecret` | `""` | Secret with a `*.<baseDomain>` certificate; generated hosts then share one listener |
 

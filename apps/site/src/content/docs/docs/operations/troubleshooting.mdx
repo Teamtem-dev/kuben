@@ -33,7 +33,7 @@ Apps and environments explain themselves through conditions.
 | Reason | Meaning |
 |---|---|
 | `RouteApplied` | the `HTTPRoute` exists and is attached |
-| `NoGateway` | `KubenConfig.spec.gateway` is unset or the Gateway does not exist |
+| `NoGateway` | neither `KubenConfig.spec.gatewayClassName` nor `spec.gateway` is set; the `Gateway` condition of `KubenConfig` says more |
 | `NoHostname` | no domain and no base domain |
 | `GatewayAPIMissing` | Gateway API CRDs are not installed |
 

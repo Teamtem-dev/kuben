@@ -23,9 +23,15 @@ pub struct KubenConfigSpec {
     /// Base domain for generated app hostnames, e.g. `apps.example.com`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_domain: Option<String>,
-    /// Gateway API `Gateway` used for HTTPRoutes (`namespace/name`).
+    /// Gateway API `Gateway` used for HTTPRoutes (`namespace/name`). With
+    /// `gatewayClassName` it defaults to `kuben-system/kuben`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway: Option<String>,
+    /// GatewayClass of the Gateway Kuben creates and owns. Unset: Kuben uses
+    /// the existing Gateway named in `gateway`, and writes its listeners only
+    /// when it carries the label `kuben.dev/gateway-owner=kuben`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway_class_name: Option<String>,
     /// cert-manager ClusterIssuer name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_issuer: Option<String>,

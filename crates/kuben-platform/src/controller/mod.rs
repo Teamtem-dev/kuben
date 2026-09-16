@@ -46,12 +46,18 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// controller and the renderer's capability snapshot choose alike.
 #[must_use]
 pub fn platform_of<'a>(configs: impl IntoIterator<Item = &'a KubenConfig>) -> Platform {
+    Platform::from_spec(chosen_config(configs).map(|c| &c.spec))
+}
+
+/// The `KubenConfig` singleton among `configs`: the one named
+/// [`KUBEN_CONFIG_NAME`], else the first.
+pub fn chosen_config<'a>(configs: impl IntoIterator<Item = &'a KubenConfig>) -> Option<&'a KubenConfig> {
     let configs: Vec<&KubenConfig> = configs.into_iter().collect();
-    let chosen = configs
+    configs
         .iter()
         .find(|c| c.metadata.name.as_deref() == Some(KUBEN_CONFIG_NAME))
-        .or_else(|| configs.first());
-    Platform::from_spec(chosen.map(|c| &c.spec))
+        .or_else(|| configs.first())
+        .copied()
 }
 
 /// State shared by all reconcilers.
@@ -88,6 +94,17 @@ impl Ctx {
         let configs = self.config.state();
         platform_of(configs.iter().map(std::sync::Arc::as_ref))
             .gated(discovery::current(&self.facts).as_deref())
+    }
+
+    /// The `KubenConfig` singleton, if one exists.
+    #[must_use]
+    pub fn config(&self) -> Option<Arc<KubenConfig>> {
+        let configs = self.config.state();
+        let name = chosen_config(configs.iter().map(Arc::as_ref))?
+            .metadata
+            .name
+            .clone();
+        configs.into_iter().find(|c| c.metadata.name == name)
     }
 
     /// The cluster's capabilities, once discovered.

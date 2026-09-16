@@ -45,10 +45,11 @@ rules:
   - apiGroups: [gateway.networking.k8s.io]
     resources: [httproutes]
     verbs: [get, list, watch, create, update, patch, delete]
-  # Kuben owns the listeners of its (dedicated) Gateway for automatic HTTPS.
+  # Kuben creates its own Gateway (platform.gatewayClassName) and writes the
+  # listeners of a Gateway only when that Gateway is dedicated to it.
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways]
-    verbs: [get, list, watch, patch, update]
+    verbs: [get, list, watch, create, patch, update]
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gatewayclasses]
     verbs: [get, list, watch]

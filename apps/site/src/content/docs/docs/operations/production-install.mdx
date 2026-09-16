@@ -31,7 +31,7 @@ helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben \
   --namespace kuben-system --create-namespace \
   --set publicUrl=https://kuben.example.com \
   --set platform.baseDomain=apps.example.com \
-  --set platform.gateway=kuben-system/kuben \
+  --set platform.gatewayClassName=traefik \
   --set platform.clusterIssuer=letsencrypt
 ```
 

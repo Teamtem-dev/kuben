@@ -1,7 +1,13 @@
-//! Automatic HTTPS for app hostnames (scenario 9).
+//! Gateway listeners and automatic HTTPS (scenario 9, M2.2).
 //!
-//! When `KubenConfig.spec.clusterIssuer` is set, Kuben owns the listeners of
-//! the Gateway named in `spec.gateway` (which must be dedicated to Kuben):
+//! Kuben writes the listeners of one Gateway, `KubenConfig.spec.gateway`, and
+//! only when that Gateway is Kuben's: the one it creates itself when
+//! `spec.gatewayClassName` is set, or an existing one an operator dedicated to
+//! it with the label `kuben.dev/gateway-owner=kuben`. Any other Gateway is left
+//! untouched and reported on `KubenConfig`'s `Gateway` condition: Kuben never
+//! overwrites a resource it does not own (ADR-031).
+//!
+//! With TLS (a Ready ClusterIssuer, `Platform::gated`):
 //!
 //! * `http` (:80) — only the platform redirect route and cert-manager's
 //!   HTTP-01 solver routes attach here (`allowedRoutes: Same`), so tenants
@@ -12,32 +18,42 @@
 //!   **only from the namespace that owns the host** (first come, first
 //!   served), so one tenant cannot hijack another tenant's domain.
 //!
+//! Without TLS, `http` admits the routes of Kuben's namespaces and is the only
+//! listener: plain HTTP keeps working while TLS is unavailable.
+//!
 //! The `cert-manager.io/cluster-issuer` annotation makes cert-manager's
 //! gateway-shim issue one certificate per listener into `kuben-tls-<hash>`.
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use kube::{
-    Api,
-    api::{ApiResource, DynamicObject, GroupVersionKind, Patch, PatchParams},
+    Api, ResourceExt,
+    api::{ApiResource, DeleteParams, DynamicObject, GroupVersionKind, Patch, PatchParams},
 };
-use kuben_crd::{FIELD_MANAGER, labels};
+use kuben_crd::{Condition, FIELD_MANAGER, KubenConfig, labels};
 use serde_json::{Value, json};
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    Ctx,
+    Ctx, condition, is_not_found,
     resources::{GatewayRef, Platform, hostnames_for},
 };
-use crate::projection::{AppView, Projections};
+use crate::{
+    discovery::{self, Availability, ClusterFacts},
+    projection::{AppView, Projections},
+};
 
 pub const HTTP_LISTENER: &str = "http";
 pub const WILDCARD_LISTENER: &str = "https";
 pub const REDIRECT_ROUTE: &str = "kuben-https-redirect";
 pub const ISSUER_ANNOTATION: &str = "cert-manager.io/cluster-issuer";
+/// Condition type on `KubenConfig`: can apps be exposed through the Gateway?
+pub const GATEWAY_CONDITION: &str = "Gateway";
 /// Gateway API allows at most 64 listeners; leave headroom for hand-made ones.
 pub const MAX_LISTENERS: usize = 60;
+/// How often the Gateway's readiness is read again.
+const STATUS_REFRESH: Duration = Duration::from_secs(30);
 
 /// 64-bit FNV-1a. Stable forever (unlike `DefaultHasher`), because listener
 /// and secret names derived from it must not change between releases.
@@ -99,10 +115,35 @@ fn tls(secret: &str) -> Value {
     json!({ "mode": "Terminate", "certificateRefs": [{ "kind": "Secret", "name": secret }] })
 }
 
+/// Routes from the namespaces Kuben manages.
+fn kuben_namespaces() -> Value {
+    json!({ "namespaces": { "from": "Selector", "selector": {
+        "matchLabels": { labels::MANAGED_BY: labels::MANAGER }
+    } } })
+}
+
 /// `hosts`: `(hostname, namespace)` for every routed app. Deterministic:
 /// the same input always yields the same listeners in the same order.
 #[must_use]
 pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> ListenerPlan {
+    let http_routes = if platform.tls {
+        json!({ "namespaces": { "from": "Same" } })
+    } else {
+        kuben_namespaces()
+    };
+    let mut listeners = vec![json!({
+        "name": HTTP_LISTENER,
+        "protocol": "HTTP",
+        "port": 80,
+        "allowedRoutes": http_routes,
+    })];
+    if !platform.tls {
+        return ListenerPlan {
+            listeners,
+            ..ListenerPlan::default()
+        };
+    }
+
     let mut sorted: Vec<&(String, String)> = hosts.iter().collect();
     sorted.sort();
     let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
@@ -118,13 +159,6 @@ pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> Listen
             }
         }
     }
-
-    let mut listeners = vec![json!({
-        "name": HTTP_LISTENER,
-        "protocol": "HTTP",
-        "port": 80,
-        "allowedRoutes": { "namespaces": { "from": "Same" } },
-    })];
     if let (Some(base), Some(secret)) = (&platform.base_domain, &platform.wildcard_tls_secret) {
         listeners.push(json!({
             "name": WILDCARD_LISTENER,
@@ -132,9 +166,7 @@ pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> Listen
             "port": 443,
             "hostname": format!("*.{base}"),
             "tls": tls(secret),
-            "allowedRoutes": { "namespaces": { "from": "Selector", "selector": {
-                "matchLabels": { labels::MANAGED_BY: labels::MANAGER }
-            } } },
+            "allowedRoutes": kuben_namespaces(),
         }));
     }
     let mut skipped = Vec::new();
@@ -165,19 +197,27 @@ pub fn plan_listeners(hosts: &[(String, String)], platform: &Platform) -> Listen
 }
 
 /// Server-side-apply body for the Gateway: Kuben's field manager owns only the
-/// listeners it lists and the issuer annotation.
+/// listeners it lists, the issuer annotation while TLS is on, and — on the
+/// Gateway it creates — the class and the ownership labels.
 #[must_use]
-pub fn gateway_patch(gateway: &GatewayRef, issuer: &str, plan: &ListenerPlan) -> Value {
-    json!({
+pub fn gateway_patch(gateway: &GatewayRef, platform: &Platform, plan: &ListenerPlan) -> Value {
+    let mut body = json!({
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "Gateway",
-        "metadata": {
-            "name": gateway.name,
-            "namespace": gateway.namespace,
-            "annotations": { ISSUER_ANNOTATION: issuer },
-        },
+        "metadata": { "name": gateway.name, "namespace": gateway.namespace },
         "spec": { "listeners": plan.listeners },
-    })
+    });
+    if let Some(class) = &platform.gateway_class {
+        body["metadata"]["labels"] = json!({
+            labels::MANAGED_BY: labels::MANAGER,
+            labels::GATEWAY_OWNER: labels::MANAGER,
+        });
+        body["spec"]["gatewayClassName"] = json!(class);
+    }
+    if let (true, Some(issuer)) = (platform.tls, &platform.cluster_issuer) {
+        body["metadata"]["annotations"] = json!({ ISSUER_ANNOTATION: issuer });
+    }
+    body
 }
 
 /// Platform route answering every plain-HTTP request with a 301 to HTTPS.
@@ -200,6 +240,98 @@ pub fn redirect_route(gateway: &GatewayRef) -> Value {
             }] }],
         },
     })
+}
+
+/// Who a Gateway belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ownership {
+    /// Created by Kuben or dedicated to it with [`labels::GATEWAY_OWNER`].
+    Kuben,
+    /// Someone else's: never written.
+    Foreign,
+    Absent,
+}
+
+#[must_use]
+pub fn ownership(live: Option<&DynamicObject>) -> Ownership {
+    match live {
+        None => Ownership::Absent,
+        Some(g) if g.labels().get(labels::GATEWAY_OWNER).map(String::as_str) == Some(labels::MANAGER) => {
+            Ownership::Kuben
+        }
+        Some(_) => Ownership::Foreign,
+    }
+}
+
+/// The `Gateway` condition: `(ok, reason, message)`.
+type Verdict = (bool, &'static str, String);
+
+/// Why Kuben does not write `gateway`, if it must not.
+#[must_use]
+pub fn refusal(gateway: &GatewayRef, platform: &Platform, owner: Ownership) -> Option<Verdict> {
+    let name = format!("{}/{}", gateway.namespace, gateway.name);
+    match (owner, &platform.gateway_class) {
+        (Ownership::Foreign, _) => Some((
+            false,
+            "GatewayNotOwned",
+            format!(
+                "Gateway {name} is not dedicated to Kuben; label it {}={} or name another Gateway",
+                labels::GATEWAY_OWNER,
+                labels::MANAGER
+            ),
+        )),
+        (Ownership::Absent, None) => Some((
+            false,
+            "GatewayMissing",
+            format!(
+                "Gateway {name} does not exist; create it, or set spec.gatewayClassName for Kuben to create it"
+            ),
+        )),
+        _ => None,
+    }
+}
+
+/// Readiness of a Gateway Kuben writes, from its `Programmed` condition.
+#[must_use]
+pub fn readiness(live: &DynamicObject, platform: &Platform, facts: Option<&ClusterFacts>) -> Verdict {
+    match discovery::condition(&live.data, "Programmed") {
+        Some((true, _)) => {
+            let addresses: Vec<&str> = live
+                .data
+                .pointer("/status/addresses")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|x| x["value"].as_str()).collect())
+                .unwrap_or_default();
+            let mut message = if addresses.is_empty() {
+                "programmed, no address yet".to_owned()
+            } else {
+                format!("programmed at {}", addresses.join(", "))
+            };
+            if platform.cluster_issuer.is_some() && !platform.tls {
+                message.push_str("; HTTPS is off until the ClusterIssuer is Ready");
+            }
+            (true, "Programmed", message)
+        }
+        Some((false, message)) => (false, "NotProgrammed", message.unwrap_or_default()),
+        None => match (&platform.gateway_class, facts) {
+            (Some(class), Some(facts)) => match facts.gateway_class(class) {
+                Availability::Missing => (
+                    false,
+                    "GatewayClassMissing",
+                    format!("GatewayClass {class} does not exist"),
+                ),
+                Availability::NotReady(why) => (
+                    false,
+                    "GatewayClassNotAccepted",
+                    format!("GatewayClass {class} is not accepted: {why}"),
+                ),
+                Availability::Ready | Availability::Unknown => {
+                    (false, "Pending", "waiting for the gateway controller".to_owned())
+                }
+            },
+            _ => (false, "Pending", "waiting for the gateway controller".to_owned()),
+        },
+    }
 }
 
 /// `(hostname, namespace)` of every app whose web process is routed over HTTP.
@@ -231,12 +363,89 @@ fn dynamic_api(ctx: &Ctx, ns: &str, kind: &str, plural: &str) -> Api<DynamicObje
     )
 }
 
+/// Record `verdict` as the `Gateway` condition of `KubenConfig` (none: drop
+/// it), writing only on change.
+async fn report(ctx: &Ctx, verdict: Option<Verdict>) -> anyhow::Result<()> {
+    let Some(config) = ctx.config() else {
+        return Ok(());
+    };
+    let previous = config
+        .status
+        .as_ref()
+        .map_or(&[][..], |s| s.conditions.as_slice());
+    let mut conditions: Vec<Condition> = previous
+        .iter()
+        .filter(|c| c.type_ != GATEWAY_CONDITION)
+        .cloned()
+        .collect();
+    if let Some((ok, reason, message)) = verdict {
+        conditions.push(condition(
+            previous,
+            GATEWAY_CONDITION,
+            ok,
+            reason,
+            &message,
+            config.metadata.generation,
+        ));
+    }
+    if conditions == previous {
+        return Ok(());
+    }
+    let status = json!({ "status": {
+        "observedGeneration": config.metadata.generation,
+        "conditions": conditions,
+    } });
+    Api::<KubenConfig>::all(ctx.client.clone())
+        .patch_status(
+            &config.name_any(),
+            &PatchParams::default(),
+            &Patch::Merge(&status),
+        )
+        .await?;
+    Ok(())
+}
+
+/// Keep the redirect route while TLS is on; remove Kuben's when it is off.
+async fn sync_redirect(ctx: &Ctx, gateway: &GatewayRef, tls: bool, pp: &PatchParams) -> anyhow::Result<()> {
+    let routes = dynamic_api(ctx, &gateway.namespace, "HTTPRoute", "httproutes");
+    if tls {
+        routes
+            .patch(REDIRECT_ROUTE, pp, &Patch::Apply(&redirect_route(gateway)))
+            .await?;
+        return Ok(());
+    }
+    if let Some(route) = routes.get_opt(REDIRECT_ROUTE).await?
+        && route.labels().get(labels::MANAGED_BY).map(String::as_str) == Some(labels::MANAGER)
+    {
+        match routes.delete(REDIRECT_ROUTE, &DeleteParams::default()).await {
+            Ok(_) => {}
+            Err(e) if is_not_found(&e) => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
+}
+
 async fn reconcile(ctx: &Ctx, projections: &Projections, last: &mut Option<Value>) -> anyhow::Result<()> {
     let platform = ctx.platform();
-    let (Some(gateway), Some(issuer), true) = (&platform.gateway, &platform.cluster_issuer, platform.tls)
-    else {
-        return Ok(()); // TLS off or its issuer not Ready: the Gateway is left untouched.
+    let facts = ctx.facts();
+    let Some(gateway) = &platform.gateway else {
+        return report(ctx, None).await; // Apps are not exposed; nothing to say.
     };
+    if facts
+        .as_deref()
+        .is_some_and(|f| f.gateway_api.is_none() && f.unknown.is_empty())
+    {
+        let why = "the Gateway API CRDs are not installed (standard channel)".to_owned();
+        return report(ctx, Some((false, "GatewayAPIMissing", why))).await;
+    }
+    let gateways = dynamic_api(ctx, &gateway.namespace, "Gateway", "gateways");
+    let live = gateways.get_opt(&gateway.name).await?;
+    if let Some(verdict) = refusal(gateway, &platform, ownership(live.as_ref())) {
+        *last = None;
+        return report(ctx, Some(verdict)).await;
+    }
+
     let plan = plan_listeners(&routed_hosts(&projections.apps(), &platform), &platform);
     for conflict in &plan.conflicts {
         tracing::warn!(%conflict, "hostname requested by two namespaces; the first keeps it");
@@ -244,25 +453,32 @@ async fn reconcile(ctx: &Ctx, projections: &Projections, last: &mut Option<Value
     if !plan.skipped.is_empty() {
         tracing::warn!(hosts = ?plan.skipped, max = MAX_LISTENERS, "gateway listener limit reached");
     }
-    let body = gateway_patch(gateway, issuer, &plan);
-    if last.as_ref() == Some(&body) {
-        return Ok(());
+    let body = gateway_patch(gateway, &platform, &plan);
+    if live.is_none() || last.as_ref() != Some(&body) {
+        let pp = PatchParams::apply(FIELD_MANAGER).force();
+        if let Err(e) = gateways.patch(&gateway.name, &pp, &Patch::Apply(&body)).await {
+            report(ctx, Some((false, "GatewayWriteFailed", e.to_string()))).await?;
+            return Err(e.into());
+        }
+        sync_redirect(ctx, gateway, platform.tls, &pp).await?;
+        tracing::info!(
+            gateway = %format!("{}/{}", gateway.namespace, gateway.name),
+            listeners = plan.listeners.len(),
+            tls = platform.tls,
+            "gateway listeners applied"
+        );
+        *last = Some(body);
     }
-    let pp = PatchParams::apply(FIELD_MANAGER).force();
-    dynamic_api(ctx, &gateway.namespace, "Gateway", "gateways")
-        .patch(&gateway.name, &pp, &Patch::Apply(&body))
-        .await?;
-    dynamic_api(ctx, &gateway.namespace, "HTTPRoute", "httproutes")
-        .patch(REDIRECT_ROUTE, &pp, &Patch::Apply(&redirect_route(gateway)))
-        .await?;
-    tracing::info!(listeners = plan.listeners.len(), "gateway listeners applied");
-    *last = Some(body);
-    Ok(())
+    let verdict = match gateways.get_opt(&gateway.name).await? {
+        Some(live) => readiness(&live, &platform, facts.as_deref()),
+        None => (false, "Pending", "the Gateway is being created".to_owned()),
+    };
+    report(ctx, Some(verdict)).await
 }
 
 /// Debounced reconciler: any projection change marks the listener set dirty;
-/// at most one apply every 2 s, skipped when nothing changed; full resync
-/// every 5 minutes.
+/// at most one apply every 2 s, skipped when nothing changed; readiness read
+/// every 30 s; full resync every 5 minutes.
 pub async fn run(
     ctx: Arc<Ctx>,
     projections: Arc<Projections>,
@@ -270,6 +486,7 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let mut deltas = projections.subscribe();
     let mut debounce = tokio::time::interval(Duration::from_secs(2));
+    let mut status = tokio::time::interval(STATUS_REFRESH);
     let mut resync = tokio::time::interval(Duration::from_mins(5));
     let mut dirty = true;
     let mut last: Option<Value> = None;
@@ -280,6 +497,7 @@ pub async fn run(
                 Ok(_) | Err(RecvError::Lagged(_)) => dirty = true,
                 Err(RecvError::Closed) => return Ok(()),
             },
+            _ = status.tick() => dirty = true,
             _ = resync.tick() => {
                 dirty = true;
                 last = None;
@@ -288,7 +506,8 @@ pub async fn run(
                 if dirty {
                     dirty = false;
                     if let Err(e) = reconcile(&ctx, &projections, &mut last).await {
-                        tracing::warn!(error = %e, "gateway reconcile failed; retrying at the next resync");
+                        tracing::warn!(error = %e, "gateway reconcile failed; retrying");
+                        last = None;
                     }
                 }
             }
@@ -412,15 +631,135 @@ mod tests {
         let p = platform(false);
         let gw = p.gateway.clone().expect("gateway");
         let plan = plan_listeners(&hosts(&[("api.acme.com", "kb-a")]), &p);
-        let patch = gateway_patch(&gw, "letsencrypt", &plan);
+        let patch = gateway_patch(&gw, &p, &plan);
         assert_eq!(patch["metadata"]["annotations"][ISSUER_ANNOTATION], "letsencrypt");
         assert_eq!(patch["spec"]["listeners"].as_array().map(Vec::len), Some(2));
+        assert!(
+            patch["metadata"].get("labels").is_none() && patch["spec"].get("gatewayClassName").is_none(),
+            "an existing Gateway keeps its own class and labels"
+        );
         let route = redirect_route(&gw);
         assert_eq!(route["spec"]["parentRefs"][0]["sectionName"], HTTP_LISTENER);
         assert_eq!(
             route["spec"]["rules"][0]["filters"][0]["requestRedirect"]["scheme"],
             "https"
         );
+    }
+
+    #[test]
+    fn without_tls_only_plain_http_is_listed_for_kubens_namespaces() {
+        let mut p = platform(true);
+        p.tls = false;
+        let plan = plan_listeners(&hosts(&[("api.acme.com", "kb-a"), ("api.acme.com", "kb-b")]), &p);
+        assert_eq!(
+            plan.listeners.len(),
+            1,
+            "no HTTPS listener without a Ready issuer"
+        );
+        assert!(plan.conflicts.is_empty() && plan.skipped.is_empty());
+        assert_eq!(
+            plan.listeners[0]["allowedRoutes"]["namespaces"]["selector"]["matchLabels"][labels::MANAGED_BY],
+            labels::MANAGER
+        );
+        let gw = p.gateway.clone().expect("gateway");
+        let patch = gateway_patch(&gw, &p, &plan);
+        assert!(
+            patch["metadata"].get("annotations").is_none(),
+            "no issuer annotation: cert-manager must not order certificates"
+        );
+    }
+
+    fn owned_platform() -> Platform {
+        Platform::from_spec(Some(
+            &serde_json::from_value::<KubenConfigSpec>(json!({
+                "baseDomain": "apps.example.com",
+                "gatewayClassName": "traefik",
+                "clusterIssuer": "letsencrypt"
+            }))
+            .expect("spec"),
+        ))
+    }
+
+    fn gateway_object(labels: &Value, status: &Value) -> DynamicObject {
+        let mut obj: DynamicObject = serde_json::from_value(json!({
+            "apiVersion": "gateway.networking.k8s.io/v1",
+            "kind": "Gateway",
+            "metadata": { "name": "kuben", "namespace": "kuben-system", "labels": labels },
+        }))
+        .expect("gateway");
+        obj.data = json!({ "status": status });
+        obj
+    }
+
+    #[test]
+    fn kuben_writes_only_a_gateway_it_owns() {
+        let owned = owned_platform();
+        let gw = owned.gateway.clone().expect("default gateway");
+        assert_eq!(gw, GatewayRef::owned_default());
+        let mine = gateway_object(&json!({ labels::GATEWAY_OWNER: labels::MANAGER }), &json!({}));
+        let theirs = gateway_object(&json!({ "team": "edge" }), &json!({}));
+        assert_eq!(ownership(Some(&mine)), Ownership::Kuben);
+        assert_eq!(ownership(Some(&theirs)), Ownership::Foreign);
+        assert_eq!(ownership(None), Ownership::Absent);
+
+        assert_eq!(refusal(&gw, &owned, Ownership::Absent), None, "created by Kuben");
+        assert_eq!(refusal(&gw, &owned, Ownership::Kuben), None);
+        let foreign = refusal(&gw, &owned, Ownership::Foreign).expect("refused");
+        assert_eq!((foreign.0, foreign.1), (false, "GatewayNotOwned"));
+        assert!(
+            foreign.2.contains("kuben.dev/gateway-owner=kuben"),
+            "{}",
+            foreign.2
+        );
+
+        let named = platform(false);
+        let gw = named.gateway.clone().expect("gateway");
+        assert_eq!(
+            refusal(&gw, &named, Ownership::Absent).map(|v| v.1),
+            Some("GatewayMissing")
+        );
+        assert_eq!(refusal(&gw, &named, Ownership::Kuben), None, "dedicated by label");
+
+        let plan = plan_listeners(&[], &owned);
+        let patch = gateway_patch(&GatewayRef::owned_default(), &owned, &plan);
+        assert_eq!(patch["spec"]["gatewayClassName"], "traefik");
+        assert_eq!(
+            patch["metadata"]["labels"][labels::GATEWAY_OWNER],
+            labels::MANAGER
+        );
+    }
+
+    #[test]
+    fn readiness_follows_programmed_and_explains_the_class() {
+        let owned = owned_platform();
+        let programmed = gateway_object(
+            &json!({}),
+            &json!({
+                "conditions": [{ "type": "Programmed", "status": "True" }],
+                "addresses": [{ "type": "IPAddress", "value": "203.0.113.7" }]
+            }),
+        );
+        assert_eq!(
+            readiness(&programmed, &owned, None),
+            (true, "Programmed", "programmed at 203.0.113.7".to_owned())
+        );
+        let mut blocked = owned.clone();
+        blocked.tls = false;
+        assert!(readiness(&programmed, &blocked, None).2.contains("HTTPS is off"));
+
+        let failing = gateway_object(
+            &json!({}),
+            &json!({ "conditions": [{ "type": "Programmed", "status": "False", "message": "no address" }] }),
+        );
+        assert_eq!(readiness(&failing, &owned, None).1, "NotProgrammed");
+
+        let fresh = gateway_object(&json!({}), &json!({}));
+        let facts = ClusterFacts {
+            gateway_api: Some(discovery::GatewayApi::default()),
+            ..ClusterFacts::default()
+        };
+        assert_eq!(readiness(&fresh, &owned, Some(&facts)).1, "GatewayClassMissing");
+        assert_eq!(readiness(&fresh, &owned, None).1, "Pending");
     }
 
     #[test]
