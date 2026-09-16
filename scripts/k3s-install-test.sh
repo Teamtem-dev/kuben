@@ -112,7 +112,6 @@ eventually 300 "cert-manager webhook available" \
 [[ $(kubectl get kubenconfig kuben -o jsonpath='{.spec.gatewayClassName}') == traefik ]] || fail "KubenConfig has no gateway class"
 eventually 180 "Kuben's Gateway programmed" bash -c \
   "sudo k3s kubectl get kubenconfig kuben -o jsonpath='{.status.conditions[?(@.type==\"Gateway\")].status}' | grep -qx True"
-eventually 300 "the cluster agent linked" bash -c "sudo journalctl -u kuben --no-pager -o cat | grep -q 'agent linked'"
 sudo -u kuben /usr/local/bin/kuben doctor 2>&1 | tee "$work/doctor.txt" >/dev/null || fail "doctor: $(cat "$work/doctor.txt")"
 grep -q '^\[OK  \] feature: public routes: ready' "$work/doctor.txt" || fail "doctor: $(cat "$work/doctor.txt")"
 
@@ -161,6 +160,9 @@ eventually 300 "https://${CONSOLE} through the Gateway" kcurl -fsS -o /dev/null 
 kcurl -fsS "https://${CONSOLE}/" | grep -qi '<html' || fail "the console page is not served over HTTPS"
 kcurl -fsS "$BASE/setup" | jq -e '.needed and .secure' >/dev/null || fail "GET /setup over HTTPS: $(kcurl -sS "$BASE/setup")"
 expect 200 POST /setup "$first_admin"
+# The hub publishes the agent's enrollment for the organization, which
+# exists from now on.
+eventually 300 "the cluster agent linked" bash -c "sudo journalctl -u kuben --no-pager -o cat | grep -q 'agent linked'"
 expect 201 POST /projects '{"name":"shop","display_name":"Shop"}'
 expect 201 POST /projects/shop/environments '{"name":"prod"}'
 eventually 90 "environment visible" bash -c "kcurl -fsS -b '$work/cookies' $BASE/projects/shop/environments/prod"
