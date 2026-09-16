@@ -26,6 +26,7 @@ use kube::{
     api::{DeleteParams, ListParams, Patch, PatchParams, PostParams, PropagationPolicy},
 };
 use kuben_core::{
+    artifact::Digest,
     ids::OperationId,
     ops::{BuildEvent, BuildFailure, BuildPhase, outcome::classify},
     time::now_ms,
@@ -63,6 +64,12 @@ const MAX_SYNC_ATTEMPTS: i32 = 10;
 const GIVE_UP_AFTER: Duration = Duration::from_hours(1);
 const KINDS: [&str; 2] = [SOURCE_SYNC_KIND, BUILD_KIND];
 const MANAGER: &str = "kuben-builds";
+const MANAGED_BY: &str = "app.kubernetes.io/managed-by";
+/// How long a finished `BuildRun` shows its result.
+pub const RETENTION: Duration = Duration::from_hours(24);
+const RETENTION_SECS: i64 = 24 * 3600;
+/// How often finished `BuildRun`s are swept.
+const SWEEP_EVERY: Duration = Duration::from_mins(10);
 
 /// How the work on a claim ended.
 #[derive(Debug, PartialEq, Eq)]
@@ -127,7 +134,16 @@ impl fmt::Debug for BuildWorker {
 /// error, for the supervisor to restart the loop with backoff.
 pub async fn run(worker: BuildWorker, health: Health, token: CancellationToken) -> anyhow::Result<()> {
     health.ok(HEALTH);
+    let mut next_sweep = tokio::time::Instant::now();
     while !token.is_cancelled() {
+        if tokio::time::Instant::now() >= next_sweep {
+            next_sweep += SWEEP_EVERY;
+            match worker.sweep().await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(removed = n, "finished BuildRuns swept"),
+                Err(e) => tracing::warn!(error = %e, "finished BuildRuns were not swept"),
+            }
+        }
         if worker.work_once().await?.is_none() {
             tokio::select! {
                 () = token.cancelled() => {}
@@ -312,19 +328,12 @@ impl BuildWorker {
 
     /// A final attempt: revoke, delete, then settle its operation.
     async fn settle_final(&self, attempt: &BuildAttempt) -> Outcome {
-        if let Err(e) = self.cleanup(attempt).await {
-            return e.into();
-        }
-        let phase = match attempt.phase {
-            BuildPhase::Succeeded => "succeeded",
-            BuildPhase::Cancelled => "cancelled",
-            _ => "failed",
-        };
         let code = attempt
             .failure
             .clone()
             .or_else(|| attempt.deploy_decision.clone());
-        Outcome::Done(phase, code)
+        self.finish(attempt, attempt.phase, code, attempt.digest.as_ref())
+            .await
     }
 
     /// Record `events` in order, with `progress` on each.
@@ -351,7 +360,7 @@ impl BuildWorker {
             )
             .await
         {
-            Ok(_) => Outcome::Done("cancelled", None),
+            Ok(_) => self.finish(attempt, BuildPhase::Cancelled, None, None).await,
             Err(outcome) => outcome,
         }
     }
@@ -475,7 +484,7 @@ impl BuildWorker {
                 detail,
             } => self.fail(claim, attempt, &events, failure.code(), &detail).await,
             Plan::Stop(events) => {
-                if let Err(e) = self.delete_objects(attempt).await {
+                if let Err(e) = delete(&self.api::<Job>(), &job::name(attempt)).await {
                     return e.into();
                 }
                 match self
@@ -493,18 +502,13 @@ impl BuildWorker {
                 {
                     return o;
                 }
-                self.finish(attempt, "cancelled", None).await
+                self.finish(attempt, BuildPhase::Cancelled, None, None).await
             }
         }
     }
 
     /// Check `digest` in the registry and complete the attempt.
-    async fn verify(
-        &self,
-        claim: &Claim,
-        attempt: &BuildAttempt,
-        digest: &kuben_core::artifact::Digest,
-    ) -> Outcome {
+    async fn verify(&self, claim: &Claim, attempt: &BuildAttempt, digest: &Digest) -> Outcome {
         match self.verifier.verify(&attempt.image_repository, digest).await {
             Ok(()) => {}
             Err(VerifyError::Missing(what)) => {
@@ -535,11 +539,13 @@ impl BuildWorker {
                 generation,
             }) => {
                 tracing::info!(build = %attempt.id, %release, %run, generation = generation.0, %digest, "build deployed");
-                self.finish(attempt, "succeeded", None).await
+                self.finish(attempt, BuildPhase::Succeeded, None, Some(digest))
+                    .await
             }
             Ok(Completed::Kept { release, decision }) => {
                 tracing::info!(build = %attempt.id, %release, %decision, %digest, "build kept without a deploy");
-                self.finish(attempt, "succeeded", Some(decision)).await
+                self.finish(attempt, BuildPhase::Succeeded, Some(decision), Some(digest))
+                    .await
             }
         }
     }
@@ -578,13 +584,24 @@ impl BuildWorker {
             Ok(Ok(None)) => {}
         }
         tracing::info!(build = %attempt.id, code, detail, "build failed");
-        self.finish(attempt, "failed", Some(code.to_owned())).await
+        self.finish(attempt, BuildPhase::Failed, Some(code.to_owned()), None)
+            .await
     }
 
     /// Clean up a final attempt and settle its operation.
-    async fn finish(&self, attempt: &BuildAttempt, phase: &'static str, code: Option<String>) -> Outcome {
-        match self.cleanup(attempt).await {
-            Ok(()) => Outcome::Done(phase, code),
+    async fn finish(
+        &self,
+        attempt: &BuildAttempt,
+        phase: BuildPhase,
+        code: Option<String>,
+        digest: Option<&Digest>,
+    ) -> Outcome {
+        let mut shown = attempt.clone();
+        if let Some(code) = code.as_ref().filter(|_| phase == BuildPhase::Failed) {
+            shown.failure = Some(code.clone());
+        }
+        match self.cleanup(&shown, phase, digest).await {
+            Ok(()) => Outcome::Done(operation_phase(phase), code),
             // The attempt is final; the next claim repeats the cleanup.
             Err(e) => e.into(),
         }
@@ -664,17 +681,37 @@ impl BuildWorker {
         Ok(observe::job(found.as_ref(), &pods, Timestamp::now()))
     }
 
-    async fn delete_objects(&self, attempt: &BuildAttempt) -> kube::Result<()> {
-        let name = job::name(attempt);
-        delete(&self.api::<Job>(), &name).await?;
-        delete(&self.api::<BuildRun>(), &name).await
+    /// Revoke the fetch token, delete the Job and the Secret, and leave the
+    /// final status on the `BuildRun`, which [`BuildWorker::sweep`] removes
+    /// after [`RETENTION`].
+    async fn cleanup(
+        &self,
+        attempt: &BuildAttempt,
+        phase: BuildPhase,
+        digest: Option<&Digest>,
+    ) -> kube::Result<()> {
+        self.revoke(attempt).await;
+        delete(&self.api::<Job>(), &job::name(attempt)).await?;
+        delete(&self.api::<Secret>(), &job::secret_name(attempt)).await?;
+        self.mirror(attempt, phase, digest.map(Digest::as_str)).await;
+        Ok(())
     }
 
-    /// Revoke the fetch token and delete the build's objects.
-    async fn cleanup(&self, attempt: &BuildAttempt) -> kube::Result<()> {
-        self.revoke(attempt).await;
-        self.delete_objects(attempt).await?;
-        delete(&self.api::<Secret>(), &job::secret_name(attempt)).await
+    /// Delete `BuildRun`s that finished more than [`RETENTION`] ago.
+    pub async fn sweep(&self) -> kube::Result<usize> {
+        let runs: Api<BuildRun> = self.api();
+        let list = runs
+            .list(&ListParams::default().labels(&format!("{MANAGED_BY}=kuben")))
+            .await?;
+        let now = Timestamp::now();
+        let mut removed = 0;
+        for run in list.items {
+            if expired(&run, now) {
+                delete(&runs, run.metadata.name.as_deref().unwrap_or_default()).await?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     async fn revoke(&self, attempt: &BuildAttempt) {
@@ -711,15 +748,7 @@ impl BuildWorker {
     /// Show the attempt's progress on its `BuildRun`; best effort.
     async fn mirror(&self, attempt: &BuildAttempt, phase: BuildPhase, digest: Option<&str>) {
         let runs: Api<BuildRun> = self.api();
-        let status = json!({ "status": {
-            "phase": crd_phase(phase),
-            "jobName": job::name(attempt),
-            "imageDigest": digest,
-            "startedAt": Timestamp::now().to_string(),
-            "conditions": [{
-                "type": "Progressing", "status": "True", "reason": phase.as_str(),
-            }],
-        }});
+        let status = status_patch(attempt, phase, digest, Timestamp::now());
         let params = PatchParams::apply(MANAGER);
         if let Err(e) = runs
             .patch_status(&job::name(attempt), &params, &Patch::Merge(&status))
@@ -728,6 +757,63 @@ impl BuildWorker {
         {
             tracing::debug!(build = %attempt.id, error = %e, "BuildRun status not updated");
         }
+    }
+}
+
+/// The `BuildRun` status for `attempt` in `phase` at `now`: the phase,
+/// the verified digest and, once final, when it finished and why.
+fn status_patch(
+    attempt: &BuildAttempt,
+    phase: BuildPhase,
+    digest: Option<&str>,
+    now: Timestamp,
+) -> serde_json::Value {
+    let now = now.to_string();
+    let terminal = phase.is_terminal();
+    let (kind, reason, ok) = match phase {
+        BuildPhase::Succeeded => ("Succeeded", "Verified", true),
+        BuildPhase::Failed => ("Succeeded", attempt.failure.as_deref().unwrap_or("Failed"), false),
+        BuildPhase::Cancelled => ("Succeeded", "Cancelled", false),
+        other => ("Progressing", other.as_str(), true),
+    };
+    let mut status = json!({
+        "phase": crd_phase(phase),
+        "jobName": job::name(attempt),
+        "conditions": [{
+            "type": kind,
+            "status": if ok { "True" } else { "False" },
+            "reason": reason,
+            "message": attempt.failure_detail,
+            "lastTransitionTime": now,
+        }],
+    });
+    if let Some(digest) = digest {
+        status["imageDigest"] = json!(digest);
+    }
+    if phase == BuildPhase::Preparing {
+        status["startedAt"] = json!(now);
+    }
+    if terminal {
+        status["finishedAt"] = json!(now);
+    }
+    json!({ "status": status })
+}
+
+/// Whether `run` finished more than [`RETENTION`] before `now`.
+fn expired(run: &BuildRun, now: Timestamp) -> bool {
+    run.status
+        .as_ref()
+        .and_then(|s| s.finished_at.as_deref())
+        .and_then(|t| t.parse::<Timestamp>().ok())
+        .is_some_and(|finished| now.as_second() - finished.as_second() > RETENTION_SECS)
+}
+
+/// The operation phase of a final attempt.
+const fn operation_phase(phase: BuildPhase) -> &'static str {
+    match phase {
+        BuildPhase::Succeeded => "succeeded",
+        BuildPhase::Cancelled => "cancelled",
+        _ => "failed",
     }
 }
 
@@ -777,6 +863,54 @@ mod tests {
         assert_eq!(crd_phase(BuildPhase::Publishing), "Running");
         assert_eq!(crd_phase(BuildPhase::Cancelling), "Running");
         assert_eq!(crd_phase(BuildPhase::Cancelled), "Cancelled");
+    }
+
+    fn attempt() -> BuildAttempt {
+        crate::build::job::tests::attempt(kuben_core::source::BuildRecipe::default())
+    }
+
+    #[test]
+    fn final_status_carries_the_digest_and_the_reason() {
+        let now: Timestamp = "2026-09-17T12:00:00Z".parse().expect("time");
+        let digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let done = status_patch(&attempt(), BuildPhase::Succeeded, Some(digest), now);
+        assert_eq!(done["status"]["phase"], "Succeeded");
+        assert_eq!(done["status"]["imageDigest"], digest);
+        assert_eq!(done["status"]["finishedAt"], "2026-09-17T12:00:00Z");
+        assert_eq!(done["status"]["conditions"][0]["status"], "True");
+        let status: kuben_crd::BuildRunStatus =
+            serde_json::from_value(done["status"].clone()).expect("a valid BuildRunStatus");
+        assert_eq!(status.image_digest.as_deref(), Some(digest));
+
+        let mut oom = attempt();
+        oom.failure = Some("OutOfMemory".into());
+        let failed = status_patch(&oom, BuildPhase::Failed, None, now);
+        assert_eq!(failed["status"]["conditions"][0]["reason"], "OutOfMemory");
+        assert_eq!(failed["status"]["conditions"][0]["status"], "False");
+        assert!(failed["status"].get("imageDigest").is_none());
+
+        let started = status_patch(&attempt(), BuildPhase::Preparing, None, now);
+        assert_eq!(started["status"]["phase"], "Running");
+        assert!(started["status"].get("finishedAt").is_none());
+        assert_eq!(started["status"]["startedAt"], "2026-09-17T12:00:00Z");
+    }
+
+    #[test]
+    fn finished_build_runs_expire_after_a_day() {
+        let a = attempt();
+        let settings = crate::build::job::tests::settings();
+        let mut run = crate::build::job::build_run(&a, &settings);
+        let now: Timestamp = "2026-09-18T12:00:01Z".parse().expect("time");
+        assert!(!expired(&run, now), "a running build never expires");
+        run.status = Some(kuben_crd::BuildRunStatus {
+            finished_at: Some("2026-09-17T12:00:00Z".into()),
+            ..kuben_crd::BuildRunStatus::default()
+        });
+        assert!(expired(&run, now));
+        let earlier: Timestamp = "2026-09-18T11:59:59Z".parse().expect("time");
+        assert!(!expired(&run, earlier));
+        assert_eq!(operation_phase(BuildPhase::Cancelled), "cancelled");
+        assert_eq!(operation_phase(BuildPhase::Failed), "failed");
     }
 
     #[test]

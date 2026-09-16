@@ -418,12 +418,15 @@ pub struct BuildCfg {
     pub enabled: bool,
     /// Namespace of build Jobs; default: Kuben's own, else `kuben-builds`.
     pub namespace: Option<String>,
-    /// Rootless BuildKit image, pinned by digest in production.
+    /// Rootless BuildKit image. The defaults are pinned by tag; production
+    /// pins every build image by digest (`image@sha256:…`), and the build
+    /// worker warns at start about any image that is not.
     pub buildkit_image: String,
     /// Image with `git` that fetches the source.
     pub fetch_image: String,
-    /// Railpack's BuildKit frontend image.
-    pub railpack_frontend: String,
+    /// Railpack's BuildKit frontend image; with `railpack_image`, enables
+    /// Railpack builds. Unset, only Dockerfile builds run.
+    pub railpack_frontend: Option<String>,
     /// Image with `sh` and the `railpack` CLI that writes the build plan;
     /// unset, only Dockerfile builds run.
     pub railpack_image: Option<String>,
@@ -448,6 +451,23 @@ pub struct BuildCfg {
     pub node_pool: Option<String>,
 }
 
+impl BuildCfg {
+    /// The build images that are not pinned by digest.
+    #[must_use]
+    pub fn unpinned_images(&self) -> Vec<&str> {
+        [
+            Some(self.buildkit_image.as_str()),
+            Some(self.fetch_image.as_str()),
+            self.railpack_image.as_deref(),
+            self.railpack_frontend.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|image| !image.is_empty() && !image.contains("@sha256:"))
+        .collect()
+    }
+}
+
 impl Default for BuildCfg {
     fn default() -> Self {
         Self {
@@ -455,7 +475,7 @@ impl Default for BuildCfg {
             namespace: None,
             buildkit_image: "moby/buildkit:v0.33.0-rootless".into(),
             fetch_image: "alpine/git:2.49.1".into(),
-            railpack_frontend: "ghcr.io/railwayapp/railpack-frontend".into(),
+            railpack_frontend: None,
             railpack_image: None,
             cpu_request: "500m".into(),
             cpu_limit: "2".into(),
@@ -631,6 +651,20 @@ mod tests {
         assert!(cfg.agent.bind.is_none(), "AgentLink is off unless configured");
         assert!(!cfg.build.enabled, "builds are off unless configured");
         assert!(!cfg.git.github_enabled());
+    }
+
+    #[test]
+    fn unpinned_build_images_are_reported() {
+        let mut build = BuildCfg::default();
+        assert_eq!(build.unpinned_images().len(), 2, "the tag-pinned defaults");
+        build.buildkit_image = format!("moby/buildkit@sha256:{}", "a".repeat(64));
+        build.fetch_image = format!("alpine/git@sha256:{}", "b".repeat(64));
+        assert!(build.unpinned_images().is_empty());
+        build.railpack_frontend = Some("ghcr.io/railwayapp/railpack-frontend".into());
+        assert_eq!(
+            build.unpinned_images(),
+            vec!["ghcr.io/railwayapp/railpack-frontend"]
+        );
     }
 
     #[test]

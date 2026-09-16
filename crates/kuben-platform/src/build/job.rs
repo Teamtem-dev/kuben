@@ -70,7 +70,7 @@ fi
 if [ "$strategy" = dockerfile ]; then
   [ -f "$ctx/$KUBEN_DOCKERFILE" ] || fail "there is no '$KUBEN_DOCKERFILE' in the build context"
 else
-  command -v railpack >/dev/null 2>&1 || fail "the repository has no Dockerfile and Railpack is not configured on this server (build.railpack_image)"
+  command -v railpack >/dev/null 2>&1 || fail "the repository has no Dockerfile and Railpack is not configured on this server (build.railpack_image and build.railpack_frontend)"
   mkdir -p /workspace/plan
   railpack prepare "$ctx" --plan-out /workspace/plan/railpack-plan.json
 fi
@@ -105,7 +105,7 @@ pub struct BuildSettings {
     pub buildkit_image: String,
     pub fetch_image: String,
     pub railpack_image: Option<String>,
-    pub railpack_frontend: String,
+    pub railpack_frontend: Option<String>,
     pub cpu_request: String,
     pub cpu_limit: String,
     pub memory: String,
@@ -125,8 +125,14 @@ impl BuildSettings {
             namespace,
             buildkit_image: cfg.buildkit_image.clone(),
             fetch_image: cfg.fetch_image.clone(),
-            railpack_image: cfg.railpack_image.clone().filter(|i| !i.is_empty()),
-            railpack_frontend: cfg.railpack_frontend.clone(),
+            // Railpack needs both images; with either missing the plan step
+            // explains that only Dockerfile builds run.
+            railpack_image: cfg
+                .railpack_image
+                .clone()
+                .filter(|i| !i.is_empty())
+                .filter(|_| cfg.railpack_frontend.as_deref().is_some_and(|f| !f.is_empty())),
+            railpack_frontend: cfg.railpack_frontend.clone().filter(|f| !f.is_empty()),
             cpu_request: cfg.cpu_request.clone(),
             cpu_limit: cfg.cpu_limit.clone(),
             memory: cfg.memory.clone(),
@@ -375,7 +381,10 @@ fn build_container(
         ("KUBEN_CONTEXT", attempt.recipe.context.as_str()),
         ("KUBEN_DOCKERFILE", dockerfile.as_str()),
         ("KUBEN_IMAGE", push_ref.as_str()),
-        ("KUBEN_RAILPACK_FRONTEND", settings.railpack_frontend.as_str()),
+        (
+            "KUBEN_RAILPACK_FRONTEND",
+            settings.railpack_frontend.as_deref().unwrap_or_default(),
+        ),
         ("KUBEN_INSECURE_REGISTRY", insecure),
         ("BUILDKITD_FLAGS", "--oci-worker-no-process-sandbox"),
     ];
@@ -426,7 +435,7 @@ fn build_container(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use kuben_core::{
         ids::{ApplicationId, BuildAttemptId, OperationId, ProjectId, SourceBindingId, TargetId},
         ops::{BuildPhase, SourceEpoch},

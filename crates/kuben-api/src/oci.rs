@@ -12,11 +12,13 @@
 
 use std::{collections::BTreeMap, fmt, fmt::Write as _, time::Duration};
 
+use base64::Engine as _;
 use bytes::Bytes;
 use http::{HeaderMap, Method, Request, StatusCode, header};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper_util::client::proxy::matcher::Matcher;
 use kuben_core::artifact::Digest;
+use kuben_platform::build::{OutputVerifier, VerifyError};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 
@@ -279,7 +281,7 @@ impl RegistryResolver {
         &self,
         method: Method,
         url: &str,
-        bearer: Option<&str>,
+        authorization: Option<&str>,
         image: &str,
     ) -> Result<(StatusCode, HeaderMap, Bytes), ResolveError> {
         let unreachable = |reason: String| ResolveError::Unreachable {
@@ -291,8 +293,8 @@ impl RegistryResolver {
             .uri(url)
             .header(header::ACCEPT, MANIFEST_TYPES)
             .header(header::USER_AGENT, concat!("kuben/", env!("CARGO_PKG_VERSION")));
-        if let Some(token) = bearer {
-            request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        if let Some(value) = authorization {
+            request = request.header(header::AUTHORIZATION, value);
         }
         let request = request
             .body(Full::new(Bytes::new()))
@@ -307,8 +309,15 @@ impl RegistryResolver {
         Ok((parts.status, parts.headers, body))
     }
 
-    /// An anonymous pull token for the challenge's realm.
-    async fn token(&self, challenge: &Challenge, r: &ImageRef, image: &str) -> Result<String, ResolveError> {
+    /// A pull token for the challenge's realm: anonymous, or for `basic`
+    /// (an `Authorization: Basic …` value).
+    async fn token(
+        &self,
+        challenge: &Challenge,
+        r: &ImageRef,
+        image: &str,
+        basic: Option<&str>,
+    ) -> Result<String, ResolveError> {
         if !challenge.realm.starts_with("https://") {
             return Err(ResolveError::Unauthorized(image.to_owned()));
         }
@@ -321,7 +330,7 @@ impl RegistryResolver {
             url.push_str("&service=");
             url.push_str(&encode(service));
         }
-        let (status, _, body) = self.send(Method::GET, &url, None, image).await?;
+        let (status, _, body) = self.send(Method::GET, &url, basic, image).await?;
         if !status.is_success() {
             return Err(ResolveError::Unauthorized(image.to_owned()));
         }
@@ -338,7 +347,7 @@ impl RegistryResolver {
     /// is computed over the manifest it returns.
     async fn manifest_digest(&self, r: &ImageRef, tag: &str, image: &str) -> Result<Digest, ResolveError> {
         let url = format!("https://{}/v2/{}/manifests/{tag}", r.api_host(), r.path);
-        let mut bearer = None;
+        let mut bearer: Option<String> = None;
         for method in [Method::HEAD, Method::GET] {
             let (mut status, mut headers, mut body) =
                 self.send(method.clone(), &url, bearer.as_deref(), image).await?;
@@ -348,7 +357,10 @@ impl RegistryResolver {
                     .and_then(|v| v.to_str().ok())
                     .and_then(parse_challenge)
                     .ok_or_else(|| ResolveError::Unauthorized(image.to_owned()))?;
-                bearer = Some(self.token(&challenge, r, image).await?);
+                bearer = Some(format!(
+                    "Bearer {}",
+                    self.token(&challenge, r, image, None).await?
+                ));
                 (status, headers, body) = self.send(method.clone(), &url, bearer.as_deref(), image).await?;
             }
             match status {
@@ -406,6 +418,111 @@ impl ImageResolver for RegistryResolver {
             digest,
             given: image.to_owned(),
         })
+    }
+}
+
+/// Checks build outputs in their registry (ADR-028): the manifest a build
+/// reported must exist under exactly that digest. Credentials, when given,
+/// are sent as HTTP Basic or exchanged for a bearer token.
+#[derive(Clone)]
+pub struct RegistryVerifier {
+    resolver: RegistryResolver,
+    scheme: &'static str,
+    basic: Option<String>,
+}
+
+impl fmt::Debug for RegistryVerifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RegistryVerifier")
+            .field("scheme", &self.scheme)
+            .field("credentials", &self.basic.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl RegistryVerifier {
+    /// A verifier over HTTPS, or plain HTTP for an `insecure` registry, with
+    /// optional `user:password` credentials.
+    #[must_use]
+    pub fn new(insecure: bool, credentials: Option<&str>) -> Self {
+        let schemes = if insecure {
+            Schemes::Any
+        } else {
+            Schemes::HttpsOnly
+        };
+        Self {
+            resolver: RegistryResolver {
+                transport: Transport::with_proxies(Matcher::from_env(), schemes, TIMEOUT),
+            },
+            scheme: if insecure { "http" } else { "https" },
+            basic: credentials
+                .map(str::trim)
+                .filter(|c| c.contains(':'))
+                .map(|c| format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(c))),
+        }
+    }
+
+    async fn check(&self, repository: &str, digest: &Digest) -> Result<(), VerifyError> {
+        let image = format!("{repository}@{}", digest.as_str());
+        let r = parse(&image).map_err(|e| VerifyError::Missing(e.to_string()))?;
+        let url = format!(
+            "{}://{}/v2/{}/manifests/{}",
+            self.scheme,
+            r.api_host(),
+            r.path,
+            digest.as_str()
+        );
+        let unavailable = |e: ResolveError| VerifyError::Unavailable(e.to_string());
+        let (mut status, mut headers, _) = self
+            .resolver
+            .send(Method::HEAD, &url, self.basic.as_deref(), &image)
+            .await
+            .map_err(unavailable)?;
+        if status == StatusCode::UNAUTHORIZED {
+            let challenge = headers
+                .get(header::WWW_AUTHENTICATE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_challenge)
+                .ok_or_else(|| VerifyError::Unavailable(format!("the registry refused access to {image}")))?;
+            let token = self
+                .resolver
+                .token(&challenge, &r, &image, self.basic.as_deref())
+                .await
+                .map_err(unavailable)?;
+            (status, headers, _) = self
+                .resolver
+                .send(Method::HEAD, &url, Some(&format!("Bearer {token}")), &image)
+                .await
+                .map_err(unavailable)?;
+        }
+        verdict(status, &headers, digest, &image)
+    }
+}
+
+/// What a registry's answer to `HEAD …/manifests/<digest>` means.
+fn verdict(status: StatusCode, headers: &HeaderMap, digest: &Digest, image: &str) -> Result<(), VerifyError> {
+    match status {
+        StatusCode::OK => {
+            let answered = headers
+                .get(DIGEST_HEADER)
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim);
+            match answered {
+                Some(d) if d != digest.as_str() => Err(VerifyError::Missing(format!(
+                    "{image}: the registry answered with {d}"
+                ))),
+                _ => Ok(()),
+            }
+        }
+        StatusCode::NOT_FOUND => Err(VerifyError::Missing(image.to_owned())),
+        other => Err(VerifyError::Unavailable(format!("{image}: HTTP {other}"))),
+    }
+}
+
+#[async_trait::async_trait]
+impl OutputVerifier for RegistryVerifier {
+    async fn verify(&self, repository: &str, digest: &Digest) -> Result<(), VerifyError> {
+        self.check(repository, digest).await
     }
 }
 
@@ -503,6 +620,39 @@ mod tests {
         );
         assert_eq!(parse_challenge(r#"Basic realm="registry""#), None);
         assert_eq!(parse_challenge("Bearer service=x"), None, "no realm");
+    }
+
+    #[test]
+    fn registry_answers_decide_the_output() {
+        let digest: Digest = DIGEST.parse().expect("digest");
+        let mut headers = HeaderMap::new();
+        assert_eq!(verdict(StatusCode::OK, &headers, &digest, "i"), Ok(()));
+        headers.insert(DIGEST_HEADER, DIGEST.parse().expect("header"));
+        assert_eq!(verdict(StatusCode::OK, &headers, &digest, "i"), Ok(()));
+        let other = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+        headers.insert(DIGEST_HEADER, other.parse().expect("header"));
+        assert!(matches!(
+            verdict(StatusCode::OK, &headers, &digest, "i"),
+            Err(VerifyError::Missing(_))
+        ));
+        assert!(matches!(
+            verdict(StatusCode::NOT_FOUND, &HeaderMap::new(), &digest, "i"),
+            Err(VerifyError::Missing(_))
+        ));
+        assert!(matches!(
+            verdict(StatusCode::SERVICE_UNAVAILABLE, &HeaderMap::new(), &digest, "i"),
+            Err(VerifyError::Unavailable(_))
+        ));
+    }
+
+    #[test]
+    fn verifier_credentials_are_basic_auth() {
+        let v = RegistryVerifier::new(true, Some("builder:s3cret\n"));
+        assert_eq!(v.scheme, "http");
+        assert_eq!(v.basic.as_deref(), Some("Basic YnVpbGRlcjpzM2NyZXQ="));
+        assert!(!format!("{v:?}").contains("s3cret"));
+        assert!(RegistryVerifier::new(false, Some("no-colon")).basic.is_none());
+        assert_eq!(RegistryVerifier::new(false, None).scheme, "https");
     }
 
     #[test]
