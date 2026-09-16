@@ -2277,6 +2277,7 @@ dependencies = [
  "kuben-crd",
  "kuben-store",
  "metrics",
+ "proptest",
  "rcgen",
  "rustls",
  "serde",

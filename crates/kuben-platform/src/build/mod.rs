@@ -10,6 +10,8 @@
 
 pub mod job;
 pub mod observe;
+#[cfg(test)]
+mod scenarios;
 pub mod steps;
 pub mod worker;
 

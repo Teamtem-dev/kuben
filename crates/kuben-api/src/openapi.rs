@@ -63,6 +63,7 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::source::sync))
         .routes(routes!(apps::builds::list))
         .routes(routes!(apps::builds::get))
+        .routes(routes!(apps::builds::cancel))
         .routes(routes!(git::list, git::link))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
@@ -120,6 +121,7 @@ mod tests {
             &format!("{app}/source/sync"),
             &format!("{app}/builds"),
             &format!("{app}/builds/{{build}}"),
+            &format!("{app}/builds/{{build}}/cancel"),
             "/api/v1/git/installations",
             "/api/v1/projects/{project}/environments/{environment}/secrets",
             "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}",

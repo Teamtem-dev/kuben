@@ -1453,6 +1453,95 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/cancel": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Stop a build. A build that has not started is cancelled at once; a\nrunning one is stopped by deleting its Job, and ends `cancelled` once the\nJob is gone — or `succeeded` if its output was already pushed and\nverifies.",
+        "operationId": "cancelBuild",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "build",
+            "in": "path",
+            "description": "Build id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "The stop was asked; poll the build",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The build already finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
       "get": {
         "tags": [

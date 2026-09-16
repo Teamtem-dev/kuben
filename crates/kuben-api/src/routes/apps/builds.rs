@@ -4,6 +4,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::StatusCode,
 };
 use kuben_core::{Error, ids::BuildAttemptId, perm::Perm};
 use kuben_store::repo::BuildAttempt;
@@ -152,6 +153,55 @@ pub async fn get(
         .await?
         .ok_or_else(|| Error::NotFound(format!("build `{build}`")))?;
     Ok(Json(BuildDto::from(&attempt)))
+}
+
+/// Stop a build. A build that has not started is cancelled at once; a
+/// running one is stopped by deleting its Job, and ends `cancelled` once the
+/// Job is gone — or `succeeded` if its output was already pushed and
+/// verifies.
+#[utoipa::path(
+    post,
+    path = "/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/cancel", operation_id = "cancelBuild",
+    tag = "apps",
+    params(
+        ("project" = String, Path, description = "Project name"),
+        ("environment" = String, Path, description = "Environment short name"),
+        ("app" = String, Path, description = "App name"),
+        ("build" = String, Path, description = "Build id"),
+    ),
+    responses(
+        (status = 202, body = BuildDto, description = "The stop was asked; poll the build"),
+        (status = 403, body = crate::error::Problem),
+        (status = 404, body = crate::error::Problem),
+        (status = 409, body = crate::error::Problem, description = "The build already finished"),
+    )
+)]
+pub async fn cancel(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((project, environment, app, build)): Path<(String, String, String, String)>,
+) -> ApiResult<(StatusCode, Json<BuildDto>)> {
+    let t = scope::sql_target(&state, &authz, &project, &environment, &app).await?;
+    let _proof = authz.require(&state, Perm::AppDeploy, &t.chain())?;
+    let id = build_id(&build)?;
+    let mut tenant = state.store.tenant(t.org).await?;
+    let attempt = tenant
+        .build_of_target(t.target, id)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("build `{build}`")))?;
+    if tenant.request_build_cancel(t.target, id).await?.is_none() {
+        return Err(Error::Conflict(format!(
+            "build `{build}` already finished ({})",
+            attempt.phase.as_str()
+        ))
+        .into());
+    }
+    let asked = tenant
+        .build_of_target(t.target, id)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("build `{build}`")))?;
+    tenant.commit().await?;
+    Ok((StatusCode::ACCEPTED, Json(BuildDto::from(&asked))))
 }
 
 #[cfg(test)]

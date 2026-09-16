@@ -328,6 +328,28 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a build. A build that has not started is cancelled at once; a
+         *     running one is stopped by deleting its Job, and ends `cancelled` once the
+         *     Job is gone — or `succeeded` if its output was already pushed and
+         *     verifies.
+         */
+        post: operations["cancelBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
         parameters: {
             query?: never;
@@ -2504,6 +2526,60 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancelBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Build id */
+                build: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stop was asked; poll the build */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The build already finished */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

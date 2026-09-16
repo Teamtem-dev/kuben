@@ -1687,6 +1687,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_running_build_is_cancelled_only_after_its_job_is_gone() {
+        let Some(store) = pg_store().await else {
+            return skip("a_running_build_is_cancelled_only_after_its_job_is_gone");
+        };
+        let f = fixture(&store, "a", 7).await;
+        sync(&store, &f, HEAD_A).await;
+        let (claim, attempt) = claim_build(&store).await;
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        assert_eq!(
+            t.claim_build_slot(&claim, attempt.id, LIMITS)
+                .await
+                .expect("slot"),
+            Some(true)
+        );
+        t.commit().await.expect("commit");
+        step(&store, &claim, &attempt, BuildEvent::Started).await;
+        step(&store, &claim, &attempt, BuildEvent::Building).await;
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        assert!(
+            t.request_build_cancel(f.target, attempt.id)
+                .await
+                .expect("cancel")
+                .is_some()
+        );
+        t.commit().await.expect("commit");
+        for (event, phase) in [
+            (BuildEvent::CancelRequested, BuildPhase::CancelRequested),
+            (BuildEvent::Stopping, BuildPhase::Cancelling),
+        ] {
+            assert_eq!(
+                step(&store, &claim, &attempt, event).await,
+                BuildAdvance::Moved(phase)
+            );
+        }
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        let held: bool = sqlx::query_scalar(HAS_SLOT)
+            .bind(*attempt.id.as_uuid())
+            .fetch_one(&mut *t.tx)
+            .await
+            .expect("slot");
+        assert!(held, "the Job may still run while it is being deleted");
+        drop(t);
+        let moved = step(&store, &claim, &attempt, BuildEvent::Stopped).await;
+        assert_eq!(moved, BuildAdvance::Moved(BuildPhase::Cancelled));
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        let held: bool = sqlx::query_scalar(HAS_SLOT)
+            .bind(*attempt.id.as_uuid())
+            .fetch_one(&mut *t.tx)
+            .await
+            .expect("slot");
+        assert!(!held);
+        let stored = t
+            .build_of_target(f.target, attempt.id)
+            .await
+            .expect("read")
+            .expect("attempt");
+        assert!(stored.finished_at.is_some() && stored.failure.is_none());
+        assert_eq!(
+            t.request_build_cancel(f.target, attempt.id)
+                .await
+                .expect("cancel"),
+            None,
+            "a finished build cannot be cancelled"
+        );
+    }
+
+    #[tokio::test]
     async fn cancelling_wakes_the_build() {
         let Some(store) = pg_store().await else {
             return skip("cancelling_wakes_the_build");
