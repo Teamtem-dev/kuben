@@ -20,6 +20,8 @@ Kuben writes the listeners of **one** Gateway, and only of a Gateway that is its
 - **Kuben creates it** when `platform.gatewayClassName` is set (for example `traefik` on k3s, or `eg` for Envoy Gateway). The Gateway is `kuben-system/kuben` unless `platform.gateway` names another one, and it carries the label `kuben.dev/gateway-owner=kuben`.
 - **You dedicate an existing one** by naming it in `platform.gateway` and labelling it `kuben.dev/gateway-owner=kuben`.
 
+Some Gateway controllers match a listener's port to one of their own entry points. Traefik, including the one k3s bundles, listens on 8000 and 8443, so set `--set platform.gatewayPorts.http=8000 --set platform.gatewayPorts.https=8443` there. Envoy Gateway and Cilium use the listener ports directly (the default 80 and 443).
+
 Kuben never writes a Gateway without that label. It reports why on the `Gateway` condition of `KubenConfig` (`kubectl get kubenconfig kuben -o yaml`): `GatewayNotOwned`, `GatewayMissing`, `GatewayAPIMissing`, `GatewayClassNotAccepted`, `NotProgrammed`, or `Programmed` with the Gateway's address.
 
 ## Listeners
@@ -134,5 +136,5 @@ The API reports reachability apart from health (an app can run and still be unre
 The **Check DNS** button (`GET …/apps/{app}/domains`) tells you whether each hostname already points at the Gateway. See [Custom domains and HTTPS](/docs/guides/custom-domains/) for the user-facing flow.
 
 <Aside type="note" title="Which Gateway controllers are tested">
-Kuben's end-to-end suite runs on kind with Traefik v3. Envoy Gateway and Cilium implement the same Gateway API surface Kuben uses (listeners, HTTPRoute, `allowedRoutes` by namespace) and are expected to work; please report differences.
+Kuben's end-to-end suite runs on kind with Traefik v3 as the Gateway provider and cert-manager, and checks every app over HTTPS from outside the cluster (no port-forward), including while Kuben itself is stopped. Envoy Gateway and Cilium implement the same Gateway API surface Kuben uses (listeners, HTTPRoute, `allowedRoutes` by namespace) and are expected to work; please report differences.
 </Aside>

@@ -279,7 +279,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Kuben keeps its data in PostgreSQL (ADR-025); the server under test
     # runs on the runner and reaches the service on localhost.
     services:
@@ -292,6 +292,8 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       KUBEN_E2E_DATABASE_URL: postgres://postgres:kuben@localhost:5432/postgres
+      # M2.5: the e2e run stops this container to show apps serve without it.
+      KUBEN_E2E_PG_IMAGE: postgres:17-alpine
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -304,6 +306,10 @@ jobs:
         with:
           cluster_name: kuben-e2e
           wait: 120s
+      # M2.4, ADR-031's release gate: Gateway API, Traefik and cert-manager, so
+      # the e2e run checks HTTPS from the runner, never through a port-forward.
+      - name: Public path (Gateway API, Traefik, cert-manager)
+        run: scripts/e2e-gateway.sh
       # ADR-032 option A: tags resolve to digests at their registry. First, so
       # a registry problem shows here and not as an e2e failure.
       - name: Registry resolution (network)

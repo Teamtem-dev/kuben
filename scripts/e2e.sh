@@ -22,6 +22,13 @@
 # app out through AgentLink (ADR-027, M1.9), reports its
 # status and restarts it through a run; then deletes
 # and garbage collection.
+#
+# With the public path of scripts/e2e-gateway.sh (KUBEN_E2E_GATEWAY_CLASS and
+# friends, M2.4): Kuben creates its own Gateway; apps of both delivery paths
+# answer over HTTPS from the runner, outside the cluster network, with a
+# certificate the test CA signed, and plain HTTP is redirected. M2.5: with
+# Kuben stopped (and its database, when KUBEN_E2E_PG_IMAGE names the
+# container's image), a rescheduled app pod still serves over HTTPS.
 set -euo pipefail
 
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
@@ -40,6 +47,12 @@ LEASE_NS=${KUBEN_E2E_LEASE_NAMESPACE:-default}
 NS="kb-${P}-dev"
 NS_LIVE="kb-${P}-live"
 APP="/projects/${P}/environments/dev/apps"
+# The public path (scripts/e2e-gateway.sh); empty: the HTTPS steps are skipped.
+GATEWAY_CLASS=${KUBEN_E2E_GATEWAY_CLASS:-}
+BASE_DOMAIN=${KUBEN_E2E_BASE_DOMAIN:-e2e.test}
+NODE_IP=${KUBEN_E2E_NODE_IP:-}
+HTTP_NODE_PORT=${KUBEN_E2E_HTTP_NODE_PORT:-30080}
+HTTPS_NODE_PORT=${KUBEN_E2E_HTTPS_NODE_PORT:-30443}
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
 for c in kubectl curl jq; do need "$c"; done
@@ -85,6 +98,10 @@ cleanup() {
   kubectl delete environment "${P}-dev" "${P}-live" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl delete project "$P" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl -n "$LEASE_NS" delete lease kuben-controller --ignore-not-found >/dev/null 2>&1 || true
+  if [[ -n $GATEWAY_CLASS ]]; then
+    kubectl delete kubenconfig kuben --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n kuben-system delete gateway kuben --ignore-not-found >/dev/null 2>&1 || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -146,25 +163,79 @@ run_succeeded() {
   [[ $(curl -fsS -b "$work/cookies" "$BASE$APP/$1/deployments/$2" | jq -r .phase) == succeeded ]]
 }
 
+# https_ok <host>: HTTP 200 over HTTPS through the Gateway's NodePort, from
+# the runner, with a certificate chain the test CA signed.
+https_ok() {
+  curl -fsS -o /dev/null --max-time 5 --cacert "$KUBEN_E2E_GATEWAY_CA" \
+    --resolve "$1:${HTTPS_NODE_PORT}:${NODE_IP}" "https://$1:${HTTPS_NODE_PORT}/"
+}
+
+# app_host <app>: the app's first hostname, as the API reports it.
+app_host() {
+  curl -fsS -b "$work/cookies" "$BASE$APP/$1" | jq -r '.app.exposure.hosts[0].host // empty'
+}
+
+# served_over_https <app>: the route is accepted, the certificate issued, the
+# URL is https, and the Gateway answers from outside the cluster.
+served_over_https() {
+  local app=$1 host
+  eventually 180 "${app}: route accepted and certificate issued" bash -c \
+    "curl -fsS -b '$work/cookies' $BASE$APP/$app | jq -e '.app.exposure.routed == true and (.app.exposure.hosts[0].certificate_ready == true)'"
+  host=$(app_host "$app")
+  [[ -n $host ]] || fail "${app} has no hostname"
+  expect 200 GET "$APP/$app"
+  [[ $(jq -r .app.url "$work/body") == "https://${host}" ]] || fail "${app} URL: $(jq -r .app.url "$work/body")"
+  eventually 120 "https://${host} answers through the Gateway" https_ok "$host"
+  local got
+  got=$(curl -sS -o /dev/null --max-time 5 -w '%{http_code} %{redirect_url}' \
+    --resolve "${host}:${HTTP_NODE_PORT}:${NODE_IP}" "http://${host}:${HTTP_NODE_PORT}/")
+  [[ $got =~ ^301\ https://${host}(:443)?/$ ]] || fail "plain HTTP for ${host} is not redirected to HTTPS: ${got}"
+}
+
+start_kuben() {
+  KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
+    KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
+    KUBEN_DATABASE__URL="$DATABASE_URL" \
+    KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
+    KUBEN_SECURITY__COOKIE_SECURE=false \
+    KUBEN_KUBE__REQUIRED=true \
+    KUBEN_KUBE__LEADER_ELECTION=true \
+    KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
+    KUBEN_TELEMETRY__LOG_FORMAT=pretty \
+    KUBEN_SERVER__STATE_DIR="$work/state" \
+    KUBEN_AGENT__BIND="127.0.0.1:${AGENT_PORT}" \
+    "$BIN" serve --roles=all >>"$work/kuben.log" 2>&1 &
+  pid=$!
+}
+
 step "start kuben"
-KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
-  KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
-  KUBEN_DATABASE__URL="$DATABASE_URL" \
-  KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
-  KUBEN_SECURITY__COOKIE_SECURE=false \
-  KUBEN_KUBE__REQUIRED=true \
-  KUBEN_KUBE__LEADER_ELECTION=true \
-  KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
-  KUBEN_TELEMETRY__LOG_FORMAT=pretty \
-  KUBEN_SERVER__STATE_DIR="$work/state" \
-  KUBEN_AGENT__BIND="127.0.0.1:${AGENT_PORT}" \
-  "$BIN" serve --roles=all >"$work/kuben.log" 2>&1 &
-pid=$!
+start_kuben
 eventually 60 "CRDs applied" kubectl get crd apps.kuben.dev
 eventually 30 "controller lease held" bash -c \
   "kubectl -n $LEASE_NS get lease kuben-controller -o jsonpath='{.spec.holderIdentity}' | grep -q ."
 # Ready only once every informer has listed (projections complete).
 eventually 90 "readyz" curl -fsS "http://127.0.0.1:${PORT}/readyz"
+
+if [[ -n $GATEWAY_CLASS ]]; then
+  step "M2.4: Kuben creates and owns its Gateway"
+  [[ -n $NODE_IP && -s ${KUBEN_E2E_GATEWAY_CA:-} ]] || fail "run scripts/e2e-gateway.sh first (KUBEN_E2E_NODE_IP, KUBEN_E2E_GATEWAY_CA)"
+  kubectl apply -f - >/dev/null <<YAML
+apiVersion: kuben.dev/v1alpha1
+kind: KubenConfig
+metadata: { name: kuben }
+spec:
+  baseDomain: ${BASE_DOMAIN}
+  gatewayClassName: ${GATEWAY_CLASS}
+  clusterIssuer: ${KUBEN_E2E_CLUSTER_ISSUER}
+  # Traefik matches listeners to its entry points.
+  gatewayPorts: { http: 8000, https: 8443 }
+YAML
+  eventually 120 "KubenConfig reports the Gateway programmed" bash -c \
+    "kubectl get kubenconfig kuben -o jsonpath='{.status.conditions[?(@.type==\"Gateway\")].status}' | grep -qx True"
+  kubectl -n kuben-system get gateway kuben -o jsonpath='{.metadata.labels.kuben\.dev/gateway-owner}' | grep -qx kuben ||
+    fail "Kuben's Gateway is not labelled as Kuben's"
+  grep -q "cluster capabilities" "$work/kuben.log" || fail "capability discovery did not run"
+fi
 
 step "login"
 expect 200 POST /auth/login "{\"email\":\"admin@kuben.local\",\"password\":\"${PASSWORD}\"}"
@@ -196,6 +267,11 @@ kubectl -n "$NS" get deployment web-web -o jsonpath='{.spec.template.spec.contai
 eventually 60 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.ready and (.pods | length == 1)'"
 expect 200 GET "$APP/web"
 [[ $(jq -r '.app.env[] | select(.name == "GREETING") | .value' "$work/body") == hello ]] || fail "env value"
+
+if [[ -n $GATEWAY_CLASS ]]; then
+  step "M2.4: web answers over HTTPS from outside the cluster"
+  served_over_https web
+fi
 
 step "logs"
 expect 200 GET "$APP/web/logs?tail=20"
@@ -384,6 +460,40 @@ kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
 eventually 90 "edge ready again via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
 expect 200 GET "$APP/edge/releases"
 jq -e '.[0].reason == "restart"' "$work/body" >/dev/null || fail "restart missing from the history: $(cat "$work/body")"
+
+if [[ -n $GATEWAY_CLASS ]]; then
+  # The agent wrote this route: its hosts still get a listener and a certificate.
+  step "M2.4: an agent-delivered app answers over HTTPS too"
+  served_over_https edge
+
+  step "M2.5: with Kuben down, a rescheduled pod keeps serving"
+  edge_host=$(app_host edge)
+  kill "$pid"
+  wait "$pid" 2>/dev/null || true
+  pid=""
+  pg_container=""
+  if [[ -n ${KUBEN_E2E_PG_IMAGE:-} ]]; then
+    pg_container=$(docker ps -q --filter "ancestor=${KUBEN_E2E_PG_IMAGE}" | head -n1)
+    [[ -n $pg_container ]] || fail "no running container of ${KUBEN_E2E_PG_IMAGE}"
+    docker stop "$pg_container" >/dev/null
+  fi
+  old_pod=$(kubectl -n "$NS" get pods -l kuben.dev/app=edge -o jsonpath='{.items[0].metadata.name}')
+  kubectl -n "$NS" delete pod "$old_pod" --wait=false >/dev/null
+  eventually 120 "edge rescheduled" bash -c \
+    "[[ \$(kubectl -n $NS get pods -l kuben.dev/app=edge --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}') != '' && \$(kubectl -n $NS get pods -l kuben.dev/app=edge -o name | grep -c $old_pod) == 0 ]]"
+  kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
+  for _ in 1 2 3; do https_ok "$edge_host" || fail "https://${edge_host} stopped answering while Kuben was down"; done
+  if [[ -n $pg_container ]]; then
+    docker start "$pg_container" >/dev/null
+    eventually 60 "database back" docker exec "$pg_container" pg_isready -U postgres
+  fi
+  links=$(grep -c "agent linked" "$work/kuben.log")
+  start_kuben
+  eventually 90 "readyz after the restart" curl -fsS "http://127.0.0.1:${PORT}/readyz"
+  # The agent's reconnect backoff doubles up to five minutes.
+  eventually 330 "agent linked again" bash -c "(( \$(grep -c 'agent linked' '$work/kuben.log') > $links ))"
+  expect 200 GET /me
+fi
 expect 204 DELETE "$APP/edge"
 eventually 90 "edge runtime gone" bash -c "! kubectl -n $NS get applicationruntime edge"
 eventually 90 "edge deployment gone" bash -c "! kubectl -n $NS get deployment edge-web"
