@@ -477,12 +477,16 @@ if [[ -n $GATEWAY_CLASS ]]; then
     [[ -n $pg_container ]] || fail "no running container of ${KUBEN_E2E_PG_IMAGE}"
     docker stop "$pg_container" >/dev/null
   fi
+  # The only replica goes: the app is down until its successor is Ready,
+  # which Kubernetes schedules without Kuben.
   old_pod=$(kubectl -n "$NS" get pods -l kuben.dev/app=edge -o jsonpath='{.items[0].metadata.name}')
-  kubectl -n "$NS" delete pod "$old_pod" --wait=false >/dev/null
-  eventually 120 "edge rescheduled" bash -c \
-    "[[ \$(kubectl -n $NS get pods -l kuben.dev/app=edge --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}') != '' && \$(kubectl -n $NS get pods -l kuben.dev/app=edge -o name | grep -c $old_pod) == 0 ]]"
-  kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
-  for _ in 1 2 3; do https_ok "$edge_host" || fail "https://${edge_host} stopped answering while Kuben was down"; done
+  kubectl -n "$NS" delete pod "$old_pod" --timeout=120s >/dev/null
+  kubectl -n "$NS" wait pod -l kuben.dev/app=edge --for=condition=Ready --timeout=180s >/dev/null
+  eventually 60 "https://${edge_host} answers from the rescheduled pod" https_ok "$edge_host"
+  for _ in 1 2 3; do
+    https_ok "$edge_host" || fail "https://${edge_host} stopped answering while Kuben was down"
+    sleep 1
+  done
   if [[ -n $pg_container ]]; then
     docker start "$pg_container" >/dev/null
     eventually 60 "database back" docker exec "$pg_container" pg_isready -U postgres
