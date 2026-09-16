@@ -32,6 +32,39 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             self.send_json(200, [{"id": 42, "account": {"login": "test-org"}}])
             return
 
+        if path.startswith("/app/installations/"):
+            parts = [p for p in path.split("/") if p]
+            if len(parts) == 3 and parts[2].isdigit():
+                self.send_json(200, {
+                    "id": int(parts[2]),
+                    "account": {"login": "test-org"},
+                    "suspended_at": None,
+                })
+                return
+
+        if path.startswith("/repos/") and "/git/ref/heads/" in path:
+            prefix, branch = path.split("/git/ref/heads/", 1)
+            parts = [p for p in prefix.split("/") if p]
+            if len(parts) >= 3:
+                owner = parts[1]
+                repo = parts[2]
+                override_key = f"{owner}/{repo}:{branch}"
+                if override_key in HEAD_OVERRIDES:
+                    sha = HEAD_OVERRIDES[override_key]
+                else:
+                    repo_path = os.path.join(REPOS_DIR, owner, f"{repo}.git")
+                    if not os.path.isdir(repo_path):
+                        repo_path = os.path.join(REPOS_DIR, f"{repo}.git")
+                    try:
+                        sha = subprocess.check_output(
+                            ["git", "--git-dir", repo_path, "rev-parse", branch],
+                            text=True, stderr=subprocess.DEVNULL
+                        ).strip()
+                    except Exception:
+                        sha = "0000000000000000000000000000000000000000"
+                self.send_json(200, {"object": {"sha": sha}})
+                return
+
         if path.startswith("/repos/") and "/branches/" in path:
             parts = path.split("/")
             if len(parts) >= 6:
@@ -55,6 +88,19 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json(200, {"name": branch, "commit": {"sha": sha}})
                 return
 
+        if path.startswith("/repos/"):
+            parts = [p for p in path.split("/") if p]
+            if len(parts) == 3:
+                owner = parts[1]
+                repo = parts[2]
+                self.send_json(200, {
+                    "id": 1001,
+                    "name": repo,
+                    "full_name": f"{owner}/{repo}",
+                    "default_branch": "main",
+                })
+                return
+
         if ".git" in path:
             self.run_git_http_backend("GET")
             return
@@ -65,11 +111,11 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        if path == "/app/installations/42/access_tokens":
+        if "/access_tokens" in path:
             self.send_json(201, {
                 "token": "ghs_mock_token_abc123",
                 "expires_at": "2099-01-01T00:00:00Z",
-                "permissions": {"contents": "read"}
+                "permissions": {"contents": "read", "metadata": "read"}
             })
             return
 

@@ -112,7 +112,7 @@ send_webhook() { # <repo> <branch> <commit_sha>
   }')
   local sig
   sig=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
-  curl -sS -o "$work/body" -w '%{http_code}' -X POST "http://127.0.0.1:${PORT}/webhooks/github" \
+  curl -sS -o "$work/body" -w '%{http_code}' -X POST "$BASE/webhooks/github" \
     -H 'content-type: application/json' \
     -H "x-hub-signature-256: $sig" \
     -H 'x-github-event: push' \
@@ -170,17 +170,19 @@ mkdir -p "$work/repos/test-org"
 init_repo() { # <name> <dir_with_files>
   local name=$1 src=$2
   local git_dir="$work/repos/test-org/${name}.git"
-  git init --bare "$git_dir" >/dev/null
+  git init -b main --bare "$git_dir" >/dev/null
   local clone_dir="$work/worktrees/$name"
-  git clone "$git_dir" "$clone_dir" >/dev/null 2>&1
+  mkdir -p "$clone_dir"
   cp -r "$src"/* "$clone_dir/"
   (
     cd "$clone_dir"
+    git init -b main >/dev/null
     git config user.name "Kuben E2E"
     git config user.email "e2e@kuben.dev"
+    git remote add origin "$git_dir"
     git add .
     git commit -m "initial commit" >/dev/null
-    git push origin main >/dev/null 2>&1
+    git push -u origin main >/dev/null
   )
 }
 
@@ -296,8 +298,8 @@ expect 200 POST /auth/login "{\"email\":\"admin@kuben.dev\",\"password\":\"$PASS
 expect 201 POST /projects "{\"name\":\"$P\",\"slug\":\"$P\"}"
 expect 201 POST "/projects/$P/environments" "{\"name\":\"$ENV\",\"slug\":\"$ENV\",\"type\":\"development\"}"
 
-# Link the installation to the org in SQL
-psql "$DATABASE_URL" -c "INSERT INTO git_installations (id, org_id, account_login) VALUES ($INSTALLATION_ID, (SELECT id FROM organizations LIMIT 1), 'test-org') ON CONFLICT DO NOTHING;" >/dev/null
+# Link the GitHub App installation via public API
+expect 201 POST /git/installations "{\"installationId\": $INSTALLATION_ID}"
 
 step "Criterion 1: 5 sample repositories build and deploy"
 repos=(dockerfile-app node-app python-app go-app nextjs-app)

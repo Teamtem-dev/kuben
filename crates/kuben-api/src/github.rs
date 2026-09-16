@@ -268,13 +268,18 @@ impl GithubApp {
     }
 
     fn with_signer(app_id: u64, signer: Arc<dyn Signer>, secret: &[u8], cfg: &GitCfg) -> Self {
+        let schemes = if cfg.github_api_url.starts_with("http://") {
+            Schemes::Any
+        } else {
+            Schemes::HttpsOnly
+        };
         Self {
             app_id,
             signer,
             webhook_secret: Arc::from(secret),
             api: cfg.github_api_url.trim_end_matches('/').to_owned(),
             clone_base: cfg.github_clone_url.trim_end_matches('/').to_owned(),
-            transport: Transport::new(Schemes::HttpsOnly, TIMEOUT),
+            transport: Transport::new(schemes, TIMEOUT),
             tokens: moka::future::Cache::builder()
                 .max_capacity(10_000)
                 .time_to_live(TOKEN_CACHE_TTL)
