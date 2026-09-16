@@ -58,7 +58,9 @@ kubectl() { sudo k3s kubectl "$@"; }
 # curl to the console through the Gateway on this host's port 443, trusting
 # the test CA.
 kcurl() { curl --resolve "${CONSOLE}:443:127.0.0.1" --cacert "$work/ca.crt" "$@"; }
+# `bash -c` checks call it too: they need what it reads.
 export -f kcurl
+export CONSOLE work
 journal() { sudo jq -r "$1" "$JOURNAL"; }
 owner_of() { journal "[.resources[] | select(.kind == \"$1\" and .name == \"$2\") | .owner][0] // \"none\""; }
 eventually() { # <seconds> <what> <command...>
