@@ -69,6 +69,17 @@ Design decisions worth knowing:
 - **The image gates run before the push:** size budget and Trivy on `linux/amd64` first, then the multi-arch push.
 - **`USER 65532:65532` is numeric**, so Kubernetes can verify `runAsNonRoot`.
 
+### Acceptance on a real server
+
+CI proves the install on a fresh runner (k3s with a test CA) and on kind, but a public certificate and an address reachable from elsewhere need a real server. Before a milestone closes, `scripts/vps-acceptance.sh` runs on a throwaway VPS whose wildcard DNS record points at it:
+
+```bash
+sudo KUBEN_BIN=./kuben DOMAIN=apps.example.com ACME_EMAIL=ops@example.com \
+  scripts/vps-acceptance.sh | tee acceptance.md
+```
+
+It installs with HTTPS (Let's Encrypt; `ACME_STAGING=1` for the staging server), creates the first admin, deploys an app with `kuben deploy`, checks the app and the console over public HTTPS, checks that HTTP redirects, reads the app's Doctor, stops `kuben.service` for a minute while the app keeps answering, runs setup again (nothing may change), and appends the footprint of the whole stack. The report is Markdown; the admin password stays in a root-only file. Check the two printed `curl` commands from another machine.
+
 ### Cutting a release
 
 1. Bump `[workspace.package] version` in `Cargo.toml`, run `cargo check` so `Cargo.lock` follows, commit.

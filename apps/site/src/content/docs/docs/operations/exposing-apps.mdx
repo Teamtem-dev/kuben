@@ -34,6 +34,14 @@ The Gateway gets the annotation `cert-manager.io/cluster-issuer`, and cert-manag
 
 HTTPS is on only while the ClusterIssuer named in `clusterIssuer` is **Ready**. Kuben checks the cluster, not just the setting: until the issuer is Ready, apps are served over plain HTTP, their URLs say `http://`, and `kuben doctor` shows why.
 
+## When an address does not answer
+
+Each app has a **Doctor** (console: the app's *Doctor* button; `kuben status <app>`; `GET …/apps/{app}/doctor`) that checks, in order, the GatewayClass, Kuben's Gateway and its address, the ClusterIssuer, ports 80 and 443 of that address, the app's route, each hostname's certificate and DNS, and the cluster agent that delivers it. Every check that is not fine says what to do; one that could not be made is shown as unknown, never as fine. The app page's **Deployments** show each rollout phase by phase, and its **Logs** follow the pods live.
+
+## On a server set up by `kuben setup`
+
+`kuben setup --domain apps.example.com --acme-email you@example.com` does all of the above on the server's k3s: Traefik as the Gateway provider, the Gateway API CRDs and cert-manager when missing (pinned by the release's bundle lock), a Let's Encrypt ClusterIssuer, Kuben's Gateway on Traefik's entry points, and the console itself at `https://kuben.apps.example.com`. One wildcard DNS record, `*.apps.example.com`, covers the console and every app.
+
 ## Dedicating an existing Gateway
 
 To let Kuben create its Gateway, set `--set platform.gatewayClassName=traefik` and skip this section. To use a Gateway you manage yourself, create the shell and label it; Kuben fills in the listeners:

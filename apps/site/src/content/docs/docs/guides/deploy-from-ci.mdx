@@ -52,6 +52,14 @@ curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/ap
 
 `PATCH` is a partial update: omitted fields stay as they are, and lists (`env`, `domains`, `volumes`) are replaced only when you send them. Every successful update becomes a numbered [release](/docs/guides/rollbacks/).
 
+The `kuben` binary does the same as a client, and waits for the rollout. With `KUBEN_URL` and `KUBEN_TOKEN` set, it needs no login:
+
+```bash
+kuben deploy shop/staging/api --image "ghcr.io/acme/shop-api:${GITHUB_SHA}"
+```
+
+It resolves the tag to its digest, deploys on top of the revision it saw (a newer deploy is never replaced silently), and exits non-zero if the rollout fails; `kuben status shop/staging/api` then shows why. See the [client commands](/docs/reference/cli/#client-commands).
+
 ### GitHub Actions
 
 ```yaml title=".github/workflows/deploy.yml"
