@@ -10,8 +10,10 @@ use kuben_core::{
     traits::StaticPolicy,
 };
 use kuben_platform::{
+    discovery::{self, Facts},
     health::Health,
     leader::{self, Election},
+    local_agent,
     projection::Projections,
     registry::{ClusterRegistry, own_namespace, redact_credentials},
     supervise::supervise,
@@ -57,6 +59,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
         );
     }
+    record_install_journal(&cfg, &store).await;
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 
@@ -72,11 +75,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     // AgentLink: the hub's endpoint for cluster agents (ADR-027). It needs no
     // kubeconfig of its own; the materializer hands it envelopes.
-    let agent_link = if cfg.has_role(Role::Controller) {
-        kuben_platform::agentlink::AgentLink::build(&cfg.agent, &cfg.state_dir(), store.clone())?
-    } else {
-        None
-    };
+    let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -99,6 +98,10 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         health.set_ready(true);
         Vec::new()
     };
+
+    if let (true, Some(_), Some(registry)) = (cfg.agent.local, &agent_link, &cluster) {
+        tasks.push(spawn_local_agent(&cfg, &store, registry, &health, &shutdown));
+    }
 
     if let Some(link) = agent_link {
         let (h, t) = (health.clone(), shutdown.child_token());
@@ -158,12 +161,13 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 async fn leading(
     registry: ClusterRegistry,
     projections: Arc<Projections>,
+    facts: Facts,
     health: Health,
     worker: kuben_platform::materializer::Worker,
     token: CancellationToken,
 ) -> anyhow::Result<()> {
     tokio::try_join!(
-        kuben_platform::controller::run_all(registry, projections, health, token.clone()),
+        kuben_platform::controller::run_all(registry, projections, facts, health, token.clone()),
         kuben_platform::materializer::drift::watch(worker, token),
     )?;
     Ok(())
@@ -211,10 +215,16 @@ fn spawn_cluster_tasks(
     });
 
     if cfg.has_role(Role::Controller) {
+        // What the cluster can do (ADR-031), discovered on every controller
+        // replica: rendering and the gateway are gated on it.
+        let (discovery_task, facts) = spawn_discovery(registry, store, health, shutdown);
+        tasks.push(discovery_task);
+
         // SQL is the only desired-state writer; the materializer writes its
         // resources (ADR-032).
         let mut worker =
-            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity());
+            kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity())
+                .with_facts(facts.clone());
         if let Some(agents) = agents {
             // Targets delivered by their cluster's agent go through the hub.
             worker = worker.with_agents(agents);
@@ -228,19 +238,25 @@ fn spawn_cluster_tasks(
         );
         let election = election.cloned();
         tasks.push(tokio::spawn(supervise("controllers", t, h.clone(), move |tok| {
-            let (r, p, h, watcher, election) =
-                (r.clone(), p.clone(), h.clone(), watcher.clone(), election.clone());
+            let (r, p, capabilities, h, watcher, election) = (
+                r.clone(),
+                p.clone(),
+                facts.clone(),
+                h.clone(),
+                watcher.clone(),
+                election.clone(),
+            );
             async move {
                 match election {
                     // Several replicas: reconcile only while holding the Lease.
                     Some(election) => {
                         let client = r.primary();
                         leader::run_as_leader(client, &election, h.clone(), tok, move |tok| {
-                            leading(r, p, h, watcher, tok)
+                            leading(r, p, capabilities, h, watcher, tok)
                         })
                         .await
                     }
-                    None => Box::pin(leading(r, p, h, watcher, tok)).await,
+                    None => Box::pin(leading(r, p, capabilities, h, watcher, tok)).await,
                 }
             }
         })));
@@ -268,6 +284,108 @@ fn spawn_cluster_tasks(
         })));
     }
     tasks
+}
+
+/// AgentLink of a controller replica (ADR-027), when `agent.bind` is set. In
+/// a pod the state directory is not kept: the CA agents pin lives in a
+/// Secret (M2.8).
+async fn agent_link(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    cluster: Option<&ClusterRegistry>,
+) -> anyhow::Result<Option<kuben_platform::agentlink::AgentLink>> {
+    if !cfg.has_role(Role::Controller) {
+        return Ok(None);
+    }
+    if let (Some(_), Some(registry), true) = (&cfg.agent.bind, cluster, kuben_core::config::in_cluster()) {
+        let namespace = local_agent::namespace(&cfg.agent, cfg.kube.namespace.as_deref());
+        local_agent::sync_ca(registry.primary(), &namespace, &cfg.state_dir())
+            .await
+            .context("keeping the AgentLink CA in its Secret")?;
+    }
+    kuben_platform::agentlink::AgentLink::build(&cfg.agent, &cfg.state_dir(), store.clone())
+}
+
+/// Publish the enrollment of the agent in Kuben's own cluster (M2.8).
+fn spawn_local_agent(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    registry: &ClusterRegistry,
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    let (store, client, agent, slug, dir) = (
+        store.clone(),
+        registry.primary(),
+        cfg.agent.clone(),
+        cfg.bootstrap.org_slug.clone(),
+        cfg.state_dir(),
+    );
+    let namespace = local_agent::namespace(&cfg.agent, cfg.kube.namespace.as_deref());
+    tokio::spawn(supervise(
+        "local-agent",
+        shutdown.child_token(),
+        health.clone(),
+        move |token| {
+            local_agent::run(
+                store.clone(),
+                client.clone(),
+                agent.clone(),
+                slug.clone(),
+                dir.clone(),
+                namespace.clone(),
+                token,
+            )
+        },
+    ))
+}
+
+/// Supervised discovery of the primary cluster's capabilities (ADR-031),
+/// and the channel it publishes them on.
+fn spawn_discovery(
+    registry: &ClusterRegistry,
+    store: &kuben_store::Store,
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> (tokio::task::JoinHandle<()>, Facts) {
+    let (sender, facts) = discovery::channel();
+    let sender = Arc::new(sender);
+    let (registry, store) = (registry.clone(), store.clone());
+    let task = tokio::spawn(supervise(
+        "discovery",
+        shutdown.child_token(),
+        health.clone(),
+        move |token| discovery::run(registry.clone(), store.clone(), sender.clone(), token),
+    ));
+    (task, facts)
+}
+
+/// Copy the installer's journal into SQL (M2.6), when `kuben setup` left one
+/// on this host. Best effort: the host file stays the installer's record.
+async fn record_install_journal(cfg: &Config, store: &kuben_store::Store) {
+    use crate::cli::setup::journal::{JOURNAL, Journal};
+
+    let Some(journal) = Journal::peek(&cfg.state_dir().join(JOURNAL)) else {
+        return;
+    };
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .ok()
+        .map(|h| h.trim().to_owned())
+        .or_else(|| std::env::var("HOSTNAME").ok())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "kuben".into());
+    let recorded = match serde_json::to_value(&journal) {
+        Ok(value) => store.record_install_journal(&host, &value).await,
+        Err(e) => {
+            tracing::warn!(error = %e, "cannot serialize the install journal");
+            return;
+        }
+    };
+    match recorded {
+        Ok(true) => tracing::info!(%host, runs = journal.runs.len(), "install journal recorded"),
+        Ok(false) => {}
+        Err(e) => tracing::warn!(error = %e, "cannot record the install journal"),
+    }
 }
 
 /// Leader-election settings, or `None` when `kube.leader_election` is off.

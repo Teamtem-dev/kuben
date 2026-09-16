@@ -24,6 +24,14 @@ import { Aside, Steps } from '@astrojs/starlight/components'
 flannel alone does **not** enforce NetworkPolicy. k3s pairs it with an embedded network-policy controller, so isolation works there unless k3s was started with `--disable-network-policy`. On other clusters with plain flannel, environments are still separate namespaces with quotas, but apps in one environment can reach apps in another: add Cilium or Calico for real tenant isolation.
 </Aside>
 
+## Check the cluster first
+
+```bash
+kuben doctor --cluster
+```
+
+It reads your kubeconfig, changes nothing, and lists what each feature needs and what is missing (Gateway, HTTPS, volumes, isolation, autoscaling), with the permissions Kuben needs. Without a Gateway controller, [Envoy Gateway](https://gateway.envoyproxy.io/) is the documented choice; set `platform.gatewayClassName=eg` then. Kuben uses what the cluster has and never upgrades CRDs it does not own. `helm install --dry-run=server` validates the chart against the cluster before anything is created.
+
 ## Install with Helm
 
 ```bash
@@ -31,7 +39,7 @@ helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben \
   --namespace kuben-system --create-namespace \
   --set publicUrl=https://kuben.example.com \
   --set platform.baseDomain=apps.example.com \
-  --set platform.gateway=kuben-system/kuben \
+  --set platform.gatewayClassName=traefik \
   --set platform.clusterIssuer=letsencrypt
 ```
 

@@ -6,6 +6,8 @@ FROM gcr.io/distroless/static:nonroot
 ARG TARGETOS
 ARG TARGETARCH
 COPY --chmod=0755 image/${TARGETOS}-${TARGETARCH}/kuben /kuben
+# The cluster agent (M2.8), started by the chart with `command: [/kuben-agent]`.
+COPY --chmod=0755 image/${TARGETOS}-${TARGETARCH}/kuben-agent /kuben-agent
 # No database default: Kuben keeps its data in PostgreSQL (ADR-025), given
 # at run time as KUBEN_DATABASE__URL (the Helm chart sets it).
 # Numeric UID so Kubernetes `runAsNonRoot: true` can verify it.

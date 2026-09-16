@@ -22,6 +22,16 @@
 # app out through AgentLink (ADR-027, M1.9), reports its
 # status and restarts it through a run; then deletes
 # and garbage collection.
+#
+# With the public path of scripts/e2e-gateway.sh (KUBEN_E2E_GATEWAY_CLASS and
+# friends, M2.4): Kuben creates its own Gateway; apps of both delivery paths
+# answer over HTTPS from the runner, outside the cluster network, with a
+# certificate the test CA signed, and plain HTTP is redirected. M2.5: with
+# Kuben stopped (and its database, when KUBEN_E2E_PG_IMAGE names the
+# container's image), a rescheduled app pod still serves over HTTPS.
+# With KUBEN_E2E_AGENT_IMAGE (M2.8), the agent runs as a pod from the chart's
+# template, enrolls from the Secret Kuben publishes and keeps its identity in
+# a Secret of its own; KUBEN_E2E_HUB is the address pods reach Kuben at.
 set -euo pipefail
 
 # Runs from any directory (`turbo run e2e` starts it in crates/kuben).
@@ -40,6 +50,14 @@ LEASE_NS=${KUBEN_E2E_LEASE_NAMESPACE:-default}
 NS="kb-${P}-dev"
 NS_LIVE="kb-${P}-live"
 APP="/projects/${P}/environments/dev/apps"
+# The public path (scripts/e2e-gateway.sh); empty: the HTTPS steps are skipped.
+GATEWAY_CLASS=${KUBEN_E2E_GATEWAY_CLASS:-}
+BASE_DOMAIN=${KUBEN_E2E_BASE_DOMAIN:-e2e.test}
+NODE_IP=${KUBEN_E2E_NODE_IP:-}
+HTTP_NODE_PORT=${KUBEN_E2E_HTTP_NODE_PORT:-30080}
+HTTPS_NODE_PORT=${KUBEN_E2E_HTTPS_NODE_PORT:-30443}
+AGENT_IMAGE=${KUBEN_E2E_AGENT_IMAGE:-}
+AGENT_NS=kuben-system
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
 for c in kubectl curl jq; do need "$c"; done
@@ -85,6 +103,23 @@ cleanup() {
   kubectl delete environment "${P}-dev" "${P}-live" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl delete project "$P" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl -n "$LEASE_NS" delete lease kuben-controller --ignore-not-found >/dev/null 2>&1 || true
+  if [[ -n $AGENT_IMAGE ]]; then
+    if ((status != 0)); then
+      echo "---- agent pod log (last 40 lines) ----"
+      kubectl -n "$AGENT_NS" logs deploy/kuben-agent --tail=40 2>/dev/null || true
+    fi
+    # Everything the chart's template made, the cluster-wide role included:
+    # the chart is installed on this cluster next.
+    if [[ -s $work/agent.yaml ]]; then
+      kubectl -n "$AGENT_NS" delete -f "$work/agent.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    fi
+    kubectl -n "$AGENT_NS" delete secret/kuben-agent-identity secret/kuben-agent-enrollment \
+      --ignore-not-found >/dev/null 2>&1 || true
+  fi
+  if [[ -n $GATEWAY_CLASS ]]; then
+    kubectl delete kubenconfig kuben --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n kuben-system delete gateway kuben --ignore-not-found >/dev/null 2>&1 || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -146,25 +181,103 @@ run_succeeded() {
   [[ $(curl -fsS -b "$work/cookies" "$BASE$APP/$1/deployments/$2" | jq -r .phase) == succeeded ]]
 }
 
+# https_ok <host>: HTTP 200 over HTTPS through the Gateway's NodePort, from
+# the runner, with a certificate chain the test CA signed.
+https_ok() {
+  curl -fsS -o /dev/null --max-time 5 --cacert "$KUBEN_E2E_GATEWAY_CA" \
+    --resolve "$1:${HTTPS_NODE_PORT}:${NODE_IP}" "https://$1:${HTTPS_NODE_PORT}/"
+}
+
+# app_host <app>: the app's first hostname, as the API reports it.
+app_host() {
+  curl -fsS -b "$work/cookies" "$BASE$APP/$1" | jq -r '.app.exposure.hosts[0].host // empty'
+}
+
+# served_over_https <app>: the route is accepted, the certificate issued, the
+# URL is https, and the Gateway answers from outside the cluster.
+served_over_https() {
+  local app=$1 host
+  eventually 180 "${app}: route accepted and certificate issued" bash -c \
+    "curl -fsS -b '$work/cookies' $BASE$APP/$app | jq -e '.app.exposure.routed == true and (.app.exposure.hosts[0].certificate_ready == true)'"
+  host=$(app_host "$app")
+  [[ -n $host ]] || fail "${app} has no hostname"
+  expect 200 GET "$APP/$app"
+  [[ $(jq -r .app.url "$work/body") == "https://${host}" ]] || fail "${app} URL: $(jq -r .app.url "$work/body")"
+  eventually 120 "https://${host} answers through the Gateway" https_ok "$host"
+  local got
+  got=$(curl -sS -o /dev/null --max-time 5 -w '%{http_code} %{redirect_url}' \
+    --resolve "${host}:${HTTP_NODE_PORT}:${NODE_IP}" "http://${host}:${HTTP_NODE_PORT}/")
+  [[ $got =~ ^301\ https://${host}(:443)?/$ ]] || fail "plain HTTP for ${host} is not redirected to HTTPS: ${got}"
+}
+
+# doctor_status <app> <check id> [subject]: that check's status in the app's
+# Doctor ("absent" when it has none); the report stays in $work/body.
+doctor_status() {
+  expect 200 GET "$APP/$1/doctor"
+  jq -r --arg id "$2" --arg subject "${3:-}" \
+    '[.checks[] | select(.id == $id and ($subject == "" or .subject == $subject)) | .status][0] // "absent"' "$work/body"
+}
+
+start_kuben() {
+  local agent_env=()
+  if [[ -n $AGENT_IMAGE ]]; then
+    agent_env=(KUBEN_AGENT__LOCAL=true "KUBEN_AGENT__ADVERTISE=${KUBEN_E2E_HUB:?the address pods reach Kuben at}"
+      "KUBEN_AGENT__NAMESPACE=${AGENT_NS}")
+  fi
+  env "${agent_env[@]}" \
+    KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
+    KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
+    KUBEN_DATABASE__URL="$DATABASE_URL" \
+    KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
+    KUBEN_SECURITY__COOKIE_SECURE=false \
+    KUBEN_KUBE__REQUIRED=true \
+    KUBEN_KUBE__LEADER_ELECTION=true \
+    KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
+    KUBEN_TELEMETRY__LOG_FORMAT=pretty \
+    KUBEN_SERVER__STATE_DIR="$work/state" \
+    KUBEN_AGENT__BIND="${AGENT_BIND:-127.0.0.1}:${AGENT_PORT}" \
+    "$BIN" serve --roles=all >>"$work/kuben.log" 2>&1 &
+  pid=$!
+}
+
 step "start kuben"
-KUBEN_SERVER__BIND="127.0.0.1:${PORT}" \
-  KUBEN_SERVER__METRICS_BIND="127.0.0.1:$((PORT + 1))" \
-  KUBEN_DATABASE__URL="$DATABASE_URL" \
-  KUBEN_BOOTSTRAP__ADMIN_PASSWORD="$PASSWORD" \
-  KUBEN_SECURITY__COOKIE_SECURE=false \
-  KUBEN_KUBE__REQUIRED=true \
-  KUBEN_KUBE__LEADER_ELECTION=true \
-  KUBEN_KUBE__NAMESPACE="$LEASE_NS" \
-  KUBEN_TELEMETRY__LOG_FORMAT=pretty \
-  KUBEN_SERVER__STATE_DIR="$work/state" \
-  KUBEN_AGENT__BIND="127.0.0.1:${AGENT_PORT}" \
-  "$BIN" serve --roles=all >"$work/kuben.log" 2>&1 &
-pid=$!
+# Agent pods reach the hub on the runner through the cluster network's gateway.
+[[ -n $AGENT_IMAGE ]] && AGENT_BIND=0.0.0.0
+start_kuben
 eventually 60 "CRDs applied" kubectl get crd apps.kuben.dev
 eventually 30 "controller lease held" bash -c \
   "kubectl -n $LEASE_NS get lease kuben-controller -o jsonpath='{.spec.holderIdentity}' | grep -q ."
 # Ready only once every informer has listed (projections complete).
 eventually 90 "readyz" curl -fsS "http://127.0.0.1:${PORT}/readyz"
+
+if [[ -n $GATEWAY_CLASS ]]; then
+  step "M2.4: Kuben creates and owns its Gateway"
+  [[ -n $NODE_IP && -s ${KUBEN_E2E_GATEWAY_CA:-} ]] || fail "run scripts/e2e-gateway.sh first (KUBEN_E2E_NODE_IP, KUBEN_E2E_GATEWAY_CA)"
+  kubectl apply -f - >/dev/null <<YAML
+apiVersion: kuben.dev/v1alpha1
+kind: KubenConfig
+metadata: { name: kuben }
+spec:
+  baseDomain: ${BASE_DOMAIN}
+  gatewayClassName: ${GATEWAY_CLASS}
+  clusterIssuer: ${KUBEN_E2E_CLUSTER_ISSUER}
+  # Traefik matches listeners to its entry points.
+  gatewayPorts: { http: 8000, https: 8443 }
+YAML
+  eventually 120 "KubenConfig reports the Gateway programmed" bash -c \
+    "kubectl get kubenconfig kuben -o jsonpath='{.status.conditions[?(@.type==\"Gateway\")].status}' | grep -qx True"
+  kubectl -n kuben-system get gateway kuben -o jsonpath='{.metadata.labels.kuben\.dev/gateway-owner}' | grep -qx kuben ||
+    fail "Kuben's Gateway is not labelled as Kuben's"
+  grep -q "cluster capabilities" "$work/kuben.log" || fail "capability discovery did not run"
+
+  # M2.9: what a BYOK operator runs before installing (no database needed).
+  step "M2.9: kuben doctor --cluster reports every feature ready"
+  "$BIN" doctor --cluster >"$work/doctor.txt" 2>&1 || fail "doctor --cluster failed: $(cat "$work/doctor.txt")"
+  for feature in "public routes" "HTTPS" "volumes"; do
+    grep -q "^\[OK  \] feature: ${feature}: " "$work/doctor.txt" || fail "doctor: ${feature} not ready: $(cat "$work/doctor.txt")"
+  done
+  grep -q '^\[OK  \] permissions: everything Kuben needs' "$work/doctor.txt" || fail "doctor: $(cat "$work/doctor.txt")"
+fi
 
 step "login"
 expect 200 POST /auth/login "{\"email\":\"admin@kuben.local\",\"password\":\"${PASSWORD}\"}"
@@ -197,9 +310,61 @@ eventually 60 "app ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$AP
 expect 200 GET "$APP/web"
 [[ $(jq -r '.app.env[] | select(.name == "GREETING") | .value' "$work/body") == hello ]] || fail "env value"
 
+if [[ -n $GATEWAY_CLASS ]]; then
+  step "M2.4: web answers over HTTPS from outside the cluster"
+  served_over_https web
+
+  step "M2.13: Doctor explains web's exposure"
+  web_host=$(app_host web)
+  for id in gateway-class gateway issuer route; do
+    [[ $(doctor_status web "$id") == ok ]] || fail "doctor ${id}: $(cat "$work/body")"
+  done
+  [[ $(doctor_status web certificate "$web_host") == ok ]] || fail "doctor certificate: $(cat "$work/body")"
+  # ${BASE_DOMAIN} has no DNS record: a failure with a hint, so the report
+  # is not ok; nothing that could not be checked reads as ok.
+  [[ $(doctor_status web dns "$web_host") == fail ]] || fail "doctor dns: $(cat "$work/body")"
+  jq -e '.status == "fail" and all(.checks[]; .status == "ok" or .hint != null or .status == "unknown")' \
+    "$work/body" >/dev/null || fail "doctor report: $(cat "$work/body")"
+  [[ $(doctor_status web agent) == absent ]] || fail "an app the controller delivers has no agent check"
+fi
+
 step "logs"
 expect 200 GET "$APP/web/logs?tail=20"
 jq -e 'length == 1 and .[0].error == null' "$work/body" >/dev/null || fail "logs: $(cat "$work/body")"
+
+step "M2.12: followed logs: capped per user, alive past the request timeout; events"
+follow() { # <file> <seconds>: follow web's log in the background
+  curl -sS -N --max-time "$2" -b "$work/cookies" -o "$1" -w '%{http_code}' \
+    "$BASE$APP/web/logs?follow=true&tail=1" >"$1.status" &
+}
+followers=()
+for i in 1 2 3 4; do
+  follow "$work/follow-$i.txt" 60
+  followers+=($!)
+done
+eventually 20 "four followed logs open" bash -c "grep -l '^event: line' $work/follow-[1-4].txt | wc -l | grep -qx 4"
+fifth=$(curl -sS -o "$work/body" -w '%{http_code}' --max-time 10 -b "$work/cookies" "$BASE$APP/web/logs?follow=true")
+[[ $fifth == 429 ]] || fail "a fifth followed log of one user → HTTP ${fifth} (want 429)"
+kill "${followers[@]}" 2>/dev/null || true
+wait "${followers[@]}" 2>/dev/null || true
+# The server lets a place go at its next write to the closed connection
+# (a keep-alive every 15 seconds at the latest).
+sleep 20
+follow "$work/follow.txt" 50
+follower=$!
+sleep 35 # longer than the request timeout of the REST routes
+kubectl -n "$NS" exec deploy/web-web -- wget -qO- http://127.0.0.1:8080/e2e-follow-marker >/dev/null 2>&1 || true
+eventually 30 "the new line in the followed log" grep -q 'e2e-follow-marker' "$work/follow.txt"
+kill "$follower" 2>/dev/null || true
+wait "$follower" 2>/dev/null || true
+grep '^data:' "$work/follow.txt" | grep 'e2e-follow-marker' | sed 's/^data://' |
+  jq -e '.pod | startswith("web-web-")' >/dev/null || fail "followed line: $(tail -n 5 "$work/follow.txt")"
+expect 200 GET "$APP/web/events"
+jq -e 'any(.[]; .kind == "Pod" and .reason == "Scheduled") and any(.[]; .kind == "Deployment" and .name == "web-web")' \
+  "$work/body" >/dev/null || fail "events: $(cat "$work/body")"
+# Web's own objects, and the certificates of its hosts beside the Gateway.
+jq -e 'all(.[]; (.name | startswith("web")) or (.kind == "Certificate" and (.name | startswith("kuben-tls-"))))' \
+  "$work/body" >/dev/null || fail "events of other objects: $(cat "$work/body")"
 
 step "scale to 2"
 expect 200 PATCH "$APP/web" '{"replicas":2}'
@@ -262,6 +427,31 @@ step "a direct App edit is drift: replaced from SQL"
 kubectl -n "$NS" patch app web --type merge -p '{"spec":{"source":{"image":"evil.example.com/web:latest"}}}' >/dev/null
 eventually 60 "edited image replaced" bash -c "[[ \$(kubectl -n $NS get app web -o jsonpath='{.spec.source.image}') == '$pinned' ]]"
 kubectl -n "$NS" rollout status deployment/web-web --timeout=180s
+
+step "M2.14: the kuben client: login, apps, status, logs, deploy, rollback"
+expect 201 POST /tokens "{\"name\":\"cli\",\"role\":\"developer\",\"project\":\"${P}\"}"
+cli_token=$(jq -r .token "$work/body")
+cli_token_id=$(jq -r .info.id "$work/body")
+cli() { KUBEN_CONTEXT_FILE="$work/contexts.json" "$BIN" "$@"; }
+printf '%s\n' "$cli_token" | cli login "http://127.0.0.1:${PORT}" --name e2e --project "$P" --environment dev >"$work/cli.txt" ||
+  fail "kuben login: $(cat "$work/cli.txt")"
+[[ $(stat -c %a "$work/contexts.json" 2>/dev/null || stat -f %Lp "$work/contexts.json") == 600 ]] ||
+  fail "the context file is readable by others"
+grep -q "$cli_token" "$work/cli.txt" && fail "kuben login printed the token"
+cli apps | grep -qE "^${P}/dev/web +ready" || fail "kuben apps: $(cli apps 2>&1)"
+cli status web --json | jq -e '.app.ready and (.doctor.checks | length > 0)' >/dev/null ||
+  fail "kuben status: $(cli status web --json 2>&1)"
+cli logs web --tail 5 | grep -q . || fail "kuben logs printed nothing"
+cli deploy web --image "$IMAGE" --timeout 240 >"$work/cli.txt" 2>&1 || fail "kuben deploy: $(cat "$work/cli.txt")"
+grep -q "web: deployed" "$work/cli.txt" || fail "kuben deploy: $(cat "$work/cli.txt")"
+before=$(cli status web --json | jq -r '[.releases[] | select(.current)][0].revision')
+cli rollback web >"$work/cli.txt" || fail "kuben rollback: $(cat "$work/cli.txt")"
+after=$(cli status web --json | jq -r '[.releases[] | select(.current)][0].revision')
+((after > before)) || fail "kuben rollback made no new revision: ${before} → ${after}"
+cli status web --json | jq -e '.releases[0].reason == "rollback"' >/dev/null ||
+  fail "kuben rollback is not in the history: $(cli status web --json 2>&1)"
+expect 204 DELETE "/tokens/${cli_token_id}"
+cli apps >/dev/null 2>&1 && fail "a revoked token still works for the client"
 
 step "scenario 2: audit log"
 expect 200 GET "/audit?limit=200"
@@ -338,10 +528,6 @@ expect 409 DELETE "/projects/${P}"
 # target of the cluster is delivered by it (the earlier apps stay with the
 # App controller).
 step "M1.9: an enrolled agent carries a new app out (ADR-027)"
-if [[ ! -x $AGENT_BIN ]]; then
-  cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
-fi
-[[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
 KUBEN_SERVER__STATE_DIR="$work/state" KUBEN_DATABASE__URL="$DATABASE_URL" \
   "$BIN" agent-token --cluster primary >"$work/agent-token.out"
 cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
@@ -350,10 +536,38 @@ cluster=$(sed -n 's/^cluster: *[^ ]* (\([^)]*\))$/\1/p' "$work/agent-token.out")
   sed -n 's/^token: *//p' "$work/agent-token.out" >"$work/token"
 )
 [[ -n $cluster && -s $work/token ]] || fail "agent-token: $(cat "$work/agent-token.out")"
-"$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \
-  --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
-agent_pid=$!
-eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+if [[ -n $AGENT_IMAGE ]]; then
+  # M2.8: the agent as a pod from the chart's own template; no token copied.
+  helm template kuben "$ROOT/charts/kuben" --namespace "$AGENT_NS" --show-only templates/agent.yaml \
+    --set image.repository="${AGENT_IMAGE%:*}" --set image.tag="${AGENT_IMAGE##*:}" --set image.pullPolicy=Never \
+    >"$work/agent.yaml"
+  kubectl -n "$AGENT_NS" apply -f "$work/agent.yaml" >/dev/null
+  eventually 120 "enrollment published with a token" bash -c \
+    "kubectl -n $AGENT_NS get secret kuben-agent-enrollment -o jsonpath='{.data.token}' | grep -q ."
+  [[ $(kubectl -n "$AGENT_NS" get secret kuben-agent-enrollment -o jsonpath='{.data.cluster}' | base64 -d) == "$cluster" ]] ||
+    fail "the enrollment names another cluster"
+  eventually 180 "agent linked" grep -q "agent linked" "$work/kuben.log"
+  kubectl -n "$AGENT_NS" get secret kuben-agent-identity -o jsonpath='{.data.agent\.crt}' | grep -q . ||
+    fail "the agent's certificate is not in its Secret"
+  eventually 90 "the spent token is withdrawn" bash -c \
+    "! kubectl -n $AGENT_NS get secret kuben-agent-enrollment -o jsonpath='{.data.token}' | grep -q ."
+  # A new pod keeps the identity: it links again without a token.
+  links=$(grep -c "agent linked" "$work/kuben.log")
+  kubectl -n "$AGENT_NS" delete pod -l app.kubernetes.io/name=kuben-agent --wait=true --timeout=60s >/dev/null
+  eventually 180 "a new agent pod links again with its stored identity" bash -c \
+    "(( \$(grep -c 'agent linked' '$work/kuben.log') > $links ))"
+  kubectl -n "$AGENT_NS" logs deploy/kuben-agent | grep -q "identity restored from its Secret" ||
+    fail "the new pod did not restore its identity"
+else
+  if [[ ! -x $AGENT_BIN ]]; then
+    cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
+  fi
+  [[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
+  "$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \
+    --state-dir "$work/agent" --token-file "$work/token" --log-format pretty >"$work/agent.log" 2>&1 &
+  agent_pid=$!
+  eventually 60 "agent linked" grep -q "agent linked" "$work/kuben.log"
+fi
 # An app the App controller delivers moves to the agent on request: its App
 # object goes, and the agent adopts the same workloads (no new Deployment).
 web_uid=$(kubectl -n "$NS" get deployment web-web -o jsonpath='{.metadata.uid}')
@@ -375,6 +589,7 @@ owner=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.ownerRe
 # Its status comes from the agent's report (no App object), and a restart is a
 # run of the same release that stamps the pod template.
 eventually 60 "edge ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
+[[ $(doctor_status edge agent) == ok ]] || fail "doctor agent: $(cat "$work/body")"
 before=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.generation}')
 expect 202 POST "$APP/edge/restart"
 eventually 90 "edge restart rolled out" bash -c "[[ \$(kubectl -n $NS get deployment edge-web -o jsonpath='{.metadata.generation}') -gt $before ]]"
@@ -384,6 +599,44 @@ kubectl -n "$NS" rollout status deployment/edge-web --timeout=180s
 eventually 90 "edge ready again via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
 expect 200 GET "$APP/edge/releases"
 jq -e '.[0].reason == "restart"' "$work/body" >/dev/null || fail "restart missing from the history: $(cat "$work/body")"
+
+if [[ -n $GATEWAY_CLASS ]]; then
+  # The agent wrote this route: its hosts still get a listener and a certificate.
+  step "M2.4: an agent-delivered app answers over HTTPS too"
+  served_over_https edge
+
+  step "M2.5: with Kuben down, a rescheduled pod keeps serving"
+  edge_host=$(app_host edge)
+  kill "$pid"
+  wait "$pid" 2>/dev/null || true
+  pid=""
+  pg_container=""
+  if [[ -n ${KUBEN_E2E_PG_IMAGE:-} ]]; then
+    pg_container=$(docker ps -q --filter "ancestor=${KUBEN_E2E_PG_IMAGE}" | head -n1)
+    [[ -n $pg_container ]] || fail "no running container of ${KUBEN_E2E_PG_IMAGE}"
+    docker stop "$pg_container" >/dev/null
+  fi
+  # The only replica goes: the app is down until its successor is Ready,
+  # which Kubernetes schedules without Kuben.
+  old_pod=$(kubectl -n "$NS" get pods -l kuben.dev/app=edge -o jsonpath='{.items[0].metadata.name}')
+  kubectl -n "$NS" delete pod "$old_pod" --timeout=120s >/dev/null
+  kubectl -n "$NS" wait pod -l kuben.dev/app=edge --for=condition=Ready --timeout=180s >/dev/null
+  eventually 60 "https://${edge_host} answers from the rescheduled pod" https_ok "$edge_host"
+  for _ in 1 2 3; do
+    https_ok "$edge_host" || fail "https://${edge_host} stopped answering while Kuben was down"
+    sleep 1
+  done
+  if [[ -n $pg_container ]]; then
+    docker start "$pg_container" >/dev/null
+    eventually 60 "database back" docker exec "$pg_container" pg_isready -U postgres
+  fi
+  links=$(grep -c "agent linked" "$work/kuben.log")
+  start_kuben
+  eventually 90 "readyz after the restart" curl -fsS "http://127.0.0.1:${PORT}/readyz"
+  # The agent's reconnect backoff doubles up to five minutes.
+  eventually 330 "agent linked again" bash -c "(( \$(grep -c 'agent linked' '$work/kuben.log') > $links ))"
+  expect 200 GET /me
+fi
 expect 204 DELETE "$APP/edge"
 eventually 90 "edge runtime gone" bash -c "! kubectl -n $NS get applicationruntime edge"
 eventually 90 "edge deployment gone" bash -c "! kubectl -n $NS get deployment edge-web"

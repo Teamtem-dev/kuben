@@ -3,11 +3,13 @@
 //! the embedded SPA.
 //!
 //! Transport rule (ADR-014): REST + one SSE per tab + WebSocket only for
-//! terminals. No other endpoint streams.
+//! terminals. The only other stream is a followed app log (M2.12), bounded
+//! per user.
 
 pub mod audit;
 pub mod auth;
 pub mod authz;
+pub mod client;
 pub mod error;
 pub mod host;
 pub mod oci;
@@ -16,6 +18,7 @@ pub mod routes;
 pub mod setup;
 pub mod state;
 pub mod stream;
+pub mod transport;
 pub mod web;
 
 use std::time::Duration;

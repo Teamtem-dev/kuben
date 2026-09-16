@@ -12,6 +12,10 @@ pub enum Error {
     Unauthorized,
     #[error("forbidden")]
     Forbidden,
+    /// Refused over this connection, not for this caller: plain HTTP from
+    /// another machine where credentials must not travel (ADR-031).
+    #[error("{0}")]
+    InsecureTransport(String),
     #[error("validation failed: {0}")]
     Validation(String),
     #[error("unavailable: {0}")]
@@ -32,6 +36,7 @@ impl Error {
             Self::Conflict(_) => "conflict",
             Self::Unauthorized => "unauthorized",
             Self::Forbidden => "forbidden",
+            Self::InsecureTransport(_) => "insecure_transport",
             Self::Validation(_) => "validation_failed",
             Self::Unavailable(_) => "unavailable",
             Self::RateLimited { .. } => "rate_limited",

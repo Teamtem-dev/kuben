@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod agent;
 pub mod backup;
+pub mod client;
 pub mod doctor;
 pub mod setup;
 pub mod ui;
@@ -37,7 +38,7 @@ pub enum Command {
     /// Apply database migrations and exit.
     Migrate,
     /// Check the environment (database, cluster, gateway, cert-manager) and exit.
-    Doctor,
+    Doctor(DoctorOpts),
     /// Reset (or create) the admin user's password.
     ResetAdmin(ResetAdminOpts),
     /// Print a fresh link to the first-run setup page (`/setup`), with its token.
@@ -48,16 +49,50 @@ pub enum Command {
     /// Make this Linux server a Kuben server: k3s if needed, a system user, the
     /// config, a systemd service, the firewall. Re-run to upgrade or repair.
     Setup(setup::SetupOpts),
-    /// Service, admin account, cluster and console address of this server.
-    Status,
+    /// An app's state and Doctor (`kuben status shop/prod/web`); without an
+    /// app, the service, admin account, cluster and console address of this
+    /// server.
+    Status(client::StatusOpts),
+    /// Sign in to a Kuben server with an API token; later commands use it.
+    Login(client::LoginOpts),
+    /// The apps you can see, with their state.
+    Apps(client::AppsOpts),
+    /// Deploy an image to an app and wait until it runs.
+    Deploy(client::DeployOpts),
+    /// An app's log lines; `-f` keeps following them.
+    Logs(client::LogsOpts),
+    /// Return an app to an earlier revision.
+    Rollback(client::RollbackOpts),
     /// Remove the service installed by `kuben setup` (with --purge: everything).
     Uninstall(setup::UninstallOpts),
     /// Export Projects, Environments and Apps (CRDs) to a directory (secret values are never exported).
     Backup(BackupOpts),
     /// Restore a backup created by `kuben backup`.
     Restore(RestoreOpts),
-    /// Print version information.
-    Version,
+    /// Print version information; `--bundle` adds what a release installs
+    /// besides Kuben, with its digests.
+    Version(VersionOpts),
+}
+
+/// Options of `kuben version`.
+#[derive(Debug, Default, clap::Args)]
+pub struct VersionOpts {
+    /// Also the pinned k3s, Gateway API, cert-manager and PostgreSQL.
+    #[arg(long)]
+    pub bundle: bool,
+    /// With --bundle: the lock file itself (JSON).
+    #[arg(long, requires = "bundle")]
+    pub json: bool,
+}
+
+/// Options of `kuben doctor`.
+#[derive(Debug, Default, clap::Args)]
+pub struct DoctorOpts {
+    /// Check only the cluster (before installing Kuben into it, BYOK): what
+    /// each feature needs, what is there, and the permissions Kuben needs.
+    /// No database is needed.
+    #[arg(long)]
+    pub cluster: bool,
 }
 
 /// Options of `kuben agent-token`.

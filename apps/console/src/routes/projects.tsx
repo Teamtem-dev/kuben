@@ -31,16 +31,16 @@ export function ProjectsPage() {
               <Link
                 to="/projects/$project"
                 params={{ project: p.name }}
-                className="block rounded-xl border border-white/10 bg-slate-900/50 p-4 transition hover:border-sky-400/40"
+                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate font-medium">{p.display_name}</span>
                   <Status ready={p.ready} label={p.deleting ? 'Deleting' : undefined} />
                 </div>
-                <p className="mt-1 font-mono text-slate-500 text-xs">
+                <p className="mt-1 font-mono text-subtle text-xs">
                   {p.name} · {p.environments === 1 ? '1 environment' : `${p.environments} environments`}
                 </p>
-                {p.description && <p className="mt-2 line-clamp-2 text-slate-400 text-sm">{p.description}</p>}
+                {p.description && <p className="mt-2 line-clamp-2 text-muted text-sm">{p.description}</p>}
               </Link>
             </li>
           ))}
@@ -78,7 +78,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-2"
+      className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2"
     >
       <TextField
         label="Name"

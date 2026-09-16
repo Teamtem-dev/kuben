@@ -1,9 +1,9 @@
 ---
 title: CLI
-description: Every kuben subcommand (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, version), its options, and how configuration is loaded.
+description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, and how configuration is loaded.
 ---
 
-The `kuben` binary is both the server and the operator's tool. Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
+The `kuben` binary is the server, the operator's tool, and a client of any Kuben server ([below](#client-commands)). Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
 
 ```
 kuben [--config <file>] <command>
@@ -42,6 +42,8 @@ Checks the prerequisites and prints what is missing and what is optional: databa
 kuben doctor
 ```
 
+`kuben doctor --cluster` checks only the cluster and needs no database: run it with your kubeconfig **before** installing Kuben into a cluster you bring. For each feature it says whether the cluster has what it needs, and what to install when not: public routes (Gateway API CRDs and an accepted GatewayClass; Envoy Gateway when there is none), HTTPS (cert-manager with Gateway API support and a Ready ClusterIssuer), volumes (a default StorageClass), isolation (a CNI that enforces NetworkPolicies) and autoscaling (metrics-server). It also checks, for whoever runs it, the permissions Kuben's ClusterRole grants. A missing feature is a warning: only that feature is off. Kuben never installs or upgrades CRDs in a cluster it did not set up.
+
 Exit code is non-zero when a required check fails. `doctor` warns (`database role`) when Kuben connects as a superuser or a `BYPASSRLS` role, because row-level security is then bypassed. On a server set up by `kuben setup`, run it as the service user so peer authentication lets it into the database:
 
 ```bash
@@ -66,7 +68,7 @@ Resetting the password revokes the account's sessions.
 
 ## `setup-token`
 
-On a first start outside a cluster with no `KUBEN_BOOTSTRAP__ADMIN_PASSWORD`, no admin is seeded: the console shows **/setup**, where the first admin account and the organization are created. On any address but loopback that page needs a setup token, so nobody who finds the port first can claim the installation. `serve` prints the link with the token to its terminal on that first start; this command prints a fresh one whenever you need it:
+On a first start outside a cluster with no `KUBEN_BOOTSTRAP__ADMIN_PASSWORD`, no admin is seeded: the console shows **/setup**, where the first admin account and the organization are created. On any address but loopback that page needs a setup token, so nobody who finds the port first can claim the installation, and it takes the password only over HTTPS or from the server itself (an SSH tunnel), unless `security.insecure_setup` is set. `serve` prints the link with the token to its terminal on that first start; this command prints a fresh one whenever you need it:
 
 ```bash
 kuben setup-token
@@ -75,20 +77,29 @@ kuben setup-token
 ```text
   No admin account yet. Finish the setup in your browser:
 
-    http://203.0.113.7:3000/setup?token=8f2c…d1
+    http://localhost:3000/setup#token=8f2c…d1
 
+  Run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer first; the admin password never travels over plain HTTP.
+  For an HTTPS console: kuben setup --domain <domain> --acme-email <email>. On a network you trust: kuben setup --allow-http-setup.
   The link is valid for 30 minutes; print a new one with `kuben setup-token`.
 ```
+
+With an `https://` public URL the link points there instead, with the tunnel as the way in until DNS and the certificate are ready. The token follows `#`, so browsers never send it to a server or write it to a proxy log.
 
 The token lives in `setup-token` in Kuben's state directory (`/var/lib/kuben` on a server set up by `kuben setup`), readable by Kuben's user only, and is deleted once the account exists. After that, `/setup` answers 404 and the page redirects to the sign-in.
 
 ## `setup`
 
-Makes the Linux server it runs on a Kuben server. The one-line installer runs it for you as root; it is also what you re-run to upgrade or repair, because every step checks before it acts.
+Makes the Linux server it runs on a Kuben server. The one-line installer runs it for you as root; it is also what you re-run to upgrade or repair, because every step checks before it acts. A run that finds everything in place changes nothing, and the service restarts only when its binary, unit or configuration changed.
 
 ```bash
-sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--yes]
+sudo kuben setup [--plan] [--domain <domain>] [--acme-email <email>] [--acme-staging] [--datastore sqlite|etcd]
+                 [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--allow-http-setup] [--yes]
 ```
+
+`--plan` shows what a run would do, from the same checks, and changes nothing.
+
+Every run is recorded in the **install journal**, `/var/lib/kuben/install/journal.json`: each step with its result (`changed`, `unchanged`, `failed`), and each resource setup touched with its owner. A resource setup created belongs to Kuben; one that was there first (a PostgreSQL database or role, a k3s, a firewall rule, a directory) stays `preexisting` for good. A run that stopped halfway is named on the next run, which checks every step again. `kuben serve` copies the journal into the database for Doctor and support.
 
 | Step | What happens |
 |---|---|
@@ -96,12 +107,16 @@ sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [
 | Binary | copies itself to `/usr/local/bin/kuben` when run from elsewhere |
 | User | the system user `kuben`, `/var/lib/kuben` (the kubeconfig copy and the setup token) and `/etc/kuben` |
 | PostgreSQL | installs it from the distribution's packages when it is missing (apt, dnf, zypper), starts it and creates the role and database `kuben`. Kuben connects over the Unix socket with peer authentication, so there is no password. A config that already names another PostgreSQL is kept as is |
-| Cluster | uses `--kubeconfig`, an installed k3s, or the kubeconfig of the current user; otherwise installs [k3s](https://k3s.io) and waits for the node to be Ready (`--no-k3s` fails instead). A copy of the kubeconfig, readable by `kuben` only, goes to `/var/lib/kuben/kubeconfig` |
-| Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig); an existing file is kept |
+| Cluster | uses `--kubeconfig`, an installed k3s, or the kubeconfig of the current user; otherwise installs [k3s](https://k3s.io) v1.36.4+k3s1 with its installer for that release, checked against a pinned SHA-256, with reserved CPU and memory and eviction thresholds, SQLite or (`--datastore etcd`) embedded etcd, and waits for the node to be Ready (`--no-k3s` fails instead). A copy of the kubeconfig, readable by `kuben` only, goes to `/var/lib/kuben/kubeconfig` |
+| Platform | on this server's k3s only (never on a `--kubeconfig` cluster): Traefik as the Gateway API provider, the Gateway API v1.5.1 CRDs (checksum-verified) and cert-manager v1.21.2 with Gateway API support when missing, the namespace `kuben-system`, and with `--acme-email` the ClusterIssuer `letsencrypt` (HTTP-01 through Kuben's Gateway). What exists is used, never upgraded |
+| Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig, and `[security]`: the Gateway's pod network `10.42.0.0/16` as the only trusted proxy when the console gets an HTTPS address, `insecure_setup` with `--allow-http-setup`); an existing file is kept, and a file setup wrote gains missing sections once |
 | Port | refuses a port another process holds and names it |
-| Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz` |
+| Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz`. A `kuben.service` that setup did not write is never replaced: setup stops and says so |
+| Agent | on this server's k3s: the cluster agent in `kuben-system` (the chart's manifest), enrolled automatically from what Kuben publishes once the first admin (and so the organization) exists; `[agent]` in the config makes Kuben listen on port 7443, and with ufw or firewalld active that port is opened for the pod network `10.42.0.0/16` only |
+| KubenConfig | after the service started: gateway class `traefik` with Traefik's ports, the issuer, and `--domain` as the base domain. Fields someone else set are kept, with a warning |
+| Console | with `--domain` and `--acme-email` on this server's k3s: the console at `https://kuben.<domain>` through Kuben's Gateway (namespace `kuben-console`: a route, and a Service whose endpoint is this server's port), with a certificate like any app's; `public_url` is that address |
 | Firewall | opens the port in ufw or firewalld when one is active |
-| Link | the setup page with its token on a first install, the console address afterwards |
+| Link | the setup page with its token on a first install (over HTTPS, or through an SSH tunnel), the console address afterwards |
 
 | Option | Meaning |
 |---|---|
@@ -109,11 +124,17 @@ sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [
 | `--kubeconfig <file>` | manage this cluster instead of installing k3s (`KUBEN_KUBECONFIG`) |
 | `--no-k3s` | never install k3s |
 | `--bind-local` | listen on `127.0.0.1` only; reach the console through an SSH tunnel |
+| `--allow-http-setup` | let the first admin be created over plain HTTP from another machine, on a network you trust (`security.insecure_setup`) |
 | `--yes` | go ahead on warnings without asking |
+| `--plan` | print what a run would do; change nothing |
+| `--domain <domain>` | base domain for app hostnames (`KUBEN_DOMAIN`); point `*.<domain>` at the server |
+| `--acme-email <email>` | email for Let's Encrypt (`KUBEN_ACME_EMAIL`); apps get HTTPS |
+| `--acme-staging` | Let's Encrypt's staging server, for tests |
+| `--datastore sqlite\|etcd` | how an installed k3s keeps its state; `etcd` for a server that will grow |
 
 ## `status`
 
-The service, the admin account, the cluster and the console address of this server.
+Without an app: the service, the admin account, the cluster and the console address of this server. With one, see [`status` of an app](#status-of-an-app).
 
 ```bash
 kuben status
@@ -127,7 +148,7 @@ Removes `kuben.service`. The PostgreSQL database `kuben`, `/var/lib/kuben`, `/et
 sudo kuben uninstall [--purge] [--yes]
 ```
 
-`--purge` also deletes `/var/lib/kuben`, the configuration and the binary, drops the database and role `kuben` (PostgreSQL itself stays installed; an external database is never touched), and removes k3s when `kuben setup` installed it (it leaves a k3s that was there before).
+`--purge` also removes **what `kuben setup` created, according to its journal**: `/var/lib/kuben`, the configuration, the binary, the system user, the database and role `kuben`, the firewall rule, and k3s. What was there before setup first ran stays: a database or role `kuben` you created yourself, a k3s you installed, a rule you opened. PostgreSQL itself stays installed, and an external database is never touched. A server set up before the journal existed keeps the earlier rule: the database and role are dropped when they are this server's, and k3s goes only when setup installed it.
 
 ## `backup`
 
@@ -153,6 +174,62 @@ Prints the version, the git commit and the build target.
 kuben version
 kuben --version
 ```
+
+## Client commands
+
+These talk to a Kuben server over its API, from your computer or a CI job, with an API token (console → Account → API tokens). A token scoped to a project and a role can do what that role can there, nothing else.
+
+An app is named `project/environment/app`; with a default project and environment (`--project`, `--environment`, or saved by `login`), `app` or `environment/app` is enough. Every client command takes `--context`, `--project` and `--environment` (also `KUBEN_CONTEXT`, `KUBEN_PROJECT`, `KUBEN_ENVIRONMENT`).
+
+### `login`
+
+```bash
+kuben login https://kuben.example.com [--token <token>] [--name <context>] [--project shop] [--environment prod]
+```
+
+Checks the token against the server and saves it as a context in `~/.config/kuben/contexts.json` (`$XDG_CONFIG_HOME` is honoured; `KUBEN_CONTEXT_FILE` names another file), readable by you only; the newest login is the current context. Without `--token` (or `KUBEN_TOKEN`) the token is read from standard input, without echo on a terminal. A plain `http://` address other than localhost gets a warning: the token would cross the network unencrypted.
+
+In CI, set `KUBEN_URL` and `KUBEN_TOKEN` instead: no file is read or written.
+
+### `apps`
+
+```bash
+kuben apps [--json]
+```
+
+Every app you can see (only the default project and environment, when set), with its state, image and address.
+
+### `deploy`
+
+```bash
+kuben deploy shop/prod/web --image ghcr.io/acme/web:1.4.2 [--no-wait] [--timeout 600] [--idempotency-key <key>]
+```
+
+A tag is resolved to its digest at the registry first; the deployment carries the digest. It is accepted only on top of the revision the command saw, so a deploy never silently replaces a newer one. The command then follows the run until it succeeds (exit 0) or ends otherwise (exit 1); `--no-wait` returns once it is accepted. Retrying with the same `--idempotency-key` returns the same run instead of a second one.
+
+### `status` of an app
+
+```bash
+kuben status shop/prod/web [--json]
+```
+
+The app's state, image, address, current revision, pods, and its [Doctor](/docs/operations/troubleshooting/#an-apps-doctor): every check between a visitor and the app, with what to do about each that is not fine.
+
+### `logs`
+
+```bash
+kuben logs shop/prod/web [-f] [--previous] [--tail 100] [--process worker]
+```
+
+The recent lines of the app's pods (`[pod]` in front when there are several); `--previous` those of the container before its last restart. `-f` keeps printing new lines, from new pods of a rollout too, until you stop it or the server ends the stream after an hour.
+
+### `rollback`
+
+```bash
+kuben rollback shop/prod/web [--to <revision>]
+```
+
+A new revision with the image and configuration of an earlier one, by default the one before the current. Domains and volumes stay as they are.
 
 ## Exit codes and logs
 

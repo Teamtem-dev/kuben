@@ -15,7 +15,7 @@ use utoipa::ToSchema;
 use super::{request, scope, validate};
 use crate::{authz::Authz, error::ApiResult, state::ApiState};
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ProjectDto {
     pub name: String,
     /// The project's id.

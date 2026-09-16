@@ -205,7 +205,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,6 +216,14 @@ jobs:
           rust-toolchain: stable
           rust-cache-key: web
       - run: bun turbo run biome:check check test build size --filter=// --filter='@kuben/*'
+      # M2.16: the built console in a browser, English and Persian (LTR and
+      # RTL), dark and light: axe (WCAG 2.1 AA) and Kuben's CSP, API mocked.
+      - name: Console in a browser (Playwright, axe)
+        working-directory: apps/console/e2e
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npx playwright install --with-deps chromium-headless-shell
+          npx playwright test
 
   drift:
     name: Generated files up to date
@@ -279,7 +287,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Kuben keeps its data in PostgreSQL (ADR-025); the server under test
     # runs on the runner and reaches the service on localhost.
     services:
@@ -292,6 +300,8 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       KUBEN_E2E_DATABASE_URL: postgres://postgres:kuben@localhost:5432/postgres
+      # M2.5: the e2e run stops this container to show apps serve without it.
+      KUBEN_E2E_PG_IMAGE: postgres:17-alpine
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -304,6 +314,26 @@ jobs:
         with:
           cluster_name: kuben-e2e
           wait: 120s
+      # M2.4, ADR-031's release gate: Gateway API, Traefik and cert-manager, so
+      # the e2e run checks HTTPS from the runner, never through a port-forward.
+      - name: Public path (Gateway API, Traefik, cert-manager)
+        run: scripts/e2e-gateway.sh
+      # M2.8: the agent runs as a pod in the e2e run, from an image of the
+      # debug build; pods reach the hub on the runner through the kind
+      # network's gateway.
+      - name: Agent image for the cluster
+        run: |
+          cargo build --package kuben-agent --locked
+          context="$RUNNER_TEMP/agent-image"
+          mkdir -p "$context"
+          cp target/debug/kuben-agent "$context/"
+          docker build -q -f deploy/e2e-agent.Dockerfile -t kuben-agent:e2e "$context"
+          kind load docker-image kuben-agent:e2e --name kuben-e2e
+          gateway=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.')
+          {
+            echo "KUBEN_E2E_AGENT_IMAGE=kuben-agent:e2e"
+            echo "KUBEN_E2E_HUB=${gateway}:18082"
+          } >>"$GITHUB_ENV"
       # ADR-032 option A: tags resolve to digests at their registry. First, so
       # a registry problem shows here and not as an e2e failure.
       - name: Registry resolution (network)
@@ -356,6 +386,41 @@ jobs:
       - run: bun turbo run kuben#build
       - name: kuben setup provisions PostgreSQL and runs Kuben
         run: scripts/host-install-test.sh
+
+  # M2.10: `kuben setup` on a runner with nothing installed: a pinned k3s,
+  # the platform (Traefik Gateway, Gateway API, cert-manager), the cluster
+  # agent, an app over HTTPS through Kuben's Gateway, a repeat run that
+  # changes nothing, and `kuben uninstall --purge` removing k3s.
+  k3s-install:
+    name: Host install on k3s (kuben setup)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup
+        with:
+          rust-toolchain: stable
+          rust-cache-key: k3s-install
+      - run: bun turbo run kuben#build
+      # k3s imports the images in its airgap directory when it starts, so the
+      # agent's pod finds this build's image without a registry.
+      - name: Agent image for k3s
+        run: |
+          cargo build --package kuben-agent --locked
+          context="$RUNNER_TEMP/agent-image"
+          mkdir -p "$context"
+          cp target/debug/kuben-agent "$context/"
+          docker build -q -f deploy/e2e-agent.Dockerfile -t kuben-agent:e2e "$context"
+          sudo mkdir -p /var/lib/rancher/k3s/agent/images
+          docker save kuben-agent:e2e | sudo tee /var/lib/rancher/k3s/agent/images/kuben-agent.tar >/dev/null
+      - name: kuben setup installs k3s and serves an app over HTTPS
+        run: scripts/k3s-install-test.sh
+        env:
+          KUBEN_AGENT_IMAGE: docker.io/library/kuben-agent:e2e
 
   budgets:
     name: Binary size budget (static musl)
@@ -415,7 +480,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, host-install, zizmor]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

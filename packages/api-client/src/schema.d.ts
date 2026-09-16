@@ -279,7 +279,8 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The app's newest deployment runs, each with its timeline. */
+        get: operations["listDeployments"];
         put?: never;
         /**
          * Accept a deployment of this app.
@@ -313,6 +314,27 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Why the app is or is not reachable: the GatewayClass and the Gateway, the
+         *     issuer, ports 80 and 443 (from the server), the route, each host's
+         *     certificate and DNS, and the agent that delivers it.
+         */
+        get: operations["getAppDoctor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
         parameters: {
             query?: never;
@@ -322,6 +344,26 @@ export type paths = {
         };
         /** Check that every hostname of the app points at the gateway. */
         get: operations["checkAppDomains"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The app's Kubernetes events (pods, workloads, route, certificates),
+         *     newest first, at most 100. Kubernetes keeps events for about an hour.
+         */
+        get: operations["getAppEvents"];
         put?: never;
         post?: never;
         delete?: never;
@@ -359,7 +401,10 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /** Recent log lines of the app's pods (at most 10 pods). */
+        /**
+         * Log lines of the app's pods (at most 10 pods): the recent ones, or with
+         *     `follow=true` a live stream of new ones.
+         */
         get: operations["getAppLogs"];
         put?: never;
         post?: never;
@@ -606,6 +651,26 @@ export type components = {
             domains: string[];
             volumes: components["schemas"]["VolumeDto"][];
             created_at?: string | null;
+            exposure?: null | components["schemas"]["ExposureDto"];
+        };
+        /** @description A Kubernetes event about one of the app's objects. */
+        AppEvent: {
+            /**
+             * @description Kind and name of the object (`Pod`, `Deployment`, `HTTPRoute`,
+             *     `Certificate`, …).
+             */
+            kind: string;
+            name: string;
+            /** @description `Normal` or `Warning`. */
+            type: string;
+            reason?: string | null;
+            message?: string | null;
+            /** Format: int32 */
+            count: number;
+            first_seen?: string | null;
+            last_seen?: string | null;
+            /** @description The component that reported it. */
+            source?: string | null;
         };
         AuditEventDto: {
             /** Format: int64 */
@@ -776,6 +841,47 @@ export type components = {
              */
             phase: string;
         };
+        /** @description A deployment run with how it went. */
+        DeploymentSummary: {
+            /** Format: uuid */
+            run: string;
+            /**
+             * Format: int64
+             * @description The target generation (the app's revision) this run owns.
+             */
+            generation: number;
+            /** @description `deploy`, `rollback` or `promotion`. */
+            reason: string;
+            phase: string;
+            /** @description `succeeded`, `failed` or `cancelled` once it ended. */
+            outcome?: string | null;
+            /** @description Email of whoever asked for it. */
+            requested_by: string;
+            /** Format: int64 */
+            created_at: number;
+            image?: string | null;
+            /** @description Every phase it entered, oldest first. */
+            timeline: components["schemas"]["PhaseStep"][];
+        };
+        DoctorCheck: {
+            /**
+             * @description `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
+             *     `certificate`, `dns` or `agent`.
+             */
+            id: string;
+            /** @description What was checked (a host, a class, a port), when there are several. */
+            subject: string;
+            /** @description `ok`, `warn`, `unknown` (could not be checked) or `fail`. */
+            status: string;
+            detail: string;
+            /** @description What to do about it. */
+            hint?: string | null;
+        };
+        DoctorReport: {
+            /** @description The worst status of the checks; `unknown` is never `ok`. */
+            status: string;
+            checks: components["schemas"]["DoctorCheck"][];
+        };
         DomainCheck: {
             host: string;
             /** @description Addresses the host currently resolves to. */
@@ -813,6 +919,16 @@ export type components = {
             deletion_scheduled_at?: string | null;
             created_at?: string | null;
         };
+        /** @description How an app is reached through the gateway. */
+        ExposureDto: {
+            /**
+             * @description The gateway accepted the route and resolved its references; null
+             *     until a gateway controller answered.
+             */
+            routed?: boolean | null;
+            message?: string | null;
+            hosts: components["schemas"]["HostDto"][];
+        };
         HealthDetails: {
             ready: boolean;
             database: string;
@@ -821,6 +937,18 @@ export type components = {
             seq: number;
             pods: number;
             subsystems: Record<string, never>;
+        };
+        /** @description One hostname of an app. */
+        HostDto: {
+            host: string;
+            /**
+             * @description `auto` (certificate from the cluster issuer), `secret` (the app's own
+             *     certificate) or `none` (plain HTTP).
+             */
+            tls: string;
+            /** @description For `auto` hosts with a certificate of their own: whether it is issued. */
+            certificate_ready?: boolean | null;
+            certificate_message?: string | null;
         };
         InviteMember: {
             /** @example carol@example.com */
@@ -840,6 +968,23 @@ export type components = {
         JobStarted: {
             job: string;
         };
+        /**
+         * @description A followed log stopped: one pod's (its container ended or could not be
+         *     read; a restarted container is followed again), or all of them (`pod` is
+         *     absent: the stream reached its limit).
+         */
+        LogEnd: {
+            pod?: string | null;
+            error?: string | null;
+        };
+        /** @description One line of a followed log. */
+        LogLine: {
+            pod: string;
+            process?: string | null;
+            /** @description When the container wrote it (RFC 3339). */
+            time?: string | null;
+            line: string;
+        };
         LoginRequest: {
             /** @example admin@kuben.local */
             email: string;
@@ -857,6 +1002,15 @@ export type components = {
             /** @description Invited and has not replaced the temporary password yet. */
             must_change_password: boolean;
             active: boolean;
+        };
+        /** @description One step of a run's timeline. */
+        PhaseStep: {
+            phase: string;
+            /**
+             * Format: int64
+             * @description When the run entered it, Unix milliseconds.
+             */
+            at: number;
         };
         PodDto: {
             name: string;
@@ -1010,6 +1164,11 @@ export type components = {
             needed: boolean;
             /** @description `POST /setup` must carry the token the installer printed. */
             token_required: boolean;
+            /**
+             * @description The admin may be created over this connection (HTTPS, this machine,
+             *     or allowed by configuration); otherwise `POST /setup` answers 403.
+             */
+            secure: boolean;
         };
         StartDeploymentRequest: {
             /**
@@ -1987,6 +2146,51 @@ export interface operations {
             };
         };
     };
+    listDeployments: {
+        parameters: {
+            query?: {
+                /** @description How many runs, newest first (1–50, default 10). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentSummary"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     startDeployment: {
         parameters: {
             query?: never;
@@ -2098,6 +2302,40 @@ export interface operations {
             };
         };
     };
+    getAppDoctor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorReport"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     checkAppDomains: {
         parameters: {
             query?: never;
@@ -2120,6 +2358,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainCheck"][];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppEvent"][];
                 };
             };
             503: {
@@ -2183,6 +2455,12 @@ export interface operations {
                 process?: string;
                 /** @description Logs of the previous (crashed) container instance. */
                 previous?: boolean;
+                /**
+                 * @description Keep the connection open and send new lines as `text/event-stream`:
+                 *     `line` events (a [`LogLine`]) and an `end` event (a [`LogEnd`]) when a
+                 *     pod's log stops or the stream reaches its hour.
+                 */
+                follow?: boolean;
             };
             header?: never;
             path: {
@@ -2197,12 +2475,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Recent lines per pod; with `follow`, `text/event-stream` of `line` (LogLine) and `end` (LogEnd) events */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PodLogs"][];
+                };
+            };
+            /** @description Too many followed logs open */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
             503: {
@@ -2659,7 +2947,7 @@ export interface operations {
                     "application/json": components["schemas"]["UserDto"];
                 };
             };
-            /** @description Missing, wrong or expired setup token */
+            /** @description Missing, wrong or expired setup token, or plain HTTP from another machine (`insecure_transport`) */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -30,7 +30,8 @@ use crate::{
         (name = "audit", description = "Audit log of every mutation"),
         (name = "system", description = "Health and diagnostics"),
     ),
-    components(schemas(crate::error::Problem))
+    // The events of a followed log (`text/event-stream`), for clients.
+    components(schemas(crate::error::Problem, apps::logs::LogLine, apps::logs::LogEnd))
 )]
 pub struct ApiDoc;
 
@@ -47,13 +48,15 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::crud::get, apps::crud::update, apps::crud::delete))
         .routes(routes!(apps::crud::restart))
         .routes(routes!(apps::crud::hand_over))
-        .routes(routes!(apps::crud::logs))
+        .routes(routes!(apps::logs::logs))
+        .routes(routes!(apps::logs::events))
         .routes(routes!(apps::releases::releases))
         .routes(routes!(apps::releases::rollback))
         .routes(routes!(apps::jobs::run))
         .routes(routes!(apps::domains::domains))
+        .routes(routes!(apps::doctor::doctor))
         .routes(routes!(apps::promote::promote))
-        .routes(routes!(apps::deployments::start))
+        .routes(routes!(apps::deployments::start, apps::deployments::list))
         .routes(routes!(apps::deployments::get))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
@@ -100,10 +103,12 @@ mod tests {
             &format!("{app}/restart"),
             &format!("{app}/handover"),
             &format!("{app}/logs"),
+            &format!("{app}/events"),
             &format!("{app}/releases"),
             &format!("{app}/rollback"),
             &format!("{app}/run"),
             &format!("{app}/domains"),
+            &format!("{app}/doctor"),
             &format!("{app}/promote"),
             "/api/v1/projects/{project}/environments/{environment}/secrets",
             "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}",

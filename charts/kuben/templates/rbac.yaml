@@ -30,9 +30,18 @@ rules:
   - apiGroups: [""]
     resources: [pods, pods/log, nodes]
     verbs: [get, list, watch]
+  # Capability discovery: the default StorageClass, and which CNI enforces
+  # NetworkPolicies (its DaemonSet's name).
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [daemonsets]
+    verbs: [list]
   - apiGroups: [""]
     resources: [events]
-    verbs: [create, patch]
+    # list: an app's events in the API (M2.12).
+    verbs: [create, patch, list]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]
@@ -43,14 +52,20 @@ rules:
     resources: [networkpolicies]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [gateway.networking.k8s.io]
-    resources: [httproutes]
+    resources: [httproutes, referencegrants]
     verbs: [get, list, watch, create, update, patch, delete]
-  # Kuben owns the listeners of its (dedicated) Gateway for automatic HTTPS.
+  # Kuben creates its own Gateway (platform.gatewayClassName) and writes the
+  # listeners of a Gateway only when that Gateway is dedicated to it.
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways]
-    verbs: [get, list, watch, patch, update]
+    verbs: [get, list, watch, create, patch, update]
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gatewayclasses]
+    verbs: [get, list, watch]
+  # Capability discovery (ADR-031) and certificate status: TLS is offered
+  # only with a Ready issuer, and an app shows whether its certificate is issued.
+  - apiGroups: [cert-manager.io]
+    resources: [clusterissuers, certificates]
     verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

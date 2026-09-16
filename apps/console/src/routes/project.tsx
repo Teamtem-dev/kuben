@@ -35,7 +35,7 @@ export function ProjectPage() {
     <section className="space-y-6">
       <PageHeader
         crumbs={
-          <Link to="/" className="hover:text-slate-200">
+          <Link to="/" className="hover:text-fg">
             Projects
           </Link>
         }
@@ -59,7 +59,7 @@ export function ProjectPage() {
               <Link
                 to="/projects/$project/$environment"
                 params={{ project, environment: e.name }}
-                className="block rounded-xl border border-white/10 bg-slate-900/50 p-4 transition hover:border-sky-400/40"
+                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate font-medium">{e.name}</span>
@@ -67,18 +67,18 @@ export function ProjectPage() {
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Badge>{e.env_type}</Badge>
-                  <span className="truncate font-mono text-slate-500 text-xs">{e.namespace}</span>
+                  <span className="truncate font-mono text-subtle text-xs">{e.namespace}</span>
                 </div>
-                {e.message && <p className="mt-2 text-amber-300/80 text-xs">{e.message}</p>}
+                {e.message && <p className="mt-2 text-warn/80 text-xs">{e.message}</p>}
               </Link>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="border-white/10 border-t pt-6">
+      <div className="border-line border-t pt-6">
         {environments.length > 0 ? (
-          <p className="text-slate-500 text-sm">Delete all environments before deleting the project.</p>
+          <p className="text-subtle text-sm">Delete all environments before deleting the project.</p>
         ) : (
           <ConfirmDelete
             name={project}
@@ -119,7 +119,7 @@ function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: (
   return (
     <form
       onSubmit={onSubmit}
-      className="grid gap-4 rounded-xl border border-white/10 bg-slate-900/50 p-4 sm:grid-cols-3"
+      className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3"
     >
       <TextField
         label="Name"

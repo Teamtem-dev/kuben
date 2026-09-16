@@ -1,13 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { type FormEvent, useId } from 'react'
+import { AuthLayout, control } from '../components/ui'
 import { login, meQuery } from '../lib/api'
+import { usePrefs } from '../lib/prefs'
 import { problemMessage } from '../lib/problem'
 
 const route = getRouteApi('/login')
-
-const inputClass =
-  'w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/30'
 
 export function LoginPage() {
   const { redirect } = route.useSearch()
@@ -15,6 +14,7 @@ export function LoginPage() {
   const queryClient = useQueryClient()
   const emailId = useId()
   const passwordId = useId()
+  const { t } = usePrefs()
 
   const mutation = useMutation({
     mutationFn: (creds: { email: string; password: string }) => login(creds.email, creds.password),
@@ -31,19 +31,19 @@ export function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center p-6">
+    <AuthLayout>
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-5 rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl shadow-black/40"
+        className="w-full max-w-sm space-y-5 rounded-2xl border border-line bg-surface p-8 shadow-2xl shadow-black/40"
       >
         <header className="space-y-1">
-          <h1 className="font-semibold text-2xl tracking-tight">Sign in to Kuben</h1>
-          <p className="text-slate-400 text-sm">Enter your email and password.</p>
+          <h1 className="font-semibold text-2xl tracking-tight">{t('login.title')}</h1>
+          <p className="text-muted text-sm">{t('login.lead')}</p>
         </header>
 
         <div className="space-y-1.5">
           <label htmlFor={emailId} className="font-medium text-sm">
-            Email
+            {t('login.email')}
           </label>
           <input
             id={emailId}
@@ -51,13 +51,13 @@ export function LoginPage() {
             type="email"
             autoComplete="username"
             required
-            className={inputClass}
+            className={control}
           />
         </div>
 
         <div className="space-y-1.5">
           <label htmlFor={passwordId} className="font-medium text-sm">
-            Password
+            {t('login.password')}
           </label>
           <input
             id={passwordId}
@@ -65,12 +65,12 @@ export function LoginPage() {
             type="password"
             autoComplete="current-password"
             required
-            className={inputClass}
+            className={control}
           />
         </div>
 
         {mutation.isError && (
-          <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-red-300 text-sm">
+          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-danger text-sm">
             {problemMessage(mutation.error)}
           </p>
         )}
@@ -78,11 +78,11 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full rounded-lg bg-sky-500 px-3 py-2 font-medium text-sm text-slate-950 transition hover:bg-sky-400 disabled:opacity-60"
+          className="w-full rounded-lg bg-accent px-3 py-2 font-medium text-sm text-on-accent transition hover:bg-accent-hover disabled:opacity-60"
         >
-          {mutation.isPending ? 'Signing in…' : 'Sign in'}
+          {mutation.isPending ? t('login.submitting') : t('login.submit')}
         </button>
       </form>
-    </main>
+    </AuthLayout>
   )
 }

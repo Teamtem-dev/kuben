@@ -2131,6 +2131,7 @@ dependencies = [
  "base64 0.23.1",
  "clap",
  "figment",
+ "futures",
  "k8s-openapi",
  "kube",
  "kuben-api",
@@ -2145,10 +2146,12 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "sha2 0.11.0",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -2192,6 +2195,7 @@ dependencies = [
  "futures",
  "http",
  "http-body-util",
+ "hyper",
  "hyper-rustls",
  "hyper-util",
  "k8s-openapi",

@@ -1189,6 +1189,87 @@
       }
     },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The app's newest deployment runs, each with its timeline.",
+        "operationId": "listDeployments",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "How many runs, newest first (1–50, default 10).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeploymentSummary"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "apps"
@@ -1381,6 +1462,66 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Why the app is or is not reachable: the GatewayClass and the Gateway, the\nissuer, ports 80 and 443 (from the server), the route, each host's\ncertificate and DNS, and the agent that delivers it.",
+        "operationId": "getAppDoctor",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorReport"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
       "get": {
         "tags": [
@@ -1426,6 +1567,69 @@
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/DomainCheck"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The app's Kubernetes events (pods, workloads, route, certificates),\nnewest first, at most 100. Kubernetes keeps events for about an hour.",
+        "operationId": "getAppEvents",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppEvent"
                   }
                 }
               }
@@ -1512,7 +1716,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "Recent log lines of the app's pods (at most 10 pods).",
+        "summary": "Log lines of the app's pods (at most 10 pods): the recent ones, or with\n`follow=true` a live stream of new ones.",
         "operationId": "getAppLogs",
         "parameters": [
           {
@@ -1569,11 +1773,20 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "follow",
+            "in": "query",
+            "description": "Keep the connection open and send new lines as `text/event-stream`:\n`line` events (a [`LogLine`]) and an `end` event (a [`LogEnd`]) when a\npod's log stops or the stream reaches its hour.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "Recent lines per pod; with `follow`, `text/event-stream` of `line` (LogLine) and `end` (LogEnd) events",
             "content": {
               "application/json": {
                 "schema": {
@@ -1581,6 +1794,16 @@
                   "items": {
                     "$ref": "#/components/schemas/PodLogs"
                   }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many followed logs open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -2317,7 +2540,7 @@
             }
           },
           "403": {
-            "description": "Missing, wrong or expired setup token",
+            "description": "Missing, wrong or expired setup token, or plain HTTP from another machine (`insecure_transport`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2593,6 +2816,75 @@
               "string",
               "null"
             ]
+          },
+          "exposure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExposureDto",
+                "description": "Whether the app can be reached through the gateway, apart from\nwhether it runs (null while it has no route)."
+              }
+            ]
+          }
+        }
+      },
+      "AppEvent": {
+        "type": "object",
+        "description": "A Kubernetes event about one of the app's objects.",
+        "required": [
+          "kind",
+          "name",
+          "type",
+          "count"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Kind and name of the object (`Pod`, `Deployment`, `HTTPRoute`,\n`Certificate`, …)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "`Normal` or `Warning`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "first_seen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The component that reported it."
           }
         }
       },
@@ -3000,6 +3292,118 @@
           }
         }
       },
+      "DeploymentSummary": {
+        "type": "object",
+        "description": "A deployment run with how it went.",
+        "required": [
+          "run",
+          "generation",
+          "reason",
+          "phase",
+          "requested_by",
+          "created_at",
+          "timeline"
+        ],
+        "properties": {
+          "run": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The target generation (the app's revision) this run owns.",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "`deploy`, `rollback` or `promotion`."
+          },
+          "phase": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`succeeded`, `failed` or `cancelled` once it ended."
+          },
+          "requested_by": {
+            "type": "string",
+            "description": "Email of whoever asked for it."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhaseStep"
+            },
+            "description": "Every phase it entered, oldest first."
+          }
+        }
+      },
+      "DoctorCheck": {
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,\n`certificate`, `dns` or `agent`."
+          },
+          "subject": {
+            "type": "string",
+            "description": "What was checked (a host, a class, a port), when there are several."
+          },
+          "status": {
+            "type": "string",
+            "description": "`ok`, `warn`, `unknown` (could not be checked) or `fail`."
+          },
+          "detail": {
+            "type": "string"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to do about it."
+          }
+        }
+      },
+      "DoctorReport": {
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "The worst status of the checks; `unknown` is never `ok`."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoctorCheck"
+            }
+          }
+        }
+      },
       "DomainCheck": {
         "type": "object",
         "required": [
@@ -3137,6 +3541,34 @@
           }
         }
       },
+      "ExposureDto": {
+        "type": "object",
+        "description": "How an app is reached through the gateway.",
+        "required": [
+          "hosts"
+        ],
+        "properties": {
+          "routed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The gateway accepted the route and resolved its references; null\nuntil a gateway controller answered."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostDto"
+            }
+          }
+        }
+      },
       "HealthDetails": {
         "type": "object",
         "required": [
@@ -3168,6 +3600,36 @@
           },
           "subsystems": {
             "type": "object"
+          }
+        }
+      },
+      "HostDto": {
+        "type": "object",
+        "description": "One hostname of an app.",
+        "required": [
+          "host",
+          "tls"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "tls": {
+            "type": "string",
+            "description": "`auto` (certificate from the cluster issuer), `secret` (the app's own\ncertificate) or `none` (plain HTTP)."
+          },
+          "certificate_ready": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "For `auto` hosts with a certificate of their own: whether it is issued."
+          },
+          "certificate_message": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -3222,6 +3684,53 @@
           }
         }
       },
+      "LogEnd": {
+        "type": "object",
+        "description": "A followed log stopped: one pod's (its container ended or could not be\nread; a restarted container is followed again), or all of them (`pod` is\nabsent: the stream reached its limit).",
+        "properties": {
+          "pod": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "LogLine": {
+        "type": "object",
+        "description": "One line of a followed log.",
+        "required": [
+          "pod",
+          "line"
+        ],
+        "properties": {
+          "pod": {
+            "type": "string"
+          },
+          "process": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the container wrote it (RFC 3339)."
+          },
+          "line": {
+            "type": "string"
+          }
+        }
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -3271,6 +3780,24 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "PhaseStep": {
+        "type": "object",
+        "description": "One step of a run's timeline.",
+        "required": [
+          "phase",
+          "at"
+        ],
+        "properties": {
+          "phase": {
+            "type": "string"
+          },
+          "at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the run entered it, Unix milliseconds."
           }
         }
       },
@@ -3751,7 +4278,8 @@
         "type": "object",
         "required": [
           "needed",
-          "token_required"
+          "token_required",
+          "secure"
         ],
         "properties": {
           "needed": {
@@ -3761,6 +4289,10 @@
           "token_required": {
             "type": "boolean",
             "description": "`POST /setup` must carry the token the installer printed."
+          },
+          "secure": {
+            "type": "boolean",
+            "description": "The admin may be created over this connection (HTTPS, this machine,\nor allowed by configuration); otherwise `POST /setup` answers 403."
           }
         }
       },

@@ -9,7 +9,8 @@ sidebar:
 
 | Tool | Use |
 |---|---|
-| `kuben doctor` | prerequisites: database, cluster, Gateway API, cert-manager, metrics-server |
+| `kuben doctor` | prerequisites: database, cluster, Gateway API, cert-manager, metrics-server; on an installed server also Kuben's Gateway, its issuer and ports 80 and 443 |
+| `GET …/apps/{app}/doctor` | why one app is or is not reachable (below) |
 | `GET /api/v1/healthz/details` | per-subsystem status (sign-in required) |
 | `/livez`, `/readyz` | Kubernetes probes. `/readyz` stays `503` until the informers have synced |
 | `kubectl -n kuben-system get lease kuben-controller` | which pod runs the controllers (`holderIdentity`); the others report `controllers: standby` |
@@ -33,7 +34,7 @@ Apps and environments explain themselves through conditions.
 | Reason | Meaning |
 |---|---|
 | `RouteApplied` | the `HTTPRoute` exists and is attached |
-| `NoGateway` | `KubenConfig.spec.gateway` is unset or the Gateway does not exist |
+| `NoGateway` | neither `KubenConfig.spec.gatewayClassName` nor `spec.gateway` is set; the `Gateway` condition of `KubenConfig` says more |
 | `NoHostname` | no domain and no base domain |
 | `GatewayAPIMissing` | Gateway API CRDs are not installed |
 
@@ -53,7 +54,43 @@ Kuben exposes Prometheus metrics on `KUBEN_SERVER__METRICS_BIND` (`0.0.0.0:9090`
 
 Alerting rules that pay off: `increase(kuben_audit_write_errors_total[5m]) > 0`, `sum(kuben_leader) != 1` for more than a minute, and `rate(kuben_reconcile_errors_total[10m]) > 0`.
 
-## Logs
+## An app's logs and events
+
+Anyone who may read an app's logs gets its recent lines, per pod (at most ten pods, 200 lines each by default), and the lines of the crashed container before the current one:
+
+```bash
+curl -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?tail=100"
+curl -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?previous=true"
+```
+
+With `follow=true` the answer stays open as server-sent events: a `line` event for every new line (`pod`, `process`, `time`, `line`), and an `end` event when a pod's log stops (a restarted container and the pods of a new rollout are followed on their own). Each user may follow four logs at once and a replica a hundred; more answer `429`. A followed log ends after an hour, and closing the connection stops the reads at once.
+
+```bash
+curl -N -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?follow=true&tail=10"
+```
+
+`…/events` lists the Kubernetes events of the app's own objects, newest first: pods, Deployments, ReplicaSets, Jobs and CronJobs, its route, and the certificates of its hosts (image pulls, failed probes, scheduling, HTTP-01 challenges). Kubernetes keeps events for about an hour.
+
+## An app's Doctor
+
+`…/apps/{app}/doctor` runs every check between a visitor and the app and says, for each, `ok`, `warn`, `fail`, or `unknown` when it could not be checked, with what to do about it. The report's own status is the worst of them; a check that could not be made never counts as `ok`.
+
+| Check | Fine when |
+|---|---|
+| `gateway-class` | the GatewayClass is accepted by its controller |
+| `gateway` | Kuben's Gateway is programmed; its addresses are shown |
+| `issuer` | the ClusterIssuer is ready (without one, apps are plain HTTP: a warning) |
+| `port-80`, `port-443` | the Gateway accepts connections on its address, tried from the server (443 only with TLS) |
+| `route` | the Gateway accepted the app's route |
+| `certificate` | each host's certificate is issued; a host served without TLS is a warning |
+| `dns` | each host resolves to the Gateway's address |
+| `agent` | for an app its cluster's agent delivers: the agent is linked and was heard from lately |
+
+```bash
+curl -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/doctor"
+```
+
+## Kuben's own logs
 
 Kuben logs structured JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=json`; `pretty` for a terminal). Every request carries a request id, which the audit log records too.
 

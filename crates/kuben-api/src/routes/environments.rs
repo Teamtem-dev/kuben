@@ -42,7 +42,7 @@ impl From<EnvType> for EnvironmentKind {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentDto {
     /// Short name used in URLs, e.g. `prod`.
     pub name: String,

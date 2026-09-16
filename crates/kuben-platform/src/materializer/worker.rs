@@ -37,6 +37,7 @@ use super::{
 };
 use crate::{
     controller::{backoff, platform_of},
+    discovery::{self, Facts},
     health::Health,
     render::{self as plans, Capabilities, RenderPlanError},
 };
@@ -162,6 +163,9 @@ pub struct Worker {
     /// Hands envelopes to cluster agents; agent-delivered targets wait
     /// without it.
     pub(super) agents: Option<std::sync::Arc<dyn super::agent::AgentDispatch>>,
+    /// The cluster's discovered capabilities; plans wait for them. Without a
+    /// channel (tests), plans follow `KubenConfig` alone.
+    facts: Option<Facts>,
 }
 
 impl Debug for Worker {
@@ -198,7 +202,15 @@ impl Worker {
             verify_deadline: VERIFY_DEADLINE,
             deletion_check: DELETION_CHECK,
             agents: None,
+            facts: None,
         }
+    }
+
+    /// Render plans against the capabilities discovery publishes on `facts`.
+    #[must_use]
+    pub fn with_facts(mut self, facts: Facts) -> Self {
+        self.facts = Some(facts);
+        self
     }
 
     /// Deliver agent-delivered targets through `agents` (the hub).
@@ -370,10 +382,19 @@ impl Worker {
     /// rendered against the cluster's capabilities now. A retry finds the
     /// plan frozen and never renders it again.
     pub(super) async fn freeze(&self, claim: &Claim, m: &Materialization, app: &App) -> Result<(), Stop> {
+        let facts = match &self.facts {
+            Some(rx) => match discovery::current(rx) {
+                Some(facts) => Some(facts),
+                // A plan is frozen for good: never render it before the
+                // cluster's capabilities are known.
+                None => return Err(Stop::Wait(POLL, "CapabilitiesPending")),
+            },
+            None => None,
+        };
         let configs = Api::<KubenConfig>::all(self.client.clone())
             .list(&ListParams::default())
             .await?;
-        let capabilities = Capabilities::of(&platform_of(&configs.items));
+        let capabilities = Capabilities::of(&platform_of(&configs.items).gated(facts.as_deref()));
         let plan = plans::render(app, &capabilities).map_err(|e| refused(plan_refusal(&e)))?;
         let (Ok(snapshot), Ok(resources)) = (plan.capabilities_json(), plan.resources()) else {
             return Err(refused("RenderFailed"));

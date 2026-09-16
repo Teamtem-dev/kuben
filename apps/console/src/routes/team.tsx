@@ -63,15 +63,12 @@ export function TeamPage() {
         <div className="mt-3 space-y-3">
           <ErrorNote error={invite.error} />
           {invited && (
-            <div
-              role="status"
-              className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 p-3 text-sm"
-            >
+            <div role="status" className="rounded-lg border border-ok/30 bg-ok/5 p-3 text-sm">
               <p>
                 Temporary password for <strong>{invited.email}</strong> — shown once. They must replace it at
                 first sign-in.
               </p>
-              <code className="mt-2 block select-all rounded bg-black/40 px-2 py-1 font-mono">
+              <code className="mt-2 block select-all rounded bg-inset px-2 py-1 font-mono">
                 {invited.password}
               </code>
             </div>
@@ -81,14 +78,14 @@ export function TeamPage() {
 
       <Card title={`Members (${members.length})`}>
         <ErrorNote error={change.error ?? remove.error} />
-        <ul className="divide-y divide-white/5">
+        <ul className="divide-y divide-line-soft">
           {members.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0">
                 <p className="truncate font-medium text-sm">
                   {m.display_name ?? m.email} {m.id === me.id && <Badge>you</Badge>}
                 </p>
-                <p className="truncate text-slate-500 text-xs">
+                <p className="truncate text-subtle text-xs">
                   {m.email}
                   {m.must_change_password && ' · invitation pending'}
                 </p>
@@ -99,7 +96,7 @@ export function TeamPage() {
                   value={m.role}
                   disabled={m.id === me.id || change.isPending}
                   onChange={(e) => change.mutate({ id: m.id, role: e.target.value })}
-                  className="rounded-md border border-white/10 bg-slate-950 px-2 py-1 text-sm"
+                  className="rounded-md border border-line bg-canvas px-2 py-1 text-sm"
                 >
                   {ROLES.map((r) => (
                     <option key={r} value={r}>

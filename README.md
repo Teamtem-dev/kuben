@@ -50,7 +50,7 @@ The image `ghcr.io/teamtem-dev/kuben` (amd64 and arm64, distroless, non-root) an
 - **One-click templates:** PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more, with generated credentials.
 - **Teams and CI/CD:** four roles, invitations, scoped API tokens, and an audit log of every change.
 - **GitOps-friendly:** everything is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
-- **Small and auditable:** one Rust binary of at most 26 MiB with the console embedded; the pod requests 64 MiB of memory.
+- **Small and auditable:** one Rust binary of at most 30 MiB with the console embedded; the pod requests 64 MiB of memory.
 
 ## Documentation
 

@@ -33,6 +33,8 @@ postgresql:
   image:
     repository: docker.io/library/postgres
     tag: "17-alpine"
+    # Pinned by the release's bundle lock (bundle.lock.json); empty pulls the tag.
+    digest: "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
     pullPolicy: IfNotPresent
   persistence:
     size: 8Gi
@@ -65,10 +67,28 @@ platform:
   create: true
   # Apps get `<app>-<environment>.<baseDomain>` hostnames.
   baseDomain: ""
-  # Gateway API Gateway for app routes, as `namespace/name`.
+  # GatewayClass of the Gateway Kuben creates and owns for app routes (e.g.
+  # `traefik` on k3s, `envoy-gateway`). Kuben writes only that Gateway's
+  # listeners; it never touches a Gateway that is not dedicated to it.
+  gatewayClassName: ""
+  # Gateway API Gateway for app routes, as `namespace/name`. With
+  # gatewayClassName it defaults to `kuben-system/kuben` and Kuben creates it;
+  # without, it must exist and carry the label kuben.dev/gateway-owner=kuben.
   gateway: ""
+  # Listener ports of that Gateway. Traefik (also k3s's) matches listeners to
+  # its entry points: set {http: 8000, https: 8443} there.
+  gatewayPorts: {}
   # cert-manager ClusterIssuer; enables https URLs.
   clusterIssuer: ""
+
+# The cluster agent (ADR-027, M2.8): a separate, unprivileged process that
+# carries apps out in this cluster. It enrolls on its own from a Secret Kuben
+# keeps (no token to copy) and keeps its identity in a Secret of its own.
+# Apps made while it is linked are delivered by it; the others stay with the
+# App controller. Best with replicaCount 1 until HA lands (M7).
+agent:
+  enabled: true
+  port: 7443
 
 # Expose the Kuben UI itself through a Gateway API HTTPRoute.
 route:

@@ -34,20 +34,32 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ✔ Preflight checks. Ubuntu 24.04.4 LTS, x86_64, 4 GB RAM
 ✔ Creating the kuben system user. kuben (uid 998)
 ✔ PostgreSQL. PostgreSQL 16.9 (Ubuntu 16.9-0ubuntu0.24.04.1), role and database kuben
-❯ curl -sfL https://get.k3s.io | sh -
-✔ Installing k3s. v1.36.4+k3s1 · 38s
+❯ INSTALL_K3S_VERSION=v1.36.4+k3s1 INSTALL_K3S_EXEC="server --kubelet-arg=system-reserved=…" sh install.sh
+✔ Installing k3s v1.36.4+k3s1. Sqlite datastore · 38s
 ✔ Waiting for the cluster. 1 node, Kubernetes v1.36.4+k3s1 · 6s
+✔ Gateway, TLS and platform components. Traefik Gateway, Gateway API v1.5.1, cert-manager v1.21.2 · 52s
 ✔ Checking port 3000. free
 ✔ Writing /etc/kuben/config.toml. port 3000
 ✔ Starting kuben.service. running · 4s
+✔ Kuben's Gateway (KubenConfig). Gateway class traefik, HTTPS through Let's Encrypt, apps under apps.example.com
 ✔ Opening port 3000 in the firewall. ufw
+✔ The console at https://kuben.apps.example.com. point DNS for kuben.apps.example.com at this server; the certificate follows
 
 Kuben is running. Finish the setup in your browser:
 
-    http://203.0.113.7:3000/setup?token=8f2c…d1
+    https://kuben.apps.example.com/setup#token=8f2c…d1
 
+  Until DNS and the certificate are ready: run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer, then open http://localhost:3000/setup#token=8f2c…d1
   The link is valid for 30 minutes; print a new one with `kuben setup-token`.
 ```
+
+That run was started with a base domain and an email for Let's Encrypt, so apps get HTTPS addresses right away:
+
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --domain apps.example.com --acme-email ops@example.com
+```
+
+Point a wildcard DNS record, `*.apps.example.com`, at the server; it covers the console too, which setup serves at `https://kuben.apps.example.com` through the same Gateway. Setup installs a **pinned k3s** with a checksum-verified installer and reserved CPU and memory, turns on k3s's Traefik as the Gateway API provider, adds the Gateway API CRDs and cert-manager when the cluster has none (it never upgrades what is there), creates a Let's Encrypt `ClusterIssuer` that answers HTTP-01 through Kuben's Gateway, and writes the `KubenConfig` that has Kuben create and own that Gateway. Without `--acme-email`, apps are served over plain HTTP until you run setup again with it; without `--domain`, apps get addresses once one is set.
 
 When port 3000 is taken (the Dokploy console uses it, for one), setup says who holds it and asks which port to use, with the next free one already filled in:
 
@@ -61,9 +73,19 @@ Without a terminal, or with `--yes`, it takes that free port on its own; `--port
 
 Open the link and create the admin account: organization, email, password. The token in the link is what keeps a stranger who finds the port first from doing the same; `kuben setup-token` prints a fresh link when it has expired. Nothing is seeded and nothing is written to the log.
 
+The password never crosses plain HTTP from another machine. The page accepts it over HTTPS (the console's own address above), or from the server itself. Without a domain, setup therefore prints the link through an SSH tunnel:
+
+```text
+    http://localhost:3000/setup#token=8f2c…d1
+
+  Run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer first; the admin password never travels over plain HTTP.
+```
+
+The token rides in the part of the link after `#`, which the browser never sends to a server or a proxy log, and the page drops it from the address bar once read. On a network you trust, `kuben setup --allow-http-setup` lets the page accept the password over plain HTTP as well.
+
 The same command **upgrades**: it installs the new binary, keeps the configuration and the data, restarts the service and reports `Kuben is up to date and running`. Everything it did is listed under [`kuben setup`](/docs/reference/cli/#setup); `kuben status` shows the state of the server, and [`kuben uninstall`](/docs/reference/cli/#uninstall) takes it away again.
 
-Options go through to `kuben setup`: `--port 8080`, `--kubeconfig /path` to manage a cluster you already have, `--no-k3s`, `--bind-local` (SSH tunnel only), `--yes`. `--binary-only` skips the setup, and `--uninstall` runs `kuben uninstall`. Without root, or on macOS, the script installs the binary only.
+Options go through to `kuben setup`: `--plan` (show what would happen, change nothing), `--domain apps.example.com`, `--acme-email you@example.com`, `--acme-staging` (Let's Encrypt's test server), `--datastore etcd` (for a server that will grow), `--port 8080`, `--kubeconfig /path` to manage a cluster you already have, `--no-k3s`, `--bind-local` (SSH tunnel only), `--yes`. `--binary-only` skips the setup, and `--uninstall` runs `kuben uninstall`. Without root, or on macOS, the script installs the binary only.
 
 <Aside type="caution" title="Plain http on a public address">
 Until the console has an `https://` address the session cookie is not `Secure` (`cookie_secure = auto`), so signing in over `http://<ip>:3000` works. That is fine for a first look, not for a team: put the console behind TLS before inviting anyone, and set `public_url` in `/etc/kuben/config.toml` to the `https://` address, which makes the cookie `Secure`. Behind a cloud firewall (Hetzner, AWS, GCP, …), allow the port there as well.
@@ -73,9 +95,10 @@ Until the console has an `https://` address the session cookie is not `Secure` (
 
 - **HTTPS only**, TLS 1.2 or later, no redirects to plain HTTP.
 - **Checksum first.** The archive's SHA-256 is compared with the release's `checksums.txt` *before* anything is extracted or installed.
+- **Signature, when cosign is there.** `checksums.txt` is signed keyless with Sigstore by the release workflow; with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) installed, the script accepts it only with a signature from this repository's release workflow for that tag. `--require-signature` (`KUBEN_REQUIRE_SIGNATURE=1`) refuses to install without one.
 - **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
 - **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
-- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, `get.k3s.io` and the distribution's package mirrors when PostgreSQL is missing.
+- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, the pinned downloads of the bundle lock (k3s's installer, the Gateway API CRDs, cert-manager's chart), the image registries and the distribution's package mirrors when PostgreSQL is missing.
 - **Tested after every release, and every day.** CI runs exactly this command on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
 
 Other options, as flags or environment variables:
@@ -86,11 +109,42 @@ Other options, as flags or environment variables:
 | `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
 | `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
 | `--binary-only` | `KUBEN_BINARY_ONLY=1` | run `kuben setup` on a Linux server as root |
+| `--require-signature` | `KUBEN_REQUIRE_SIGNATURE=1` | check the signature when cosign is installed |
 
-On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases). To go further, verify the build provenance with the GitHub CLI:
+On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases).
+
+### Download, verify, then run
+
+To read the installer before it runs, and check every byte first:
 
 ```bash
+V=v1.2.0
+base=https://github.com/Teamtem-dev/kuben/releases/download/$V
+curl -fsSLO "$base/install.sh" -O "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json"
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/Teamtem-dev/kuben/.github/workflows/release.yml@refs/tags/$V" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+less install.sh
+sudo sh install.sh --version "$V" --require-signature
+```
+
+`cosign verify-blob` proves `checksums.txt` was signed by this repository's release workflow for that tag (the signature is in Sigstore's public transparency log); `sha256sum --check` then proves `install.sh` is the file it lists. The image and the Helm chart are signed the same way:
+
+```bash
+cosign verify ghcr.io/teamtem-dev/kuben:1.2.0 \
+  --certificate-identity-regexp '^https://github.com/Teamtem-dev/kuben/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
+```
+
+### What a release installs besides Kuben
+
+Everything `kuben setup` downloads is pinned in the release's **bundle lock** (`bundle.lock.json`, listed in the signed `checksums.txt` and built into the binary): the k3s release and its installer's SHA-256, the Gateway API CRDs and their SHA-256, cert-manager's chart archive and the digest of each of its images, and the Helm chart's PostgreSQL image digest. A download that does not match stops setup before anything runs.
+
+```bash
+kuben version --bundle          # the pins, readable
+kuben version --bundle --json   # the lock file itself
 ```
 
 ## What is on the server afterwards
@@ -100,9 +154,10 @@ gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/
 | `/usr/local/bin/kuben` | the binary |
 | `/etc/kuben/config.toml` | port, public URL, database, kubeconfig; every `kuben` command reads it, so `kuben status`, `kuben reset-admin` or `kuben backup` work on the same installation |
 | PostgreSQL | installed from the distribution's packages (apt, dnf, zypper) when it was missing, with the role and database `kuben`. Kuben connects over the Unix socket with peer authentication, so there is no password: the config has `url = "postgres:///kuben?host=/run/postgresql&user=kuben"`. A config that already names another PostgreSQL is kept as is |
-| `/var/lib/kuben/` | the kubeconfig copy (readable by `kuben` only) and, until the admin exists, `setup-token`. The data is in PostgreSQL, not here |
+| `/var/lib/kuben/` | the kubeconfig copy (readable by `kuben` only), the install journal `install/journal.json` and, until the admin exists, `setup-token`. The data is in PostgreSQL, not here |
 | `kuben.service` | runs `kuben serve` as the system user `kuben`, restarts on failure, starts after k3s |
-| k3s | when there was no cluster: `/etc/rancher/k3s/k3s.yaml`, `k3s.service`, and a marker so `kuben uninstall --purge` removes it again |
+| k3s | when there was no cluster: `/etc/rancher/k3s/k3s.yaml` and `k3s.service`; the journal records that setup installed it, so `kuben uninstall --purge` removes it again |
+| In the cluster | the HelmChartConfig `kube-system/traefik` (Gateway provider on), the Gateway API CRDs, cert-manager (HelmChart `kube-system/kuben-cert-manager`), the namespace `kuben-system` with Kuben's Gateway and the cluster agent, the ClusterIssuer `letsencrypt`, and the `KubenConfig` `kuben`; each only when it was missing |
 
 Useful commands: `systemctl status kuben`, `journalctl -u kuben -f`, `sudo -u kuben kuben doctor`. Run `doctor` as the service user, as here, so peer authentication lets it into the database.
 

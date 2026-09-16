@@ -113,7 +113,7 @@ pub async fn record(State(state): State<ApiState>, req: Request, next: Next) -> 
     let path = req.uri().path().to_owned();
     let current = req.extensions().get::<CurrentUser>().cloned();
     let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0);
-    let ip = auth::client_ip(req.headers(), peer, state.cfg.security.trust_forwarded_for);
+    let ip = auth::client_ip(req.headers(), peer, &state.cfg.security);
     let request_id = req
         .headers()
         .get("x-request-id")

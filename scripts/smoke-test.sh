@@ -279,7 +279,7 @@ binary_server() {
   # Ready means every informer has listed once; without that, the API answers
   # 404 for objects that exist and the steps below time out on a symptom.
   eventually 90 "kuben.service ready (/readyz)" curl -fsS http://127.0.0.1:3000/readyz
-  url=$(grep -o 'http://[^ ]*/setup?token=[A-Za-z0-9_-]*' "$work/install.txt" | tail -n 1)
+  url=$(grep -oE 'https?://[^ ]*/setup[?#]token=[A-Za-z0-9_-]+' "$work/install.txt" | tail -n 1)
   [[ -n $url ]] || fail "the installer did not print the setup link"
   token=${url##*token=}
   [[ $(sudo cat /var/lib/kuben/setup-token) == "$token" ]] || fail "the token in the link differs from /var/lib/kuben/setup-token"

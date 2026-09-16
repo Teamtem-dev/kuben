@@ -6,6 +6,8 @@
 //! state is its newest configuration revision and the release of its newest
 //! deployment run.
 
+use std::collections::BTreeMap;
+
 use kuben_core::{
     ids::{
         ApplicationId, ConfigRevisionId, DeploymentRunId, EnvironmentId, PlacementId, ProjectId, ReleaseId,
@@ -206,6 +208,10 @@ const RUNS: &str = "SELECT d.id, d.generation, d.reason, d.phase, d.outcome, d.r
      FROM deployment_runs d JOIN releases rel ON rel.id = d.release_id AND rel.org_id = d.org_id \
      WHERE d.target_id = $1 AND d.org_id = $2 \
      ORDER BY d.generation DESC LIMIT $3";
+const RUN_PHASES: &str = "SELECT p.run_id, p.phase, p.entered_at FROM deployment_run_phases p \
+     JOIN deployment_runs d ON d.id = p.run_id AND d.org_id = p.org_id \
+     WHERE d.target_id = $1 AND p.org_id = $2 AND p.run_id = ANY($3) \
+     ORDER BY p.run_id, p.seq";
 const CONFIG_REVISION: &str = "SELECT config::text FROM target_config_revisions \
      WHERE id = $1 AND target_id = $2 AND org_id = $3";
 const DOMAINS: &str = "SELECT pl.namespace, a.slug, d.value ->> 'host' AS host \
@@ -317,6 +323,29 @@ impl Tenant {
             .collect::<Result<_, _>>()?)
     }
 
+    /// The phases each of `runs` of `target` entered, in order, with the
+    /// time (Unix milliseconds) it entered them.
+    pub async fn run_phases(
+        &mut self,
+        target: TargetId,
+        runs: &[DeploymentRunId],
+    ) -> Result<BTreeMap<DeploymentRunId, Vec<(String, i64)>>, StoreError> {
+        let ids: Vec<Uuid> = runs.iter().map(|r| *r.as_uuid()).collect();
+        let rows: Vec<(Uuid, String, i64)> = sqlx::query_as(RUN_PHASES)
+            .bind(*target.as_uuid())
+            .bind(self.org.to_string())
+            .bind(&ids)
+            .fetch_all(&mut *self.tx)
+            .await?;
+        let mut out: BTreeMap<DeploymentRunId, Vec<(String, i64)>> = BTreeMap::new();
+        for (run, phase, at) in rows {
+            out.entry(DeploymentRunId::from_uuid(run))
+                .or_default()
+                .push((phase, at));
+        }
+        Ok(out)
+    }
+
     /// The content of configuration revision `revision` of `target`.
     pub async fn config_revision(
         &mut self,
@@ -424,7 +453,7 @@ impl Tenant {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, time::Duration};
+    use std::time::Duration;
 
     use kuben_core::ids::OrgId;
     use serde_json::json;
@@ -596,6 +625,34 @@ mod tests {
         assert_eq!(
             apps[0].config.as_ref().expect("config")["runtime"]["processes"]["web"]["port"],
             80
+        );
+
+        // M2.16: every phase a run enters is kept, in order.
+        let run = t.runs(s.target, 1).await.expect("runs")[0].run;
+        let first = t.run_phases(s.target, &[run]).await.expect("phases")[&run].clone();
+        assert!(!first.is_empty(), "the phase the run started in");
+        for phase in ["applying", "verifying", "succeeded"] {
+            sqlx::query("UPDATE deployment_runs SET phase = $2, updated_at = updated_at + 1 WHERE id = $1")
+                .bind(*run.as_uuid())
+                .bind(phase)
+                .execute(&mut *t.tx)
+                .await
+                .expect("advance");
+        }
+        let timeline = t.run_phases(s.target, &[run]).await.expect("phases")[&run].clone();
+        let phases: Vec<&str> = timeline.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            &phases[phases.len() - 3..],
+            ["applying", "verifying", "succeeded"]
+        );
+        assert!(timeline.windows(2).all(|w| w[0].1 <= w[1].1), "{timeline:?}");
+        assert!(
+            sqlx::query("UPDATE deployment_run_phases SET phase = 'failed' WHERE run_id = $1")
+                .bind(*run.as_uuid())
+                .execute(&mut *t.tx)
+                .await
+                .is_err(),
+            "the history is never rewritten"
         );
     }
 

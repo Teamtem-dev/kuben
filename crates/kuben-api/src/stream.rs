@@ -85,6 +85,8 @@ impl Visibility {
             Delta::EnvironmentDelete { key, .. } => self.seen.remove(&format!("environment:{key}")),
             Delta::AppUpsert { app, .. } => self.track(format!("app:{}", app.key), app.org.as_deref()),
             Delta::AppDelete { key, .. } => self.seen.remove(&format!("app:{key}")),
+            // The key is an app's; only a client that sees the app hears it.
+            Delta::ExposureChanged { key, .. } => self.seen.contains(&format!("app:{key}")),
             Delta::Resync { .. } => true,
         }
     }
@@ -213,5 +215,34 @@ mod tests {
             key: "theirs".into()
         }));
         assert!(v.admit(&Delta::Resync { seq: 15 }));
+    }
+
+    #[test]
+    fn an_exposure_change_reaches_only_those_who_see_the_app() {
+        let mut app = kuben_crd::App::new(
+            "api",
+            serde_json::from_value(serde_json::json!({
+                "source": { "image": "nginx" },
+                "runtime": { "processes": { "web": { "port": 80 } } }
+            }))
+            .expect("spec"),
+        );
+        app.metadata.namespace = Some("kb-shop-prod".into());
+        app.metadata.labels = Some([(kuben_crd::labels::ORG.to_owned(), "a".to_owned())].into());
+        let exposure = |key: &str| Delta::ExposureChanged {
+            seq: 2,
+            key: key.into(),
+        };
+        let mut mine = Visibility::new(["a".to_owned()]);
+        let mut theirs = Visibility::new(["b".to_owned()]);
+        let upsert = Delta::AppUpsert {
+            seq: 1,
+            app: Arc::new(kuben_platform::projection::AppView::from(&app)),
+        };
+        assert!(mine.admit(&upsert));
+        assert!(!theirs.admit(&upsert));
+        assert!(mine.admit(&exposure("kb-shop-prod/api")));
+        assert!(!theirs.admit(&exposure("kb-shop-prod/api")));
+        assert!(!mine.admit(&exposure("kb-other/api")), "an app it never saw");
     }
 }

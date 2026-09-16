@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Size budgets are CI gates, not aspirations (blueprint §5.7).
 #
-#   scripts/check-budgets.sh binary <path> [max MiB]   default: $KUBEN_BUDGET_BINARY_MB or 26
-#   scripts/check-budgets.sh image  <ref>  [max MiB]   default: $KUBEN_BUDGET_IMAGE_MB  or 30
+#   scripts/check-budgets.sh binary <path> [max MiB]   default: $KUBEN_BUDGET_BINARY_MB or 30
+#   scripts/check-budgets.sh image  <ref>  [max MiB]   default: $KUBEN_BUDGET_IMAGE_MB  or 42
 #
 # The web bundle budget is enforced by size-limit (`turbo run size --filter=@kuben/console`).
 set -euo pipefail
@@ -28,11 +28,11 @@ target=${2:-}
 case "$kind" in
 binary)
   [[ -f $target ]] || { echo "no such binary: $target" >&2; exit 2; }
-  report "binary $(basename "$target")" "$(wc -c <"$target" | tr -d ' ')" "${3:-${KUBEN_BUDGET_BINARY_MB:-26}}"
+  report "binary $(basename "$target")" "$(wc -c <"$target" | tr -d ' ')" "${3:-${KUBEN_BUDGET_BINARY_MB:-30}}"
   ;;
 image)
   bytes=$(docker image inspect --format '{{.Size}}' "$target")
-  report "image ${target}" "$bytes" "${3:-${KUBEN_BUDGET_IMAGE_MB:-30}}"
+  report "image ${target}" "$bytes" "${3:-${KUBEN_BUDGET_IMAGE_MB:-42}}"
   ;;
 *)
   sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//' >&2

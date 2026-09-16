@@ -47,10 +47,13 @@ COPY . .
 COPY --from=web /src/apps/console/dist apps/console/dist
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     cargo zigbuild -p kuben --release --locked --features embed-ui --target "$(cat /target)" \
- && cp "target/$(cat /target)/release/kuben" /kuben
+ && cargo zigbuild -p kuben-agent --release --locked --target "$(cat /target)" \
+ && cp "target/$(cat /target)/release/kuben" /kuben \
+ && cp "target/$(cat /target)/release/kuben-agent" /kuben-agent
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=build /kuben /kuben
+COPY --from=build /kuben-agent /kuben-agent
 # No database default: Kuben keeps its data in PostgreSQL (ADR-025), given
 # at run time as KUBEN_DATABASE__URL (the Helm chart sets it).
 USER 65532:65532

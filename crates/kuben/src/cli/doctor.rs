@@ -5,7 +5,13 @@
 use std::path::PathBuf;
 
 use kuben_core::config::{Config, KubeCfg, in_cluster};
-use kuben_platform::registry::{ClusterRegistry, redact_credentials};
+
+use crate::cli::DoctorOpts;
+use kuben_platform::{
+    discovery::{self, ClusterFacts, Readiness},
+    doctor,
+    registry::{ClusterRegistry, redact_credentials},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Level {
@@ -32,9 +38,16 @@ impl Report {
     }
 }
 
-pub async fn run(cfg: Config) -> anyhow::Result<()> {
+pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
     let mut r = Report { failed: false };
     println!("{}", crate::cli::version_string());
+    if opts.cluster {
+        cluster_checks(&mut r, &cfg, false).await;
+        if r.failed {
+            anyhow::bail!("doctor found failures");
+        }
+        return Ok(());
+    }
 
     // Database
     match kuben_store::Store::connect(&cfg.database).await {
@@ -74,20 +87,7 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
         ),
     }
 
-    // Cluster
-    if let Some((path, e)) = unreadable_kubeconfig(&cfg.kube) {
-        let path = path.display();
-        r.line(
-            Level::Fail,
-            "kubernetes",
-            format!(
-                "cannot read the kubeconfig {path}: {e}. k3s writes it for root only; give this user a copy: \
-                 sudo install -D -m 600 -o \"$USER\" {path} ~/.kube/config && export KUBECONFIG=~/.kube/config"
-            ),
-        );
-    } else {
-        check_cluster(&mut r, &cfg).await;
-    }
+    cluster_checks(&mut r, &cfg, true).await;
 
     if let Some(warning) = cfg.insecure_cookie_warning(in_cluster()) {
         r.line(Level::Warn, "cookies", warning);
@@ -110,6 +110,23 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The cluster: reachable, and what each feature needs of it.
+async fn cluster_checks(r: &mut Report, cfg: &Config, installed: bool) {
+    if let Some((path, e)) = unreadable_kubeconfig(&cfg.kube) {
+        let path = path.display();
+        r.line(
+            Level::Fail,
+            "kubernetes",
+            format!(
+                "cannot read the kubeconfig {path}: {e}. k3s writes it for root only; give this user a copy: \
+                 sudo install -D -m 600 -o \"$USER\" {path} ~/.kube/config && export KUBECONFIG=~/.kube/config"
+            ),
+        );
+    } else {
+        check_cluster(r, cfg, installed).await;
+    }
+}
+
 /// A kubeconfig that is configured and exists but cannot be read, like the
 /// root-only `/etc/rancher/k3s/k3s.yaml` from a non-root shell. Without this
 /// check it would read as "no cluster found".
@@ -126,7 +143,7 @@ fn unreadable_kubeconfig(kube: &KubeCfg) -> Option<(PathBuf, std::io::Error)> {
         .find_map(|path| std::fs::File::open(&path).err().map(|e| (path, e)))
 }
 
-async fn check_cluster(r: &mut Report, cfg: &Config) {
+async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
     match ClusterRegistry::connect(&cfg.kube).await {
         Ok(registry) => {
             let client = registry.primary();
@@ -134,30 +151,13 @@ async fn check_cluster(r: &mut Report, cfg: &Config) {
                 Ok(v) => r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version)),
                 Err(e) => r.line(Level::Fail, "kubernetes", e),
             }
-            check_api_group(
-                r,
-                &client,
-                "gateway.networking.k8s.io",
-                "gateway-api",
-                "install Gateway API CRDs",
-            )
-            .await;
-            check_api_group(
-                r,
-                &client,
-                "cert-manager.io",
-                "cert-manager",
-                "install cert-manager for TLS",
-            )
-            .await;
-            check_api_group(
-                r,
-                &client,
-                "metrics.k8s.io",
-                "metrics-server",
-                "install metrics-server for autoscaling",
-            )
-            .await;
+            let facts = discovery::discover(&client).await;
+            check_capabilities(r, &facts);
+            check_features(r, &facts);
+            check_permissions(r, &client).await;
+            if installed {
+                check_exposure(r, &client, &facts).await;
+            }
         }
         Err(e) if !cfg.kube.required => {
             r.line(
@@ -172,17 +172,252 @@ async fn check_cluster(r: &mut Report, cfg: &Config) {
     }
 }
 
-async fn check_api_group(r: &mut Report, client: &kube::Client, group: &str, name: &str, hint: &str) {
-    match client.list_api_groups().await {
-        Ok(groups) if groups.groups.iter().any(|g| g.name == group) => r.line(Level::Ok, name, "present"),
-        Ok(_) => r.line(Level::Warn, name, format!("not found — {hint}")),
-        Err(e) => r.line(Level::Fail, name, e),
+/// What the cluster can do (ADR-031), as the controllers see it: unknown
+/// facts are warnings, never OK.
+fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
+    if !facts.unknown.is_empty() {
+        r.line(
+            Level::Warn,
+            "capabilities",
+            format!("unknown (probes failed: {})", facts.unknown.join(", ")),
+        );
+    }
+    match &facts.gateway_api {
+        Some(api) => r.line(
+            Level::Ok,
+            "gateway-api",
+            format!(
+                "{} ({} channel)",
+                api.bundle_version.as_deref().unwrap_or("unknown version"),
+                api.channel.as_deref().unwrap_or("unknown")
+            ),
+        ),
+        None => r.line(
+            Level::Warn,
+            "gateway-api",
+            "not installed — install the Gateway API CRDs (standard channel) to expose apps",
+        ),
+    }
+    if facts.gateway_api.is_some() {
+        readiness_line(
+            r,
+            "gateway-class",
+            &facts.gateway_classes,
+            "no GatewayClass is Accepted",
+        );
+    }
+    if facts.cert_manager {
+        r.line(Level::Ok, "cert-manager", "present");
+        readiness_line(
+            r,
+            "cluster-issuer",
+            &facts.cluster_issuers,
+            "no ClusterIssuer is Ready",
+        );
+    } else {
+        r.line(
+            Level::Warn,
+            "cert-manager",
+            "not found — install cert-manager for automatic HTTPS",
+        );
+    }
+    if facts.metrics_api {
+        r.line(Level::Ok, "metrics-server", "present");
+    } else {
+        r.line(
+            Level::Warn,
+            "metrics-server",
+            "not found — install metrics-server for autoscaling",
+        );
+    }
+}
+
+/// Kuben's Gateway, its issuer and the public ports, as the API's app Doctor
+/// judges them (M2.13). A missing piece blocks only exposure: a warning.
+async fn check_exposure(r: &mut Report, client: &kube::Client, facts: &ClusterFacts) {
+    let platform = doctor::read_platform(client).await;
+    if platform.gateway.is_none() {
+        return; // `feature: public routes` says what is missing.
+    }
+    let gateway = doctor::read_gateway(client, &platform).await;
+    let mut checks = doctor::platform_checks(Some(facts), &platform, &gateway);
+    let ports: &[u16] = if platform.tls { &[80, 443] } else { &[80] };
+    for &port in ports {
+        checks.push(doctor::port_check(
+            port,
+            doctor::probe_port(gateway.addresses(), port).await,
+        ));
+    }
+    for check in checks {
+        let name = format!("{} {}", check.id, check.subject);
+        let (level, detail) = match check.status {
+            doctor::Status::Ok => (Level::Ok, check.detail),
+            doctor::Status::Unknown => (Level::Warn, format!("unknown: {}", check.detail)),
+            doctor::Status::Warn | doctor::Status::Fail => (Level::Warn, check.detail),
+        };
+        let hint = check.hint.map(|h| format!(" — {h}")).unwrap_or_default();
+        r.line(level, name.trim_end(), format!("{detail}{hint}"));
+    }
+}
+
+/// Envoy Gateway, the documented choice when a cluster has no Gateway
+/// controller (ADR-031).
+const ENVOY_GATEWAY: &str = "helm install eg oci://docker.io/envoyproxy/gateway-helm -n envoy-gateway-system \
+     --create-namespace, then install Kuben with --set platform.gatewayClassName=eg";
+
+/// What each feature needs, and whether this cluster has it: a missing
+/// capability blocks only its feature.
+fn check_features(r: &mut Report, facts: &ClusterFacts) {
+    let accepted = facts.gateway_classes.iter().any(|c| c.ready);
+    match (&facts.gateway_api, accepted) {
+        (Some(_), true) => r.line(Level::Ok, "feature: public routes", "ready"),
+        (Some(_), false) => r.line(
+            Level::Warn,
+            "feature: public routes",
+            format!("no GatewayClass is accepted. Install a Gateway controller: {ENVOY_GATEWAY}"),
+        ),
+        (None, _) => r.line(
+            Level::Warn,
+            "feature: public routes",
+            format!(
+                "needs the Gateway API CRDs (kubectl apply --server-side -f \
+                 https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml) \
+                 and a Gateway controller: {ENVOY_GATEWAY}"
+            ),
+        ),
+    }
+    let issuer = facts.cluster_issuers.iter().any(|i| i.ready);
+    match (facts.cert_manager, issuer) {
+        (true, true) => r.line(Level::Ok, "feature: HTTPS", "ready (set platform.clusterIssuer to a Ready issuer)"),
+        (true, false) => r.line(
+            Level::Warn,
+            "feature: HTTPS",
+            "cert-manager has no Ready ClusterIssuer; apps are served over plain HTTP until one is",
+        ),
+        (false, _) => r.line(
+            Level::Warn,
+            "feature: HTTPS",
+            "needs cert-manager with Gateway API support (--set config.enableGatewayAPI=true) and a ClusterIssuer",
+        ),
+    }
+    match &facts.default_storage_class {
+        Some(class) => r.line(
+            Level::Ok,
+            "feature: volumes",
+            format!("default StorageClass {class}"),
+        ),
+        None => r.line(
+            Level::Warn,
+            "feature: volumes",
+            "no default StorageClass: apps with volumes and the chart's PostgreSQL stay Pending",
+        ),
+    }
+    match &facts.network_policy {
+        Some(enforcer) => r.line(Level::Ok, "feature: isolation", format!("NetworkPolicies enforced by {enforcer}")),
+        None => r.line(
+            Level::Warn,
+            "feature: isolation",
+            "no known NetworkPolicy enforcer found (unknown, not proven absent): environments are not isolated \
+             from each other on the network unless the CNI enforces policies",
+        ),
+    }
+    if !facts.metrics_api {
+        r.line(
+            Level::Warn,
+            "feature: autoscaling",
+            "needs metrics-server; apps run with fixed replicas until then",
+        );
+    }
+}
+
+/// Kuben's own permissions: what the chart's ClusterRole grants, checked
+/// for whoever runs this.
+async fn check_permissions(r: &mut Report, client: &kube::Client) {
+    use k8s_openapi::api::authorization::v1::{
+        ResourceAttributes, SelfSubjectAccessReview, SelfSubjectAccessReviewSpec,
+    };
+    const NEEDED: [(&str, &str, &str); 8] = [
+        ("create", "", "namespaces"),
+        ("patch", "apps", "deployments"),
+        ("create", "", "secrets"),
+        ("create", "gateway.networking.k8s.io", "httproutes"),
+        ("create", "gateway.networking.k8s.io", "gateways"),
+        ("list", "cert-manager.io", "clusterissuers"),
+        ("create", "apiextensions.k8s.io", "customresourcedefinitions"),
+        ("update", "coordination.k8s.io", "leases"),
+    ];
+    let api = kube::Api::<SelfSubjectAccessReview>::all(client.clone());
+    let mut denied = Vec::new();
+    for (verb, group, resource) in NEEDED {
+        let review = SelfSubjectAccessReview {
+            spec: SelfSubjectAccessReviewSpec {
+                resource_attributes: Some(ResourceAttributes {
+                    verb: Some(verb.into()),
+                    group: Some(group.into()),
+                    resource: Some(resource.into()),
+                    ..ResourceAttributes::default()
+                }),
+                ..SelfSubjectAccessReviewSpec::default()
+            },
+            ..SelfSubjectAccessReview::default()
+        };
+        match api.create(&kube::api::PostParams::default(), &review).await {
+            Ok(answer) if answer.status.as_ref().is_some_and(|s| s.allowed) => {}
+            Ok(_) => denied.push(format!("{verb} {resource}")),
+            Err(e) => {
+                r.line(Level::Warn, "permissions", format!("cannot check them: {e}"));
+                return;
+            }
+        }
+    }
+    if denied.is_empty() {
+        r.line(Level::Ok, "permissions", "everything Kuben needs");
+    } else {
+        r.line(
+            Level::Fail,
+            "permissions",
+            format!(
+                "denied: {} (the Helm chart's ClusterRole grants them)",
+                denied.join(", ")
+            ),
+        );
+    }
+}
+
+fn readiness_line(r: &mut Report, name: &str, list: &[Readiness], none: &str) {
+    let ready: Vec<&str> = list.iter().filter(|x| x.ready).map(|x| x.name.as_str()).collect();
+    if !ready.is_empty() {
+        r.line(Level::Ok, name, ready.join(", "));
+    }
+    for x in list.iter().filter(|x| !x.ready) {
+        r.line(
+            Level::Warn,
+            name,
+            format!(
+                "{} not ready: {}",
+                x.name,
+                x.message.as_deref().unwrap_or("no status yet")
+            ),
+        );
+    }
+    if list.is_empty() {
+        r.line(Level::Warn, name, none);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_feature_warns_and_never_fails_the_check() {
+        let mut r = Report { failed: false };
+        check_capabilities(&mut r, &ClusterFacts::default());
+        check_features(&mut r, &ClusterFacts::default());
+        assert!(!r.failed, "optional capabilities only warn");
+        r.line(Level::Fail, "permissions", "denied: create namespaces");
+        assert!(r.failed);
+    }
 
     #[cfg(unix)]
     #[test]

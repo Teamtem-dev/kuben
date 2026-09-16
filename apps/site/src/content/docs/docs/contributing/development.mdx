@@ -86,7 +86,14 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 | `bun run gen` | regenerate `openapi.json`, `schema.d.ts` and the CRDs |
 | `bun run drift` | regenerate and fail on any difference (what CI does) |
 | `bun turbo run test --filter=kuben-store` | one package |
-| `bun turbo run kuben#size` | release build with the embedded console, checked against the 26 MiB budget |
+| `bun turbo run kuben#size` | release build with the embedded console, checked against the 30 MiB budget |
+
+## The console
+
+- **Tokens, not colours.** Pages use the semantic names in `apps/console/src/styles.css` (`bg-canvas`, `bg-surface`, `text-fg`, `text-muted`, `border-line`, `bg-accent`, `text-ok`, `text-warn`, `text-danger`, …). The dark and light themes are two blocks of values; a raw palette colour (`text-slate-400`) would look wrong in one of them.
+- **Both directions.** Persian is right to left: use logical utilities (`ms-`, `pe-`, `start-`, `border-e`) and mark code, commands and addresses `dir="ltr"`. Interface text lives in `src/lib/messages.ts`; the Persian table has the English table's type, so a missing translation does not compile.
+- **Components are written here.** The spike for M2.15 weighed shadcn and Base UI against small components of our own: the console needs few widgets, stays under its size budget, and keeps the strict content security policy (`script-src 'self'; style-src 'self'`, nothing inline) without an exception. A library comes in only for a widget that is hard to make accessible by hand (a combobox, a date picker), and only if it sets styles through the CSSOM, never inline markup. `src/lib/csp.test.ts` fails on inline scripts, style attributes or injected HTML.
+- **Self-hosted fonts only.** Inter's Latin subsets ship in `src/assets/fonts` with their licence; nothing is loaded from another origin (`font-src 'self'`).
 
 ## Rules
 
@@ -94,7 +101,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 - **Generated files are committed.** After changing API types or CRDs, run `bun run gen` and commit `packages/api-client/openapi.json`, `packages/api-client/src/schema.d.ts` and `charts/kuben/crds/`. CI fails on drift.
 - **Every handler has a unique `operation_id`** in `#[utoipa::path]`; the TypeScript types and the audit log are keyed by it.
 - **CRD types stay structural:** no internally tagged enums; use one-of structs with optional fields (`Source { image, git }`). A test guards this.
-- **Budgets are gates:** binary ≤ 26 MiB, image ≤ 30 MiB, console JS ≤ 200 kB and CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
+- **Budgets are gates:** binary ≤ 30 MiB, image (Kuben and its agent) ≤ 42 MiB, console JS ≤ 200 kB and CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
 - **Commits** follow Conventional Commits (`feat(api): …`, `fix(controller): …`). Label pull requests (`feature`, `bug`, `security`, `breaking`); release notes are grouped by label.
 - **Migrations are PostgreSQL only** (ADR-025), in `crates/kuben-store/migrations/postgres/`.
 

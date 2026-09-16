@@ -303,6 +303,9 @@ expression: pretty(&plan)
     "apiVersion": "gateway.networking.k8s.io/v1",
     "kind": "HTTPRoute",
     "metadata": {
+      "annotations": {
+        "kuben.dev/domains": "[{\"host\":\"api.acme.com\",\"tls\":\"auto\"},{\"host\":\"api-shop-prod.apps.example.com\",\"tls\":\"auto\"}]"
+      },
       "labels": {
         "app.kubernetes.io/managed-by": "kuben",
         "kuben.dev/app": "api",

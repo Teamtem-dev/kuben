@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { meQuery } from './lib/api'
+import { applyPrefs, PrefsProvider, readPrefs } from './lib/prefs'
 import { ApiError } from './lib/problem'
 import { createAppRouter } from './router'
 import './styles.css'
@@ -27,13 +28,18 @@ const queryClient = new QueryClient({
 
 const router = createAppRouter(queryClient)
 
+// Before the first paint: no flash of the wrong theme or direction.
+applyPrefs(readPrefs())
+
 const root = document.getElementById('root')
 if (!root) throw new Error('#root is missing from index.html')
 
 createRoot(root).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <PrefsProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </PrefsProvider>
   </StrictMode>,
 )

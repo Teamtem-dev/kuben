@@ -18,7 +18,6 @@ import {
   checkDomains,
   deleteApp,
   environmentsQuery,
-  logsQuery,
   type PromoteResult,
   promoteApp,
   releasesQuery,
@@ -30,6 +29,9 @@ import {
   type Volume,
 } from '../lib/api'
 import { formatEnvLines, parseEnvLines } from '../lib/env'
+import { usePrefs } from '../lib/prefs'
+import { DeploymentsCard } from './app-deployments'
+import { LiveLogs } from './app-logs'
 
 const route = getRouteApi('/_authed/projects/$project/$environment/$app')
 
@@ -40,6 +42,7 @@ export function AppPage() {
   const web = a.processes[0]
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { t } = usePrefs()
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] })
 
   const update = useMutation({
@@ -63,18 +66,18 @@ export function AppPage() {
       <PageHeader
         crumbs={
           <>
-            <Link to="/" className="hover:text-slate-200">
-              Projects
+            <Link to="/" className="hover:text-fg">
+              {t('nav.projects')}
             </Link>
             <span>/</span>
-            <Link to="/projects/$project" params={{ project }} className="hover:text-slate-200">
+            <Link to="/projects/$project" params={{ project }} className="hover:text-fg">
               {project}
             </Link>
             <span>/</span>
             <Link
               to="/projects/$project/$environment"
               params={{ project, environment }}
-              className="hover:text-slate-200"
+              className="hover:text-fg"
             >
               {environment}
             </Link>
@@ -87,7 +90,7 @@ export function AppPage() {
         }
         subtitle={
           a.url ? (
-            <a href={a.url} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
+            <a href={a.url} target="_blank" rel="noreferrer" className="text-link hover:underline">
               {a.url}
             </a>
           ) : (
@@ -101,6 +104,13 @@ export function AppPage() {
                 {run.isPending ? 'Starting…' : 'Run now'}
               </Button>
             )}
+            <Link
+              to="/projects/$project/$environment/$app/doctor"
+              params={{ project, environment, app }}
+              className="inline-flex items-center rounded-lg border border-line px-3 py-1.5 font-medium text-sm transition hover:bg-hover"
+            >
+              {t('doctor.open')}
+            </Link>
             <Button variant="secondary" disabled={restart.isPending} onClick={() => restart.mutate()}>
               {restart.isPending ? 'Restarting…' : 'Restart'}
             </Button>
@@ -108,14 +118,14 @@ export function AppPage() {
         }
       />
       {scheduled && (
-        <p className="text-slate-400 text-sm">
+        <p className="text-muted text-sm">
           Scheduled job: <code className="font-mono">{scheduled.schedule}</code>
-          {run.data && <span className="text-emerald-300"> · started {run.data.job}</span>}
+          {run.data && <span className="text-ok"> · started {run.data.job}</span>}
         </p>
       )}
       <ErrorNote error={run.error} />
       {!a.ready && a.message && (
-        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-200 text-sm">{a.message}</p>
+        <p className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">{a.message}</p>
       )}
       <ErrorNote error={restart.error} />
 
@@ -135,6 +145,8 @@ export function AppPage() {
         />
       </div>
 
+      <DeploymentsCard project={project} environment={environment} app={app} />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <ReleasesCard project={project} environment={environment} app={app} />
         <PromoteCard project={project} environment={environment} app={app} />
@@ -142,11 +154,11 @@ export function AppPage() {
 
       <Card title={`Pods (${data.pods.length})`}>
         {data.pods.length === 0 ? (
-          <p className="text-slate-500 text-sm">No pods yet.</p>
+          <p className="text-subtle text-sm">No pods yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-slate-500 text-xs">
+              <thead className="text-subtle text-xs">
                 <tr>
                   <th className="pb-2 font-medium">Pod</th>
                   <th className="pb-2 font-medium">Status</th>
@@ -154,7 +166,7 @@ export function AppPage() {
                   <th className="pb-2 font-medium">Node</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-line-soft">
                 {data.pods.map((pod) => (
                   <tr key={pod.name}>
                     <td className="py-2 pe-4 font-mono text-xs">{pod.name}</td>
@@ -162,7 +174,7 @@ export function AppPage() {
                       <Status ready={pod.ready} label={pod.reason ?? pod.phase} />
                     </td>
                     <td className="py-2 pe-4">{pod.restarts}</td>
-                    <td className="py-2 font-mono text-slate-500 text-xs">{pod.node ?? '—'}</td>
+                    <td className="py-2 font-mono text-subtle text-xs">{pod.node ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -178,7 +190,12 @@ export function AppPage() {
         onSave={(env) => update.mutate({ env })}
       />
 
-      <Logs project={project} environment={environment} app={app} />
+      <LiveLogs
+        project={project}
+        environment={environment}
+        app={app}
+        processes={a.processes.filter((p) => !p.schedule).map((p) => p.name)}
+      />
 
       <DomainsCard
         project={project}
@@ -192,7 +209,7 @@ export function AppPage() {
       {a.volumes.length > 0 && <VolumesCard volumes={a.volumes} />}
 
       {a.volumes.length > 0 && (
-        <label className="flex items-center gap-2 text-slate-400 text-sm">
+        <label className="flex items-center gap-2 text-muted text-sm">
           <input
             type="checkbox"
             checked={deleteVolumes}
@@ -326,53 +343,6 @@ function EnvCard({
   )
 }
 
-function Logs({ project, environment, app }: { project: string; environment: string; app: string }) {
-  const [tail, setTail] = useState(200)
-  const logs = useQuery({ ...logsQuery(project, environment, app, tail), retry: false })
-  return (
-    <Card
-      title="Logs"
-      actions={
-        <label className="flex items-center gap-2 text-slate-400 text-xs">
-          Lines
-          <select
-            value={tail}
-            onChange={(e) => setTail(Number(e.target.value))}
-            className="rounded-md border border-white/10 bg-slate-950 px-2 py-1"
-          >
-            {[100, 200, 500, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-      }
-    >
-      {logs.isError ? (
-        <ErrorNote error={logs.error} />
-      ) : !logs.data?.length ? (
-        <p className="text-slate-500 text-sm">{logs.isLoading ? 'Loading…' : 'No pods to read logs from.'}</p>
-      ) : (
-        <div className="space-y-4">
-          {logs.data.map((pod) => (
-            <div key={pod.pod} className="space-y-1">
-              <p className="font-mono text-slate-400 text-xs">{pod.pod}</p>
-              {pod.error ? (
-                <p className="text-amber-300 text-xs">{pod.error}</p>
-              ) : (
-                <pre className="max-h-96 overflow-auto rounded-lg bg-black/40 p-3 font-mono text-slate-300 text-xs leading-relaxed">
-                  {pod.lines.join('\n') || '(no output yet)'}
-                </pre>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  )
-}
-
 function ReleasesCard({ project, environment, app }: { project: string; environment: string; app: string }) {
   const queryClient = useQueryClient()
   const releases = useQuery({ ...releasesQuery(project, environment, app), retry: false })
@@ -385,24 +355,24 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
       {releases.isError ? (
         <ErrorNote error={releases.error} />
       ) : !releases.data?.length ? (
-        <p className="text-slate-500 text-sm">No releases recorded yet.</p>
+        <p className="text-subtle text-sm">No releases recorded yet.</p>
       ) : (
-        <ul className="max-h-80 divide-y divide-white/5 overflow-y-auto">
+        <ul className="max-h-80 divide-y divide-line-soft overflow-y-auto">
           {releases.data.map((r) => (
             <li key={r.revision} className="flex items-center justify-between gap-3 py-2 text-sm">
               <div className="min-w-0">
                 <p className="truncate">
                   <span className="font-mono">#{r.revision}</span> <Badge>{r.reason}</Badge>{' '}
-                  <span className="font-mono text-slate-400 text-xs">{r.image ?? '—'}</span>
+                  <span className="font-mono text-muted text-xs">{r.image ?? '—'}</span>
                 </p>
-                <p className="truncate text-slate-500 text-xs">
+                <p className="truncate text-subtle text-xs">
                   {new Date(r.created_at).toLocaleString()}
                   {r.actor ? ` · ${r.actor}` : ''}
                   {r.note ? ` · ${r.note}` : ''}
                 </p>
               </div>
               {r.current ? (
-                <span className="text-emerald-300 text-xs">current</span>
+                <span className="text-ok text-xs">current</span>
               ) : (
                 <Button
                   variant="secondary"
@@ -461,17 +431,17 @@ function PromoteCard({ project, environment, app }: { project: string; environme
           Promote
         </Button>
       </div>
-      <p className="mt-2 text-slate-500 text-xs">
+      <p className="mt-2 text-subtle text-xs">
         Copies image, processes and variables. The target keeps its domains, scaling and volumes.
       </p>
       {result && (
         <div className="mt-3 space-y-2 text-sm">
           {result.dry_run ? (
-            <p className="text-slate-300">
+            <p className="text-fg-soft">
               {result.changes.length ? `Changes in ${target}:` : `${target} is already up to date.`}
             </p>
           ) : (
-            <p className="text-emerald-300">
+            <p className="text-ok">
               Promoted to {target}
               {result.created ? ' (app created)' : ''}.
             </p>
@@ -482,7 +452,7 @@ function PromoteCard({ project, environment, app }: { project: string; environme
             ))}
           </ul>
           {result.warnings.map((w) => (
-            <p key={w} className="text-amber-300 text-xs">
+            <p key={w} className="text-warn text-xs">
               {w}
             </p>
           ))}
@@ -494,10 +464,10 @@ function PromoteCard({ project, environment, app }: { project: string; environme
 }
 
 const dnsColor: Record<string, string> = {
-  ok: 'text-emerald-300',
-  mismatch: 'text-red-300',
-  unresolved: 'text-amber-300',
-  unknown: 'text-slate-400',
+  ok: 'text-ok',
+  mismatch: 'text-danger',
+  unresolved: 'text-warn',
+  unknown: 'text-muted',
 }
 
 function DomainsCard({
@@ -551,7 +521,7 @@ function DomainsCard({
             <li key={d.host} className="flex flex-wrap items-center gap-2">
               <span className="font-mono">{d.host}</span>
               <span className={dnsColor[d.status] ?? ''}>{d.status}</span>
-              <span className="text-slate-500 text-xs">{d.message}</span>
+              <span className="text-subtle text-xs">{d.message}</span>
             </li>
           ))}
         </ul>
@@ -568,7 +538,7 @@ function VolumesCard({ volumes }: { volumes: readonly Volume[] }) {
         {volumes.map((v) => (
           <li key={v.name}>
             <span className="font-mono">{v.mount_path}</span> <Badge>{v.size}</Badge>{' '}
-            <span className="text-slate-500 text-xs">
+            <span className="text-subtle text-xs">
               {v.name} · kept when the app is deleted unless you choose otherwise
             </span>
           </li>

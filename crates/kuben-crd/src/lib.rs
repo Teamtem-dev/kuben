@@ -25,6 +25,9 @@ pub mod labels {
     pub const ENVIRONMENT: &str = "kuben.dev/environment";
     pub const APP: &str = "kuben.dev/app";
     pub const PROCESS: &str = "kuben.dev/process";
+    /// On a Gateway: Kuben may write its listeners. Kuben sets it on the
+    /// Gateway it creates; an operator sets it to dedicate an existing one.
+    pub const GATEWAY_OWNER: &str = "kuben.dev/gateway-owner";
 
     /// Label selector matching everything Kuben manages.
     pub const MANAGED_SELECTOR: &str = "app.kubernetes.io/managed-by=kuben";

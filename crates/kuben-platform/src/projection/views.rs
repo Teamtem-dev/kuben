@@ -3,11 +3,12 @@
 //! can be filtered per tenant.
 
 use k8s_openapi::api::core::v1::Pod;
-use kube::ResourceExt;
+use kube::{ResourceExt, api::DynamicObject};
 use kuben_crd::{App, Condition, Environment, EnvironmentType, Project, condition::READY, labels};
 use serde::Serialize;
+use serde_json::Value;
 
-use crate::controller::resources::namespace_name;
+use crate::controller::resources::{DOMAINS_ANNOTATION, DomainClaim, namespace_name};
 
 fn ready_condition(conditions: &[Condition]) -> Option<&Condition> {
     conditions.iter().find(|c| c.type_ == READY)
@@ -289,6 +290,157 @@ impl From<&App> for AppView {
             created_at: a.creation_timestamp().map(|t| t.0.to_string()),
         }
     }
+}
+
+/// An app's `HTTPRoute` (M2.3): its domains and whether a Gateway took it.
+/// Routes of both delivery paths (App controller and agent) look alike.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct RouteView {
+    /// `namespace/name`; the name is the app's.
+    pub key: String,
+    pub namespace: String,
+    pub name: String,
+    /// `namespace/name` of each parent Gateway.
+    pub gateways: Vec<String>,
+    /// Listener names the route attaches to (`sectionName`), if any.
+    pub sections: Vec<String>,
+    pub domains: Vec<DomainClaim>,
+    /// A Gateway accepted the route and resolved its references; `None`
+    /// until a gateway controller answered.
+    pub accepted: Option<bool>,
+    pub message: Option<String>,
+}
+
+/// The `Accepted` and `ResolvedRefs` verdicts of every parent, folded.
+fn route_status(data: &Value) -> (Option<bool>, Option<String>) {
+    let parents = data
+        .pointer("/status/parents")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut accepted = None;
+    for parent in &parents {
+        let Some(conditions) = parent["conditions"].as_array() else {
+            continue;
+        };
+        for c in conditions {
+            if c["type"] != "Accepted" && c["type"] != "ResolvedRefs" {
+                continue;
+            }
+            if c["status"] == "True" {
+                accepted.get_or_insert(true);
+            } else {
+                let message = c["message"]
+                    .as_str()
+                    .filter(|m| !m.is_empty())
+                    .or_else(|| c["reason"].as_str())
+                    .map(str::to_owned);
+                return (Some(false), message);
+            }
+        }
+    }
+    (accepted, None)
+}
+
+impl From<&DynamicObject> for RouteView {
+    fn from(route: &DynamicObject) -> Self {
+        let namespace = route.namespace().unwrap_or_default();
+        let name = route.name_any();
+        let spec = &route.data["spec"];
+        let parents = spec["parentRefs"].as_array().cloned().unwrap_or_default();
+        let gateways = parents
+            .iter()
+            .filter_map(|p| {
+                let gw = p["name"].as_str()?;
+                let ns = p["namespace"].as_str().unwrap_or(&namespace);
+                Some(format!("{ns}/{gw}"))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let sections = parents
+            .iter()
+            .filter_map(|p| p["sectionName"].as_str().map(str::to_owned))
+            .collect();
+        let domains = route
+            .annotations()
+            .get(DOMAINS_ANNOTATION)
+            .and_then(|a| serde_json::from_str::<Vec<DomainClaim>>(a).ok())
+            .unwrap_or_else(|| {
+                // Routes written before M2.3 carry only their hostnames.
+                spec["hostnames"]
+                    .as_array()
+                    .map(|hosts| {
+                        hosts
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(|h| DomainClaim {
+                                host: h.to_owned(),
+                                tls: "auto".into(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
+        let (accepted, message) = route_status(&route.data);
+        Self {
+            key: format!("{namespace}/{name}"),
+            namespace,
+            name,
+            gateways,
+            sections,
+            domains,
+            accepted,
+            message,
+        }
+    }
+}
+
+/// A cert-manager `Certificate` Kuben's gateway ordered (`kuben-tls-*`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CertificateView {
+    /// `namespace/name`.
+    pub key: String,
+    pub ready: bool,
+    pub message: Option<String>,
+    /// `status.notAfter`.
+    pub not_after: Option<String>,
+}
+
+impl From<&DynamicObject> for CertificateView {
+    fn from(cert: &DynamicObject) -> Self {
+        let (ready, message) = crate::discovery::condition(&cert.data, "Ready").unwrap_or((false, None));
+        Self {
+            key: format!("{}/{}", cert.namespace().unwrap_or_default(), cert.name_any()),
+            ready,
+            message: message.filter(|m| !ready && !m.is_empty()),
+            not_after: cert
+                .data
+                .pointer("/status/notAfter")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        }
+    }
+}
+
+/// How one hostname of an app is reached.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct HostExposure {
+    pub host: String,
+    /// `auto`, `none` or `secret`.
+    pub tls: &'static str,
+    /// For `auto` hosts with a certificate of their own: whether it is issued.
+    pub certificate_ready: Option<bool>,
+    pub certificate_message: Option<String>,
+}
+
+/// Whether an app can be reached through the gateway (I09: separate from
+/// being applied and healthy).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ExposureView {
+    pub accepted: Option<bool>,
+    pub message: Option<String>,
+    pub hosts: Vec<HostExposure>,
 }
 
 #[cfg(test)]
