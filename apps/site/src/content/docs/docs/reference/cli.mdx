@@ -84,11 +84,15 @@ The token lives in `setup-token` in Kuben's state directory (`/var/lib/kuben` on
 
 ## `setup`
 
-Makes the Linux server it runs on a Kuben server. The one-line installer runs it for you as root; it is also what you re-run to upgrade or repair, because every step checks before it acts.
+Makes the Linux server it runs on a Kuben server. The one-line installer runs it for you as root; it is also what you re-run to upgrade or repair, because every step checks before it acts. A run that finds everything in place changes nothing, and the service restarts only when its binary, unit or configuration changed.
 
 ```bash
-sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--yes]
+sudo kuben setup [--plan] [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--yes]
 ```
+
+`--plan` shows what a run would do, from the same checks, and changes nothing.
+
+Every run is recorded in the **install journal**, `/var/lib/kuben/install/journal.json`: each step with its result (`changed`, `unchanged`, `failed`), and each resource setup touched with its owner. A resource setup created belongs to Kuben; one that was there first (a PostgreSQL database or role, a k3s, a firewall rule, a directory) stays `preexisting` for good. A run that stopped halfway is named on the next run, which checks every step again. `kuben serve` copies the journal into the database for Doctor and support.
 
 | Step | What happens |
 |---|---|
@@ -99,7 +103,7 @@ sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [
 | Cluster | uses `--kubeconfig`, an installed k3s, or the kubeconfig of the current user; otherwise installs [k3s](https://k3s.io) and waits for the node to be Ready (`--no-k3s` fails instead). A copy of the kubeconfig, readable by `kuben` only, goes to `/var/lib/kuben/kubeconfig` |
 | Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig); an existing file is kept |
 | Port | refuses a port another process holds and names it |
-| Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz` |
+| Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz`. A `kuben.service` that setup did not write is never replaced: setup stops and says so |
 | Firewall | opens the port in ufw or firewalld when one is active |
 | Link | the setup page with its token on a first install, the console address afterwards |
 
@@ -110,6 +114,7 @@ sudo kuben setup [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [
 | `--no-k3s` | never install k3s |
 | `--bind-local` | listen on `127.0.0.1` only; reach the console through an SSH tunnel |
 | `--yes` | go ahead on warnings without asking |
+| `--plan` | print what a run would do; change nothing |
 
 ## `status`
 
@@ -127,7 +132,7 @@ Removes `kuben.service`. The PostgreSQL database `kuben`, `/var/lib/kuben`, `/et
 sudo kuben uninstall [--purge] [--yes]
 ```
 
-`--purge` also deletes `/var/lib/kuben`, the configuration and the binary, drops the database and role `kuben` (PostgreSQL itself stays installed; an external database is never touched), and removes k3s when `kuben setup` installed it (it leaves a k3s that was there before).
+`--purge` also removes **what `kuben setup` created, according to its journal**: `/var/lib/kuben`, the configuration, the binary, the system user, the database and role `kuben`, the firewall rule, and k3s. What was there before setup first ran stays: a database or role `kuben` you created yourself, a k3s you installed, a rule you opened. PostgreSQL itself stays installed, and an external database is never touched. A server set up before the journal existed keeps the earlier rule: the database and role are dropped when they are this server's, and k3s goes only when setup installed it.
 
 ## `backup`
 

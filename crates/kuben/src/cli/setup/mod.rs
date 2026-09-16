@@ -3,15 +3,19 @@
 //!
 //! Every step checks before it acts, so the same command installs, upgrades,
 //! repairs and resumes an interrupted run: an existing k3s or kubeconfig is
-//! used instead of installing k3s, an existing config file is kept, and an
-//! existing service is restarted on the new binary. Linux with systemd, as
-//! root; everything else gets a clear message and no changes.
+//! used instead of installing k3s, an existing config file is kept, and the
+//! service restarts only when its binary, unit or configuration changed; a
+//! repeated run changes nothing. Linux with systemd, as root; everything else
+//! gets a clear message and no changes. `kuben setup --plan` shows what a run
+//! would do without doing it.
 //!
-//! What it leaves behind: the binary at `/usr/local/bin/kuben`, the system
-//! user `kuben`, `/etc/kuben/config.toml`, `/var/lib/kuben` (kubeconfig copy,
-//! setup token), the PostgreSQL role and database `kuben` (PostgreSQL from the
-//! distribution's packages when it was missing), `kuben.service`, and k3s
-//! when it installed it (marked, so `uninstall --purge` knows to remove it).
+//! Every run is recorded in the install journal ([`journal`]), with the owner
+//! of each resource: the binary at `/usr/local/bin/kuben`, the system user
+//! `kuben`, `/etc/kuben/config.toml`, `/var/lib/kuben` (kubeconfig copy, setup
+//! token, journal), the PostgreSQL role and database `kuben` (PostgreSQL from
+//! the distribution's packages when it was missing), `kuben.service`, a
+//! firewall rule, and k3s. `kuben uninstall` removes only what setup created;
+//! what was there before stays (I12).
 
 use std::{
     io::{Read as _, Write as _},
@@ -25,7 +29,11 @@ use anyhow::{Context as _, anyhow, bail};
 use clap::Args;
 use kuben_core::config::Config;
 
+use self::journal::{Book, Kind};
 use super::ui::Ui;
+
+pub mod journal;
+mod plan;
 
 pub const BIN: &str = "/usr/local/bin/kuben";
 pub const USER: &str = "kuben";
@@ -36,11 +44,15 @@ pub const LOCAL_DATABASE_URL: &str = "postgres:///kuben?host=/run/postgresql&use
 pub const CONFIG_DIR: &str = "/etc/kuben";
 pub const CONFIG_FILE: &str = "/etc/kuben/config.toml";
 pub const UNIT_FILE: &str = "/etc/systemd/system/kuben.service";
+const UNIT_NAME: &str = "kuben.service";
 pub const K3S_KUBECONFIG: &str = "/etc/rancher/k3s/k3s.yaml";
 pub const K3S_INSTALLER: &str = "https://get.k3s.io";
 pub const K3S_UNINSTALL: &str = "/usr/local/bin/k3s-uninstall.sh";
-/// Present when `kuben setup` installed k3s itself.
+/// Written by setup before the install journal existed, when it installed
+/// k3s itself; still honoured for such installs.
 pub const K3S_MARKER: &str = "/var/lib/kuben/.k3s-installed-by-kuben";
+/// The first line of the unit file setup writes.
+const UNIT_MARKER: &str = "# Written by `kuben setup`";
 pub const DOCS: &str = "https://kuben.teamtem.com/docs/getting-started/binary/";
 
 #[derive(Debug, Args)]
@@ -61,6 +73,9 @@ pub struct SetupOpts {
     /// Go ahead on warnings without asking.
     #[arg(long, short = 'y')]
     pub yes: bool,
+    /// Show what setup would do, and change nothing.
+    #[arg(long)]
+    pub plan: bool,
 }
 
 #[derive(Debug, Args)]
@@ -81,27 +96,103 @@ pub struct UninstallOpts {
 pub fn setup(opts: &SetupOpts) -> anyhow::Result<()> {
     let ui = Ui::new();
     ui.banner(super::VERSION);
+    if opts.plan {
+        plan::show(ui, opts);
+        return Ok(());
+    }
     report_download(ui);
     let host = preflight(ui, opts)?;
-    install_binary(ui)?;
-    let (uid, gid) = ensure_user(ui)?;
-    let kubeconfig = ensure_cluster(ui, opts, uid, gid)?;
+    // The journal lives in the state directory: whether that directory is
+    // new is known only before the journal is first saved.
+    let fresh_state = !Path::new(STATE_DIR).exists();
+    let mut book = Book::open(Path::new(STATE_DIR), user_ids(USER).map(|(_, gid)| gid))?;
+    if let Some(last) = book.journal().unfinished() {
+        let stopped = last
+            .steps
+            .iter()
+            .rev()
+            .find(|s| s.result == journal::StepResult::Failed)
+            .map_or_else(
+                || "was interrupted".to_owned(),
+                |s| format!("stopped at {}", s.id),
+            );
+        ui.note(&format!(
+            "The last run {stopped}; this run checks every step again and carries on."
+        ));
+    }
+    book.begin(super::VERSION)?;
+    let result = install(ui, opts, &host, fresh_state, &mut book);
+    book.finish(result.as_ref().err())?;
+    result?;
+    if !book.journal().last_run_changed() {
+        ui.note("Nothing changed: this server was already set up this way.");
+    }
+    Ok(())
+}
+
+fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut Book) -> anyhow::Result<()> {
+    adopt_earlier_install(book)?;
+    book.start("binary");
+    let binary_changed = install_binary(ui, book)?;
+    book.start("user");
+    let (uid, gid) = ensure_user(ui, fresh_state, book)?;
+    book.set_group(gid);
+    book.start("cluster");
+    let kubeconfig = ensure_cluster(ui, opts, uid, gid, book)?;
     let configured = std::fs::read_to_string(CONFIG_FILE).ok();
-    ensure_database(ui, configured.as_deref())?;
+    book.start("database");
+    ensure_database(ui, configured.as_deref(), book)?;
+    book.start("config");
     let port = choose_port(
         ui,
         opts.port,
         configured.as_deref().and_then(config_port),
         opts.yes,
     )?;
-    let fresh_config = write_config(ui, opts, &kubeconfig, configured.as_deref(), port)?;
+    let config_changed = write_config(ui, opts, &kubeconfig, configured.as_deref(), port, book)?;
     let cfg = Config::load().context("reading /etc/kuben/config.toml")?;
     let port = cfg.bind_port();
-    start_service(ui, port)?;
-    open_firewall(ui, port);
+    book.start("service");
+    start_service(ui, port, binary_changed || config_changed, book)?;
+    book.start("firewall");
+    open_firewall(ui, port, book)?;
     warn_web_ports(ui);
-    announce(ui, &cfg, uid, gid, fresh_config, &host)?;
+    announce(ui, &cfg, uid, gid, configured.is_none(), host)?;
     Ok(())
+}
+
+/// A server set up before the journal existed: its unit file (or k3s
+/// marker) shows setup made it, and it made the rest too — the binary, the
+/// user, the directories, the configuration and this server's own database.
+/// Recorded as Kuben's once, so `uninstall --purge` still removes them.
+fn adopt_earlier_install(book: &mut Book) -> anyhow::Result<()> {
+    let unit = std::fs::read_to_string(UNIT_FILE).ok();
+    let earlier = book.journal().resources.is_empty()
+        && (unit.as_deref().is_some_and(written_by_setup) || Path::new(K3S_MARKER).exists());
+    if !earlier {
+        return Ok(());
+    }
+    let local = data_home(std::fs::read_to_string(CONFIG_FILE).ok().as_deref()) == DataHome::Local;
+    let mut ours = vec![
+        (Kind::File, BIN),
+        (Kind::SystemUser, USER),
+        (Kind::Directory, STATE_DIR),
+        (Kind::Directory, CONFIG_DIR),
+        (Kind::File, CONFIG_FILE),
+        (Kind::SystemdUnit, UNIT_NAME),
+    ];
+    if local {
+        ours.extend([(Kind::PostgresRole, USER), (Kind::PostgresDatabase, USER)]);
+    }
+    for (kind, name) in ours {
+        book.claim(kind, name, true)?;
+    }
+    Ok(())
+}
+
+/// A unit file setup wrote (also before it carried [`UNIT_MARKER`]).
+fn written_by_setup(unit: &str) -> bool {
+    unit.starts_with(UNIT_MARKER) || unit.contains(&format!("ExecStart={BIN} serve"))
 }
 
 /// Port Kuben listens on when neither `--port` nor an install says otherwise.
@@ -270,14 +361,26 @@ fn preflight(ui: Ui, opts: &SetupOpts) -> anyhow::Result<Host> {
     Ok(host)
 }
 
-fn install_binary(ui: Ui) -> anyhow::Result<()> {
+/// `true` when the binary at [`BIN`] changed.
+fn install_binary(ui: Ui, book: &mut Book) -> anyhow::Result<bool> {
     let me = std::env::current_exe().context("locating the running binary")?;
     let target = Path::new(BIN);
+    let existed = target.exists();
+    let version = format!("v{}", super::VERSION);
+    // The installer put it there (install.sh records that download itself),
+    // or it is this very binary: nothing to copy.
+    let installed_now = std::env::var_os("KUBEN_INSTALLED").is_some();
     if same_file(&me, target) {
-        return Ok(()); // the installer put it there; nothing to say
+        book.claim(Kind::File, BIN, installed_now)?;
+        book.done(installed_now, format!("{version} at {BIN}"))?;
+        return Ok(installed_now);
+    }
+    if existed && std::fs::read(&me).ok() == std::fs::read(target).ok() {
+        book.claim(Kind::File, BIN, false)?;
+        book.done(false, format!("{version} at {BIN}, up to date"))?;
+        return Ok(false);
     }
     let step = ui.step("Installing the kuben binary");
-    let version = format!("v{}", super::VERSION);
     if let Some(dir) = target.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -287,13 +390,16 @@ fn install_binary(ui: Ui) -> anyhow::Result<()> {
         .with_context(|| format!("copying {} to {}", me.display(), staged.display()))?;
     set_mode(&staged, 0o755)?;
     std::fs::rename(&staged, target)?;
+    book.claim(Kind::File, BIN, !existed)?;
     step.done(format!("{version} → {BIN}"));
-    Ok(())
+    book.done(true, format!("{version} → {BIN}"))?;
+    Ok(true)
 }
 
-fn ensure_user(ui: Ui) -> anyhow::Result<(u32, u32)> {
+fn ensure_user(ui: Ui, fresh_state: bool, book: &mut Book) -> anyhow::Result<(u32, u32)> {
     let step = ui.step("Creating the kuben system user");
-    let ids = if let Some(ids) = user_ids(USER) {
+    let existed = user_ids(USER);
+    let ids = if let Some(ids) = existed {
         step.done("exists");
         ids
     } else {
@@ -311,10 +417,21 @@ fn ensure_user(ui: Ui) -> anyhow::Result<(u32, u32)> {
         step.done(format!("{USER} (uid {})", ids.0));
         ids
     };
-    std::fs::create_dir_all(STATE_DIR)?;
+    book.claim(Kind::SystemUser, USER, existed.is_none())?;
+    let mut changed = existed.is_none();
+    for dir in [STATE_DIR, CONFIG_DIR] {
+        let created = if dir == STATE_DIR {
+            fresh_state
+        } else {
+            !Path::new(dir).is_dir()
+        };
+        std::fs::create_dir_all(dir)?;
+        book.claim(Kind::Directory, dir, created)?;
+        changed |= created;
+    }
     set_mode(Path::new(STATE_DIR), 0o750)?;
     chown(Path::new(STATE_DIR), ids.0, ids.1)?;
-    std::fs::create_dir_all(CONFIG_DIR)?;
+    book.done(changed, format!("{USER} (uid {})", ids.0))?;
     Ok(ids)
 }
 
@@ -349,11 +466,12 @@ fn data_home(config: Option<&str>) -> DataHome {
 /// `kuben`. The role logs in over the Unix socket by peer authentication as
 /// the `kuben` system user, so it has no password; it owns its database and
 /// is no superuser, so row-level security applies to it.
-fn ensure_database(ui: Ui, configured: Option<&str>) -> anyhow::Result<()> {
+fn ensure_database(ui: Ui, configured: Option<&str>, book: &mut Book) -> anyhow::Result<()> {
     let step = ui.step("PostgreSQL");
     match data_home(configured) {
         DataHome::External => {
             step.done(format!("the database in {CONFIG_FILE}"));
+            book.done(false, "an external database")?;
             return Ok(());
         }
         DataHome::Sqlite => {
@@ -367,7 +485,8 @@ fn ensure_database(ui: Ui, configured: Option<&str>) -> anyhow::Result<()> {
         }
         DataHome::Local => {}
     }
-    if !postgres_installed() {
+    let installed = postgres_installed();
+    if !installed {
         let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
         let Some(packages) = packages_of(&os_release) else {
             step.fail("not installed");
@@ -379,16 +498,24 @@ fn ensure_database(ui: Ui, configured: Option<&str>) -> anyhow::Result<()> {
         ui.command(packages.describe());
         packages.install()?;
     }
+    book.claim(Kind::Package, "postgresql", !installed)?;
+    let was_running = service_is_active("postgresql");
     run(&["systemctl", "enable", "--now", "--quiet", "postgresql"])?;
     wait_for_postgres(Duration::from_mins(1))?;
-    if psql_as_postgres("SELECT 1 FROM pg_roles WHERE rolname = 'kuben'")?.trim() != "1" {
+    let role = psql_as_postgres("SELECT 1 FROM pg_roles WHERE rolname = 'kuben'")?.trim() != "1";
+    if role {
         psql_as_postgres("CREATE ROLE kuben LOGIN")?;
     }
-    if psql_as_postgres("SELECT 1 FROM pg_database WHERE datname = 'kuben'")?.trim() != "1" {
+    book.claim(Kind::PostgresRole, USER, role)?;
+    let database = psql_as_postgres("SELECT 1 FROM pg_database WHERE datname = 'kuben'")?.trim() != "1";
+    if database {
         psql_as_postgres("CREATE DATABASE kuben OWNER kuben")?;
     }
+    book.claim(Kind::PostgresDatabase, USER, database)?;
     let version = psql_as_postgres("SHOW server_version")?;
-    step.done(format!("PostgreSQL {}, role and database kuben", version.trim()));
+    let detail = format!("PostgreSQL {}, role and database kuben", version.trim());
+    step.done(&detail);
+    book.done(!installed || !was_running || role || database, detail)?;
     Ok(())
 }
 
@@ -491,7 +618,8 @@ fn psql_as_postgres(sql: &str) -> anyhow::Result<String> {
 
 /// The kubeconfig Kuben will use: a copy in the state directory, owned by
 /// the service user (k3s writes its own for root only).
-fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32) -> anyhow::Result<PathBuf> {
+fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32, book: &mut Book) -> anyhow::Result<PathBuf> {
+    let mut installed = false;
     let source = if let Some(path) = &opts.kubeconfig {
         let step = ui.step("Checking the cluster");
         std::fs::metadata(path).with_context(|| format!("cannot read {}", path.display()))?;
@@ -499,6 +627,8 @@ fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32) -> anyhow::Resul
         path.clone()
     } else if Path::new(K3S_KUBECONFIG).exists() {
         ui.done("Installing k3s", "already installed");
+        // Installs from before the journal left a marker when setup made k3s.
+        book.claim(Kind::Cluster, "k3s", Path::new(K3S_MARKER).exists())?;
         PathBuf::from(K3S_KUBECONFIG)
     } else if let Some(existing) = existing_kubeconfig() {
         ui.done(
@@ -511,6 +641,8 @@ fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32) -> anyhow::Resul
         bail!("no cluster found and --no-k3s given: pass --kubeconfig <file>");
     } else {
         install_k3s(ui)?;
+        book.claim(Kind::Cluster, "k3s", true)?;
+        installed = true;
         PathBuf::from(K3S_KUBECONFIG)
     };
 
@@ -520,9 +652,13 @@ fn ensure_cluster(ui: Ui, opts: &SetupOpts, uid: u32, gid: u32) -> anyhow::Resul
 
     let copy = Path::new(STATE_DIR).join("kubeconfig");
     let content = std::fs::read(&source).with_context(|| format!("reading {}", source.display()))?;
-    std::fs::write(&copy, content)?;
+    let copied = std::fs::read(&copy).ok().as_ref() != Some(&content);
+    if copied {
+        std::fs::write(&copy, content)?;
+    }
     set_mode(&copy, 0o600)?;
     chown(&copy, uid, gid)?;
+    book.done(installed || copied, format!("kubeconfig {}", source.display()))?;
     Ok(copy)
 }
 
@@ -544,7 +680,6 @@ fn install_k3s(ui: Ui) -> anyhow::Result<()> {
         ui.note(&tail(&output.stdout, &output.stderr, 12));
         bail!("k3s did not install; the lines above are its last output (journalctl -u k3s has more)");
     }
-    std::fs::write(K3S_MARKER, "installed by kuben setup\n").ok();
     let version = Command::new("k3s")
         .arg("--version")
         .output()
@@ -619,17 +754,24 @@ fn write_config(
     kubeconfig: &Path,
     existing: Option<&str>,
     port: u16,
+    book: &mut Book,
 ) -> anyhow::Result<bool> {
     let step = ui.step(format!("Writing {CONFIG_FILE}"));
     if let Some(text) = existing {
-        match config_port(text) {
+        book.claim(Kind::File, CONFIG_FILE, false)?;
+        let changed = match config_port(text) {
             Some(old) if old != port => {
                 std::fs::write(CONFIG_FILE, with_port(text, old, port))?;
                 step.done(format!("port {old} → {port}, everything else kept"));
+                true
             }
-            _ => step.done("kept; edit it to change the public URL"),
-        }
-        return Ok(false);
+            _ => {
+                step.done("kept; edit it to change the public URL");
+                false
+            }
+        };
+        book.done(changed, format!("port {port}"))?;
+        return Ok(changed);
     }
     let host = if opts.bind_local {
         "localhost".to_owned()
@@ -640,7 +782,9 @@ fn write_config(
     let content = config_template(bind_host, port, &host, kubeconfig);
     std::fs::write(CONFIG_FILE, content)?;
     set_mode(Path::new(CONFIG_FILE), 0o644)?;
+    book.claim(Kind::File, CONFIG_FILE, true)?;
     step.done(format!("port {port}"));
+    book.done(true, format!("port {port}"))?;
     Ok(true)
 }
 
@@ -704,11 +848,34 @@ fn config_template(bind_host: &str, port: u16, public_host: &str, kubeconfig: &P
     )
 }
 
-fn start_service(ui: Ui, port: u16) -> anyhow::Result<()> {
+/// Install the unit and (re)start the service: only when its binary, unit
+/// or configuration changed, or it is not running. A unit file someone else
+/// wrote is never replaced.
+fn start_service(ui: Ui, port: u16, changed: bool, book: &mut Book) -> anyhow::Result<()> {
     let step = ui.step("Starting kuben.service");
-    std::fs::write(UNIT_FILE, unit_template())?;
-    run(&["systemctl", "daemon-reload"])?;
+    let current = std::fs::read_to_string(UNIT_FILE).ok();
+    if let Some(unit) = &current
+        && !written_by_setup(unit)
+        && !book.journal().owns(Kind::SystemdUnit, UNIT_NAME)
+    {
+        step.fail("not written by kuben setup");
+        bail!(
+            "{UNIT_FILE} exists and was not written by kuben setup; move it aside, then run kuben setup again"
+        );
+    }
+    book.claim(Kind::SystemdUnit, UNIT_NAME, true)?;
+    let desired = unit_template();
+    let unit_changed = current.as_deref() != Some(desired.as_str());
+    if unit_changed {
+        std::fs::write(UNIT_FILE, &desired)?;
+        run(&["systemctl", "daemon-reload"])?;
+    }
     run(&["systemctl", "enable", "--quiet", "kuben"])?;
+    let restart = changed || unit_changed || !service_active();
+    if !restart {
+        step.done("running, unchanged");
+        return book.done(false, "running, unchanged");
+    }
     run(&["systemctl", "restart", "kuben"])?;
     match wait_for_http(port, "/livez", Duration::from_mins(1)) {
         Ok(()) => {}
@@ -726,7 +893,7 @@ fn start_service(ui: Ui, port: u16) -> anyhow::Result<()> {
         step.warn("running, not ready yet: still syncing with the cluster");
         ui.note(&service_problems(8));
     }
-    Ok(())
+    book.done(true, "restarted")
 }
 
 /// The service's latest warnings and errors, for a step that did not finish.
@@ -750,33 +917,101 @@ fn service_problems(lines: usize) -> String {
     )
 }
 
-fn open_firewall(ui: Ui, port: u16) {
+/// The host firewall that is active, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Firewall {
+    Ufw,
+    Firewalld,
+}
+
+fn active_firewall() -> Option<Firewall> {
+    let output = |program: &str, arg: &str| {
+        Command::new(program)
+            .arg(arg)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default()
+    };
+    if output("ufw", "status").starts_with("Status: active") {
+        Some(Firewall::Ufw)
+    } else if output("firewall-cmd", "--state").trim() == "running" {
+        Some(Firewall::Firewalld)
+    } else {
+        None
+    }
+}
+
+impl Firewall {
+    /// The journal's name of the rule opening `port`.
+    fn rule(self, port: u16) -> String {
+        match self {
+            Self::Ufw => format!("ufw:{port}/tcp"),
+            Self::Firewalld => format!("firewalld:{port}/tcp"),
+        }
+    }
+
+    fn is_open(self, port: u16) -> bool {
+        match self {
+            Self::Ufw => Command::new("ufw").arg("status").output().is_ok_and(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .any(|l| l.split_whitespace().next() == Some(&format!("{port}/tcp")))
+            }),
+            Self::Firewalld => Command::new("firewall-cmd")
+                .arg(format!("--query-port={port}/tcp"))
+                .status()
+                .is_ok_and(|s| s.success()),
+        }
+    }
+
+    fn open(self, port: u16) -> anyhow::Result<()> {
+        match self {
+            Self::Ufw => run(&["ufw", "allow", &format!("{port}/tcp")]).map(drop),
+            Self::Firewalld => run(&["firewall-cmd", "--permanent", &format!("--add-port={port}/tcp")])
+                .and_then(|_| run(&["firewall-cmd", "--reload"]))
+                .map(drop),
+        }
+    }
+
+    fn close(self, port: u16) -> anyhow::Result<()> {
+        match self {
+            Self::Ufw => run(&["ufw", "delete", "allow", &format!("{port}/tcp")]).map(drop),
+            Self::Firewalld => run(&[
+                "firewall-cmd",
+                "--permanent",
+                &format!("--remove-port={port}/tcp"),
+            ])
+            .and_then(|_| run(&["firewall-cmd", "--reload"]))
+            .map(drop),
+        }
+    }
+}
+
+fn open_firewall(ui: Ui, port: u16, book: &mut Book) -> anyhow::Result<()> {
     let label = format!("Opening port {port} in the firewall");
-    let ufw = Command::new("ufw").arg("status").output();
-    if let Ok(out) = ufw
-        && String::from_utf8_lossy(&out.stdout).starts_with("Status: active")
-    {
-        let step = ui.step(&label);
-        match run(&["ufw", "allow", &format!("{port}/tcp")]) {
-            Ok(_) => step.done("ufw"),
-            Err(e) => step.warn(format!("ufw failed: {e}")),
-        }
-        return;
+    let Some(firewall) = active_firewall() else {
+        ui.done(&label, "no host firewall is active");
+        return book.done(false, "no host firewall");
+    };
+    let rule = firewall.rule(port);
+    if firewall.is_open(port) {
+        book.claim(Kind::FirewallRule, &rule, false)?;
+        ui.done(&label, "already open");
+        return book.done(false, format!("{rule}, already open"));
     }
-    let firewalld = Command::new("firewall-cmd").arg("--state").output();
-    if let Ok(out) = firewalld
-        && String::from_utf8_lossy(&out.stdout).trim() == "running"
-    {
-        let step = ui.step(&label);
-        let added = run(&["firewall-cmd", "--permanent", &format!("--add-port={port}/tcp")])
-            .and_then(|_| run(&["firewall-cmd", "--reload"]));
-        match added {
-            Ok(_) => step.done("firewalld"),
-            Err(e) => step.warn(format!("firewalld failed: {e}")),
+    let step = ui.step(&label);
+    match firewall.open(port) {
+        Ok(()) => {
+            book.claim(Kind::FirewallRule, &rule, true)?;
+            step.done(&rule);
+            book.done(true, rule)
         }
-        return;
+        // A firewall problem never stops the install; it is reported.
+        Err(e) => {
+            step.warn(format!("{rule} failed: {e}"));
+            book.done(false, format!("{rule} failed: {e}"))
+        }
     }
-    ui.done(&label, "no host firewall is active");
 }
 
 fn announce(ui: Ui, cfg: &Config, uid: u32, gid: u32, fresh_config: bool, host: &Host) -> anyhow::Result<()> {
@@ -874,12 +1109,17 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
     if !is_root() {
         bail!("run it as root: sudo kuben uninstall");
     }
-    let k3s_ours = Path::new(K3S_MARKER).exists();
+    let mut book = Book::open(Path::new(STATE_DIR), None)?;
+    let owned = Owned::of(book.journal());
     if !opts.yes {
         let what = if opts.purge {
             format!(
                 "Remove Kuben, its data in {STATE_DIR}, {CONFIG_DIR}{}?",
-                if k3s_ours { " and the k3s it installed" } else { "" }
+                if owned.k3s {
+                    " and the k3s it installed"
+                } else {
+                    ""
+                }
             )
         } else {
             "Stop and remove kuben.service? (data and configuration stay)".to_owned()
@@ -891,55 +1131,169 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         }
     }
     let step = ui.step("Stopping kuben.service");
-    if Path::new(UNIT_FILE).exists() {
+    if Path::new(UNIT_FILE).exists() && owned.unit {
         run(&["systemctl", "disable", "--now", "--quiet", "kuben"]).ok();
         std::fs::remove_file(UNIT_FILE)?;
         run(&["systemctl", "daemon-reload"])?;
+        book.release(Kind::SystemdUnit, UNIT_NAME)?;
         step.done("removed");
+    } else if Path::new(UNIT_FILE).exists() {
+        step.warn("not written by kuben setup; left in place");
     } else {
         step.done("not installed");
     }
-    // Only this server's own database is dropped, never an external one.
-    let local_database = data_home(std::fs::read_to_string(CONFIG_FILE).ok().as_deref()) == DataHome::Local;
-    if opts.purge {
-        let step = ui.step("Deleting data and configuration");
-        std::fs::remove_dir_all(STATE_DIR).ok();
-        std::fs::remove_dir_all(CONFIG_DIR).ok();
-        step.done(format!("{STATE_DIR}, {CONFIG_DIR}"));
-        if local_database && which("psql").is_some() {
-            let step = ui.step("Dropping the PostgreSQL database and role kuben");
-            match psql_as_postgres("DROP DATABASE IF EXISTS kuben WITH (FORCE)")
-                .and_then(|_| psql_as_postgres("DROP ROLE IF EXISTS kuben"))
-            {
-                Ok(_) => step.done("PostgreSQL itself stays installed"),
-                Err(e) => step.warn(e.to_string()),
-            }
+    if !opts.purge {
+        ui.note(&format!(
+            "Kept: the PostgreSQL database kuben, {STATE_DIR}, {CONFIG_FILE}, {BIN}. `kuben uninstall --purge` \
+             removes what kuben setup created (PostgreSQL itself stays)."
+        ));
+        if owned.k3s {
+            ui.note("k3s stays as well; --purge removes it too.");
         }
-        if k3s_ours && Path::new(K3S_UNINSTALL).exists() {
-            let step = ui.step("Uninstalling k3s");
-            ui.command(K3S_UNINSTALL);
-            match Command::new(K3S_UNINSTALL).output() {
-                Ok(out) if out.status.success() => step.done(""),
-                Ok(out) => {
-                    step.warn("k3s-uninstall.sh failed");
-                    ui.note(&tail(&out.stdout, &out.stderr, 8));
-                }
-                Err(e) => step.warn(e.to_string()),
-            }
+        return Ok(());
+    }
+    purge(ui, &owned);
+    Ok(())
+}
+
+/// What `kuben uninstall --purge` may remove: what the journal says setup
+/// created. A server set up before the journal existed keeps the old rule:
+/// everything but a database of the operator's own, and k3s only with its
+/// marker.
+#[derive(Debug)]
+struct Owned {
+    unit: bool,
+    state: bool,
+    config: bool,
+    database: bool,
+    role: bool,
+    k3s: bool,
+    binary: bool,
+    user: bool,
+    firewall: Vec<String>,
+}
+
+impl Owned {
+    fn of(journal: &journal::Journal) -> Self {
+        let local = data_home(std::fs::read_to_string(CONFIG_FILE).ok().as_deref()) == DataHome::Local;
+        if journal.resources.is_empty() {
+            return Self {
+                unit: true,
+                state: true,
+                config: true,
+                database: local,
+                role: local,
+                k3s: Path::new(K3S_MARKER).exists(),
+                binary: true,
+                user: false,
+                firewall: Vec::new(),
+            };
         }
+        Self {
+            unit: journal.owns(Kind::SystemdUnit, UNIT_NAME),
+            state: journal.owns(Kind::Directory, STATE_DIR),
+            config: journal.owns(Kind::File, CONFIG_FILE),
+            // Never an external database, whatever the journal says.
+            database: local && journal.owns(Kind::PostgresDatabase, USER),
+            role: local && journal.owns(Kind::PostgresRole, USER),
+            k3s: journal.owns(Kind::Cluster, "k3s"),
+            binary: journal.owns(Kind::File, BIN),
+            user: journal.owns(Kind::SystemUser, USER),
+            firewall: journal
+                .resources
+                .iter()
+                .filter(|r| r.kind == Kind::FirewallRule && r.owner == journal::Owner::Kuben)
+                .map(|r| r.name.clone())
+                .collect(),
+        }
+    }
+}
+
+fn purge(ui: Ui, owned: &Owned) {
+    let step = ui.step("Deleting data and configuration");
+    let mut removed = Vec::new();
+    let mut kept = Vec::new();
+    for (path, ours) in [(CONFIG_FILE, owned.config), (STATE_DIR, owned.state)] {
+        let gone = if !ours {
+            false
+        } else if Path::new(path).is_dir() {
+            std::fs::remove_dir_all(path).is_ok()
+        } else {
+            std::fs::remove_file(path).is_ok()
+        };
+        if gone {
+            removed.push(path);
+        } else if Path::new(path).exists() {
+            kept.push(path);
+        }
+    }
+    // The configuration directory goes only when setup made it and nothing
+    // else lives there.
+    std::fs::remove_dir(CONFIG_DIR).ok();
+    step.done(if kept.is_empty() {
+        removed.join(", ")
+    } else {
+        format!(
+            "{}; kept (not created by kuben setup): {}",
+            removed.join(", "),
+            kept.join(", ")
+        )
+    });
+    if (owned.database || owned.role) && which("psql").is_some() {
+        let step = ui.step("Dropping what kuben setup created in PostgreSQL");
+        let mut statements = Vec::new();
+        if owned.database {
+            statements.push("DROP DATABASE IF EXISTS kuben WITH (FORCE)");
+        }
+        if owned.role {
+            statements.push("DROP ROLE IF EXISTS kuben");
+        }
+        match statements
+            .iter()
+            .try_for_each(|sql| psql_as_postgres(sql).map(drop))
+        {
+            Ok(()) => step.done("PostgreSQL itself stays installed"),
+            Err(e) => step.warn(e.to_string()),
+        }
+    }
+    for rule in &owned.firewall {
+        let closed = rule
+            .split_once(':')
+            .and_then(|(tool, port)| Some((tool, port.strip_suffix("/tcp")?.parse::<u16>().ok()?)))
+            .map(|(tool, port)| match tool {
+                "ufw" => Firewall::Ufw.close(port),
+                _ => Firewall::Firewalld.close(port),
+            });
+        match closed {
+            Some(Ok(())) => ui.done("Closing the firewall port", rule),
+            Some(Err(e)) => ui.warn("Closing the firewall port", format!("{rule}: {e}")),
+            None => {}
+        }
+    }
+    if owned.k3s && Path::new(K3S_UNINSTALL).exists() {
+        let step = ui.step("Uninstalling k3s");
+        ui.command(K3S_UNINSTALL);
+        match Command::new(K3S_UNINSTALL).output() {
+            Ok(out) if out.status.success() => step.done(""),
+            Ok(out) => {
+                step.warn("k3s-uninstall.sh failed");
+                ui.note(&tail(&out.stdout, &out.stderr, 8));
+            }
+            Err(e) => step.warn(e.to_string()),
+        }
+    }
+    if owned.user && user_ids(USER).is_some() {
+        let step = ui.step("Removing the kuben system user");
+        match run(&["userdel", USER]) {
+            Ok(_) => step.done(USER),
+            Err(e) => step.warn(e.to_string()),
+        }
+    }
+    if owned.binary {
         let step = ui.step("Removing the binary");
         std::fs::remove_file(BIN).ok();
         step.done(BIN);
-    } else {
-        ui.note(&format!(
-            "Kept: the PostgreSQL database kuben, {STATE_DIR}, {CONFIG_FILE}, {BIN}. `kuben uninstall --purge` \
-             removes them (PostgreSQL itself stays)."
-        ));
-        if k3s_ours {
-            ui.note("k3s stays as well; --purge removes it too.");
-        }
     }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -948,7 +1302,8 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
 
 fn unit_template() -> String {
     format!(
-        "[Unit]\n\
+        "{UNIT_MARKER}; `kuben uninstall` removes it.\n\
+         [Unit]\n\
          Description=Kuben\n\
          Documentation={DOCS}\n\
          After=network-online.target k3s.service postgresql.service\n\
@@ -1086,8 +1441,12 @@ fn which(program: &str) -> Option<PathBuf> {
 }
 
 fn service_active() -> bool {
+    service_is_active("kuben")
+}
+
+fn service_is_active(unit: &str) -> bool {
     Command::new("systemctl")
-        .args(["is-active", "--quiet", "kuben"])
+        .args(["is-active", "--quiet", unit])
         .status()
         .is_ok_and(|s| s.success())
 }

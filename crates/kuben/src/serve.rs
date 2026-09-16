@@ -58,6 +58,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
         );
     }
+    record_install_journal(&cfg, &store).await;
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 
@@ -302,6 +303,34 @@ fn spawn_discovery(
         move |token| discovery::run(registry.clone(), store.clone(), sender.clone(), token),
     ));
     (task, facts)
+}
+
+/// Copy the installer's journal into SQL (M2.6), when `kuben setup` left one
+/// on this host. Best effort: the host file stays the installer's record.
+async fn record_install_journal(cfg: &Config, store: &kuben_store::Store) {
+    use crate::cli::setup::journal::{JOURNAL, Journal};
+
+    let Some(journal) = Journal::peek(&cfg.state_dir().join(JOURNAL)) else {
+        return;
+    };
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .ok()
+        .map(|h| h.trim().to_owned())
+        .or_else(|| std::env::var("HOSTNAME").ok())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "kuben".into());
+    let recorded = match serde_json::to_value(&journal) {
+        Ok(value) => store.record_install_journal(&host, &value).await,
+        Err(e) => {
+            tracing::warn!(error = %e, "cannot serialize the install journal");
+            return;
+        }
+    };
+    match recorded {
+        Ok(true) => tracing::info!(%host, runs = journal.runs.len(), "install journal recorded"),
+        Ok(false) => {}
+        Err(e) => tracing::warn!(error = %e, "cannot record the install journal"),
+    }
 }
 
 /// Leader-election settings, or `None` when `kube.leader_election` is off.

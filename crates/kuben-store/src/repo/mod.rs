@@ -8,6 +8,7 @@ mod audit;
 mod capabilities;
 mod catalog;
 mod deployments;
+mod installs;
 mod lifecycle;
 mod materialize;
 mod operations;
