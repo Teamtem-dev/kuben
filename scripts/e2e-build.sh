@@ -294,7 +294,7 @@ pid=$!
 eventually 60 "kuben readyz" curl -fsS "http://127.0.0.1:${PORT}/readyz"
 
 step "Login and setup project"
-expect 200 POST /auth/login "{\"email\":\"admin@kuben.dev\",\"password\":\"$PASSWORD\"}"
+expect 200 POST /auth/login "{\"email\":\"admin@kuben.local\",\"password\":\"$PASSWORD\"}"
 expect 201 POST /projects "{\"name\":\"$P\",\"slug\":\"$P\"}"
 expect 201 POST "/projects/$P/environments" "{\"name\":\"$ENV\",\"slug\":\"$ENV\",\"type\":\"development\"}"
 
