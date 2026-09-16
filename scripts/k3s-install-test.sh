@@ -157,7 +157,8 @@ refused=$(curl -sS -o "$work/body" -w '%{http_code}' -X POST -H 'content-type: a
 [[ $refused == 403 && $(jq -r .code "$work/body") == insecure_transport ]] ||
   fail "plain HTTP setup from ${hub} → HTTP ${refused}: $(cat "$work/body")"
 eventually 300 "https://${CONSOLE} through the Gateway" kcurl -fsS -o /dev/null --max-time 5 "https://${CONSOLE}/"
-kcurl -fsS "https://${CONSOLE}/" | grep -qi '<html' || fail "the console page is not served over HTTPS"
+# The page itself (the embedded console, or the notice of a build without it).
+kcurl -fsS "https://${CONSOLE}/" | grep -qi '<title>Kuben</title>' || fail "the console page is not served over HTTPS"
 kcurl -fsS "$BASE/setup" | jq -e '.needed and .secure' >/dev/null || fail "GET /setup over HTTPS: $(kcurl -sS "$BASE/setup")"
 expect 200 POST /setup "$first_admin"
 # The hub publishes the agent's enrollment for the organization, which
