@@ -14,12 +14,12 @@ use std::{path::Path, process::Command, time::Duration};
 
 use anyhow::{Context as _, bail};
 use k8s_openapi::{
-    api::apps::v1::Deployment,
+    api::{apps::v1::Deployment, batch::v1::Job},
     apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition,
 };
 use kube::{
     Api, Client, ResourceExt,
-    api::{DeleteParams, DynamicObject, GroupVersionKind, Patch, PatchParams},
+    api::{DeleteParams, DynamicObject, GroupVersionKind, ListParams, Patch, PatchParams},
     config::KubeConfigOptions,
     discovery::{Scope, pinned_kind},
 };
@@ -393,6 +393,9 @@ pub fn ensure_platform(
     let result: anyhow::Result<(bool, Vec<String>)> = runtime.block_on(async {
         let mut changed = false;
         let mut notes = Vec::new();
+        if !eventually(Duration::from_mins(3), || k3s_chart_done(&client, "traefik-crd")).await {
+            notes.push("k3s's traefik-crd chart has not finished yet".into());
+        }
         let crds = ensure_gateway_api(&client, book).await?;
         changed |= crds.ends_with("installed");
         notes.push(crds);
@@ -419,7 +422,7 @@ pub fn ensure_platform(
             notes.push(format!("GatewayClass {GATEWAY_CLASS} is not accepted yet"));
         }
         let webhook = eventually(Duration::from_mins(5), || {
-            deployment_available(&client, "cert-manager", "cert-manager-webhook")
+            deployment_available(&client, "cert-manager", "app.kubernetes.io/component=webhook")
         })
         .await;
         if let Some(email) = wanted.acme_email {
@@ -712,15 +715,50 @@ async fn gateway_class_accepted(client: &Client) -> bool {
         .is_some_and(|c| c.iter().any(|c| c["type"] == "Accepted" && c["status"] == "True"))
 }
 
-async fn deployment_available(client: &Client, namespace: &str, name: &str) -> bool {
+/// A Deployment matching `selector` in `namespace` is Available (the
+/// release prefixes cert-manager's names, so they are found by label).
+async fn deployment_available(client: &Client, namespace: &str, selector: &str) -> bool {
     Api::<Deployment>::namespaced(client.clone(), namespace)
-        .get_opt(name)
+        .list(&ListParams::default().labels(selector))
+        .await
+        .is_ok_and(|list| {
+            list.items.into_iter().any(|d| {
+                d.status
+                    .and_then(|s| s.conditions)
+                    .is_some_and(|c| c.iter().any(|c| c.type_ == "Available" && c.status == "True"))
+            })
+        })
+}
+
+/// k3s installs its bundled charts with Jobs; `traefik-crd` brings CRDs of
+/// its own (the Gateway API's among them on some releases) and fails on any
+/// it did not create. So setup waits for it before it adds what is missing.
+/// True when there is no such chart or its Job completed.
+async fn k3s_chart_done(client: &Client, chart: &str) -> bool {
+    let helm_chart = json!({
+        "apiVersion": "helm.cattle.io/v1",
+        "kind": "HelmChart",
+        "metadata": { "name": chart, "namespace": "kube-system" },
+    });
+    let Ok(object) = object(helm_chart) else {
+        return true;
+    };
+    let Ok(api) = dynamic_api(client, &object).await else {
+        return true; // Not k3s.
+    };
+    let Ok(Some(live)) = api.get_opt(chart).await else {
+        return true;
+    };
+    let Some(job) = live.data.pointer("/status/jobName").and_then(Value::as_str) else {
+        return false; // Not started yet.
+    };
+    Api::<Job>::namespaced(client.clone(), "kube-system")
+        .get_opt(job)
         .await
         .ok()
         .flatten()
-        .and_then(|d| d.status)
-        .and_then(|s| s.conditions)
-        .is_some_and(|c| c.iter().any(|c| c.type_ == "Available" && c.status == "True"))
+        .and_then(|j| j.status)
+        .is_some_and(|s| s.succeeded.unwrap_or(0) > 0)
 }
 
 /// `kuben uninstall --purge` on a cluster setup did not install: remove the

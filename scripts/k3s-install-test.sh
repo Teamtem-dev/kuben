@@ -89,7 +89,10 @@ step "kuben setup on a host with nothing installed"
 setup "$BIN"
 [[ $(journal '.runs[-1].succeeded') == true ]] || fail "setup did not succeed: $(journal '.runs[-1]')"
 sudo k3s --version | grep -q 'v1.36.4+k3s1' || fail "k3s is not the pinned release: $(sudo k3s --version)"
-for resource in "cluster k3s" "kubernetesObject crd/gateway-api" "kubernetesObject helmchartconfig/kube-system/traefik" \
+# k3s's traefik-crd chart may bring the Gateway API CRDs itself; either way
+# setup records who did.
+[[ $(owner_of kubernetesObject crd/gateway-api) != none ]] || fail "the Gateway API CRDs are not recorded"
+for resource in "cluster k3s" "kubernetesObject helmchartconfig/kube-system/traefik" \
   "kubernetesObject helmchart/kube-system/kuben-cert-manager" "kubernetesObject namespace/kuben-system" \
   "kubernetesObject kubenconfig/kuben" "kubernetesObject agent/kuben-system/kuben-agent" \
   "kubernetesObject clusterissuer/letsencrypt" "kubernetesObject console/kuben-console/kuben-console"; do
@@ -101,7 +104,7 @@ step "the platform: Traefik's Gateway, cert-manager, Kuben's Gateway and agent"
 eventually 300 "GatewayClass traefik accepted" bash -c \
   "sudo k3s kubectl get gatewayclass traefik -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}' | grep -qx True"
 eventually 300 "cert-manager webhook available" \
-  sudo k3s kubectl -n cert-manager wait deploy/cert-manager-webhook --for=condition=Available --timeout=5s
+  sudo k3s kubectl -n cert-manager wait deploy -l app.kubernetes.io/component=webhook --for=condition=Available --timeout=5s
 [[ $(kubectl get kubenconfig kuben -o jsonpath='{.spec.gatewayClassName}') == traefik ]] || fail "KubenConfig has no gateway class"
 eventually 180 "Kuben's Gateway programmed" bash -c \
   "sudo k3s kubectl get kubenconfig kuben -o jsonpath='{.status.conditions[?(@.type==\"Gateway\")].status}' | grep -qx True"
