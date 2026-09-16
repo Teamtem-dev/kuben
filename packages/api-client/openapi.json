@@ -1381,6 +1381,66 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Why the app is or is not reachable: the GatewayClass and the Gateway, the\nissuer, ports 80 and 443 (from the server), the route, each host's\ncertificate and DNS, and the agent that delivers it.",
+        "operationId": "getAppDoctor",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorReport"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
       "get": {
         "tags": [
@@ -3148,6 +3208,58 @@
           "phase": {
             "type": "string",
             "description": "`planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,\n`succeeded`, `failed`, `superseded`, …"
+          }
+        }
+      },
+      "DoctorCheck": {
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,\n`certificate`, `dns` or `agent`."
+          },
+          "subject": {
+            "type": "string",
+            "description": "What was checked (a host, a class, a port), when there are several."
+          },
+          "status": {
+            "type": "string",
+            "description": "`ok`, `warn`, `unknown` (could not be checked) or `fail`."
+          },
+          "detail": {
+            "type": "string"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to do about it."
+          }
+        }
+      },
+      "DoctorReport": {
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "The worst status of the checks; `unknown` is never `ok`."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoctorCheck"
+            }
           }
         }
       },

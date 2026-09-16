@@ -205,6 +205,14 @@ served_over_https() {
   [[ $got =~ ^301\ https://${host}(:443)?/$ ]] || fail "plain HTTP for ${host} is not redirected to HTTPS: ${got}"
 }
 
+# doctor_status <app> <check id> [subject]: that check's status in the app's
+# Doctor ("absent" when it has none); the report stays in $work/body.
+doctor_status() {
+  expect 200 GET "$APP/$1/doctor"
+  jq -r --arg id "$2" --arg subject "${3:-}" \
+    '[.checks[] | select(.id == $id and ($subject == "" or .subject == $subject)) | .status][0] // "absent"' "$work/body"
+}
+
 start_kuben() {
   local agent_env=()
   if [[ -n $AGENT_IMAGE ]]; then
@@ -300,6 +308,19 @@ expect 200 GET "$APP/web"
 if [[ -n $GATEWAY_CLASS ]]; then
   step "M2.4: web answers over HTTPS from outside the cluster"
   served_over_https web
+
+  step "M2.13: Doctor explains web's exposure"
+  web_host=$(app_host web)
+  for id in gateway-class gateway issuer route; do
+    [[ $(doctor_status web "$id") == ok ]] || fail "doctor ${id}: $(cat "$work/body")"
+  done
+  [[ $(doctor_status web certificate "$web_host") == ok ]] || fail "doctor certificate: $(cat "$work/body")"
+  # ${BASE_DOMAIN} has no DNS record: a failure with a hint, so the report
+  # is not ok; nothing that could not be checked reads as ok.
+  [[ $(doctor_status web dns "$web_host") == fail ]] || fail "doctor dns: $(cat "$work/body")"
+  jq -e '.status == "fail" and all(.checks[]; .status == "ok" or .hint != null or .status == "unknown")' \
+    "$work/body" >/dev/null || fail "doctor report: $(cat "$work/body")"
+  [[ $(doctor_status web agent) == absent ]] || fail "an app the controller delivers has no agent check"
 fi
 
 step "logs"
@@ -535,6 +556,7 @@ owner=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.ownerRe
 # Its status comes from the agent's report (no App object), and a restart is a
 # run of the same release that stamps the pod template.
 eventually 60 "edge ready via API" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/edge | jq -e '.app.ready'"
+[[ $(doctor_status edge agent) == ok ]] || fail "doctor agent: $(cat "$work/body")"
 before=$(kubectl -n "$NS" get deployment edge-web -o jsonpath='{.metadata.generation}')
 expect 202 POST "$APP/edge/restart"
 eventually 90 "edge restart rolled out" bash -c "[[ \$(kubectl -n $NS get deployment edge-web -o jsonpath='{.metadata.generation}') -gt $before ]]"

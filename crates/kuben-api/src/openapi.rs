@@ -54,6 +54,7 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::releases::rollback))
         .routes(routes!(apps::jobs::run))
         .routes(routes!(apps::domains::domains))
+        .routes(routes!(apps::doctor::doctor))
         .routes(routes!(apps::promote::promote))
         .routes(routes!(apps::deployments::start))
         .routes(routes!(apps::deployments::get))
@@ -107,6 +108,7 @@ mod tests {
             &format!("{app}/rollback"),
             &format!("{app}/run"),
             &format!("{app}/domains"),
+            &format!("{app}/doctor"),
             &format!("{app}/promote"),
             "/api/v1/projects/{project}/environments/{environment}/secrets",
             "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}",

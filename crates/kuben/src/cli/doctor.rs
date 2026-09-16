@@ -9,6 +9,7 @@ use kuben_core::config::{Config, KubeCfg, in_cluster};
 use crate::cli::DoctorOpts;
 use kuben_platform::{
     discovery::{self, ClusterFacts, Readiness},
+    doctor,
     registry::{ClusterRegistry, redact_credentials},
 };
 
@@ -41,7 +42,7 @@ pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
     let mut r = Report { failed: false };
     println!("{}", crate::cli::version_string());
     if opts.cluster {
-        cluster_checks(&mut r, &cfg).await;
+        cluster_checks(&mut r, &cfg, false).await;
         if r.failed {
             anyhow::bail!("doctor found failures");
         }
@@ -86,7 +87,7 @@ pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
         ),
     }
 
-    cluster_checks(&mut r, &cfg).await;
+    cluster_checks(&mut r, &cfg, true).await;
 
     if let Some(warning) = cfg.insecure_cookie_warning(in_cluster()) {
         r.line(Level::Warn, "cookies", warning);
@@ -110,7 +111,7 @@ pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
 }
 
 /// The cluster: reachable, and what each feature needs of it.
-async fn cluster_checks(r: &mut Report, cfg: &Config) {
+async fn cluster_checks(r: &mut Report, cfg: &Config, installed: bool) {
     if let Some((path, e)) = unreadable_kubeconfig(&cfg.kube) {
         let path = path.display();
         r.line(
@@ -122,7 +123,7 @@ async fn cluster_checks(r: &mut Report, cfg: &Config) {
             ),
         );
     } else {
-        check_cluster(r, cfg).await;
+        check_cluster(r, cfg, installed).await;
     }
 }
 
@@ -142,7 +143,7 @@ fn unreadable_kubeconfig(kube: &KubeCfg) -> Option<(PathBuf, std::io::Error)> {
         .find_map(|path| std::fs::File::open(&path).err().map(|e| (path, e)))
 }
 
-async fn check_cluster(r: &mut Report, cfg: &Config) {
+async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
     match ClusterRegistry::connect(&cfg.kube).await {
         Ok(registry) => {
             let client = registry.primary();
@@ -154,6 +155,9 @@ async fn check_cluster(r: &mut Report, cfg: &Config) {
             check_capabilities(r, &facts);
             check_features(r, &facts);
             check_permissions(r, &client).await;
+            if installed {
+                check_exposure(r, &client, &facts).await;
+            }
         }
         Err(e) if !cfg.kube.required => {
             r.line(
@@ -225,6 +229,34 @@ fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
             "metrics-server",
             "not found — install metrics-server for autoscaling",
         );
+    }
+}
+
+/// Kuben's Gateway, its issuer and the public ports, as the API's app Doctor
+/// judges them (M2.13). A missing piece blocks only exposure: a warning.
+async fn check_exposure(r: &mut Report, client: &kube::Client, facts: &ClusterFacts) {
+    let platform = doctor::read_platform(client).await;
+    if platform.gateway.is_none() {
+        return; // `feature: public routes` says what is missing.
+    }
+    let gateway = doctor::read_gateway(client, &platform).await;
+    let mut checks = doctor::platform_checks(Some(facts), &platform, &gateway);
+    let ports: &[u16] = if platform.tls { &[80, 443] } else { &[80] };
+    for &port in ports {
+        checks.push(doctor::port_check(
+            port,
+            doctor::probe_port(gateway.addresses(), port).await,
+        ));
+    }
+    for check in checks {
+        let name = format!("{} {}", check.id, check.subject);
+        let (level, detail) = match check.status {
+            doctor::Status::Ok => (Level::Ok, check.detail),
+            doctor::Status::Unknown => (Level::Warn, format!("unknown: {}", check.detail)),
+            doctor::Status::Warn | doctor::Status::Fail => (Level::Warn, check.detail),
+        };
+        let hint = check.hint.map(|h| format!(" — {h}")).unwrap_or_default();
+        r.line(level, name.trim_end(), format!("{detail}{hint}"));
     }
 }
 

@@ -5,6 +5,7 @@
 //! * [`releases`] — release history and rollback (scenario 5);
 //! * [`jobs`] — scheduled runs, "run now" (scenario 7);
 //! * [`domains`] — DNS checks of an app's hostnames (scenario 9);
+//! * [`doctor`] — why an app is or is not reachable, check by check;
 //! * [`promote`] — promotion between environments (scenario 10);
 //! * [`deployments`] — deploy acceptance by digest or release;
 //! * [`spec`] — request bodies, validation and spec construction. Cross-field
@@ -21,6 +22,7 @@
 
 pub mod crud;
 pub mod deployments;
+pub mod doctor;
 pub mod domains;
 pub mod jobs;
 pub mod logs;

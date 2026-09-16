@@ -313,6 +313,27 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Why the app is or is not reachable: the GatewayClass and the Gateway, the
+         *     issuer, ports 80 and 443 (from the server), the route, each host's
+         *     certificate and DNS, and the agent that delivers it.
+         */
+        get: operations["getAppDoctor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/domains": {
         parameters: {
             query?: never;
@@ -818,6 +839,25 @@ export type components = {
              *     `succeeded`, `failed`, `superseded`, …
              */
             phase: string;
+        };
+        DoctorCheck: {
+            /**
+             * @description `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
+             *     `certificate`, `dns` or `agent`.
+             */
+            id: string;
+            /** @description What was checked (a host, a class, a port), when there are several. */
+            subject: string;
+            /** @description `ok`, `warn`, `unknown` (could not be checked) or `fail`. */
+            status: string;
+            detail: string;
+            /** @description What to do about it. */
+            hint?: string | null;
+        };
+        DoctorReport: {
+            /** @description The worst status of the checks; `unknown` is never `ok`. */
+            status: string;
+            checks: components["schemas"]["DoctorCheck"][];
         };
         DomainCheck: {
             host: string;
@@ -2176,6 +2216,40 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppDoctor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DoctorReport"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

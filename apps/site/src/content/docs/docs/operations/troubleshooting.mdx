@@ -9,7 +9,8 @@ sidebar:
 
 | Tool | Use |
 |---|---|
-| `kuben doctor` | prerequisites: database, cluster, Gateway API, cert-manager, metrics-server |
+| `kuben doctor` | prerequisites: database, cluster, Gateway API, cert-manager, metrics-server; on an installed server also Kuben's Gateway, its issuer and ports 80 and 443 |
+| `GET …/apps/{app}/doctor` | why one app is or is not reachable (below) |
 | `GET /api/v1/healthz/details` | per-subsystem status (sign-in required) |
 | `/livez`, `/readyz` | Kubernetes probes. `/readyz` stays `503` until the informers have synced |
 | `kubectl -n kuben-system get lease kuben-controller` | which pod runs the controllers (`holderIdentity`); the others report `controllers: standby` |
@@ -69,6 +70,25 @@ curl -N -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/logs?
 ```
 
 `…/events` lists the Kubernetes events of the app's own objects, newest first: pods, Deployments, ReplicaSets, Jobs and CronJobs, its route, and the certificates of its hosts (image pulls, failed probes, scheduling, HTTP-01 challenges). Kubernetes keeps events for about an hour.
+
+## An app's Doctor
+
+`…/apps/{app}/doctor` runs every check between a visitor and the app and says, for each, `ok`, `warn`, `fail`, or `unknown` when it could not be checked, with what to do about it. The report's own status is the worst of them; a check that could not be made never counts as `ok`.
+
+| Check | Fine when |
+|---|---|
+| `gateway-class` | the GatewayClass is accepted by its controller |
+| `gateway` | Kuben's Gateway is programmed; its addresses are shown |
+| `issuer` | the ClusterIssuer is ready (without one, apps are plain HTTP: a warning) |
+| `port-80`, `port-443` | the Gateway accepts connections on its address, tried from the server (443 only with TLS) |
+| `route` | the Gateway accepted the app's route |
+| `certificate` | each host's certificate is issued; a host served without TLS is a warning |
+| `dns` | each host resolves to the Gateway's address |
+| `agent` | for an app its cluster's agent delivers: the agent is linked and was heard from lately |
+
+```bash
+curl -b cookies "$KUBEN/api/v1/projects/shop/environments/prod/apps/web/doctor"
+```
 
 ## Kuben's own logs
 

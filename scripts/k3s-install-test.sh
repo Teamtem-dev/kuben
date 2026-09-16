@@ -168,6 +168,16 @@ eventually 120 "https://${host} through the Gateway" https_ok
 redirect=$(curl -sS -o /dev/null --max-time 5 -w '%{http_code} %{redirect_url}' --resolve "${host}:80:127.0.0.1" "http://${host}/")
 [[ $redirect =~ ^301\ https://${host}(:443)?/$ ]] || fail "plain HTTP is not redirected: ${redirect}"
 
+step "Doctor: the platform, the public ports and the agent are fine; DNS is not"
+expect 200 GET /projects/shop/environments/prod/apps/web/doctor
+doctor() { jq -r --arg id "$1" '[.checks[] | select(.id == $id) | .status] | unique | join(",")' "$work/body"; }
+for id in gateway-class gateway issuer port-80 port-443 route certificate agent; do
+  [[ $(doctor "$id") == ok ]] || fail "doctor ${id}: $(cat "$work/body")"
+done
+[[ $(doctor dns) == fail ]] || fail "doctor dns (${DOMAIN} has no record): $(cat "$work/body")"
+sudo -u kuben /usr/local/bin/kuben doctor 2>&1 | tee "$work/doctor.txt" >/dev/null || true
+grep -q '^\[OK  \] port-443 443: the Gateway accepts connections' "$work/doctor.txt" || fail "kuben doctor: $(cat "$work/doctor.txt")"
+
 step "setup again changes nothing and leaves others' objects alone"
 kubectl apply -f - >/dev/null <<'YAML'
 apiVersion: cert-manager.io/v1
