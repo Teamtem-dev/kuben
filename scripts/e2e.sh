@@ -438,6 +438,7 @@ printf '%s\n' "$cli_token" | cli login "http://127.0.0.1:${PORT}" --name e2e --p
 [[ $(stat -c %a "$work/contexts.json" 2>/dev/null || stat -f %Lp "$work/contexts.json") == 600 ]] ||
   fail "the context file is readable by others"
 grep -q "$cli_token" "$work/cli.txt" && fail "kuben login printed the token"
+eventually 60 "app ready after drift fix" bash -c "curl -fsS -b '$work/cookies' $BASE$APP/web | jq -e '.app.ready'"
 cli apps | grep -qE "^${P}/dev/web +ready" || fail "kuben apps: $(cli apps 2>&1)"
 cli status web --json | jq -e '.app.ready and (.doctor.checks | length > 0)' >/dev/null ||
   fail "kuben status: $(cli status web --json 2>&1)"
