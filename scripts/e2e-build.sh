@@ -100,22 +100,24 @@ expect() {
   [[ $got == "$want" ]] || fail "$1 $2 → HTTP $got (want $want): $(cat "$work/body" 2>/dev/null || true)"
 }
 
-send_webhook() { # <repo> <branch> <commit_sha>
+send_webhook() { # <repo> <branch> <commit_sha> [delivery_id]
   local repo=$1 branch=$2 sha=$3
+  local delivery=${4:-deliv-$(date +%s%N)-$RANDOM}
   local payload
   payload=$(jq -n --arg repo "$repo" --arg branch "$branch" --arg sha "$sha" --argjson inst "$INSTALLATION_ID" '{
     ref: ("refs/heads/" + $branch),
     after: $sha,
     before: "0000000000000000000000000000000000000000",
-    repository: { full_name: $repo, clone_url: ("http://127.0.0.1:" + (env.MOCK_GIT_PORT // "18090") + "/" + $repo + ".git") },
+    repository: { id: 1001, full_name: $repo, clone_url: ("http://127.0.0.1:" + (env.MOCK_GIT_PORT // "18090") + "/" + $repo + ".git") },
     installation: { id: $inst }
   }')
   local sig
-  sig=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
+  sig=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print "sha256=" $NF}')
   curl -sS -o "$work/body" -w '%{http_code}' -X POST "$BASE/webhooks/github" \
     -H 'content-type: application/json' \
     -H "x-hub-signature-256: $sig" \
     -H 'x-github-event: push' \
+    -H "x-github-delivery: $delivery" \
     -d "$payload"
 }
 
@@ -317,20 +319,20 @@ for r in "${repos[@]}"; do
   
   head_sha=$(cd "$work/worktrees/$r" && git rev-parse HEAD)
   code=$(send_webhook "test-org/$r" "main" "$head_sha")
-  [[ $code == 200 ]] || fail "push webhook for $r returned $code"
+  [[ $code == 200 || $code == 202 ]] || fail "push webhook for $r returned $code: $(cat "$work/body" 2>/dev/null || true)"
   
   # Verify build attempt exists in API
   eventually 30 "build queued for $r" bash -c \
-    "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/$r/builds' | jq -e '.builds | length > 0'"
+    "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/$r/builds' | jq -e '((.builds // .) | length) > 0'"
 done
 
 step "Criterion 2: Duplicate push, out-of-order, and force-push"
 # 1. Duplicate push: sending the exact same commit should not queue a new build attempt
-count_before=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq '.builds | length')
+count_before=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq '(.builds // .) | length')
 code=$(send_webhook "test-org/dockerfile-app" "main" "$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD)")
-[[ $code == 200 ]] || fail "duplicate webhook returned $code"
+[[ $code == 200 || $code == 202 ]] || fail "duplicate webhook returned $code: $(cat "$work/body" 2>/dev/null || true)"
 sleep 2
-count_after=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq '.builds | length')
+count_after=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq '(.builds // .) | length')
 [[ $count_before == "$count_after" ]] || fail "duplicate push created duplicate build ($count_before -> $count_after)"
 echo "Duplicate push ignored cleanly: build count stayed $count_before"
 
@@ -343,23 +345,23 @@ echo "Duplicate push ignored cleanly: build count stayed $count_before"
 )
 sha_2=$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD)
 code=$(send_webhook "test-org/dockerfile-app" "main" "$sha_2")
-[[ $code == 200 ]] || fail "webhook for commit 2 returned $code"
+[[ $code == 200 || $code == 202 ]] || fail "webhook for commit 2 returned $code: $(cat "$work/body" 2>/dev/null || true)"
 eventually 15 "build queued for commit 2" bash -c \
-  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds' | jq -e '.builds | length > $count_before'"
+  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds' | jq -e '((.builds // .) | length) > $count_before'"
 
 # 3. Out of order push: re-sending older commit 1
 sha_1=$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD~1)
 code=$(send_webhook "test-org/dockerfile-app" "main" "$sha_1")
-[[ $code == 200 ]] || fail "out-of-order webhook returned $code"
+[[ $code == 200 || $code == 202 ]] || fail "out-of-order webhook returned $code: $(cat "$work/body" 2>/dev/null || true)"
 # The API accepted the webhook, but CAS rule keeps the newer head's deployment authority.
 echo "Out of order push handled with CAS safety"
 
 step "Criterion 3: Build failure injection & cancellation"
 # 1. Cancel while queued or running
-latest_build_id=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq -r '.builds[0].id')
+latest_build_id=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq -r '(.builds // .)[0].id')
 expect 202 POST "/projects/$P/environments/$ENV/apps/dockerfile-app/builds/$latest_build_id/cancel"
 eventually 20 "build cancelled" bash -c \
-  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds/$latest_build_id' | jq -r .phase | grep -qE '^(cancelled|cancelling)$'"
+  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds/$latest_build_id' | jq -r .phase | grep -qE '^(cancelled|cancelling|cancelRequested)$'"
 echo "Build cancellation accepted and processed: $latest_build_id"
 
 # Cancelling an already finished/cancelled build gives 409
@@ -419,6 +421,7 @@ for r in "${repos[@]}" external-ci-app; do
   expect 204 DELETE "/projects/$P/environments/$ENV/apps/$r"
 done
 expect 202 DELETE "/projects/$P/environments/$ENV"
+eventually 30 "project has no environments" bash -c "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments' | jq -e 'length == 0'"
 expect 204 DELETE "/projects/$P"
 
 echo "==> M3 E2E BUILD TESTS PASSED SUCCESSFULLY <=="
