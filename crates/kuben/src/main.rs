@@ -20,6 +20,7 @@ fn main() -> anyhow::Result<()> {
     let quiet = matches!(
         args.command,
         cli::Command::Setup(_)
+            | cli::Command::CopySelf(_)
             | cli::Command::Status(_)
             | cli::Command::Login(_)
             | cli::Command::Apps(_)
@@ -37,6 +38,7 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         cli::Command::Setup(opts) => cli::setup::setup(&opts),
+        cli::Command::CopySelf(opts) => cli::copy_self(&opts),
         cli::Command::Status(opts) => match opts.app.clone() {
             None => cli::setup::status(),
             Some(app) => serve::block_on(&runtime, cli::client::status(opts, &app)),
@@ -49,15 +51,21 @@ fn main() -> anyhow::Result<()> {
         cli::Command::Uninstall(opts) => cli::setup::uninstall(&opts),
         cli::Command::Serve(_) => serve::run(cfg),
         cli::Command::Migrate => serve::block_on(&runtime, async move {
-            let store = kuben_store::Store::connect(&cfg.database).await?;
+            let store = kuben_store::Store::connect_unmigrated(&cfg.database).await?;
+            cli::upgrade::migrate(&cfg, &store).await?;
             tracing::info!(backend = store.backend(), "migrations applied");
             store.close().await?;
             Ok(())
         }),
+        cli::Command::UpgradeCheck(opts) => serve::block_on(&runtime, cli::upgrade::check(cfg, opts)),
         cli::Command::Doctor(opts) => serve::block_on(&runtime, cli::doctor::run(cfg, opts)),
         cli::Command::ResetAdmin(opts) => serve::block_on(&runtime, cli::admin::reset(cfg, opts)),
         cli::Command::SetupToken => bootstrap::print_setup_token(&cfg),
         cli::Command::AgentToken(opts) => serve::block_on(&runtime, cli::agent::token(cfg, opts)),
+        cli::Command::SupportBundle(opts) => {
+            let path = args.config.clone();
+            serve::block_on(&runtime, cli::support::run(cfg, opts, path.as_deref()))
+        }
         cli::Command::Backup(opts) => serve::block_on(&runtime, cli::backup::run(cfg, opts)),
         cli::Command::Restore(opts) => serve::block_on(&runtime, cli::backup::restore(cfg, opts)),
         cli::Command::Version(opts) => {

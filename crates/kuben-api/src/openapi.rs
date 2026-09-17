@@ -7,7 +7,10 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     auth,
-    routes::{apps, audit, environments, git, health, members, projects, secrets, templates, tokens},
+    routes::{
+        access, apps, audit, ci, controls, environments, git, health, incidents, members, policy, projects,
+        registries, secrets, templates, tokens, vulnerabilities,
+    },
     state::ApiState,
 };
 
@@ -23,8 +26,11 @@ use crate::{
         (name = "projects", description = "Projects"),
         (name = "environments", description = "Environments (one namespace each)"),
         (name = "apps", description = "Apps, rollouts, releases, logs, scheduled runs and promotion"),
-        (name = "secrets", description = "Write-only environment secrets"),
+        (name = "secrets", description = "Write-only environment secrets and registry logins"),
+        (name = "security", description = "Vulnerability exceptions"),
+        (name = "incidents", description = "Incidents and signed webhooks"),
         (name = "git", description = "GitHub App installations for Git sources"),
+        (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
         (name = "tokens", description = "Personal API tokens for CI/CD"),
         (name = "members", description = "Organization members and roles"),
@@ -49,6 +55,11 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::crud::get, apps::crud::update, apps::crud::delete))
         .routes(routes!(apps::crud::restart))
         .routes(routes!(apps::crud::hand_over))
+        .routes(routes!(apps::export::export))
+        .routes(routes!(apps::export::detach))
+        .routes(routes!(apps::export::list_detached))
+        .routes(routes!(apps::export::get_detached))
+        .routes(routes!(apps::export::release_detached))
         .routes(routes!(apps::logs::logs))
         .routes(routes!(apps::logs::events))
         .routes(routes!(apps::releases::releases))
@@ -59,14 +70,48 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::promote::promote))
         .routes(routes!(apps::deployments::start, apps::deployments::list))
         .routes(routes!(apps::deployments::get))
+        .routes(routes!(apps::scans::get))
+        .routes(routes!(apps::scans::sbom))
+        .routes(routes!(apps::approvals::get))
+        .routes(routes!(apps::approvals::approve))
+        .routes(routes!(apps::approvals::reject))
+        .routes(routes!(policy::get, policy::put))
+        .routes(routes!(controls::get_project_owner, controls::put_project_owner))
+        .routes(routes!(controls::get_app_owner, controls::put_app_owner))
+        .routes(routes!(controls::list_freezes, controls::create_freeze))
+        .routes(routes!(controls::lift_freeze))
+        .routes(routes!(controls::list_silences, controls::create_silence))
+        .routes(routes!(controls::lift_silence))
+        .routes(routes!(controls::pause))
+        .routes(routes!(controls::resume))
+        .routes(routes!(controls::emergency_rollback))
+        .routes(routes!(access::list_project))
+        .routes(routes!(access::put_project, access::remove_project))
+        .routes(routes!(access::list_environment))
+        .routes(routes!(access::put_environment, access::remove_environment))
         .routes(routes!(apps::source::get, apps::source::put))
         .routes(routes!(apps::source::sync))
         .routes(routes!(apps::builds::list))
         .routes(routes!(apps::builds::get))
         .routes(routes!(apps::builds::cancel))
         .routes(routes!(git::list, git::link))
+        .routes(routes!(ci::list, ci::create))
+        .routes(routes!(ci::revoke))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
+        .routes(routes!(secrets::revisions))
+        .routes(routes!(secrets::revoke))
+        .routes(routes!(registries::list))
+        .routes(routes!(registries::put, registries::delete))
+        .routes(routes!(incidents::list))
+        .routes(routes!(incidents::acknowledge))
+        .routes(routes!(incidents::resolve))
+        .routes(routes!(incidents::list_endpoints, incidents::create_endpoint))
+        .routes(routes!(incidents::disable_endpoint))
+        .routes(routes!(incidents::ping))
+        .routes(routes!(incidents::deliveries))
+        .routes(routes!(vulnerabilities::list, vulnerabilities::create))
+        .routes(routes!(vulnerabilities::revoke))
         .routes(routes!(templates::list))
         .routes(routes!(templates::deploy))
         .routes(routes!(tokens::list, tokens::create))
@@ -123,6 +168,16 @@ mod tests {
             &format!("{app}/builds/{{build}}"),
             &format!("{app}/builds/{{build}}/cancel"),
             "/api/v1/git/installations",
+            "/api/v1/ci/trust-policies",
+            "/api/v1/ci/trust-policies/{policy}",
+            &format!("{app}/deployments/{{run}}/approval"),
+            &format!("{app}/deployments/{{run}}/approve"),
+            &format!("{app}/deployments/{{run}}/reject"),
+            "/api/v1/projects/{project}/environments/{environment}/policy",
+            "/api/v1/projects/{project}/members",
+            "/api/v1/projects/{project}/members/{member}",
+            "/api/v1/projects/{project}/environments/{environment}/members",
+            "/api/v1/projects/{project}/environments/{environment}/members/{member}",
             "/api/v1/projects/{project}/environments/{environment}/secrets",
             "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}",
             "/api/v1/projects/{project}/environments/{environment}/templates/{template}",

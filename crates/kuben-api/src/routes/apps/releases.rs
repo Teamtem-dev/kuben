@@ -132,6 +132,7 @@ pub fn rollback_spec(current: &AppSpec, revision: AppSpec) -> AppSpec {
         env: revision.env,
         domains: current.domains.clone(),
         volumes: current.volumes.clone(),
+        image_pull_secrets: Vec::new(),
     }
 }
 
@@ -190,8 +191,10 @@ pub async fn rollback(
         expected: a.app.desired_generation,
         reason: RunReason::Rollback,
         reference: format!("{project}/{environment}/{app}"),
+        chain: a.chain(),
+        environment: (a.env.id(), a.env.env.quota.as_ref()),
     };
-    deploy(&mut tenant, &authz, change).await?;
+    deploy(&state, &mut tenant, &authz, change).await?;
     let record = tenant
         .app(a.env.id(), a.slug())
         .await?

@@ -8,7 +8,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use kuben_core::{Error, perm::Perm};
+use kuben_core::{Error, perm::Perm, policy::EnvironmentPolicy};
 use kuben_crd::Quota;
 use kuben_platform::{controller::resources::namespace_name, projection::EnvironmentView};
 use kuben_store::repo::{ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, EnvironmentKind, EnvironmentRecord, Subject};
@@ -170,11 +170,16 @@ fn quota(input: Option<QuotaInput>) -> ApiResult<Option<serde_json::Value>> {
     let Some(q) = input else {
         return Ok(None);
     };
+    // Admission reads the same quantities (M4.5).
     if let Some(cpu) = &q.cpu {
         validate::quantity("quota.cpu", cpu)?;
+        kuben_core::capacity::cpu_millis(cpu)
+            .ok_or_else(|| Error::Validation(format!("quota.cpu `{cpu}` is not a CPU quantity")))?;
     }
     if let Some(mem) = &q.memory {
         validate::quantity("quota.memory", mem)?;
+        kuben_core::capacity::bytes(mem)
+            .ok_or_else(|| Error::Validation(format!("quota.memory `{mem}` is not a memory quantity")))?;
     }
     let quota = Quota {
         cpu: q.cpu,
@@ -228,6 +233,7 @@ pub async fn create(
     let (_, actor) = request::actor(&authz);
     let what = format!("environment `{}`", body.name);
     let mut tenant = state.store.tenant(p.org).await?;
+    super::apps::admission::admit_environment(&state, &mut tenant).await?;
     let id = tenant
         .create_environment_typed(
             p.id(),
@@ -243,6 +249,13 @@ pub async fn create(
         .create_placement(p.id(), id, cluster, &namespace)
         .await
         .map_err(|e| request::duplicate(e, &what))?;
+    // Protection is recorded, never inferred later: production starts with
+    // one approval by someone other than the requester (M4.1).
+    let policy = EnvironmentPolicy::initial(body.env_type == EnvType::Production);
+    tenant
+        .set_environment_policy(p.id(), id, &policy, &actor)
+        .await?
+        .ok_or_else(taken)?;
     tenant
         .request(
             ENVIRONMENT_APPLY,

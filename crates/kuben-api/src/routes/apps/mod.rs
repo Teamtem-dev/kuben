@@ -8,6 +8,7 @@
 //! * [`doctor`] — why an app is or is not reachable, check by check;
 //! * [`promote`] — promotion between environments (scenario 10);
 //! * [`deployments`] — deploy acceptance by digest or release;
+//! * [`export`] — export and detach (M4.11);
 //! * [`source`] — the Git repository and branch an app builds from (M3);
 //! * [`builds`] — the app's builds, their outcome, release and run (M3);
 //! * [`spec`] — request bodies, validation and spec construction. Cross-field
@@ -22,15 +23,19 @@
 //! the agent's last report, from SQL). An image given as a tag is resolved to a
 //! digest at its registry first (option A).
 
+pub mod admission;
+pub mod approvals;
 pub mod builds;
 pub mod crud;
 pub mod deployments;
 pub mod doctor;
 pub mod domains;
+pub mod export;
 pub mod jobs;
 pub mod logs;
 pub mod promote;
 pub mod releases;
+pub mod scans;
 pub mod source;
 pub mod spec;
 
@@ -161,6 +166,9 @@ pub struct AppDto {
     /// Whether the app can be reached through the gateway, apart from
     /// whether it runs (null while it has no route).
     pub exposure: Option<ExposureDto>,
+    /// Why delivery is paused, while it is: new runs wait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused: Option<String>,
 }
 
 /// How an app is reached through the gateway.
@@ -268,6 +276,7 @@ impl AppDto {
                 .collect(),
             created_at: v.created_at.clone(),
             exposure: None,
+            paused: None,
         }
     }
 
@@ -294,6 +303,7 @@ impl AppDto {
             dto.message = view.and_then(|v| v.message.clone());
         }
         dto.created_at = Some(request::timestamp(record.created_at));
+        dto.paused = record.paused.as_ref().map(|(_, reason)| reason.clone());
         dto
     }
 }
@@ -371,6 +381,7 @@ fn empty_spec() -> AppSpec {
         env: Vec::new(),
         domains: Vec::new(),
         volumes: Vec::new(),
+        image_pull_secrets: Vec::new(),
     }
 }
 
@@ -405,12 +416,25 @@ pub(crate) fn config_of(spec: &AppSpec) -> Result<Value, Error> {
     Ok(config)
 }
 
-/// Resolve `image` to a digest at its registry (option A).
-pub(crate) async fn resolve(state: &ApiState, image: &str) -> ApiResult<Resolved> {
-    state.images.resolve(image).await.map_err(|e| match e {
-        ResolveError::Unreachable { .. } => ApiError(Error::Unavailable(e.to_string())),
-        _ => ApiError(Error::Validation(e.to_string())),
-    })
+/// Resolve `image` to a digest at its registry (option A), pulling with
+/// `e`'s login for that registry when it has one.
+pub(crate) async fn resolve(state: &ApiState, e: &EnvScope, image: &str) -> ApiResult<Resolved> {
+    let login = match crate::oci::parse(image) {
+        // A digest needs no registry.
+        Ok(reference) if matches!(reference.reference, crate::oci::Reference::Tag(_)) => {
+            let mut tenant = state.store.tenant(e.project.org).await?;
+            crate::routes::secrets::registry_login(state, &mut tenant, e, &reference.registry).await?
+        }
+        _ => None,
+    };
+    state
+        .images
+        .resolve_as(image, login.as_ref())
+        .await
+        .map_err(|e| match e {
+            ResolveError::Unreachable { .. } => ApiError(Error::Unavailable(e.to_string())),
+            _ => ApiError(Error::Validation(e.to_string())),
+        })
 }
 
 /// What a deployment runs: a newly resolved image, or an existing release.
@@ -433,11 +457,30 @@ pub(crate) struct Change<'a> {
     pub reason: RunReason,
     /// `project/environment/app`, for the audit record.
     pub reference: String,
+    /// Where the change lands, for the environment's deploy role.
+    pub chain: kuben_core::authz::ScopeChain,
+    /// The environment and its quota, for admission.
+    pub environment: (kuben_core::ids::EnvironmentId, Option<&'a Value>),
 }
 
 /// Record `change` as the app's newest configuration and start a deployment
 /// run of it, in `tenant`'s transaction.
-pub(crate) async fn deploy(tenant: &mut Tenant, authz: &Authz, change: Change<'_>) -> ApiResult<()> {
+pub(crate) async fn deploy(
+    state: &ApiState,
+    tenant: &mut Tenant,
+    authz: &Authz,
+    change: Change<'_>,
+) -> ApiResult<()> {
+    approvals::ensure_may_deploy(tenant, authz, change.target, &change.chain).await?;
+    let (environment, quota) = change.environment;
+    let placement = admission::Placement {
+        environment,
+        quota,
+        target: change.target,
+    };
+    for warning in admission::admit(state, tenant, placement, change.spec).await? {
+        tracing::info!(target = %change.reference, %warning, "admitted with a warning");
+    }
     let (_, actor) = request::actor(authz);
     let config = config_of(change.spec)?;
     let missing = || Error::NotFound("the app".into());
@@ -460,6 +503,11 @@ pub(crate) async fn deploy(tenant: &mut Tenant, authz: &Authz, change: Change<'_
             tenant.create_release(change.project, &release).await?.0
         }
     };
+    if change.reason.carries_new_code() {
+        for warning in admission::scan_gate(tenant, change.target, release).await? {
+            tracing::info!(target = %change.reference, %warning, "deployed with a vulnerability warning");
+        }
+    }
     let lifecycle_uid = tenant
         .target_state(change.target)
         .await?
@@ -488,10 +536,33 @@ pub(crate) fn started(started: Started) -> ApiResult<()> {
         Started::Accepted { .. } | Started::Replayed(_) => Ok(()),
         Started::Rejected(reject) => Err(Error::Conflict(reject.to_string()).into()),
         Started::NotFound => Err(Error::NotFound("that release of this app".into()).into()),
+        Started::SecretRevoked => Err(secret_revoked().into()),
+        Started::VulnerabilityBlocked => Err(vulnerability_blocked().into()),
+        Started::Frozen => Err(frozen().into()),
         Started::KeyReused(_) => {
             Err(Error::Internal("a deployment without a key was a replay".into()).into())
         }
     }
+}
+
+/// A run refused because a secret it references has a revoked current
+/// revision.
+pub(crate) fn secret_revoked() -> Error {
+    Error::Conflict(
+        "a secret this app references has its current revision revoked: set a new value first".into(),
+    )
+}
+
+/// A run refused because the environment is frozen.
+pub(crate) fn frozen() -> Error {
+    Error::Conflict(
+        "the environment is frozen: only an emergency rollback passes until the freeze ends".into(),
+    )
+}
+
+/// A run refused by the environment's vulnerability gate.
+pub(crate) fn vulnerability_blocked() -> Error {
+    Error::Conflict("the environment's vulnerability gate refuses this release".into())
 }
 
 /// Create the app `name` from `spec` in environment `e` (shared by
@@ -514,7 +585,7 @@ pub(crate) async fn create_app(
         .image
         .as_deref()
         .ok_or_else(|| Error::Validation("an app needs an image".into()))?;
-    let resolved = resolve(state, image).await?;
+    let resolved = resolve(state, e, image).await?;
     let placement = e
         .env
         .placement
@@ -542,8 +613,10 @@ pub(crate) async fn create_app(
         expected: Generation(0),
         reason: RunReason::Deploy,
         reference: format!("{}/{}/{name}", e.project.slug(), e.short_name()),
+        chain: e.chain(),
+        environment: (e.id(), e.env.quota.as_ref()),
     };
-    deploy(&mut tenant, authz, change).await?;
+    deploy(state, &mut tenant, authz, change).await?;
     let record = tenant
         .app(e.id(), name)
         .await?
@@ -587,6 +660,7 @@ mod tests {
             image: Some("nginx:1.27".into()),
             delivery: Delivery::Controller,
             runtime: None,
+            paused: None,
         }
     }
 

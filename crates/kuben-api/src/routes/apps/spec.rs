@@ -364,6 +364,7 @@ pub(super) fn spec_from_create(body: &CreateApp) -> Result<AppSpec, Error> {
         env: body.env.iter().map(to_crd_env).collect(),
         domains: to_domains(&body.domains),
         volumes: to_crd_volumes(&body.volumes),
+        image_pull_secrets: Vec::new(),
     })
 }
 

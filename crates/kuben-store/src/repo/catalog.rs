@@ -32,7 +32,7 @@ const ENVIRONMENTS: &str = "SELECT e.id, e.project_id, e.slug, e.name, \
        AND ($3::text IS NULL OR e.slug = $3) \
      ORDER BY e.slug";
 const APPS: &str = "SELECT t.id AS target_id, a.id AS application_id, a.slug, a.name, pl.namespace, \
-     t.legacy_uid, t.deleting, t.lifecycle_uid, t.desired_generation, t.created_at, \
+     t.legacy_uid, t.deleting, t.lifecycle_uid, t.desired_generation, t.created_at, t.paused_at, t.pause_reason, \
      c.id AS config_revision_id, c.config::text AS config, r.id AS release_id, \
      COALESCE(r.source ->> 'image', (r.source ->> 'image_repository') || '@' || (r.artifacts ->> 'web')) AS image, \
      t.delivery, o.generation AS observed_generation, o.phase AS observed_phase, o.reason AS observed_reason, \
@@ -88,6 +88,8 @@ pub struct AppRecord {
     pub lifecycle_uid: Uuid,
     pub desired_generation: Generation,
     pub created_at: i64,
+    /// Delivery is paused (M4.9): since when, and why.
+    pub paused: Option<(i64, String)>,
     /// The newest configuration revision: the App spec without its image.
     pub config_revision: Option<ConfigRevisionId>,
     pub config: Option<Value>,
@@ -174,6 +176,8 @@ struct AppRow {
     lifecycle_uid: Uuid,
     desired_generation: i64,
     created_at: i64,
+    paused_at: Option<i64>,
+    pause_reason: Option<String>,
     config_revision_id: Option<Uuid>,
     config: Option<String>,
     release_id: Option<Uuid>,
@@ -262,6 +266,9 @@ impl AppRow {
             lifecycle_uid: self.lifecycle_uid,
             desired_generation: Generation(counter(self.desired_generation)?),
             created_at: self.created_at,
+            paused: self
+                .paused_at
+                .map(|at| (at, self.pause_reason.unwrap_or_default())),
             config_revision: self.config_revision_id.map(ConfigRevisionId::from_uuid),
             config: json(self.config)?,
             release: self.release_id.map(ReleaseId::from_uuid),

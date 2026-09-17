@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, and how configuration is loaded.
+description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, upgrade-check, support-bundle, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, and how configuration is loaded.
 ---
 
 The `kuben` binary is the server, the operator's tool, and a client of any Kuben server ([below](#client-commands)). Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
@@ -145,25 +145,52 @@ kuben status
 Removes `kuben.service`. The PostgreSQL database `kuben`, `/var/lib/kuben`, `/etc/kuben` and the binary stay, so a later `kuben setup` finds everything again.
 
 ```bash
-sudo kuben uninstall [--purge] [--yes]
+sudo kuben uninstall [--purge [--keep-apps]] [--yes]
 ```
 
 `--purge` also removes **what `kuben setup` created, according to its journal**: `/var/lib/kuben`, the configuration, the binary, the system user, the database and role `kuben`, the firewall rule, and k3s. What was there before setup first ran stays: a database or role `kuben` you created yourself, a k3s you installed, a rule you opened. PostgreSQL itself stays installed, and an external database is never touched. A server set up before the journal existed keeps the earlier rule: the database and role are dropped when they are this server's, and k3s goes only when setup installed it.
 
+`--keep-apps` (with `--purge`) removes Kuben but keeps the apps running. The cluster stays, even a k3s that setup installed. So do the Gateway's namespace, the Traefik settings, the ClusterIssuer, and the apps' namespaces, Secrets and volumes. At the end, the command lists what is left. See [Support bundles and leaving Kuben](/docs/operations/support-and-exit/).
+
 ## `backup`
 
-Exports every `Project`, `Environment` and `App` (and the `KubenConfig`) as YAML into a directory. Secret values and app volumes are deliberately **not** included; see [Backup and restore](/docs/operations/backup-restore/).
+Backs up the database with `pg_dump` into a new directory `kuben-<time>` under `backup.dir`. The directory holds the dump and a manifest with versions, the schema version, a checksum and the key fingerprints. `--include-keyring` also copies the secret keyring into the backup. Older backups beyond `--keep` are removed. See [Backup and restore](/docs/operations/backup-restore/).
 
 ```bash
-kuben backup [--out ./kuben-backup]
+kuben backup [--out /backups] [--include-keyring] [--keep 7]
 ```
 
 ## `restore`
 
-Applies a directory produced by `backup`: CRDs first, then the objects with their `ownerReference`s re-pointed at the new `Project` uids, then the namespaces.
+Restores a backup into an empty database. `--check` only verifies that the backup is intact and restorable.
 
 ```bash
-kuben restore --from ./kuben-backup
+kuben restore --from /backups/kuben-20260917T020000Z [--check]
+```
+
+## `upgrade-check`
+
+Checks, without changing anything, whether this binary may upgrade the installation. Run it before the new version replaces the old one. See [Upgrading](/docs/operations/upgrading/).
+
+```bash
+kuben upgrade-check [--major]
+```
+
+## `support-bundle`
+
+Writes a local support bundle containing:
+
+- versions;
+- allowlisted configuration;
+- `doctor` output;
+- database counts;
+- the cluster state;
+- with `--logs`, Kuben's own logs.
+
+Nothing is uploaded. `--preview` shows what the bundle would hold and writes nothing.
+
+```bash
+kuben support-bundle [--preview] [--logs [--log-lines 500]] [--out DIR] [--keep 3]
 ```
 
 ## `version`

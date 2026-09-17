@@ -19,11 +19,14 @@ import {
   createApp,
   type DeployedTemplate,
   deleteEnvironment,
+  deleteRegistryLogin,
   deleteSecret,
   deployTemplate,
   environmentQuery,
   projectQuery,
+  putRegistryLogin,
   putSecret,
+  registriesQuery,
   secretsQuery,
   templatesQuery,
 } from '../lib/api'
@@ -121,6 +124,8 @@ export function EnvironmentPage() {
       <Templates project={project} environment={environment} />
 
       <Secrets project={project} environment={environment} />
+
+      <RegistryLogins project={project} environment={environment} />
 
       <div className="border-line border-t pt-6">
         <ConfirmDelete
@@ -297,7 +302,12 @@ function Secrets({ project, environment }: { project: string; environment: strin
               <li key={s.name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <span className="font-mono text-sm">{s.name}</span>
-                  <p className="truncate text-subtle text-xs">{s.keys.join(', ')}</p>
+                  <p className="truncate text-subtle text-xs">
+                    {s.keys.join(', ')}
+                    {s.revision != null && ` · revision ${s.revision}`}
+                    {s.storage === 'cluster' && ' · stored in the cluster'}
+                    {s.revoked && ' · revoked: set a new value before deploying'}
+                  </p>
                 </div>
                 <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(s.name)}>
                   Remove
@@ -323,7 +333,7 @@ function Secrets({ project, environment }: { project: string; environment: strin
               label="Keys"
               name="data"
               placeholder="url=postgres://…"
-              hint="One key=value per line. Saving replaces the whole secret."
+              hint="One key=value per line. Saving stores a new encrypted revision and rolls it out to the apps that use it."
             />
           </div>
           <div className="flex items-center gap-3 sm:col-span-3">
@@ -331,6 +341,99 @@ function Secrets({ project, environment }: { project: string; environment: strin
               {save.isPending ? 'Saving…' : 'Save secret'}
             </Button>
             {formError && <ErrorNote error={new Error(formError)} />}
+            <ErrorNote error={save.error ?? remove.error} />
+          </div>
+        </form>
+      </div>
+    </Card>
+  )
+}
+
+function RegistryLogins({ project, environment }: { project: string; environment: string }) {
+  const queryClient = useQueryClient()
+  const logins = useQuery({ ...registriesQuery(project, environment), retry: false })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['registries', project, environment] })
+  const save = useMutation({
+    mutationFn: ({
+      name,
+      ...login
+    }: {
+      name: string
+      registry: string
+      username: string
+      password: string
+    }) => putRegistryLogin(project, environment, name, login),
+    onSuccess: refresh,
+  })
+  const remove = useMutation({
+    mutationFn: (name: string) => deleteRegistryLogin(project, environment, name),
+    onSuccess: refresh,
+  })
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const formElement = event.currentTarget
+    const form = new FormData(formElement)
+    const field = (key: string) => String(form.get(key) ?? '').trim()
+    save.mutate(
+      {
+        name: field('name'),
+        registry: field('registry'),
+        username: field('username'),
+        password: field('password'),
+      },
+      { onSuccess: () => formElement.reset() },
+    )
+  }
+
+  return (
+    <Card title="Registry logins">
+      <div className="space-y-4">
+        {logins.isError ? (
+          <ErrorNote error={logins.error} />
+        ) : logins.data?.length ? (
+          <ul className="divide-y divide-line-soft">
+            {logins.data.map((l) => (
+              <li key={l.name} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <span className="font-mono text-sm">{l.registry}</span>
+                  <p className="truncate text-subtle text-xs">
+                    {l.name} · revision {l.revision}
+                    {l.revoked && ' · revoked: set a new login before deploying'}
+                  </p>
+                </div>
+                <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(l.name)}>
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-subtle text-sm">
+            No registry logins. Images from private registries need one; passwords are never shown again.
+          </p>
+        )}
+        <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
+          <TextField
+            label="Name"
+            name="name"
+            required
+            pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+            placeholder="ghcr"
+          />
+          <TextField label="Registry" name="registry" required placeholder="ghcr.io" />
+          <TextField label="Username" name="username" required autoComplete="off" />
+          <TextField
+            label="Password or token"
+            name="password"
+            type="password"
+            required
+            autoComplete="new-password"
+          />
+          <div className="flex items-center gap-3 sm:col-span-2">
+            <Button type="submit" variant="secondary" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save login'}
+            </Button>
             <ErrorNote error={save.error ?? remove.error} />
           </div>
         </form>

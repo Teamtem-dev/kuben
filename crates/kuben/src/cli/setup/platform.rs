@@ -822,8 +822,25 @@ async fn k3s_chart_done(client: &Client, chart: &str, expected: bool) -> bool {
 /// `kuben uninstall --purge` on a cluster setup did not install: remove the
 /// objects setup created that belong only to Kuben. The Gateway API CRDs and
 /// cert-manager stay: other workloads may use them by now (I12).
-pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal) -> Vec<&'static str> {
+///
+/// With `keep_apps` (M4.11) the cluster stays whoever installed it. The apps
+/// keep what they need to be served: the namespace with the Gateway, the
+/// Traefik settings and the ClusterIssuer that renews their certificates.
+pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal, keep_apps: bool) -> Vec<&'static str> {
     let mut kept = Vec::new();
+    let serving = [NAMESPACE, TRAEFIK_CONFIG, CLUSTER_ISSUER];
+    if keep_apps {
+        kept.extend(
+            [
+                (NAMESPACE, "namespace kuben-system with the Gateway"),
+                (TRAEFIK_CONFIG, "the Traefik settings"),
+                (CLUSTER_ISSUER, "ClusterIssuer letsencrypt"),
+            ]
+            .into_iter()
+            .filter(|(name, _)| journal.owns(Kind::KubernetesObject, name))
+            .map(|(_, what)| what),
+        );
+    }
     if journal.owns(Kind::KubernetesObject, CRDS) {
         kept.push("the Gateway API CRDs");
     }
@@ -849,7 +866,8 @@ pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal) -> Vec<&'stat
             (NAMESPACE, namespace()),
         ]
         .into_iter()
-        .filter(|(name, _)| journal.owns(Kind::KubernetesObject, name)),
+        .filter(|(name, _)| journal.owns(Kind::KubernetesObject, name))
+        .filter(|(name, _)| !(keep_apps && serving.contains(name))),
     );
     if removable.is_empty() {
         return kept;
@@ -879,6 +897,65 @@ pub fn purge_objects(ui: Ui, kubeconfig: &Path, journal: &Journal) -> Vec<&'stat
         Err(e) => step.warn(e.to_string()),
     }
     kept
+}
+
+/// What stays in the cluster for the apps after a retaining uninstall
+/// (M4.11), one line per kind; an empty list when nothing is left.
+pub fn retained_inventory(kubeconfig: &Path) -> anyhow::Result<Vec<String>> {
+    use k8s_openapi::api::core::v1::{Namespace, PersistentVolumeClaim};
+    use kuben_crd::{App, ApplicationRuntime, labels};
+
+    let rt = runtime()?;
+    let client = connect(&rt, kubeconfig)?;
+    rt.block_on(async {
+        let managed = ListParams::default().labels(labels::MANAGED_SELECTOR);
+        let names = |items: Vec<String>| {
+            if items.len() > 10 {
+                format!("{} and {} more", items[..10].join(", "), items.len() - 10)
+            } else {
+                items.join(", ")
+            }
+        };
+        let mut lines = Vec::new();
+        let namespaces: Vec<String> = Api::<Namespace>::all(client.clone())
+            .list(&managed)
+            .await?
+            .items
+            .iter()
+            .map(ResourceExt::name_any)
+            .collect();
+        if !namespaces.is_empty() {
+            lines.push(format!("app namespaces: {}", names(namespaces)));
+        }
+        let apps = Api::<App>::all(client.clone()).list(&ListParams::default()).await?.items;
+        let runtimes = Api::<ApplicationRuntime>::all(client.clone())
+            .list(&ListParams::default())
+            .await?
+            .items;
+        let still_kuben: Vec<String> = apps
+            .iter()
+            .map(|a| format!("{}/{}", a.namespace().unwrap_or_default(), a.name_any()))
+            .chain(runtimes.iter().map(|r| format!("{}/{}", r.namespace().unwrap_or_default(), r.name_any())))
+            .collect();
+        if !still_kuben.is_empty() {
+            lines.push(format!(
+                "apps not detached (they keep running as they are, and nobody updates them; a new Kuben takes them \
+                 over again): {}",
+                names(still_kuben)
+            ));
+        }
+        let volumes: Vec<String> = Api::<PersistentVolumeClaim>::all(client.clone())
+            .list(&managed)
+            .await?
+            .items
+            .iter()
+            .map(|v| format!("{}/{}", v.namespace().unwrap_or_default(), v.name_any()))
+            .collect();
+        if !volumes.is_empty() {
+            lines.push(format!("volumes: {}", names(volumes)));
+        }
+        anyhow::Ok(lines)
+    })
 }
 
 #[cfg(test)]

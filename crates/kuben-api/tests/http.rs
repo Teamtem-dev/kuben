@@ -11,11 +11,17 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use kuben_api::{ApiState, auth::CLIENT_HEADER, oci::FixedImages};
+use kuben_api::{
+    ApiState,
+    auth::CLIENT_HEADER,
+    oci::{FixedImages, ImageResolver, ResolveError, Resolved},
+    oidc::{GithubOidc, Jwks},
+};
 use kuben_core::{config::Config, ids::OrgId, ops::Generation, perm::Role, traits::StaticPolicy};
 use kuben_platform::{
     health::Health,
     projection::{AppView, EnvironmentView, PodPhase, PodView, ProcessView, ProjectView, Projections},
+    secrets::RegistryLogin,
 };
 use kuben_store::{
     Store,
@@ -75,6 +81,16 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     let health = Health::new();
     health.set_ready(true);
     let projections = Arc::new(Projections::new());
+    // CI trust with the fixture's keys, at a time its tokens are valid.
+    let oidc = cfg.github_oidc_audience().map(|audience| {
+        GithubOidc::with_keys(&cfg.ci.github_oidc_issuer, &audience, ci_fixture().0).with_clock(|| CI_NOW)
+    });
+    let sso = cfg.sso.enabled.then(|| {
+        let jwks = serde_json::from_value(sso_fixture()["jwks"].clone()).expect("jwks");
+        kuben_api::sso::SsoClient::from_config(&cfg.sso, cfg.server.public_url.as_deref(), "acme")
+            .expect("sso")
+            .with_provider(Arc::new(FakeIdp), jwks, || CI_NOW)
+    });
     let state = ApiState::new(
         cfg,
         store.clone(),
@@ -83,7 +99,12 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
         health,
         Arc::new(StaticPolicy),
     )
-    .with_images(images());
+    .with_images(images())
+    .with_github_oidc(oidc)
+    .with_sso(sso)
+    .with_keyring(Arc::new(kuben_platform::secrets::Keyring::from_keys([(
+        1, [7; 32],
+    )])));
     Some(TestApp {
         router: kuben_api::router(state),
         projections,
@@ -96,11 +117,36 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
 const NGINX_127: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const NGINX_126: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
-fn images() -> Arc<FixedImages> {
-    Arc::new(FixedImages(BTreeMap::from([
+/// The digest `ghcr.io/acme/private:1` resolves to, for bot's login only.
+const PRIVATE: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
+
+/// Public images resolve anonymously; `ghcr.io/acme/private:1` only with the
+/// login `bot`.
+#[derive(Debug)]
+struct TestImages(FixedImages);
+
+#[async_trait::async_trait]
+impl ImageResolver for TestImages {
+    async fn resolve_as(&self, image: &str, login: Option<&RegistryLogin>) -> Result<Resolved, ResolveError> {
+        if image != "ghcr.io/acme/private:1" {
+            return self.0.resolve_as(image, login).await;
+        }
+        match login {
+            Some(l) if l.username == "bot" && l.password == "token" => Ok(Resolved {
+                repository: "ghcr.io/acme/private".into(),
+                digest: PRIVATE.parse().expect("digest"),
+                given: image.to_owned(),
+            }),
+            _ => Err(ResolveError::Unauthorized(image.to_owned())),
+        }
+    }
+}
+
+fn images() -> Arc<TestImages> {
+    Arc::new(TestImages(FixedImages(BTreeMap::from([
         ("nginx:1.27".to_owned(), NGINX_127.parse().expect("digest")),
         ("nginx:1.26".to_owned(), NGINX_126.parse().expect("digest")),
-    ])))
+    ]))))
 }
 
 /// Project `shop`, production environment `prod` and app `api` (`nginx:1.27`
@@ -1582,4 +1628,1569 @@ async fn deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql() {
         StatusCode::UNPROCESSABLE_ENTITY,
         "the first deploy brings its configuration"
     );
+}
+
+/// A user with `role` in the organization, signed in: their cookie and id.
+async fn member(app: &TestApp, email: &str, role: Role) -> (String, String) {
+    let hasher = kuben_api::auth::password::Hasher::insecure_for_tests();
+    let user = app
+        .store
+        .create_user(email, None, Some(&hasher.hash("hunter22").expect("hash")))
+        .await
+        .expect("user");
+    app.store.add_membership(app.org, user.id).await.expect("member");
+    app.store
+        .bind_org_role(app.org, user.id, role)
+        .await
+        .expect("bind");
+    (login(&app.router, email).await, user.id.to_string())
+}
+
+const POLICY: &str = "/api/v1/projects/shop/environments/prod/policy";
+
+fn policy(approvals: u8) -> serde_json::Value {
+    json!({ "requiredApprovals": approvals, "deployRole": "developer", "approveRole": "admin" })
+}
+
+/// Shop's production app with a policy of one approval set by carol (an
+/// admin): the router and the cookies of alice (owner), bob (viewer) and
+/// carol.
+async fn protected(app: &TestApp) -> (String, String, String) {
+    sql_app(app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (carol, _) = member(app, "carol@example.com", Role::Admin).await;
+    let (status, _, open) = call(&app.router, "GET", POLICY, Auth::Cookie(&alice), None, None).await;
+    assert_eq!((status, open["revision"].clone()), (StatusCode::OK, json!(0)));
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &bob, Some(policy(1))).await,
+        StatusCode::FORBIDDEN,
+        "viewers cannot change protection"
+    );
+    let (status, _, set) = call(
+        &app.router,
+        "PUT",
+        POLICY,
+        Auth::Cookie(&carol),
+        Some(policy(1)),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, set["revision"].clone()),
+        (StatusCode::OK, json!(1)),
+        "{set}"
+    );
+    (alice, bob, carol)
+}
+
+/// M4.1: policies are validated and weakening protection takes an owner.
+#[tokio::test]
+async fn m4_weakening_protection_takes_an_owner() {
+    let Some(app) = setup().await else { return };
+    let (alice, _, carol) = protected(&app).await;
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &carol, Some(policy(9))).await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &carol, Some(policy(2))).await,
+        StatusCode::OK,
+        "stricter is an admin's call"
+    );
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &carol, Some(policy(0))).await,
+        StatusCode::FORBIDDEN,
+        "weaker is an owner's"
+    );
+    let (status, _, open) = call(
+        &app.router,
+        "PUT",
+        POLICY,
+        Auth::Cookie(&alice),
+        Some(policy(0)),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, open["revision"].clone()),
+        (StatusCode::OK, json!(3)),
+        "{open}"
+    );
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(
+        (run["phase"].clone(), run["approvals_required"].clone()),
+        (json!("planned"), json!(0))
+    );
+}
+
+/// M4.1: a protected deployment waits for someone else with the approve
+/// role, who confirms the plan they were shown.
+#[tokio::test]
+async fn m4_protected_deploys_wait_for_another_approver() {
+    let Some(app) = setup().await else { return };
+    let (alice, bob, carol) = protected(&app).await;
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(run["phase"], "awaitingApproval");
+    assert_eq!(run["approvals_required"], 1);
+    let hash = run["plan_hash"].as_str().expect("plan hash").to_owned();
+    let base = format!("{DEPLOYMENTS}/{}", run["run"].as_str().expect("run"));
+    let decide = |hash: &str| Some(json!({ "planHash": hash, "comment": "ship it" }));
+    let approve = format!("{base}/approve");
+
+    for (who, why) in [
+        (&alice, "the requester never approves"),
+        (&bob, "viewers cannot approve"),
+    ] {
+        assert_eq!(
+            status_of(&app.router, "POST", &approve, who, decide(&hash)).await,
+            StatusCode::FORBIDDEN,
+            "{why}"
+        );
+    }
+    let (_, _, seen) = call(
+        &app.router,
+        "GET",
+        &format!("{base}/approval"),
+        Auth::Cookie(&carol),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (seen["canDecide"].clone(), seen["requestedBy"].clone()),
+        (json!(true), json!("alice@example.com"))
+    );
+    assert_eq!(
+        status_of(&app.router, "POST", &approve, &carol, decide("00")).await,
+        StatusCode::CONFLICT,
+        "a plan other than the one shown"
+    );
+    let (status, _, approved) = call(
+        &app.router,
+        "POST",
+        &approve,
+        Auth::Cookie(&carol),
+        decide(&hash),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{approved}");
+    assert_eq!(approved["phase"], "pendingDelivery");
+    assert_eq!(approved["decisions"][0]["approver"], "carol@example.com");
+    assert_eq!(
+        status_of(
+            &app.router,
+            "POST",
+            &format!("{base}/reject"),
+            &carol,
+            decide(&hash)
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "decided already"
+    );
+}
+
+/// M4.1: roles on one project, granted without escalation; removing a member
+/// from the organization takes them away.
+#[tokio::test]
+async fn m4_project_roles_are_granted_without_escalation() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let (carol, carol_id) = member(&app, "carol@example.com", Role::Admin).await;
+    let (dave, dave_id) = member(&app, "dave@example.com", Role::Viewer).await;
+    let members = "/api/v1/projects/shop/members";
+    let dave_path = format!("{members}/{dave_id}");
+
+    let (status, _) = send(&app.router, deploy(&dave, 0, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a viewer cannot deploy");
+
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &dave_path,
+            &carol,
+            Some(json!({ "role": "owner" }))
+        )
+        .await,
+        StatusCode::FORBIDDEN,
+        "an admin cannot grant owner"
+    );
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{members}/{carol_id}"),
+            &carol,
+            Some(json!({ "role": "viewer" }))
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "nobody changes their own role"
+    );
+    let (status, _, granted) = call(
+        &app.router,
+        "PUT",
+        &dave_path,
+        Auth::Cookie(&carol),
+        Some(json!({ "role": "developer" })),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, granted["role"].clone()),
+        (StatusCode::OK, json!("developer")),
+        "{granted}"
+    );
+    let (_, _, listed) = call(&app.router, "GET", members, Auth::Cookie(&dave), None, None).await;
+    assert_eq!(listed.as_array().map(Vec::len), Some(1), "{listed}");
+
+    let (status, run) = send(&app.router, deploy(&dave, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "a project developer deploys: {run}");
+
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{members}/{}", uuid::Uuid::now_v7()),
+            &alice,
+            Some(json!({ "role": "viewer" }))
+        )
+        .await,
+        StatusCode::NOT_FOUND,
+        "not a member of the organization"
+    );
+    assert_eq!(
+        status_of(
+            &app.router,
+            "DELETE",
+            &format!("/api/v1/members/{dave_id}"),
+            &alice,
+            None
+        )
+        .await,
+        StatusCode::NO_CONTENT
+    );
+    let (status, _) = send(&app.router, deploy(&dave, 1, None)).await;
+    assert!(
+        matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN),
+        "removed members lose every role: {status}"
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &dave_path, &alice, None).await,
+        StatusCode::NOT_FOUND,
+        "the project role went with the membership"
+    );
+}
+
+/// Signed GitHub Actions tokens and their issuer's keys (M4.2).
+const CI_FIXTURE: &str = include_str!("../src/testdata/github-oidc.json");
+/// Between the fixture tokens' `iat` and `exp`.
+const CI_NOW: i64 = 1_800_000_100;
+const CI_EXCHANGE: &str = "/api/v1/ci/github/token";
+
+fn ci_fixture() -> (Jwks, serde_json::Value) {
+    let all: serde_json::Value = serde_json::from_str(CI_FIXTURE).expect("fixture");
+    (
+        serde_json::from_value(all["jwks"].clone()).expect("jwks"),
+        all["tokens"].clone(),
+    )
+}
+
+async fn exchange(app: &TestApp, token: &str, policy: &str) -> (StatusCode, serde_json::Value) {
+    let (status, _, body) = call(
+        &app.router,
+        "POST",
+        CI_EXCHANGE,
+        Auth::Bearer(token),
+        Some(json!({ "policy": policy })),
+        None,
+    )
+    .await;
+    (status, body)
+}
+
+/// The app on CI trust with shop's policy for `acme/shop`'s main branch,
+/// made by alice: the app, alice's cookie and the policy id.
+async fn trusted() -> Option<(TestApp, String, String)> {
+    let app = setup_with(|cfg| {
+        cfg.ci.github_actions = true;
+        cfg.ci.github_oidc_audience = Some("https://kuben.example.com".into());
+    })
+    .await?;
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    assert_eq!(
+        status_of(
+            &app.router,
+            "POST",
+            "/api/v1/ci/trust-policies",
+            &bob,
+            Some(ci_policy())
+        )
+        .await,
+        StatusCode::FORBIDDEN,
+        "viewers cannot trust CI"
+    );
+    let (status, _, made) = call(
+        &app.router,
+        "POST",
+        "/api/v1/ci/trust-policies",
+        Auth::Cookie(&alice),
+        Some(ci_policy()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let id = made["id"].as_str().expect("id").to_owned();
+    Some((app, alice, id))
+}
+
+fn ci_policy() -> serde_json::Value {
+    json!({
+        "name": "shop-deploy", "project": "shop", "repository": "acme/shop",
+        "repositoryId": 123_456, "repositoryOwnerId": 42, "refs": ["refs/heads/main"],
+    })
+}
+
+fn ci_token(name: &str) -> String {
+    ci_fixture().1[name].as_str().expect("token").to_owned()
+}
+
+/// M4.2 (S04): forged, foreign and pull-request tokens get nothing.
+#[tokio::test]
+async fn m4_untrusted_ci_tokens_get_nothing() {
+    let Some((app, _, id)) = trusted().await else {
+        return;
+    };
+    for name in [
+        "tampered",
+        "wrong_aud",
+        "wrong_iss",
+        "unknown_kid",
+        "pull_request",
+    ] {
+        let (status, body) = exchange(&app, &ci_token(name), &id).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{name}: {body}");
+    }
+    let (status, _) = exchange(&app, &ci_token("valid"), &uuid::Uuid::now_v7().to_string()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "an unknown policy");
+    let (status, _, _) = call(
+        &app.router,
+        "POST",
+        CI_EXCHANGE,
+        Auth::Anonymous,
+        Some(json!({ "policy": id })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "no provider token");
+}
+
+/// M4.2 (S04): a trusted workflow gets a short-lived, project-scoped token
+/// once per provider token; revoking the policy ends it.
+#[tokio::test]
+async fn m4_trusted_ci_gets_a_scoped_token_once() {
+    let Some((app, alice, id)) = trusted().await else {
+        return;
+    };
+    let (status, issued) = exchange(&app, &ci_token("valid"), &id).await;
+    assert_eq!(status, StatusCode::CREATED, "{issued}");
+    assert_eq!(issued["role"], "developer");
+    let ci = issued["token"].as_str().expect("token").to_owned();
+    let (status, replay) = exchange(&app, &ci_token("valid"), &id).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a provider token works once: {replay}"
+    );
+
+    let as_ci = |method: &'static str, path: &'static str, body: Option<serde_json::Value>| {
+        let (ci, router) = (ci.clone(), app.router.clone());
+        async move { call(&router, method, path, Auth::Bearer(&ci), body, None).await.0 }
+    };
+    assert_eq!(
+        as_ci("GET", "/api/v1/projects/shop/environments", None).await,
+        StatusCode::OK
+    );
+    let deploy_body = json!({
+        "image": format!("ghcr.io/acme/api@{DIGEST}"),
+        "config": { "runtime": { "processes": { "web": { "port": 8080 } } } },
+        "expected_generation": 0,
+    });
+    assert_eq!(
+        as_ci("POST", DEPLOYMENTS, Some(deploy_body)).await,
+        StatusCode::ACCEPTED
+    );
+    assert_eq!(
+        as_ci("GET", "/api/v1/members", None).await,
+        StatusCode::FORBIDDEN,
+        "project-scoped"
+    );
+    assert_eq!(
+        as_ci("POST", "/api/v1/ci/trust-policies", Some(ci_policy())).await,
+        StatusCode::FORBIDDEN,
+        "tokens cannot mint trust"
+    );
+
+    assert_eq!(
+        status_of(
+            &app.router,
+            "DELETE",
+            &format!("/api/v1/ci/trust-policies/{id}"),
+            &alice,
+            None
+        )
+        .await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        as_ci("GET", "/api/v1/projects/shop/environments", None).await,
+        StatusCode::UNAUTHORIZED,
+        "revoked with its policy"
+    );
+    let (_, _, listed) = call(
+        &app.router,
+        "GET",
+        "/api/v1/ci/trust-policies",
+        Auth::Cookie(&alice),
+        None,
+        None,
+    )
+    .await;
+    assert!(listed[0]["revokedAt"].is_i64(), "{listed}");
+}
+
+/// Signed ID tokens of a test identity provider (M4.3).
+const SSO_FIXTURE: &str = include_str!("../src/testdata/sso-oidc.json");
+
+fn sso_fixture() -> serde_json::Value {
+    serde_json::from_str(SSO_FIXTURE).expect("fixture")
+}
+
+/// An identity provider answering from memory: the token endpoint hands out
+/// the fixture ID token named by the code.
+struct FakeIdp;
+
+#[async_trait::async_trait]
+impl kuben_api::oidc::HttpGet for FakeIdp {
+    async fn get(&self, _url: &str, _limit: usize) -> Result<bytes::Bytes, String> {
+        Ok(json!({
+            "issuer": "https://idp.example.com",
+            "authorization_endpoint": "https://idp.example.com/authorize",
+            "token_endpoint": "https://idp.example.com/token",
+            "jwks_uri": "https://idp.example.com/jwks",
+        })
+        .to_string()
+        .into())
+    }
+}
+
+#[async_trait::async_trait]
+impl kuben_api::sso::IdentityProvider for FakeIdp {
+    async fn post_form(
+        &self,
+        _url: &str,
+        form: &str,
+        _basic: &str,
+    ) -> Result<(StatusCode, bytes::Bytes), String> {
+        let code = form
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("code="))
+            .unwrap_or_default();
+        Ok(match sso_fixture()["tokens"][code].as_str() {
+            Some(token) => (StatusCode::OK, json!({ "id_token": token }).to_string().into()),
+            None => (StatusCode::BAD_REQUEST, "{}".into()),
+        })
+    }
+}
+
+async fn sso_app() -> Option<TestApp> {
+    setup_with(|cfg| {
+        cfg.server.public_url = Some("https://kuben.example.com".into());
+        cfg.sso.enabled = true;
+        cfg.sso.issuer = Some("https://idp.example.com".into());
+        cfg.sso.client_id = Some("kuben-console".into());
+        cfg.sso.client_secret = Some("s3cret".into());
+        cfg.sso.groups.insert("platform-admins".into(), "admin".into());
+        cfg.sso.groups.insert("devs".into(), "developer".into());
+        cfg.sso.allowed_domains = vec!["example.com".into()];
+    })
+    .await
+}
+
+/// A sign-in of this browser (state `state`) expecting `nonce`.
+async fn pending_sso(app: &TestApp, state: &str, nonce: &str) {
+    app.store
+        .begin_sso(
+            &kuben_api::auth::session::sha256(state.as_bytes()),
+            &kuben_store::repo::PendingSso {
+                nonce: nonce.into(),
+                verifier: "v".repeat(43),
+                return_to: "/projects".into(),
+            },
+            kuben_core::time::now_ms() + 600_000,
+        )
+        .await
+        .expect("begin");
+}
+
+/// The callback of a sign-in with `code`, from a browser holding `cookie`:
+/// where it redirects and the cookies it sets.
+async fn sso_callback(app: &TestApp, code: &str, state: &str, cookie: &str) -> (String, Vec<String>) {
+    let path = format!("/api/v1/auth/sso/callback?code={code}&state={state}");
+    let (status, headers, _) = call(&app.router, "GET", &path, Auth::Cookie(cookie), None, None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let to = headers[header::LOCATION].to_str().expect("location").to_owned();
+    (to, set_cookies(&headers))
+}
+
+fn set_cookies(headers: &axum::http::HeaderMap) -> Vec<String> {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .filter_map(|v| v.split(';').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// M4.3: the sign-in page learns about SSO, and starting it redirects to
+/// the provider with a state bound to this browser.
+#[tokio::test]
+async fn m4_sso_start_binds_the_state_to_the_browser() {
+    let Some(app) = sso_app().await else { return };
+    let (status, _, info) = call(
+        &app.router,
+        "GET",
+        "/api/v1/auth/sso",
+        Auth::Anonymous,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, info["enabled"].clone()),
+        (StatusCode::OK, json!(true)),
+        "{info}"
+    );
+    let (status, headers, _) = call(
+        &app.router,
+        "GET",
+        "/api/v1/auth/sso/start?returnTo=//evil.example",
+        Auth::Anonymous,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let location = headers[header::LOCATION].to_str().expect("location");
+    assert!(
+        location.starts_with("https://idp.example.com/authorize?response_type=code"),
+        "{location}"
+    );
+    assert!(location.contains("code_challenge_method=S256"));
+    let state = location
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("state="))
+        .expect("state");
+    let cookie = set_cookies(&headers)
+        .into_iter()
+        .find(|c| c.starts_with("kuben_sso="))
+        .expect("state cookie");
+    assert_eq!(cookie, format!("kuben_sso={state}"));
+}
+
+/// M4.3 (S04): the provider's groups decide the role, and a sign-in works
+/// once.
+#[tokio::test]
+async fn m4_sso_signs_mapped_people_in_once() {
+    let Some(app) = sso_app().await else { return };
+    let state = "s".repeat(43);
+    let browser = format!("kuben_sso={state}");
+    pending_sso(&app, &state, "nonce-1").await;
+    let (to, cookies) = sso_callback(&app, "valid", &state, &browser).await;
+    assert_eq!(to, "/projects");
+    let session = cookies
+        .into_iter()
+        .find(|c| !c.starts_with("kuben_sso="))
+        .expect("session cookie");
+    let (status, _, me) = call(
+        &app.router,
+        "GET",
+        "/api/v1/me",
+        Auth::Cookie(&session),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, me["email"].clone()),
+        (StatusCode::OK, json!("carol@example.com")),
+        "{me}"
+    );
+    let (_, _, members) = call(
+        &app.router,
+        "GET",
+        "/api/v1/members",
+        Auth::Cookie(&session),
+        None,
+        None,
+    )
+    .await;
+    let carol = members
+        .as_array()
+        .expect("members")
+        .iter()
+        .find(|m| m["email"] == "carol@example.com")
+        .cloned()
+        .expect("carol");
+    assert_eq!(carol["role"], "admin", "mapped from platform-admins");
+    let (to, _) = sso_callback(&app, "valid", &state, &browser).await;
+    assert_eq!(to, "/login?error=sso", "a state works once");
+}
+
+/// M4.3 (S04): another browser's state, another sign-in's nonce and people
+/// the policy refuses get nothing.
+#[tokio::test]
+async fn m4_sso_refuses_everything_else() {
+    let Some(app) = sso_app().await else { return };
+    let fresh = |n: usize| format!("{n:0>43}");
+    pending_sso(&app, &fresh(0), "nonce-1").await;
+    let (to, _) = sso_callback(&app, "valid", &fresh(0), "kuben_sso=other").await;
+    assert_eq!(to, "/login?error=sso", "another browser's cookie");
+    pending_sso(&app, &fresh(1), "another-nonce").await;
+    let (to, _) = sso_callback(&app, "valid", &fresh(1), &format!("kuben_sso={}", fresh(1))).await;
+    assert_eq!(to, "/login?error=sso", "a token of another sign-in");
+    for (n, code) in ["no_role", "outsider", "unverified", "wrong_aud", "nope"]
+        .into_iter()
+        .enumerate()
+    {
+        let state = fresh(n + 2);
+        pending_sso(&app, &state, "nonce-1").await;
+        let (to, cookies) = sso_callback(&app, code, &state, &format!("kuben_sso={state}")).await;
+        assert_eq!(to, "/login?error=sso", "{code}");
+        assert!(
+            cookies.iter().all(|c| c.starts_with("kuben_sso=")),
+            "no session for {code}"
+        );
+    }
+}
+
+const SECRETS: &str = "/api/v1/projects/shop/environments/prod/secrets";
+
+/// A deploy of shop's app reading `DATABASE_URL` from secret `db`.
+async fn deploy_with_secret(app: &TestApp, cookie: &str, expected: u64) -> (StatusCode, serde_json::Value) {
+    let body = json!({
+        "image": format!("ghcr.io/acme/api@{DIGEST}"),
+        "config": {
+            "runtime": { "processes": { "web": { "port": 8080 } } },
+            "env": [{ "name": "DATABASE_URL", "fromSecret": { "name": "db", "key": "url" } }],
+        },
+        "expected_generation": expected,
+    });
+    let (status, _, run) = call(
+        &app.router,
+        "POST",
+        DEPLOYMENTS,
+        Auth::Cookie(cookie),
+        Some(body),
+        None,
+    )
+    .await;
+    (status, run)
+}
+
+async fn put_secret(app: &TestApp, cookie: &str, url: &str) -> (StatusCode, serde_json::Value) {
+    let body = json!({ "data": { "url": url } });
+    let (status, _, secret) = call(
+        &app.router,
+        "PUT",
+        &format!("{SECRETS}/db"),
+        Auth::Cookie(cookie),
+        Some(body),
+        None,
+    )
+    .await;
+    (status, secret)
+}
+
+async fn bound_revision(app: &TestApp, run: &serde_json::Value) -> Vec<u64> {
+    let run: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    t.run_secret_bindings(kuben_core::ids::DeploymentRunId::from_uuid(run))
+        .await
+        .expect("bindings")
+        .into_iter()
+        .map(|b| b.revision)
+        .collect()
+}
+
+/// M4.4: a secret is a series of encrypted revisions; a new value is rolled
+/// out to the apps that reference it, and a revoked one is never deployed.
+#[tokio::test]
+async fn m4_secret_values_are_revisions_rolled_out_to_their_apps() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+
+    let (status, first) = put_secret(&app, &alice, "postgres://one").await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(
+        (first["revision"].clone(), first["storage"].clone()),
+        (json!(1), json!("encrypted"))
+    );
+    assert!(first.get("rollouts").is_none(), "no app uses it yet");
+    assert_eq!(put_secret(&app, &bob, "x").await.0, StatusCode::FORBIDDEN);
+    let (_, _, listed) = call(&app.router, "GET", SECRETS, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(listed[0]["keys"], json!(["url"]));
+    assert!(
+        !listed.to_string().contains("postgres://"),
+        "values are never returned"
+    );
+
+    let (status, run) = deploy_with_secret(&app, &alice, 0).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(bound_revision(&app, &run).await, [1]);
+
+    let (status, second) = put_secret(&app, &alice, "postgres://two").await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(second["revision"], 2);
+    let rollout = &second["rollouts"][0];
+    assert_eq!(
+        (rollout["app"].clone(), rollout["skipped"].clone()),
+        (json!("api"), json!(null))
+    );
+    let rotation = json!({ "run": rollout["run"] });
+    assert_eq!(bound_revision(&app, &rotation).await, [2]);
+
+    let revisions = format!("{SECRETS}/db/revisions");
+    let (_, _, history) = call(&app.router, "GET", &revisions, Auth::Cookie(&alice), None, None).await;
+    let seen: Vec<_> = history
+        .as_array()
+        .expect("revisions")
+        .iter()
+        .map(|r| (r["revision"].clone(), r["current"].clone()))
+        .collect();
+    assert_eq!(seen, [(json!(2), json!(true)), (json!(1), json!(false))]);
+    assert_eq!(
+        status_of(&app.router, "DELETE", &format!("{SECRETS}/db"), &alice, None).await,
+        StatusCode::CONFLICT,
+        "the app references it"
+    );
+
+    let revoke = |n: u64| format!("{revisions}/{n}/revoke");
+    for (n, expected) in [
+        (2, StatusCode::NO_CONTENT),
+        (2, StatusCode::CONFLICT),
+        (9, StatusCode::NOT_FOUND),
+    ] {
+        assert_eq!(
+            status_of(&app.router, "POST", &revoke(n), &alice, None).await,
+            expected,
+            "revision {n}"
+        );
+    }
+    let (status, refused) = deploy_with_secret(&app, &alice, 2).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let (status, third) = put_secret(&app, &alice, "postgres://three").await;
+    assert_eq!((status, third["revoked"].clone()), (StatusCode::OK, json!(false)));
+}
+
+/// M4.4: a production rotation waits for its approval like any change.
+#[tokio::test]
+async fn m4_production_rotations_wait_for_approval() {
+    let Some(app) = setup().await else { return };
+    let (alice, bob, _carol) = protected(&app).await;
+    put_secret(&app, &alice, "postgres://one").await;
+    let (status, run) = deploy_with_secret(&app, &alice, 0).await;
+    assert_eq!(
+        (status, run["phase"].clone()),
+        (StatusCode::ACCEPTED, json!("awaitingApproval"))
+    );
+    let (status, secret) = put_secret(&app, &alice, "postgres://two").await;
+    assert_eq!(status, StatusCode::OK, "{secret}");
+    assert_eq!(secret["rollouts"][0]["approvals_required"], 1);
+    let body = json!({ "data": { "url": "x" }, "rollout": false });
+    assert_eq!(
+        status_of(&app.router, "PUT", &format!("{SECRETS}/db"), &bob, Some(body)).await,
+        StatusCode::FORBIDDEN
+    );
+}
+
+const REGISTRIES: &str = "/api/v1/projects/shop/environments/prod/registries";
+
+/// Set shop's login for ghcr.io as alice, after the refusals it gets on the
+/// way; its path.
+async fn set_ghcr_login(app: &TestApp, alice: &str, bob: &str) -> String {
+    let ghcr = format!("{REGISTRIES}/ghcr");
+    let login_body = |registry: &str| json!({ "registry": registry, "username": "bot", "password": "token" });
+    assert_eq!(
+        status_of(&app.router, "PUT", &ghcr, bob, Some(login_body("ghcr.io"))).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status_of(&app.router, "PUT", &ghcr, alice, Some(login_body("ghcr.io/acme"))).await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, _, saved) = call(
+        &app.router,
+        "PUT",
+        &ghcr,
+        Auth::Cookie(alice),
+        Some(login_body("GHCR.io")),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(
+        (saved["registry"].clone(), saved["revision"].clone()),
+        (json!("ghcr.io"), json!(1))
+    );
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{REGISTRIES}/other"),
+            alice,
+            Some(login_body("ghcr.io"))
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "one login per registry"
+    );
+    let secret = json!({ "data": { "url": "x" } });
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{SECRETS}/ghcr"),
+            alice,
+            Some(secret)
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "the name is a login"
+    );
+    let (_, _, listed) = call(&app.router, "GET", REGISTRIES, Auth::Cookie(alice), None, None).await;
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+    assert!(
+        !listed.to_string().contains("token"),
+        "passwords are never returned"
+    );
+    let (_, _, secrets) = call(&app.router, "GET", SECRETS, Auth::Cookie(alice), None, None).await;
+    assert_eq!(secrets, json!([]), "logins are not app secrets");
+    ghcr
+}
+
+/// M4.4: a registry login resolves private tags and is bound to the runs of
+/// images from its registry; its password never comes back.
+#[tokio::test]
+async fn m4_registry_logins_pull_private_images() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let apps = "/api/v1/projects/shop/environments/prod/apps";
+    let private = json!({ "name": "private", "image": "ghcr.io/acme/private:1", "port": 80 });
+    assert_eq!(
+        status_of(&app.router, "POST", apps, &alice, Some(private.clone())).await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "no login yet"
+    );
+
+    let ghcr = set_ghcr_login(&app, &alice, &bob).await;
+
+    let (status, _, created) = call(
+        &app.router,
+        "POST",
+        apps,
+        Auth::Cookie(&alice),
+        Some(private),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let (_, _, runs) = call(
+        &app.router,
+        "GET",
+        &format!("{apps}/private/deployments"),
+        Auth::Cookie(&alice),
+        None,
+        None,
+    )
+    .await;
+    let run = &runs.as_array().expect("runs")[0];
+    let bindings = {
+        let id: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+        let mut t = app.store.tenant(app.org).await.expect("tenant");
+        t.run_secret_bindings(kuben_core::ids::DeploymentRunId::from_uuid(id))
+            .await
+            .expect("bindings")
+    };
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].registry.as_deref(), Some("ghcr.io"));
+
+    assert_eq!(
+        status_of(&app.router, "DELETE", &ghcr, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &ghcr, &alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// M4.5: an app's peak requests must fit its environment's quota, and the
+/// organization's apps and environments the installation's quota.
+#[tokio::test]
+async fn m4_quotas_bound_what_apps_may_request() {
+    let Some(app) = setup_with(|cfg| {
+        cfg.quota.org_apps = Some(2);
+        cfg.quota.org_environments = Some(2);
+    })
+    .await
+    else {
+        return;
+    };
+    let alice = login(&app.router, "alice@example.com").await;
+    let created = |status: StatusCode| status == StatusCode::CREATED;
+    let project = json!({ "name": "shop", "display_name": "Shop" });
+    assert!(created(
+        status_of(&app.router, "POST", "/api/v1/projects", &alice, Some(project)).await
+    ));
+    let environments = "/api/v1/projects/shop/environments";
+    for (body, expected) in [
+        (
+            json!({ "name": "tiny", "quota": { "cpu": "150m" } }),
+            StatusCode::CREATED,
+        ),
+        (
+            json!({ "name": "big", "quota": { "cpu": "1e3" } }),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (json!({ "name": "big" }), StatusCode::CREATED),
+        (json!({ "name": "third" }), StatusCode::CONFLICT),
+    ] {
+        let status = status_of(&app.router, "POST", environments, &alice, Some(body.clone())).await;
+        assert_eq!(status, expected, "{body}");
+    }
+    let web = |name: &str| json!({ "name": name, "image": "nginx:1.27", "port": 80 });
+    let (status, _, refused) = call(
+        &app.router,
+        "POST",
+        &format!("{environments}/tiny/apps"),
+        Auth::Cookie(&alice),
+        Some(web("web")),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(
+        refused.to_string().contains("200m CPU"),
+        "one replica and its surge pod: {refused}"
+    );
+    let big = format!("{environments}/big/apps");
+    for (name, expected) in [
+        ("web", StatusCode::CREATED),
+        ("api", StatusCode::CREATED),
+        ("third", StatusCode::CONFLICT),
+    ] {
+        assert_eq!(
+            status_of(&app.router, "POST", &big, &alice, Some(web(name))).await,
+            expected,
+            "{name}"
+        );
+    }
+}
+
+/// M4.6: the environment's scan gate refuses a release with an open
+/// critical finding until an owned, expiring exception covers it.
+#[tokio::test]
+async fn m4_the_scan_gate_refuses_known_critical_findings() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let gate = json!({ "requiredApprovals": 0, "deployRole": "developer", "approveRole": "admin",
+        "scan": { "mode": "block", "severity": "critical" } });
+    let (status, _, policy) = call(&app.router, "PUT", POLICY, Auth::Cookie(&alice), Some(gate), None).await;
+    assert_eq!(status, StatusCode::OK, "{policy}");
+    assert_eq!(policy["scan"]["mode"], "block");
+    {
+        let mut t = app.store.tenant(app.org).await.expect("tenant");
+        let scan = kuben_store::repo::NewScan {
+            repository: "ghcr.io/acme/api".into(),
+            digest: DIGEST.into(),
+            summary: kuben_core::scan::ScanSummary {
+                status: kuben_core::scan::ScanStatus::Ok,
+                scanner: "trivy 0.74.0".into(),
+                db_updated_at: None,
+                counts: kuben_core::scan::Counts {
+                    critical: 1,
+                    ..Default::default()
+                },
+                findings: vec![(kuben_core::scan::Severity::Critical, "CVE-2026-7".into())],
+                scanned_at: kuben_core::time::now_ms(),
+            },
+            detail: None,
+            build_attempt: None,
+        };
+        t.record_scan(&scan).await.expect("scan");
+        t.commit().await.expect("commit");
+    }
+    let (status, refused) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(refused.to_string().contains("CVE-2026-7"), "{refused}");
+
+    let exceptions = "/api/v1/vulnerability-exceptions";
+    let grant = json!({ "vulnerability": "CVE-2026-7", "reason": "not reachable", "owner": "platform", "days": 30, "project": "shop" });
+    assert_eq!(
+        status_of(&app.router, "POST", exceptions, &bob, Some(grant.clone())).await,
+        StatusCode::FORBIDDEN
+    );
+    let (status, _, granted) = call(
+        &app.router,
+        "POST",
+        exceptions,
+        Auth::Cookie(&alice),
+        Some(grant),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{granted}");
+    assert_eq!(granted["active"], true);
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+
+    let (_, _, scans) = call(
+        &app.router,
+        "GET",
+        "/api/v1/projects/shop/environments/prod/apps/api/scans",
+        Auth::Cookie(&bob),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(scans["gate"], "pass", "{scans}");
+    assert_eq!(scans["images"][0]["scan"]["critical"], 1);
+    assert_eq!(scans["images"][0]["sbom"], false);
+    let revoke = format!("{exceptions}/{}", granted["id"].as_str().expect("id"));
+    assert_eq!(
+        status_of(&app.router, "DELETE", &revoke, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &revoke, &alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+    let (_, _, listed) = call(&app.router, "GET", exceptions, Auth::Cookie(&bob), None, None).await;
+    assert_eq!(listed, json!([]), "revoked exceptions are not in force");
+}
+
+const PROD: &str = "/api/v1/projects/shop/environments/prod";
+
+/// An RFC 3339 time `hours` from now.
+fn hours_ahead(hours: i64) -> String {
+    k8s_openapi::jiff::Timestamp::from_millisecond(kuben_core::time::now_ms() + hours * 3_600_000)
+        .expect("time")
+        .to_string()
+}
+
+/// POST `body` to `path` as `cookie`: the status and the answer.
+async fn post_json(
+    app: &TestApp,
+    path: &str,
+    cookie: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    let (status, _, answer) = call(&app.router, "POST", path, Auth::Cookie(cookie), Some(body), None).await;
+    (status, answer)
+}
+
+/// M4.9: a freeze refuses releases, an emergency rollback passes it with a
+/// reason, and a pause is held and resumed.
+#[tokio::test]
+async fn m4_freezes_pauses_and_emergency_rollbacks() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (status, first) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    let first_release = succeed(&app, &first).await;
+    let freezes = format!("{PROD}/freezes");
+    let freeze = json!({ "reason": "launch", "endsAt": hours_ahead(2) });
+    assert_eq!(
+        (post_json(&app, &freezes, &bob, freeze.clone()).await).0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, frozen) = post_json(&app, &freezes, &alice, freeze).await;
+    assert_eq!(
+        (status, frozen["active"].clone()),
+        (StatusCode::CREATED, json!(true)),
+        "{frozen}"
+    );
+    let redeploy = json!({
+        "image": "ghcr.io/acme/api@sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "expected_generation": 1,
+    });
+    let (status, refused) = post_json(&app, DEPLOYMENTS, &alice, redeploy).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(refused.to_string().contains("frozen"));
+
+    let api = format!("{PROD}/apps/api");
+    let pause = json!({ "reason": "incident 42" });
+    assert_eq!(
+        post_json(&app, &format!("{api}/pause"), &alice, pause.clone())
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        post_json(&app, &format!("{api}/pause"), &alice, pause).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, _, shown) = call(&app.router, "GET", &api, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(shown["app"]["paused"], "incident 42");
+    let emergency = format!("{api}/emergency-rollback");
+    let why = json!({ "reason": "checkout is down" });
+    assert_eq!(
+        post_json(&app, &emergency, &alice, why.clone()).await.0,
+        StatusCode::NOT_FOUND,
+        "no release before the only one"
+    );
+    let chosen = json!({ "reason": "checkout is down", "release": first_release });
+    let (status, run) = post_json(&app, &emergency, &alice, chosen).await;
+    assert_eq!(
+        (status, run["approvals_required"].clone()),
+        (StatusCode::ACCEPTED, json!(0)),
+        "{run}"
+    );
+    assert_eq!(
+        post_json(&app, &emergency, &bob, why).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post_json(&app, &format!("{api}/resume"), &alice, json!(null))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let lift = format!("{freezes}/{}", frozen["id"].as_str().expect("id"));
+    assert_eq!(
+        status_of(&app.router, "DELETE", &lift, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &lift, &alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// M4.9: owners and alert silences are kept.
+#[tokio::test]
+async fn m4_owners_and_silences_are_kept() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let owner =
+        json!({ "owner": "shop-team", "contact": "#shop", "runbookUrl": "https://wiki.example.com/shop" });
+    let path = "/api/v1/projects/shop/applications/api/owner";
+    let (status, _, saved) = call(&app.router, "PUT", path, Auth::Cookie(&alice), Some(owner), None).await;
+    assert_eq!(
+        (status, saved["owner"].clone()),
+        (StatusCode::OK, json!("shop-team")),
+        "{saved}"
+    );
+    let (_, _, read) = call(&app.router, "GET", path, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(read["runbookUrl"], "https://wiki.example.com/shop");
+    let silences = format!("{PROD}/silences");
+    let silence = json!({ "reason": "maintenance", "endsAt": hours_ahead(1), "app": "api" });
+    let (status, made) = post_json(&app, &silences, &alice, silence).await;
+    assert_eq!(
+        (status, made["active"].clone()),
+        (StatusCode::CREATED, json!(true)),
+        "{made}"
+    );
+    let too_long = json!({ "reason": "forever", "endsAt": hours_ahead(24 * 8) });
+    assert_eq!(
+        post_json(&app, &silences, &alice, too_long).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+/// Mark the run in `run` as succeeded; its release.
+async fn succeed(app: &TestApp, run: &serde_json::Value) -> uuid::Uuid {
+    let id: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+    let run = kuben_core::ids::DeploymentRunId::from_uuid(id);
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    t.force_run_phase(run, kuben_core::ops::RunPhase::Succeeded)
+        .await
+        .expect("phase");
+    let release = t.run_release(run).await.expect("read").expect("release");
+    t.commit().await.expect("commit");
+    *release.as_uuid()
+}
+
+/// A webhook receiver on loopback: every request (headers and body) goes
+/// to the channel and is answered with 204.
+async fn receiver() -> (String, tokio::sync::mpsc::UnboundedReceiver<(String, Vec<u8>)>) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let url = format!("http://{}/hook", listener.local_addr().expect("addr"));
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Ok((mut conn, _)) = listener.accept().await {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            let (head, body_at) = loop {
+                let n = conn.read(&mut chunk).await.expect("read");
+                assert!(n > 0, "the request ended early");
+                buf.extend_from_slice(&chunk[..n]);
+                if let Some(at) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break (String::from_utf8_lossy(&buf[..at]).to_lowercase(), at + 4);
+                }
+            };
+            let length: usize = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            while buf.len() < body_at + length {
+                let n = conn.read(&mut chunk).await.expect("read");
+                assert!(n > 0, "the body ended early");
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            let body = buf[body_at..body_at + length].to_vec();
+            conn.write_all(b"HTTP/1.1 204 No Content\r\nconnection: close\r\ncontent-length: 0\r\n\r\n")
+                .await
+                .expect("write");
+            let _ = tx.send((head, body));
+        }
+    });
+    (url, rx)
+}
+
+/// The notifier the test app would run.
+fn notifier(app: &TestApp) -> kuben_api::notify::Notifier {
+    let cfg = kuben_core::config::NotifyCfg {
+        allow_private_targets: true,
+        allow_http: true,
+    };
+    kuben_api::notify::Notifier::new(
+        app.store.clone(),
+        Arc::new(kuben_platform::secrets::Keyring::from_keys([(1, [7; 32])])),
+        None,
+        cfg,
+        Some("https://kuben.example.com".into()),
+    )
+}
+
+/// Fail the deployment `run` started, as the materializer would.
+async fn fail_operation(app: &TestApp) {
+    let claim = app
+        .store
+        .claim_operation(
+            "test",
+            &[kuben_store::repo::RUN_KIND],
+            std::time::Duration::from_mins(1),
+        )
+        .await
+        .expect("claim")
+        .expect("an operation");
+    assert!(
+        app.store
+            .finish_operation(&claim, "failed", Some("RolloutFailed"))
+            .await
+            .expect("finish")
+    );
+}
+
+/// M4.10: webhooks are created by admins, signed, delivered and listed;
+/// a failed deployment opens an incident that can be acknowledged and
+/// resolved.
+#[tokio::test]
+async fn m4_signed_webhooks_and_incidents() {
+    let Some(app) = setup_with(|cfg| {
+        cfg.notify.allow_private_targets = true;
+        cfg.notify.allow_http = true;
+    })
+    .await
+    else {
+        return;
+    };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (url, mut received) = receiver().await;
+    let endpoint = json!({ "name": "pager", "url": url, "events": ["deployment.failed", "incident.opened"] });
+    let hooks = "/api/v1/webhooks";
+    assert_eq!(
+        post_json(&app, hooks, &bob, endpoint.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let unknown = json!({ "name": "x", "url": url, "events": ["nope"] });
+    assert_eq!(
+        post_json(&app, hooks, &alice, unknown).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let ftp = json!({ "name": "x", "url": "ftp://example.com/", "events": ["*"] });
+    assert_eq!(
+        post_json(&app, hooks, &alice, ftp).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, made) = post_json(&app, hooks, &alice, endpoint.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    assert_eq!(
+        post_json(&app, hooks, &alice, endpoint).await.0,
+        StatusCode::CONFLICT
+    );
+    let secret = made["secret"].as_str().expect("secret").to_owned();
+    assert!(secret.starts_with("whsec_"));
+    let (_, listed) = send(&app.router, get(hooks, &alice)).await;
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+    assert!(listed[0].get("secret").is_none(), "shown once");
+    let id = made["id"].as_str().expect("id");
+    let ping = format!("{hooks}/{id}/ping");
+    assert_eq!(
+        post_json(&app, &ping, &alice, json!({})).await.0,
+        StatusCode::ACCEPTED
+    );
+
+    let (status, _) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    fail_operation(&app).await;
+    let notifier = notifier(&app);
+    assert!(
+        notifier.consume().await.expect("consume") >= 2,
+        "accepted and settled"
+    );
+    assert_eq!(
+        notifier.deliver().await.expect("deliver"),
+        3,
+        "ping, failure, incident"
+    );
+    let mut events = Vec::new();
+    for _ in 0..3 {
+        let (head, body) = received.recv().await.expect("delivery");
+        let t: i64 = head
+            .lines()
+            .find_map(|l| l.strip_prefix("kuben-signature: t="))
+            .and_then(|v| v.split(',').next())
+            .and_then(|v| v.parse().ok())
+            .expect("signed");
+        let expected = kuben_api::notify::signature(secret.as_bytes(), t, &body).to_lowercase();
+        assert!(head.contains(&format!("kuben-signature: {expected}")), "{head}");
+        let event = head
+            .lines()
+            .find_map(|l| l.strip_prefix("kuben-event: "))
+            .expect("event");
+        events.push(event.to_owned());
+    }
+    events.sort();
+    assert_eq!(events, ["deployment.failed", "incident.opened", "ping"]);
+    let (_, deliveries) = send(&app.router, get(&format!("{hooks}/{id}/deliveries"), &alice)).await;
+    assert!(
+        deliveries
+            .as_array()
+            .expect("list")
+            .iter()
+            .all(|d| d["status"] == "delivered"),
+        "{deliveries}"
+    );
+    incidents_are_handled(&app, &alice, &bob).await;
+}
+
+/// The failed deployment's incident: listed, acknowledged and resolved.
+async fn incidents_are_handled(app: &TestApp, alice: &str, bob: &str) {
+    let (_, open) = send(&app.router, get("/api/v1/incidents", alice)).await;
+    let open = open.as_array().expect("list").clone();
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(
+        (
+            open[0]["kind"].clone(),
+            open[0]["severity"].clone(),
+            open[0]["detail"].clone()
+        ),
+        (
+            json!("deployment.failed"),
+            json!("critical"),
+            json!("RolloutFailed")
+        )
+    );
+    let incident = open[0]["id"].as_str().expect("id");
+    let ack = format!("/api/v1/incidents/{incident}/acknowledge");
+    assert_eq!(
+        post_json(app, &ack, bob, json!({})).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post_json(app, &ack, alice, json!({})).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let resolve = format!("/api/v1/incidents/{incident}/resolve");
+    assert_eq!(
+        post_json(app, &resolve, alice, json!({})).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        post_json(app, &resolve, alice, json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, open) = send(&app.router, get("/api/v1/incidents", alice)).await;
+    assert_eq!(open, json!([]));
+    let (_, all) = send(&app.router, get("/api/v1/incidents?all=true", alice)).await;
+    assert_eq!(
+        all[0]["acknowledgedBy"].as_str().map(|s| s.starts_with("user:")),
+        Some(true),
+        "{all}"
+    );
+}
+
+/// Deliver the run in `run` as the materializer would: freeze a plan with a
+/// Deployment and a route, and succeed.
+async fn deliver_with_plan(app: &TestApp, run: &serde_json::Value) {
+    let id: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+    let run_id = kuben_core::ids::DeploymentRunId::from_uuid(id);
+    let claim = app
+        .store
+        .claim_operation(
+            "test",
+            &[kuben_store::repo::RUN_KIND],
+            std::time::Duration::from_mins(1),
+        )
+        .await
+        .expect("claim")
+        .expect("an operation");
+    let resources = json!([
+        { "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "api-web" } },
+        { "apiVersion": "gateway.networking.k8s.io/v1", "kind": "HTTPRoute",
+          "metadata": { "name": "api" }, "spec": { "hostnames": ["api.example.com"] } },
+    ]);
+    let capabilities = json!({ "sizes": [], "gateway": "kuben-system/kuben" });
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    t.freeze_run_plan(&claim, run_id, "kuben-renderer/2", &capabilities, &resources)
+        .await
+        .expect("freeze")
+        .expect("frozen");
+    t.commit().await.expect("commit");
+    assert!(
+        app.store
+            .finish_operation(&claim, "succeeded", None)
+            .await
+            .expect("finish")
+    );
+    succeed(app, run).await;
+}
+
+/// M4.11: an app is exported, detached with its export frozen, and
+/// released once the materializer let go of it.
+#[tokio::test]
+async fn m4_export_detach_and_release() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let base = format!("{PROD}/apps/api");
+    let (status, _) = send(&app.router, get(&format!("{base}/export"), &alice)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "nothing delivered yet");
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    deliver_with_plan(&app, &run).await;
+    let (status, export) = send(&app.router, get(&format!("{base}/export"), &alice)).await;
+    assert_eq!(status, StatusCode::OK, "{export}");
+    assert_eq!(export["format"], "kuben.dev/export/v1");
+    assert_eq!(export["manifests"]["items"].as_array().map(Vec::len), Some(2));
+    assert_eq!(export["references"]["hostnames"], json!(["api.example.com"]));
+    assert!(export["release"]["artifacts"].is_object());
+
+    let detach = format!("{base}/detach");
+    let body = json!({ "confirm": "api", "reason": "moving to our own GitOps" });
+    assert_eq!(
+        post_json(&app, &detach, &bob, body.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let wrong = json!({ "confirm": "web", "reason": "x" });
+    assert_eq!(
+        post_json(&app, &detach, &alice, wrong).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, detached) = post_json(&app, &detach, &alice, body.clone()).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{detached}");
+    assert_eq!(detached["export"]["manifests"], export["manifests"]);
+    assert_eq!(
+        post_json(&app, &detach, &alice, body).await.0,
+        StatusCode::CONFLICT
+    );
+    let id = detached["id"].as_str().expect("id").to_owned();
+    assert_eq!(id, target.as_uuid().to_string());
+
+    let (_, list) = send(&app.router, get(&format!("{PROD}/detached"), &alice)).await;
+    assert_eq!(list.as_array().map(Vec::len), Some(1), "{list}");
+    assert!(list[0]["completedAt"].is_null() && list[0].get("export").is_none());
+    let release = format!("{PROD}/detached/{id}/release");
+    assert_eq!(
+        post_json(&app, &release, &alice, json!({})).await.0,
+        StatusCode::CONFLICT,
+        "not finished"
+    );
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    assert_eq!(
+        t.detached_held(target_environment(&app).await)
+            .await
+            .expect("held"),
+        1
+    );
+    assert!(t.complete_detach(target).await.expect("complete"));
+    t.commit().await.expect("commit");
+    assert_eq!(
+        post_json(&app, &release, &bob, json!({})).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post_json(&app, &release, &alice, json!({})).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        post_json(&app, &release, &alice, json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    let (status, one) = send(&app.router, get(&format!("{PROD}/detached/{id}"), &alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(one["export"]["format"], "kuben.dev/export/v1");
+    assert!(one["releasedBy"].as_str().is_some_and(|b| b.starts_with("user:")));
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    assert_eq!(
+        t.detached_held(target_environment(&app).await)
+            .await
+            .expect("held"),
+        0
+    );
+}
+
+/// The id of the test app's environment.
+async fn target_environment(app: &TestApp) -> kuben_core::ids::EnvironmentId {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t
+        .projects()
+        .await
+        .expect("projects")
+        .into_iter()
+        .find(|p| p.slug == "shop")
+        .expect("shop");
+    t.environments(project.id)
+        .await
+        .expect("environments")
+        .into_iter()
+        .find(|e| e.slug == "prod")
+        .expect("prod")
+        .id
 }

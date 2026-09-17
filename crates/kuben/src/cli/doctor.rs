@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 
-use kuben_core::config::{Config, KubeCfg, in_cluster};
+use kuben_core::{
+    config::{Config, KubeCfg, in_cluster},
+    support,
+};
 
 use crate::cli::DoctorOpts;
 use kuben_platform::{
@@ -35,6 +38,78 @@ impl Report {
             }
         };
         println!("[{tag}] {name}: {}", redact_credentials(&detail.to_string()));
+    }
+}
+
+/// The database server, point-in-time recovery and backups (M4.7).
+async fn database_checks(r: &mut Report, cfg: &Config, store: &kuben_store::Store) {
+    match store.database_facts().await {
+        Ok(facts) => {
+            let local = cfg.database.url.contains("@localhost")
+                || cfg.database.url.contains("@127.0.0.1")
+                || cfg.database.url.contains("host=/");
+            let (fit, fits) = support::POSTGRESQL.describe(support::Minor(
+                u32::try_from(facts.major()).unwrap_or_default(),
+                0,
+            ));
+            let level = if fit != support::Fit::Supported || facts.in_recovery || (!facts.tls && !local) {
+                Level::Warn
+            } else {
+                Level::Ok
+            };
+            r.line(
+                level,
+                "database server",
+                format!(
+                    "PostgreSQL {}{}{}",
+                    facts.major(),
+                    if facts.tls {
+                        ", TLS"
+                    } else if local {
+                        ", local"
+                    } else {
+                        ", NOT encrypted: add sslmode=verify-full"
+                    },
+                    if facts.in_recovery {
+                        ", a read-only standby"
+                    } else {
+                        ""
+                    }
+                ),
+            );
+            if fit != support::Fit::Supported {
+                r.line(Level::Warn, "support envelope", fits);
+            }
+            if facts.archives_wal() {
+                r.line(
+                    Level::Ok,
+                    "point-in-time recovery",
+                    "WAL is archived (wal_level and archive_mode)",
+                );
+            } else {
+                r.line(
+                    Level::Warn,
+                    "point-in-time recovery",
+                    "WAL is not archived: recovery goes back to the newest backup only; archive WAL \
+                     (pgBackRest, WAL-G or your provider's PITR) for a smaller recovery point",
+                );
+            }
+        }
+        Err(e) => r.line(
+            Level::Warn,
+            "database server",
+            format!("cannot read its facts: {e}"),
+        ),
+    }
+    match store.last_backup().await {
+        Ok(last) => {
+            let at = last.as_ref().map(|b| b.finished_at);
+            match crate::cli::backup::freshness(at, kuben_core::time::now_ms(), cfg.backup.max_age_hours) {
+                Ok(msg) => r.line(Level::Ok, "backup", msg),
+                Err(msg) => r.line(Level::Warn, "backup", msg),
+            }
+        }
+        Err(e) => r.line(Level::Warn, "backup", format!("cannot read the backups: {e}")),
     }
 }
 
@@ -74,6 +149,7 @@ pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
                 Ok(None) => r.line(Level::Ok, "database role", "row-level security applies"),
                 Err(e) => r.line(Level::Warn, "database role", format!("cannot read the role: {e}")),
             }
+            database_checks(&mut r, &cfg, &store).await;
             let _ = store.close().await;
         }
         // The URL goes through `redact_credentials` like every line.
@@ -148,7 +224,10 @@ async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
         Ok(registry) => {
             let client = registry.primary();
             match client.apiserver_version().await {
-                Ok(v) => r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version)),
+                Ok(v) => {
+                    r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version));
+                    envelope_line(r, support::KUBERNETES, &format!("{}.{}", v.major, v.minor));
+                }
                 Err(e) => r.line(Level::Fail, "kubernetes", e),
             }
             let facts = discovery::discover(&client).await;
@@ -172,6 +251,26 @@ async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
     }
 }
 
+/// How `version` of a dependency fits the support envelope (M4.12): OK when
+/// supported, WARN when untested, FAIL when unsupported.
+fn envelope_line(r: &mut Report, range: support::VersionRange, version: &str) {
+    let Some(minor) = support::Minor::parse(version) else {
+        r.line(
+            Level::Warn,
+            "support envelope",
+            format!("cannot read the {} version {version:?}", range.name),
+        );
+        return;
+    };
+    let (fit, text) = range.describe(minor);
+    let level = match fit {
+        support::Fit::Supported => Level::Ok,
+        support::Fit::Untested => Level::Warn,
+        support::Fit::Unsupported => Level::Fail,
+    };
+    r.line(level, "support envelope", text);
+}
+
 /// What the cluster can do (ADR-031), as the controllers see it: unknown
 /// facts are warnings, never OK.
 fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
@@ -183,15 +282,20 @@ fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
         );
     }
     match &facts.gateway_api {
-        Some(api) => r.line(
-            Level::Ok,
-            "gateway-api",
-            format!(
-                "{} ({} channel)",
-                api.bundle_version.as_deref().unwrap_or("unknown version"),
-                api.channel.as_deref().unwrap_or("unknown")
-            ),
-        ),
+        Some(api) => {
+            r.line(
+                Level::Ok,
+                "gateway-api",
+                format!(
+                    "{} ({} channel)",
+                    api.bundle_version.as_deref().unwrap_or("unknown version"),
+                    api.channel.as_deref().unwrap_or("unknown")
+                ),
+            );
+            if let Some(version) = &api.bundle_version {
+                envelope_line(r, support::GATEWAY_API, version);
+            }
+        }
         None => r.line(
             Level::Warn,
             "gateway-api",

@@ -76,6 +76,10 @@ pub struct Subject {
     /// `target.delete`: also delete the app's retained volumes.
     #[serde(default)]
     pub delete_volumes: bool,
+    /// `target.delete`: detach the app instead (M4.11): its objects are
+    /// orphaned and stay in the cluster.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub detach: bool,
 }
 
 impl Subject {
@@ -86,6 +90,7 @@ impl Subject {
             environment: None,
             target: None,
             delete_volumes: false,
+            detach: false,
         }
     }
 
@@ -110,6 +115,15 @@ impl Subject {
             target: Some(target),
             delete_volumes,
             ..Self::project(project)
+        }
+    }
+
+    /// An app to detach (M4.11).
+    #[must_use]
+    pub const fn detach(project: ProjectId, environment: EnvironmentId, target: TargetId) -> Self {
+        Self {
+            detach: true,
+            ..Self::target(project, environment, target, false)
         }
     }
 }

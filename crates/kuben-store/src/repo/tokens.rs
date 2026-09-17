@@ -11,7 +11,7 @@ use kuben_core::{
 use crate::{Store, StoreError};
 
 /// Input for a new token.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NewToken {
     pub id: TokenId,
     pub org_id: OrgId,
@@ -64,8 +64,8 @@ const INSERT_TOKEN: &str = "INSERT INTO api_tokens \
 const SELECT_TOKEN: &str = "SELECT id, org_id, owner_user_id, name, prefix, secret_hash, scopes, expires_at, \
      last_used_at, revoked_at, created_at FROM api_tokens WHERE id = $1";
 const SELECT_TOKENS_OF_OWNER: &str = "SELECT id, org_id, owner_user_id, name, prefix, secret_hash, scopes, \
-     expires_at, last_used_at, revoked_at, created_at FROM api_tokens WHERE owner_user_id = $1 \
-     ORDER BY created_at DESC";
+     expires_at, last_used_at, revoked_at, created_at FROM api_tokens \
+     WHERE owner_user_id = $1 AND ci_policy_id IS NULL ORDER BY created_at DESC";
 const REVOKE_TOKEN: &str =
     "UPDATE api_tokens SET revoked_at = $3 WHERE id = $1 AND owner_user_id = $2 AND revoked_at IS NULL";
 const REVOKE_USER_TOKENS: &str =

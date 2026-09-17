@@ -5,6 +5,7 @@
 
 pub mod password;
 pub mod session;
+pub mod sso;
 pub mod throttle;
 
 use std::net::SocketAddr;
@@ -259,7 +260,16 @@ pub async fn login(
         .map_err(Error::internal)?;
 
     let account = creds.as_ref().map(|c| c.user.clone());
-    let Some(creds) = creds.filter(|c| ok && c.user.is_active && c.password_hash.is_some()) else {
+    // With `sso.disable_password_for_linked`, an account linked to the
+    // identity provider signs in there only.
+    let sso_only = match &creds {
+        Some(c) if ok && state.sso.is_some() && state.cfg.sso.disable_password_for_linked => {
+            state.store.has_identity(c.user.id).await?
+        }
+        _ => false,
+    };
+    let Some(creds) = creds.filter(|c| ok && !sso_only && c.user.is_active && c.password_hash.is_some())
+    else {
         state.throttle.record_failure(&email, ip.as_deref()).await;
         audit_login(&state, account.as_ref(), false, &email, ip, "failure").await;
         return Err(ApiError(Error::Unauthorized));
@@ -397,6 +407,9 @@ pub async fn change_password(
 pub fn openapi_router() -> OpenApiRouter<ApiState> {
     OpenApiRouter::new()
         .routes(routes!(login))
+        .routes(routes!(sso::info))
+        .routes(routes!(sso::start))
+        .routes(routes!(sso::callback))
         .routes(routes!(logout))
         .routes(routes!(me))
         .routes(routes!(change_password))
@@ -406,6 +419,9 @@ pub fn openapi_router() -> OpenApiRouter<ApiState> {
 pub fn plain_router() -> Router<ApiState> {
     Router::new()
         .route("/auth/login", post(login))
+        .route("/auth/sso", get(sso::info))
+        .route("/auth/sso/start", get(sso::start))
+        .route("/auth/sso/callback", get(sso::callback))
         .route("/auth/logout", post(logout))
         .route("/me", get(me))
         .route("/me/password", post(change_password))

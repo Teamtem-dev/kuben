@@ -72,6 +72,13 @@ export const meQuery = queryOptions({
   staleTime: 60_000,
 })
 
+/** Whether single sign-on is offered, and where it starts. */
+export const ssoQuery = queryOptions({
+  queryKey: ['sso'],
+  queryFn: () => unwrap(api.GET('/api/v1/auth/sso')),
+  staleTime: 300_000,
+})
+
 export const login = (email: string, password: string) =>
   unwrap(api.POST('/api/v1/auth/login', { body: { email, password } }))
 
@@ -357,6 +364,39 @@ export const deleteSecret = (project: string, environment: string, secret: strin
   ok(
     api.DELETE('/api/v1/projects/{project}/environments/{environment}/secrets/{secret}', {
       params: { path: { project, environment, secret } },
+    }),
+  )
+
+// ---- registry logins ----
+
+export const registriesQuery = (project: string, environment: string) =>
+  queryOptions({
+    queryKey: ['registries', project, environment],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/registries', {
+          params: { path: { project, environment } },
+        }),
+      ),
+  })
+
+export const putRegistryLogin = (
+  project: string,
+  environment: string,
+  name: string,
+  login: { registry: string; username: string; password: string },
+) =>
+  unwrap(
+    api.PUT('/api/v1/projects/{project}/environments/{environment}/registries/{name}', {
+      params: { path: { project, environment, name } },
+      body: login,
+    }),
+  )
+
+export const deleteRegistryLogin = (project: string, environment: string, name: string) =>
+  ok(
+    api.DELETE('/api/v1/projects/{project}/environments/{environment}/registries/{name}', {
+      params: { path: { project, environment, name } },
     }),
   )
 

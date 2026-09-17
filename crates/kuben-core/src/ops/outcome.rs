@@ -15,6 +15,10 @@ use crate::artifact::Digest;
 pub const FETCH_CONTAINER: &str = "fetch";
 /// Name of the container that builds and pushes.
 pub const BUILD_CONTAINER: &str = "build";
+/// Name of the container that scans the pushed image (M4.6). It runs after
+/// the build and never decides the build's outcome: a scan that fails is
+/// recorded as unavailable.
+pub const SCAN_CONTAINER: &str = "scan";
 /// How long a build pod may stay unschedulable before the attempt fails.
 pub const UNSCHEDULABLE_LIMIT_SECS: u64 = 600;
 const DETAIL_MAX: usize = 1024;
@@ -200,8 +204,17 @@ pub fn classify(job: &JobObservation) -> JobVerdict {
         return JobVerdict::Gone;
     }
     let pod = job.pod.as_ref();
-    let exits = pod.map_or(&[][..], |p| p.exits.as_slice());
-    let failed_exit = exits.iter().find(|e| e.exit_code != 0);
+    let all_exits = pod.map_or(&[][..], |p| p.exits.as_slice());
+    let scan_exit = all_exits.iter().find(|e| e.name == SCAN_CONTAINER);
+    let exits: Vec<&ContainerExit> = all_exits.iter().filter(|e| e.name != SCAN_CONTAINER).collect();
+    let failed_exit = exits.iter().copied().find(|e| e.exit_code != 0);
+    let report = || {
+        exits
+            .iter()
+            .find(|e| e.name == BUILD_CONTAINER && e.exit_code == 0)
+            .and_then(|e| e.message.as_deref())
+            .and_then(|m| serde_json::from_str::<BuildReport>(m.trim()).ok())
+    };
 
     // 1. The kernel's OOM killer is unambiguous.
     if exits.iter().any(|e| e.reason.as_deref() == Some("OOMKilled")) {
@@ -249,14 +262,10 @@ pub fn classify(job: &JobObservation) -> JobVerdict {
             .unwrap_or_else(|| format!("{} exited with code {}", exit.name, exit.exit_code));
         return failed(BuildFailure::BuildError, detail);
     }
-    // 7. Success needs a parsable report from the build container.
-    if job.succeeded {
-        let report = exits
-            .iter()
-            .find(|e| e.name == BUILD_CONTAINER)
-            .and_then(|e| e.message.as_deref())
-            .and_then(|m| serde_json::from_str::<BuildReport>(m.trim()).ok());
-        return match report {
+    // 7. Success needs a parsable report from the build container; a scan
+    // that ended, however it ended, does not change that.
+    if job.succeeded || (job.failed && scan_exit.is_some()) {
+        return match report() {
             Some(report) => JobVerdict::Finished(report),
             None => failed(
                 BuildFailure::OutputRejected,
@@ -285,7 +294,11 @@ pub fn classify(job: &JobObservation) -> JobVerdict {
             pod.message.as_deref().unwrap_or_default(),
         );
     }
-    if pod.running.iter().any(|c| c == BUILD_CONTAINER) {
+    if pod
+        .running
+        .iter()
+        .any(|c| c == BUILD_CONTAINER || c == SCAN_CONTAINER)
+    {
         JobVerdict::Building
     } else if pod.running.iter().any(|c| c == FETCH_CONTAINER)
         || exits.iter().any(|e| e.name == FETCH_CONTAINER)
@@ -478,6 +491,47 @@ mod tests {
         assert!(
             matches!(&verdict, JobVerdict::Failed { failure: BuildFailure::BuildError, detail } if detail.len() == 1024)
         );
+    }
+
+    #[test]
+    fn the_scan_never_decides_the_build() {
+        let report = format!(r#"{{"digest":"{DIGEST}","strategy":"dockerfile"}}"#);
+        let scanning = job(PodObservation {
+            phase: "Running".into(),
+            exits: vec![
+                exit(FETCH_CONTAINER, 0, None, None),
+                exit(BUILD_CONTAINER, 0, Some("Completed"), Some(&report)),
+            ],
+            running: vec![SCAN_CONTAINER.into()],
+            ..PodObservation::default()
+        });
+        assert_eq!(classify(&scanning), JobVerdict::Building);
+        for scan in [
+            exit(SCAN_CONTAINER, 0, Some("Completed"), Some(r#"{"status":"ok"}"#)),
+            exit(SCAN_CONTAINER, 137, Some("OOMKilled"), None),
+            exit(SCAN_CONTAINER, 1, Some("Error"), Some("no space left on device")),
+        ] {
+            let failed = scan.exit_code != 0;
+            let done = JobObservation {
+                exists: true,
+                succeeded: !failed,
+                failed,
+                failed_reason: failed.then(|| "BackoffLimitExceeded".to_owned()),
+                pod: Some(PodObservation {
+                    phase: if failed { "Failed" } else { "Succeeded" }.into(),
+                    exits: vec![
+                        exit(FETCH_CONTAINER, 0, None, None),
+                        exit(BUILD_CONTAINER, 0, Some("Completed"), Some(&report)),
+                        scan.clone(),
+                    ],
+                    ..PodObservation::default()
+                }),
+            };
+            assert!(
+                matches!(classify(&done), JobVerdict::Finished(r) if r.digest.as_str() == DIGEST),
+                "{scan:?}"
+            );
+        }
     }
 
     #[test]

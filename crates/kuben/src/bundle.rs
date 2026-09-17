@@ -98,7 +98,22 @@ pub fn bundle() -> &'static Bundle {
 
 #[cfg(test)]
 mod tests {
+    use kuben_core::support::{CERT_MANAGER, Fit, GATEWAY_API, KUBERNETES, Minor, POSTGRESQL};
+
     use super::*;
+
+    #[test]
+    fn what_a_release_installs_is_inside_the_support_envelope() {
+        let b = bundle();
+        let fit = |range: kuben_core::support::VersionRange, version: &str| {
+            let minor = Minor::parse(version).unwrap_or_else(|| panic!("{version} does not parse"));
+            assert_eq!(range.fit(minor), Fit::Supported, "{} {version}", range.name);
+        };
+        fit(KUBERNETES, &b.k3s.version);
+        fit(GATEWAY_API, &b.gateway_api.version);
+        fit(CERT_MANAGER, &b.cert_manager.version);
+        fit(POSTGRESQL, &b.postgresql.tag);
+    }
 
     fn is_digest(value: &str) -> bool {
         value

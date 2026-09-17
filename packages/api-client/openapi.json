@@ -127,6 +127,262 @@
         }
       }
     },
+    "/api/v1/auth/sso": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Whether single sign-on is offered, for the sign-in page.",
+        "operationId": "getSsoInfo",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/sso/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The identity provider's answer: signs the person in and redirects.",
+        "operationId": "finishSso",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "Set by the provider when the person or the provider refused.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Signed in, or back to the sign-in page"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/sso/start": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start signing in: redirects to the identity provider.",
+        "operationId": "startSso",
+        "parameters": [
+          {
+            "name": "returnTo",
+            "in": "query",
+            "description": "A path on this site to return to after signing in.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "To the identity provider"
+          },
+          "404": {
+            "description": "Single sign-on is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ci/trust-policies": {
+      "get": {
+        "tags": [
+          "ci"
+        ],
+        "summary": "The organization's CI trust policies.",
+        "operationId": "listCiTrustPolicies",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CiPolicyDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ci"
+        ],
+        "summary": "Trust one GitHub repository's workflows to deploy into a project.\nExchanged tokens act with the creator's authority, capped at `role`.",
+        "operationId": "createCiTrustPolicy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCiPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiPolicyDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ci/trust-policies/{policy}": {
+      "delete": {
+        "tags": [
+          "ci"
+        ],
+        "summary": "Revoke a trust policy and every token exchanged under it.",
+        "operationId": "revokeCiTrustPolicy",
+        "parameters": [
+          {
+            "name": "policy",
+            "in": "path",
+            "description": "Policy id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/git/installations": {
       "get": {
         "tags": [
@@ -244,6 +500,123 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/incidents": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "The organization's incidents, newest first.",
+        "operationId": "listIncidents",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include resolved incidents.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many (default 100).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/incidents/{id}/acknowledge": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Acknowledge an open incident: someone is on it.",
+        "operationId": "acknowledgeIncident",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Incident id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Acknowledged"
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/incidents/{id}/resolve": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Resolve an open incident by hand (a success resolves it on its own).",
+        "operationId": "resolveIncident",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Incident id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resolved"
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -681,6 +1054,133 @@
           },
           "409": {
             "description": "The project still has environments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/applications/{app}/owner": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Who answers for an application (in every environment).",
+        "operationId": "getApplicationOwner",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OwnerDto"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Name who answers for an application.",
+        "operationId": "putApplicationOwner",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -1816,6 +2316,396 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/approval": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The approval state of a deployment run.",
+        "operationId": "getDeploymentApproval",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run",
+            "in": "path",
+            "description": "Deployment run id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/approve": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Approve a deployment waiting for approval. Enough approvals release it to\nthe cluster at once.",
+        "operationId": "approveDeployment",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run",
+            "in": "path",
+            "description": "Deployment run id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an approver here, an API token, or the requester",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not waiting, expired, already decided, or a changed plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/reject": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Reject a deployment waiting for approval; it is cancelled.",
+        "operationId": "rejectDeployment",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run",
+            "in": "path",
+            "description": "Deployment run id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/detach": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Detach an app: Kuben lets go of it and leaves its objects running.",
+        "operationId": "detachApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Detach scheduled; the answer holds the export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetachedAppDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Being deleted, a run in flight, or never delivered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
       "get": {
         "tags": [
@@ -1939,6 +2829,96 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/emergency-rollback": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Return an app to an earlier release now, past approvals, a freeze, the\nscan gate and a pause. People with approval rights only; the reason is\nkept.",
+        "operationId": "emergencyRollback",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmergencyRollback"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No earlier release ran successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
       "get": {
         "tags": [
@@ -1991,6 +2971,76 @@
           },
           "503": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/export": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Export an app: portable release and configuration, standard manifests,\nreferences, inventory and runbook. No secret values.",
+        "operationId": "exportApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export document (`kuben.dev/export/v1`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not delivered yet",
             "content": {
               "application/json": {
                 "schema": {
@@ -2164,6 +3214,69 @@
           },
           "503": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/pause": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Hold an app's delivery: new runs are accepted and wait.",
+        "operationId": "pauseApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reason"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Paused"
+          },
+          "409": {
+            "description": "Paused already",
             "content": {
               "application/json": {
                 "schema": {
@@ -2391,6 +3504,59 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/resume": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Resume an app's delivery: its newest waiting run is written.",
+        "operationId": "resumeApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resumed"
+          },
+          "409": {
+            "description": "Not paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/rollback": {
       "post": {
         "tags": [
@@ -2559,6 +3725,131 @@
             }
           },
           "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/sbom/{digest}": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The CycloneDX SBOM of one image of the app's current release\n(gzip-encoded JSON).",
+        "operationId": "getAppSbom",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "digest",
+            "in": "path",
+            "description": "Image digest (`sha256:…`)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CycloneDX JSON, `Content-Encoding: gzip`",
+            "content": {
+              "application/vnd.cyclonedx+json": {}
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/scans": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The scans of the app's current release and the gate's verdict.",
+        "operationId": "getAppScans",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppScansDto"
+                }
+              }
+            }
+          },
+          "404": {
             "description": "",
             "content": {
               "application/json": {
@@ -2810,6 +4101,941 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/detached": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The apps detached from an environment.",
+        "operationId": "listDetachedApps",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DetachedAppDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "One detached app, with its export.",
+        "operationId": "getDetachedApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The detached app's id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetachedAppDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}/release": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Release a detached app: someone owns it now, and deleting the\nenvironment no longer keeps its namespace.",
+        "operationId": "releaseDetachedApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The detached app's id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Released"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not complete yet, or released already",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/freezes": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "The environment's change freezes in force or to come.",
+        "operationId": "listFreezes",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include ended and lifted ones.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WindowDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "Freeze an environment: new releases are refused until it ends.",
+        "operationId": "createFreeze",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWindow"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WindowDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/freezes/{id}": {
+      "delete": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "Lift a freeze early.",
+        "operationId": "liftFreeze",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Freeze id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Lifted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Members with a role on this environment.",
+        "operationId": "listEnvironmentMembers",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/members/{member}": {
+      "put": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Give an organization member a role on this environment, or change it.",
+        "operationId": "putEnvironmentMember",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutScopedRole"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove a member's role on this environment.",
+        "operationId": "removeEnvironmentMember",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/policy": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "The environment's protection policy.",
+        "operationId": "getEnvironmentPolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "Change the environment's protection policy. Stricter policies need\n`env-write`; anything weaker needs an owner.",
+        "operationId": "putEnvironmentPolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Weakening needs an owner; tokens cannot change policies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/registries": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "List the registry logins of an environment (never their passwords).",
+        "operationId": "listRegistryLogins",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegistryLoginDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/registries/{name}": {
+      "put": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Set the login of a registry: a new revision, used by the next runs.",
+        "operationId": "putRegistryLogin",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Login name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutRegistryLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryLoginDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name or registry is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Delete a registry login. Runs accepted with it keep their revision.",
+        "operationId": "deleteRegistryLogin",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Login name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An app reads it as a secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/secrets": {
       "get": {
         "tags": [
@@ -2850,16 +5076,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
           }
         }
       }
@@ -2869,7 +5085,7 @@
         "tags": [
           "secrets"
         ],
-        "summary": "Create or replace a secret.",
+        "summary": "Set a secret's values: a new revision, rolled out unless `rollout` is\nfalse.",
         "operationId": "putSecret",
         "parameters": [
           {
@@ -2921,8 +5137,18 @@
               }
             }
           },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "A secret with this name exists and is not managed by Kuben",
+            "description": "The environment is being deleted, or the name is a registry login",
             "content": {
               "application/json": {
                 "schema": {
@@ -2940,6 +5166,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       },
@@ -2947,7 +5183,7 @@
         "tags": [
           "secrets"
         ],
-        "summary": "Delete a secret created through Kuben.",
+        "summary": "Delete a secret. Refused while an app of the environment references it.",
         "operationId": "deleteSecret",
         "parameters": [
           {
@@ -2981,6 +5217,329 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An app references the secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "The revisions of an encrypted secret, newest first (no values).",
+        "operationId": "listSecretRevisions",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "secret",
+            "in": "path",
+            "description": "Secret name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SecretRevisionDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions/{revision}/revoke": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Revoke a revision for good: runs bound to it fail instead of delivering\nit. Revoking the current revision blocks deployments until a new value is\nset.",
+        "operationId": "revokeSecretRevision",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "secret",
+            "in": "path",
+            "description": "Secret name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "description": "Revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revoked already",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/silences": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "The environment's alert silences in force.",
+        "operationId": "listSilences",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include ended and lifted ones.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WindowDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "Silence the alerts of an environment, or of one of its apps.",
+        "operationId": "createSilence",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWindow"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WindowDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/silences/{id}": {
+      "delete": {
+        "tags": [
+          "environments"
+        ],
+        "summary": "Lift a silence early.",
+        "operationId": "liftSilence",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Silence id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Lifted"
           },
           "404": {
             "description": "",
@@ -3063,6 +5622,323 @@
             }
           },
           "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Members with a role on this project.",
+        "operationId": "listProjectMembers",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/members/{member}": {
+      "put": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Give an organization member a role on this project, or change it.",
+        "operationId": "putProjectMember",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutScopedRole"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Above your own role, or an API token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a member of the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove a member's role on this project; their organization role stays.",
+        "operationId": "removeProjectMember",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "description": "User id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/owner": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Who answers for a project.",
+        "operationId": "getProjectOwner",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OwnerDto"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Name who answers for a project.",
+        "operationId": "putProjectOwner",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerDto"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "",
             "content": {
               "application/json": {
@@ -3296,6 +6172,357 @@
           }
         }
       }
+    },
+    "/api/v1/vulnerability-exceptions": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "The organization's vulnerability exceptions in force (or all).",
+        "operationId": "listVulnerabilityExceptions",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include expired and revoked exceptions.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExceptionDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Let one finding pass the scan gates for a while.",
+        "operationId": "createVulnerabilityException",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateException"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vulnerability-exceptions/{id}": {
+      "delete": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Revoke an exception for good.",
+        "operationId": "revokeVulnerabilityException",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Exception id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "The organization's webhook endpoints.",
+        "operationId": "listWebhooks",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EndpointDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Add a webhook endpoint; the answer holds its signing secret, once.",
+        "operationId": "createWebhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEndpoint"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}": {
+      "delete": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Disable a webhook endpoint for good.",
+        "operationId": "disableWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Disabled"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "The newest deliveries to an endpoint.",
+        "operationId": "listWebhookDeliveries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/ping": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Send a `ping` event to an endpoint.",
+        "operationId": "pingWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3420,6 +6647,13 @@
                 "description": "Whether the app can be reached through the gateway, apart from\nwhether it runs (null while it has no route)."
               }
             ]
+          },
+          "paused": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why delivery is paused, while it is: new runs wait."
           }
         }
       },
@@ -3478,6 +6712,100 @@
               "null"
             ],
             "description": "The component that reported it."
+          }
+        }
+      },
+      "AppScansDto": {
+        "type": "object",
+        "required": [
+          "gate",
+          "reasons",
+          "images"
+        ],
+        "properties": {
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "gate": {
+            "type": "string",
+            "description": "`pass`, `warn` or `block`: what the environment's gate says now."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageScanDto"
+            }
+          }
+        }
+      },
+      "ApprovalDto": {
+        "type": "object",
+        "required": [
+          "run",
+          "phase",
+          "requestedBy",
+          "required",
+          "approved",
+          "canDecide",
+          "decisions"
+        ],
+        "properties": {
+          "run": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string",
+            "description": "Email of whoever asked for the deployment."
+          },
+          "required": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct approvals needed; 0 when the run needs none.",
+            "minimum": 0
+          },
+          "approved": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "expiresAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the run is cancelled unless approved (Unix milliseconds)."
+          },
+          "planHash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What an approver confirms: send it back with the decision."
+          },
+          "canDecide": {
+            "type": "boolean",
+            "description": "Whether the caller may decide on this run now."
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DecisionDto"
+            }
           }
         }
       },
@@ -3704,6 +7032,97 @@
           }
         }
       },
+      "CiPolicyDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "project",
+          "repository",
+          "repositoryId",
+          "repositoryOwnerId",
+          "refs",
+          "environments",
+          "events",
+          "role",
+          "tokenTtlSecs",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "repositoryId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "repositoryOwnerId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "role": {
+            "type": "string"
+          },
+          "tokenTtlSecs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revokedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "CreateApp": {
         "type": "object",
         "required": [
@@ -3823,6 +7242,116 @@
           }
         }
       },
+      "CreateCiPolicy": {
+        "type": "object",
+        "required": [
+          "name",
+          "project",
+          "repository",
+          "repositoryId",
+          "repositoryOwnerId",
+          "refs"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization, 1–64 characters.",
+            "example": "shop-deploy"
+          },
+          "project": {
+            "type": "string",
+            "example": "shop"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Narrows the tokens to one environment of `project`."
+          },
+          "repository": {
+            "type": "string",
+            "description": "`owner/name`, for people; the ids decide.",
+            "example": "acme/shop"
+          },
+          "repositoryId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub's numeric repository id (`repository_id` claim).",
+            "minimum": 0
+          },
+          "repositoryOwnerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub's numeric owner id (`repository_owner_id` claim).",
+            "minimum": 0
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`refs/heads/main`, `refs/tags/v*`, …"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub environments allowed; empty for any."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Workflow events allowed; `push`, `workflow_dispatch` and `release`\nwhen empty."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`developer` (deploy) or `admin` (deploy and promote)."
+          },
+          "tokenTtlSecs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Life of an exchanged token, 60–3600 seconds (default 900).",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateEndpoint": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "events"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "ops-pager"
+          },
+          "url": {
+            "type": "string",
+            "example": "https://hooks.example.com/kuben"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Event types, or `*` for all."
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateEnvironment": {
         "type": "object",
         "required": [
@@ -3848,6 +7377,45 @@
             ]
           }
         }
+      },
+      "CreateException": {
+        "type": "object",
+        "required": [
+          "vulnerability",
+          "reason",
+          "owner",
+          "days"
+        ],
+        "properties": {
+          "vulnerability": {
+            "type": "string",
+            "description": "The finding's id, e.g. `CVE-2026-12345` or `GHSA-xxxx-xxxx-xxxx`.",
+            "example": "CVE-2026-12345"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "description": "Who answers for it: a person or a team.",
+            "example": "platform-team@example.com"
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 90 days.",
+            "example": 30,
+            "minimum": 0
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Limit it to one project; every project when omitted."
+          }
+        },
+        "additionalProperties": false
       },
       "CreateProject": {
         "type": "object",
@@ -3915,6 +7483,37 @@
           }
         }
       },
+      "CreateWindow": {
+        "type": "object",
+        "required": [
+          "reason",
+          "endsAt"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 3339; now when omitted (freezes only)."
+          },
+          "endsAt": {
+            "type": "string",
+            "description": "RFC 3339."
+          },
+          "app": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Silences only: one app of the environment."
+          }
+        },
+        "additionalProperties": false
+      },
       "CreatedToken": {
         "type": "object",
         "required": [
@@ -3928,6 +7527,103 @@
           },
           "info": {
             "$ref": "#/components/schemas/TokenDto"
+          }
+        }
+      },
+      "DecideRequest": {
+        "type": "object",
+        "required": [
+          "planHash"
+        ],
+        "properties": {
+          "planHash": {
+            "type": "string",
+            "description": "The plan hash shown with the deployment (hex)."
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, for the record; at most 1024 characters."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DecisionDto": {
+        "type": "object",
+        "required": [
+          "approver",
+          "decision",
+          "decidedAt"
+        ],
+        "properties": {
+          "approver": {
+            "type": "string",
+            "description": "Email of whoever decided."
+          },
+          "decision": {
+            "type": "string",
+            "description": "`approved` or `rejected`."
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decidedAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DeliveryDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "event",
+          "status",
+          "attempts",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending`, `delivered` or `failed`."
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastStatus": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -4003,7 +7699,35 @@
           },
           "phase": {
             "type": "string",
-            "description": "`planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,\n`succeeded`, `failed`, `superseded`, …"
+            "description": "`planned`, `awaitingApproval`, `pendingDelivery`, `acceptedByCluster`,\n`applying`, `succeeded`, `failed`, `superseded`, `cancelled`, …"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct approvals the environment's policy requires before delivery.",
+            "minimum": 0
+          },
+          "approval_expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When a run waiting for approval is cancelled (Unix milliseconds)."
+          },
+          "plan_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The hash approvers confirm (hex), when approvals are required."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What admission could not check, e.g. that the pods will be scheduled."
           }
         }
       },
@@ -4032,7 +7756,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "`deploy`, `rollback` or `promotion`."
+            "description": "`deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or\n`rotation`."
           },
           "phase": {
             "type": "string"
@@ -4064,6 +7788,82 @@
               "$ref": "#/components/schemas/PhaseStep"
             },
             "description": "Every phase it entered, oldest first."
+          }
+        }
+      },
+      "DetachRequest": {
+        "type": "object",
+        "required": [
+          "confirm",
+          "reason"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "description": "The app's name again."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why; kept with the record and audited."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DetachedAppDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "app",
+          "namespace",
+          "reason",
+          "requestedBy",
+          "requestedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "app": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set once the objects are orphaned."
+          },
+          "releasedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "releasedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "export": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The export frozen with the request (only when one app is read)."
           }
         }
       },
@@ -4152,6 +7952,81 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "EmergencyRollback": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why this cannot wait; kept on the run and in the audit log."
+          },
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The release to return to; the newest earlier release that ran\nsuccessfully when omitted."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EndpointDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "createdBy",
+          "createdAt",
+          "failures"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "disabledAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Deliveries given up in a row; the endpoint is disabled at 20."
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The signing secret: shown once, when the endpoint is made."
           }
         }
       },
@@ -4256,6 +8131,60 @@
           }
         }
       },
+      "ExceptionDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "vulnerability",
+          "reason",
+          "owner",
+          "createdBy",
+          "createdAt",
+          "expiresAt",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vulnerability": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "description": "In force now."
+          }
+        }
+      },
       "ExposureDto": {
         "type": "object",
         "description": "How an app is reached through the gateway.",
@@ -4345,6 +8274,129 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ImageScanDto": {
+        "type": "object",
+        "required": [
+          "digest",
+          "sbom"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "scan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScanDto",
+                "description": "The newest scan; `None` when the image was never scanned."
+              }
+            ]
+          },
+          "sbom": {
+            "type": "boolean",
+            "description": "An SBOM can be downloaded."
+          }
+        }
+      },
+      "IncidentDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "title",
+          "openedAt",
+          "lastSeenAt",
+          "occurrences"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "description": "`critical`, `warning` or `info`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "app": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "openedAt": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          },
+          "occurrences": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "acknowledgedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acknowledgedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runbook": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to do about it."
           }
         }
       },
@@ -4534,6 +8586,33 @@
           }
         }
       },
+      "OwnerDto": {
+        "type": "object",
+        "required": [
+          "owner"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "A team or a person.",
+            "example": "payments-team"
+          },
+          "contact": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How to reach them: an email, a chat channel, an on-call rotation."
+          },
+          "runbookUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "PhaseStep": {
         "type": "object",
         "description": "One step of a run's timeline.",
@@ -4629,6 +8708,57 @@
               "null"
             ],
             "description": "Why no logs could be read (e.g. the container is still starting)."
+          }
+        }
+      },
+      "PolicyDto": {
+        "type": "object",
+        "required": [
+          "revision",
+          "requiredApprovals",
+          "deployRole",
+          "approveRole",
+          "approvalTtlSecs",
+          "scan"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "0 when the environment has no policy of its own yet.",
+            "minimum": 0
+          },
+          "requiredApprovals": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "deployRole": {
+            "type": "string"
+          },
+          "approveRole": {
+            "type": "string"
+          },
+          "approvalTtlSecs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanGateDto"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
           }
         }
       },
@@ -4839,6 +8969,88 @@
           "tcp"
         ]
       },
+      "PutPolicy": {
+        "type": "object",
+        "required": [
+          "requiredApprovals",
+          "deployRole",
+          "approveRole"
+        ],
+        "properties": {
+          "requiredApprovals": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct approvers a deployment needs (0–5).",
+            "example": 1,
+            "minimum": 0
+          },
+          "deployRole": {
+            "type": "string",
+            "description": "The weakest role that may deploy: `developer`, `admin` or `owner`.",
+            "example": "developer"
+          },
+          "approveRole": {
+            "type": "string",
+            "description": "The weakest role that may approve: `admin` or `owner`.",
+            "example": "admin"
+          },
+          "approvalTtlSecs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How long a deployment waits for approvals (300 s – 30 days).",
+            "example": 604800,
+            "minimum": 0
+          },
+          "scan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScanGateDto",
+                "description": "The vulnerability gate; the current one is kept when omitted."
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PutRegistryLogin": {
+        "type": "object",
+        "required": [
+          "registry",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "registry": {
+            "type": "string",
+            "description": "`ghcr.io`, `docker.io`, `registry.example.com:5000`."
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "A password or access token; write-only."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PutScopedRole": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "`viewer`, `developer`, `admin` or `owner`.",
+            "example": "developer"
+          }
+        },
+        "additionalProperties": false
+      },
       "PutSecret": {
         "type": "object",
         "required": [
@@ -4847,15 +9059,20 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "Key → UTF-8 value. Replaces the whole secret.",
+            "description": "Key → UTF-8 value. Replaces the whole secret with a new revision.",
             "additionalProperties": {
               "type": "string"
             },
             "propertyNames": {
               "type": "string"
             }
+          },
+          "rollout": {
+            "type": "boolean",
+            "description": "Roll the new value out to the apps that reference the secret."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "PutSource": {
         "type": "object",
@@ -4930,6 +9147,49 @@
           }
         }
       },
+      "Reason": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegistryLoginDto": {
+        "type": "object",
+        "required": [
+          "name",
+          "registry",
+          "revision",
+          "revoked",
+          "updatedAt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "registry": {
+            "type": "string",
+            "description": "The registry as image references name it (`ghcr.io`, `docker.io`)."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "The current revision is revoked: images from the registry are not\ndeployed until a new login is set."
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
       "ReleaseDto": {
         "type": "object",
         "required": [
@@ -4989,6 +9249,39 @@
           }
         }
       },
+      "RolloutDto": {
+        "type": "object",
+        "description": "One app's rollout of a new secret value.",
+        "required": [
+          "app",
+          "approvals_required"
+        ],
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "run": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The rotation run; `None` when the app could not take one now."
+          },
+          "approvals_required": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there is no run."
+          }
+        }
+      },
       "RunJob": {
         "type": "object",
         "properties": {
@@ -5001,11 +9294,110 @@
           }
         }
       },
+      "ScanDto": {
+        "type": "object",
+        "required": [
+          "status",
+          "scanner",
+          "scannedAt",
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "unknown",
+          "findings"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "`ok`, or `unavailable` when the scanner, its feed or the image was\nnot reachable (never \"clean\")."
+          },
+          "scanner": {
+            "type": "string"
+          },
+          "databaseUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the vulnerability database was built."
+          },
+          "scannedAt": {
+            "type": "string"
+          },
+          "critical": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "high": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "medium": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "low": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unknown": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`severity:id` of the most severe findings."
+          }
+        }
+      },
+      "ScanGateDto": {
+        "type": "object",
+        "description": "What vulnerability findings a deployment may carry.",
+        "required": [
+          "mode",
+          "severity"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "`off`, `warn` or `block`.",
+            "example": "block"
+          },
+          "severity": {
+            "type": "string",
+            "description": "Findings at or above this severity count: `high` or `critical`.",
+            "example": "critical"
+          },
+          "requireScan": {
+            "type": "boolean",
+            "description": "An image without a fresh successful scan counts as a finding."
+          },
+          "maxAgeSecs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A scan older than this no longer counts (1 hour – 90 days).",
+            "example": 604800,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "SecretDto": {
         "type": "object",
         "required": [
           "name",
-          "keys"
+          "keys",
+          "storage",
+          "revoked"
         ],
         "properties": {
           "name": {
@@ -5023,6 +9415,35 @@
               "string",
               "null"
             ]
+          },
+          "storage": {
+            "$ref": "#/components/schemas/SecretStorage"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The current revision of an encrypted secret.",
+            "minimum": 0
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "The current revision is revoked: set a new value before deploying."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rollouts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutDto"
+            },
+            "description": "The runs that roll a new value out, after a change."
           }
         }
       },
@@ -5040,6 +9461,58 @@
             "type": "string"
           }
         }
+      },
+      "SecretRevisionDto": {
+        "type": "object",
+        "required": [
+          "revision",
+          "keys",
+          "current",
+          "created_by",
+          "created_at"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SecretStorage": {
+        "type": "string",
+        "description": "Where a secret's values are kept.",
+        "enum": [
+          "encrypted",
+          "cluster"
+        ]
       },
       "SetupRequest": {
         "type": "object",
@@ -5142,6 +9615,31 @@
               "null"
             ],
             "description": "The sync this change or request queued, if any."
+          }
+        }
+      },
+      "SsoInfo": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The sign-in button's label."
+          },
+          "startUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the button leads."
           }
         }
       },
@@ -5488,6 +9986,53 @@
             "example": "5Gi"
           }
         }
+      },
+      "WindowDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "reason",
+          "createdBy",
+          "startsAt",
+          "endsAt",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "app": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Silences only: the app, when not the whole environment."
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string"
+          },
+          "endsAt": {
+            "type": "string"
+          },
+          "liftedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "description": "In force now."
+          }
+        }
       }
     }
   },
@@ -5510,11 +10055,23 @@
     },
     {
       "name": "secrets",
-      "description": "Write-only environment secrets"
+      "description": "Write-only environment secrets and registry logins"
+    },
+    {
+      "name": "security",
+      "description": "Vulnerability exceptions"
+    },
+    {
+      "name": "incidents",
+      "description": "Incidents and signed webhooks"
     },
     {
       "name": "git",
       "description": "GitHub App installations for Git sources"
+    },
+    {
+      "name": "ci",
+      "description": "Trust for external CI (GitHub Actions OIDC)"
     },
     {
       "name": "templates",

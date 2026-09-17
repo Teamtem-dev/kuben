@@ -4,14 +4,21 @@
 
 pub mod artifact;
 pub mod authz;
+pub mod capacity;
+pub mod ci;
 pub mod config;
 pub mod error;
 pub mod ids;
 pub mod model;
 pub mod ops;
 pub mod perm;
+pub mod policy;
+pub mod scan;
 pub mod source;
+pub mod sso;
+pub mod support;
 pub mod time;
 pub mod traits;
+pub mod upgrade;
 
 pub use error::{Error, Result};

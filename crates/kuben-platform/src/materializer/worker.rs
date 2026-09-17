@@ -52,6 +52,10 @@ const POLL: Duration = Duration::from_secs(3);
 /// How long delivery waits for the environment controller's namespace.
 const NAMESPACE_WAIT: Duration = Duration::from_mins(1);
 const VERIFY_DEADLINE: Duration = Duration::from_mins(15);
+/// Longest sleep of a run waiting for approval.
+const APPROVAL_RECHECK: Duration = Duration::from_hours(1);
+/// Longest sleep of a run of a paused target; resuming wakes it at once.
+const PAUSE_RECHECK: Duration = Duration::from_mins(5);
 /// How long an environment deletion waits before it checks again.
 const DELETION_CHECK: Duration = Duration::from_secs(20);
 /// Claims of one deployment operation before its run fails for good.
@@ -166,6 +170,9 @@ pub struct Worker {
     /// The cluster's discovered capabilities; plans wait for them. Without a
     /// channel (tests), plans follow `KubenConfig` alone.
     facts: Option<Facts>,
+    /// Opens the secret revisions runs are bound to; runs bound to any
+    /// fail without it.
+    pub(super) keyring: Option<std::sync::Arc<crate::secrets::Keyring>>,
 }
 
 impl Debug for Worker {
@@ -203,6 +210,7 @@ impl Worker {
             deletion_check: DELETION_CHECK,
             agents: None,
             facts: None,
+            keyring: None,
         }
     }
 
@@ -217,6 +225,13 @@ impl Worker {
     #[must_use]
     pub fn with_agents(mut self, agents: std::sync::Arc<dyn super::agent::AgentDispatch>) -> Self {
         self.agents = Some(agents);
+        self
+    }
+
+    /// Open managed secret revisions with `keyring`.
+    #[must_use]
+    pub fn with_keyring(mut self, keyring: std::sync::Arc<crate::secrets::Keyring>) -> Self {
+        self.keyring = Some(keyring);
         self
     }
 
@@ -265,6 +280,12 @@ impl Worker {
             Ok(never) => match never {},
             Err(stop) => stop,
         };
+        if matches!(stop, Stop::Settled(RunPhase::Succeeded, _))
+            && !m.secrets.is_empty()
+            && let Err(e) = self.collect_secrets(&m).await
+        {
+            tracing::warn!(run = %m.run, error = %e, "unused secret revisions stay for now");
+        }
         match stop {
             Stop::Refused(code) => self.end(claim, &m, RunEvent::Failed, Some(code)).await,
             Stop::Superseded => self.end(claim, &m, RunEvent::Superseded, None).await,
@@ -320,6 +341,12 @@ impl Worker {
         if m.deleting {
             return Err(refused("TargetDeleting"));
         }
+        if m.phase == RunPhase::AwaitingApproval {
+            return Err(self.await_approval(claim, m).await);
+        }
+        if matches!(m.phase, RunPhase::Planned | RunPhase::PendingDelivery) {
+            self.hold_if_paused(m).await?;
+        }
         if m.delivery == kuben_store::repo::Delivery::Agent {
             return self.drive_agent(claim, m, token).await;
         }
@@ -363,6 +390,7 @@ impl Worker {
         self.ensure(Api::<Environment>::all(self.client.clone()), &environment, m.org)
             .await?;
         self.wait_namespace(&m.namespace, token).await?;
+        self.write_secrets(m).await?;
         let app = self.write_app(m, &rendered.app).await?;
         let (Some(uid), Some(generation)) = (app.metadata.uid.as_deref(), app.metadata.generation) else {
             return Err(Error::Incomplete(format!("App/{}", m.application_slug)).into());
@@ -432,6 +460,23 @@ impl Worker {
         Err(Error::Contended(name).into())
     }
 
+    /// Hold the run of a paused target before it writes anything (M4.9);
+    /// an emergency rollback is never held. Checked again at the write, so a
+    /// pause observed before it stops the write.
+    pub(super) async fn hold_if_paused(&self, m: &Materialization) -> Result<(), Stop> {
+        if m.emergency {
+            return Ok(());
+        }
+        let paused = {
+            let mut tenant = self.store.tenant(m.org).await?;
+            tenant.target_paused(m.target).await?
+        };
+        if paused {
+            return Err(Stop::Wait(PAUSE_RECHECK, "Paused"));
+        }
+        Ok(())
+    }
+
     /// Write the App object under the generation fence.
     pub(super) async fn write_app(&self, m: &Materialization, desired: &App) -> Result<App, Stop> {
         let api = Api::<App>::namespaced(self.client.clone(), &m.namespace);
@@ -450,6 +495,7 @@ impl Worker {
                 ),
                 Fence::Write => {}
             }
+            self.hold_if_paused(m).await?;
             match write::put(&api, desired, live.as_ref()).await {
                 Ok(written) => return Ok(written),
                 Err(e) if write::is_conflict(&e) => {}
@@ -566,9 +612,52 @@ impl Worker {
     }
 }
 
+impl Worker {
+    /// A run waiting for approval (M4.1): cancelled once its window has
+    /// closed, otherwise looked at again then. A decision wakes it sooner.
+    async fn await_approval(&self, claim: &Claim, m: &Materialization) -> Stop {
+        match approval_wait(m.approval_expires_at, kuben_core::time::now_ms()) {
+            Some(wait) => Stop::Wait(wait, "AwaitingApproval"),
+            None => match self.advance(claim, m, RunEvent::Rejected).await {
+                Ok(phase) => Stop::Settled(phase, Some("ApprovalExpired".into())),
+                Err(stop) => stop,
+            },
+        }
+    }
+}
+
+/// How long a run waiting for approval sleeps at `now`: until its window
+/// closes, at most an hour, at least one poll. `None` once it has closed or
+/// when the run has no window.
+fn approval_wait(expires_at: Option<i64>, now: i64) -> Option<Duration> {
+    let left = expires_at?.checked_sub(now).filter(|ms| *ms > 0)?;
+    let left = Duration::from_millis(u64::try_from(left).ok()?);
+    Some(left.clamp(POLL, APPROVAL_RECHECK))
+}
+
 pub(super) async fn pause(token: &CancellationToken) -> Result<(), Stop> {
     tokio::select! {
         () = token.cancelled() => Err(Stop::Shutdown),
         () = tokio::time::sleep(POLL) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_wait_for_approval_until_their_window_closes() {
+        assert_eq!(approval_wait(None, 0), None, "no window: nothing to wait for");
+        assert_eq!(approval_wait(Some(1_000), 1_000), None, "closed");
+        assert_eq!(approval_wait(Some(1_000), 2_000), None, "closed long ago");
+        assert_eq!(approval_wait(Some(1_001), 1_000), Some(POLL), "at least one poll");
+        assert_eq!(approval_wait(Some(60_000), 0), Some(Duration::from_mins(1)));
+        assert_eq!(
+            approval_wait(Some(i64::MAX), 0),
+            Some(APPROVAL_RECHECK),
+            "at most an hour"
+        );
+        assert_eq!(approval_wait(Some(i64::MAX), i64::MIN), None, "no overflow");
     }
 }

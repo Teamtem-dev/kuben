@@ -110,26 +110,12 @@ spec:
                   name: {{ . }}
                   key: password
             {{- end }}
-            {{- if .Values.database.existingSecret }}
-            - name: KUBEN_DATABASE__URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.existingSecret }}
-                  key: url
-            {{- else if .Values.database.url }}
-            - name: KUBEN_DATABASE__URL
-              value: {{ .Values.database.url | quote }}
-            {{- else }}
-            # The chart's own PostgreSQL, as the ordinary role `kuben`; the
-            # password stays in its Secret.
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "kuben.postgresql.fullname" . }}
-                  key: password
-            - name: KUBEN_DATABASE__URL
-              value: "postgres://kuben:$(POSTGRES_PASSWORD)@{{ include "kuben.postgresql.fullname" . }}:5432/kuben"
-            {{- end }}
+            {{- include "kuben.databaseEnv" . | trim | nindent 12 }}
+            # The managed-secret keyring, shared by every replica (M4.4).
+            - name: KUBEN_SECRETS__KEYRING_FILE
+              value: /etc/kuben/keyring/secrets.keyring
+            - name: KUBEN_BACKUP__MAX_AGE_HOURS
+              value: {{ ternary .Values.backup.maxAgeHours 0 .Values.backup.enabled | quote }}
             {{- if .Values.agent.enabled }}
             # M2.8: the hub of the agent in this cluster, which it enrolls
             # from a Secret the hub keeps up to date.
@@ -170,7 +156,14 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
+            - name: keyring
+              mountPath: /etc/kuben/keyring
+              readOnly: true
       volumes:
+        - name: keyring
+          secret:
+            secretName: {{ include "kuben.keyring.secret" . }}
+            defaultMode: 0400
         # The state directory (setup token): the data is in PostgreSQL.
         - name: data
           emptyDir: {}

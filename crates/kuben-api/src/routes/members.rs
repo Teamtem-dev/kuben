@@ -259,9 +259,9 @@ pub async fn remove(
             return Err(Error::Conflict("the last owner cannot be removed".into()).into());
         }
     }
+    // Bindings, membership and the member's tokens of this org go together.
     state.store.remove_member(org, target.user.id).await?;
     state.store.revoke_all_sessions(target.user.id).await?;
-    state.store.revoke_user_tokens(org, target.user.id).await?;
     state.session_cache.invalidate_all();
     Ok(StatusCode::NO_CONTENT)
 }

@@ -89,9 +89,21 @@ pub struct DeploymentDto {
     pub operation: Uuid,
     /// The target generation this run owns.
     pub generation: u64,
-    /// `planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,
-    /// `succeeded`, `failed`, `superseded`, …
+    /// `planned`, `awaitingApproval`, `pendingDelivery`, `acceptedByCluster`,
+    /// `applying`, `succeeded`, `failed`, `superseded`, `cancelled`, …
     pub phase: String,
+    /// Distinct approvals the environment's policy requires before delivery.
+    #[serde(default)]
+    pub approvals_required: u8,
+    /// When a run waiting for approval is cancelled (Unix milliseconds).
+    #[serde(default)]
+    pub approval_expires_at: Option<i64>,
+    /// The hash approvers confirm (hex), when approvals are required.
+    #[serde(default)]
+    pub plan_hash: Option<String>,
+    /// What admission could not check, e.g. that the pods will be scheduled.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 impl From<RunSummary> for DeploymentDto {
@@ -101,6 +113,10 @@ impl From<RunSummary> for DeploymentDto {
             operation: *s.operation.as_uuid(),
             generation: s.generation.0,
             phase: s.phase.as_str().to_owned(),
+            approvals_required: s.approvals_required,
+            approval_expires_at: s.approval_expires_at,
+            plan_hash: s.plan_hash.as_ref().map(|h| kuben_core::policy::hex(h)),
+            warnings: Vec::new(),
         }
     }
 }
@@ -246,7 +262,26 @@ pub async fn start(
     let input_hash = Sha256::digest(&canonical).to_vec();
 
     let mut tenant = state.store.tenant(t.org).await?;
+    super::approvals::ensure_may_deploy(&mut tenant, &authz, t.target, &t.chain()).await?;
+    let mut warnings = match &body.config {
+        // Without a new configuration the resources do not change.
+        None => Vec::new(),
+        Some(config) => {
+            let spec = super::spec_of(Some(config.clone()), Some(super::admission::ANY_IMAGE))
+                .ok_or_else(|| Error::Validation("`config` is not an app configuration".into()))?;
+            let at = super::admission::Placement {
+                environment: t.environment,
+                quota: t.quota.as_ref(),
+                target: t.target,
+            };
+            super::admission::admit(&state, &mut tenant, at, &spec).await?
+        }
+    };
     let release = release_for(&mut tenant, &t, &body, &actor).await?;
+    let reason: RunReason = body.reason.into();
+    if reason.carries_new_code() {
+        warnings.extend(super::admission::scan_gate(&mut tenant, t.target, release).await?);
+    }
     let config_revision = config_revision_for(&mut tenant, &t, body.config.as_ref(), &actor).await?;
     let lifecycle_uid = tenant
         .target_state(t.target)
@@ -261,7 +296,7 @@ pub async fn start(
         render_plan: None,
         expected_generation: Generation(body.expected_generation),
         lifecycle_uid,
-        reason: body.reason.into(),
+        reason,
         requested_by: actor.clone(),
         input_hash,
     };
@@ -298,6 +333,9 @@ pub async fn start(
         Started::NotFound => {
             return Err(Error::NotFound("that release or configuration of this app".into()).into());
         }
+        Started::SecretRevoked => return Err(super::secret_revoked().into()),
+        Started::VulnerabilityBlocked => return Err(super::vulnerability_blocked().into()),
+        Started::Frozen => return Err(super::frozen().into()),
     };
     let location = format!(
         "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{}",
@@ -306,7 +344,10 @@ pub async fn start(
     Ok((
         StatusCode::ACCEPTED,
         [(header::LOCATION, location)],
-        Json(DeploymentDto::from(summary)),
+        Json(DeploymentDto {
+            warnings,
+            ..DeploymentDto::from(summary)
+        }),
     ))
 }
 
@@ -324,7 +365,8 @@ pub struct DeploymentSummary {
     pub run: Uuid,
     /// The target generation (the app's revision) this run owns.
     pub generation: u64,
-    /// `deploy`, `rollback` or `promotion`.
+    /// `deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or
+    /// `rotation`.
     pub reason: String,
     pub phase: String,
     /// `succeeded`, `failed` or `cancelled` once it ended.

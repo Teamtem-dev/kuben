@@ -1,0 +1,176 @@
+---
+title: Runbooks
+description: What to do when Kuben opens an incident or reports itself degraded, symptom by symptom.
+sidebar:
+  order: 6
+---
+
+Each runbook covers:
+
+- **Signal:** what you see.
+- **Check:** how to confirm it.
+- **Fix:** what usually resolves it.
+- **Escalate:** what to collect if it does not.
+
+Incidents link to their runbook in the console, in the API (`runbook`) and in `incident.opened` webhooks. When you need help, attach a [support bundle](/docs/operations/support-and-exit/#support-bundle) (`kuben support-bundle`).
+
+## A deployment failed
+
+**Signal:** a critical `deployment.failed` incident for an app, or a `failure` commit status.
+
+**Check:**
+
+```bash
+kuben status shop/prod/web
+kuben logs shop/prod/web
+```
+
+The incident's detail is the failure code:
+
+| Code | Meaning | Fix |
+|---|---|---|
+| `VerifyTimeout`, `RolloutFailed` | The new pods did not become ready in time. | Read the app's logs and events: crash loop, failing probe, or missing configuration. Fix it and deploy again, or roll back. |
+| `SecretRevoked`, `SecretUnreadable`, `SecretsUnavailable` | A secret revision the release uses cannot be delivered. | Restore or rotate the secret, then deploy again. The keyring must be the one the secret was sealed with. |
+| `InvalidConfig`, `RenderFailed`, `NameTooLong` | The configuration cannot be rendered. | Correct the app's settings. The message names the field. |
+| `NameTaken` | An object with the app's name belongs to someone else. | Rename the app, or remove the other object. |
+| `PlacementNamespace`, `NamespacePending` | The environment's namespace is missing or being removed. | Check the environment's state with `kubectl get environments.kuben.dev`. |
+
+**Fix:** to get back to the last good release right away, roll back: `kuben rollback shop/prod/web`. In a frozen environment, a person with approval rights can make an emergency rollback. The next successful deployment resolves the incident.
+
+**Escalate:** include the run id and the app's events.
+
+## A build failed
+
+**Signal:** a warning `build.failed` incident, or a `failure` status on the `kuben/build` context.
+
+**Check:** open the build in the console (app → Builds), or call `GET …/apps/{app}/builds`.
+
+| Code | Fix |
+|---|---|
+| `BuildError` | The build itself failed. Read the build log, fix the code or the build settings, and push again. |
+| `OutOfMemory`, `DiskFull` | Raise `build.memory` or `build.ephemeral_storage`, or make the build smaller. |
+| `DeadlineExceeded` | Raise `build.deadline_secs`, or speed up the build (use a cache, fetch less). |
+| `SourceUnavailable`, `CredentialsRefused` | Check the GitHub App installation and its access to the repository. |
+| `Unschedulable` | No node can run the build. Check `build.node_pool`, and the taints and free capacity. |
+| `OutputRejected` | The pushed image did not match what the build reported. Check the registry. |
+
+**Fix:** the next successful build of the app resolves the incident.
+
+## Backups are stale
+
+**Signal:** a critical `backup.stale` incident. `/readyz` reports `backups` degraded. `kuben doctor` warns on `backup`.
+
+**Check:**
+
+```bash
+sudo -u kuben kuben doctor
+systemctl list-timers kuben-backup.timer                        # on a server
+kubectl -n kuben-system get cronjobs,jobs | grep backup                  # with Helm
+```
+
+**Fix:**
+
+- Run `kuben backup` by hand and read its error. The usual causes are:
+  - missing or too-old PostgreSQL client tools (`pg_dump` must be at least as new as the server);
+  - a full backup disk;
+  - a changed database password.
+- The next good backup resolves the incident within ten minutes.
+
+**Escalate:** include the backup command's output and `kuben doctor`.
+
+## Operations are stuck
+
+**Signal:** in a support bundle, `stuck_operations` is above 0. Apps stay `pending` and no deployment finishes.
+
+**Check:**
+
+- `kuben doctor`: is the cluster reachable?
+- `/readyz`: which component is degraded?
+- The controller's logs: is a replica holding the `kuben-controller` Lease?
+
+**Fix:**
+
+- With several replicas, make sure leader election is enabled (the chart always enables it).
+- Restart the server: work is claimed with a lease and resumes where it stopped.
+- A paused app holds its runs on purpose. Resume it.
+
+## A webhook endpoint was disabled
+
+**Signal:** the endpoint shows `disabledAt` and `failures: 20`, and events stop arriving.
+
+**Check:**
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://kuben.example.com/api/v1/webhooks/<id>/deliveries
+```
+
+The last status and error of each delivery tell you why.
+
+**Fix:**
+
+1. Repair the receiver: its address, TLS certificate, or response time (Kuben waits 10 seconds).
+2. Create a new endpoint. A disabled endpoint stays disabled.
+3. Send a ping to test it: `POST /api/v1/webhooks/{id}/ping`.
+
+Private addresses and `http://` are refused unless `notify.allow_private_targets` and `notify.allow_http` are set.
+
+## The cluster's agent is not connected
+
+**Signal:** runs of agent-delivered apps wait with `NoAgentLink`, and `kuben doctor` reports no linked agent.
+
+**Check:** `kubectl -n kuben-system logs -l app.kubernetes.io/name=kuben-agent`. The agent must reach the hub's address (`agent.advertise`), and its certificate must be valid.
+
+**Fix:**
+
+- Restart the agent.
+- If its bootstrap token expired before the first link, issue a new one with `kuben agent-token --cluster <name>` and update the agent's Secret.
+- Agents one minor version older than the server are supported. Upgrade older agents.
+
+## A certificate is not issued
+
+**Signal:** an app answers over HTTP but not HTTPS. Its doctor shows `CertificatePending`.
+
+**Check:**
+
+```bash
+kubectl get certificate -A
+kubectl describe certificaterequest -A
+```
+
+`kuben doctor` checks the ClusterIssuer and the Gateway.
+
+**Fix:**
+
+- The hostname's DNS must point at the Gateway.
+- Port 80 must be reachable for HTTP-01 challenges.
+- The CAA records must allow the CA.
+- Let's Encrypt rate limits apply: test with `--acme-staging`.
+
+## The database is lost
+
+**Signal:** the server does not start, or the database is empty or damaged.
+
+**Fix:** restore the newest good backup into an empty database. See [Backup and restore](/docs/operations/backup-restore/).
+
+```bash
+kuben restore --from /var/lib/kuben/backups/kuben-<time> --check
+kuben restore --from /var/lib/kuben/backups/kuben-<time>
+```
+
+A restore:
+
+- ends all sessions and revokes API tokens;
+- moves every generation forward;
+- writes every app again, so nothing from after the backup comes back.
+
+It needs the same secret keyring.
+
+## An upgrade stopped half-way
+
+**Signal:** the server refuses to start with `SchemaAhead` or `DirtySchema`, or the pre-upgrade hook failed.
+
+**Fix:**
+
+- **`SchemaAhead`:** the database was migrated by a newer version. Run that version again; do not downgrade.
+- **`DirtySchema`:** a migration failed part-way. Restore the backup taken before the upgrade (the hook makes one), then upgrade again.
+- **Before retrying:** run `kuben upgrade-check` with the new binary. See [Upgrading](/docs/operations/upgrading/).

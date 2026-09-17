@@ -58,6 +58,95 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether single sign-on is offered, for the sign-in page. */
+        get: operations["getSsoInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The identity provider's answer: signs the person in and redirects. */
+        get: operations["finishSso"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Start signing in: redirects to the identity provider. */
+        get: operations["startSso"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ci/trust-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's CI trust policies. */
+        get: operations["listCiTrustPolicies"];
+        put?: never;
+        /**
+         * Trust one GitHub repository's workflows to deploy into a project.
+         *     Exchanged tokens act with the creator's authority, capped at `role`.
+         */
+        post: operations["createCiTrustPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ci/trust-policies/{policy}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a trust policy and every token exchanged under it. */
+        delete: operations["revokeCiTrustPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/git/installations": {
         parameters: {
             query?: never;
@@ -90,6 +179,57 @@ export type paths = {
         get: operations["getHealthDetails"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's incidents, newest first. */
+        get: operations["listIncidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an open incident: someone is on it. */
+        post: operations["acknowledgeIncident"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve an open incident by hand (a success resolves it on its own). */
+        post: operations["resolveIncident"];
         delete?: never;
         options?: never;
         head?: never;
@@ -200,6 +340,24 @@ export type paths = {
          *     deleting environments is an explicit, per-environment decision.
          */
         delete: operations["deleteProject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/applications/{app}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who answers for an application (in every environment). */
+        get: operations["getApplicationOwner"];
+        /** Name who answers for an application. */
+        put: operations["putApplicationOwner"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -392,6 +550,77 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The approval state of a deployment run. */
+        get: operations["getDeploymentApproval"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a deployment waiting for approval. Enough approvals release it to
+         *     the cluster at once.
+         */
+        post: operations["approveDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a deployment waiting for approval; it is cancelled. */
+        post: operations["rejectDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Detach an app: Kuben lets go of it and leaves its objects running. */
+        post: operations["detachApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
         parameters: {
             query?: never;
@@ -430,6 +659,27 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/emergency-rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return an app to an earlier release now, past approvals, a freeze, the
+         *     scan gate and a pause. People with approval rights only; the reason is
+         *     kept.
+         */
+        post: operations["emergencyRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
         parameters: {
             query?: never;
@@ -442,6 +692,26 @@ export type paths = {
          *     newest first, at most 100. Kubernetes keeps events for about an hour.
          */
         get: operations["getAppEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export an app: portable release and configuration, standard manifests,
+         *     references, inventory and runbook. No secret values.
+         */
+        get: operations["exportApp"];
         put?: never;
         post?: never;
         delete?: never;
@@ -486,6 +756,23 @@ export type paths = {
         get: operations["getAppLogs"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hold an app's delivery: new runs are accepted and wait. */
+        post: operations["pauseApp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -543,6 +830,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume an app's delivery: its newest waiting run is written. */
+        post: operations["resumeApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/rollback": {
         parameters: {
             query?: never;
@@ -574,6 +878,43 @@ export type paths = {
         put?: never;
         /** Run a scheduled process now (a Job from its CronJob template). */
         post: operations["runApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/sbom/{digest}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The CycloneDX SBOM of one image of the app's current release
+         *     (gzip-encoded JSON).
+         */
+        get: operations["getAppSbom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The scans of the app's current release and the gate's verdict. */
+        get: operations["getAppScans"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -619,6 +960,186 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/detached": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The apps detached from an environment. */
+        get: operations["listDetachedApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One detached app, with its export. */
+        get: operations["getDetachedApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a detached app: someone owns it now, and deleting the
+         *     environment no longer keeps its namespace.
+         */
+        post: operations["releaseDetachedApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/freezes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The environment's change freezes in force or to come. */
+        get: operations["listFreezes"];
+        put?: never;
+        /** Freeze an environment: new releases are refused until it ends. */
+        post: operations["createFreeze"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/freezes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Lift a freeze early. */
+        delete: operations["liftFreeze"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Members with a role on this environment. */
+        get: operations["listEnvironmentMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/members/{member}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Give an organization member a role on this environment, or change it. */
+        put: operations["putEnvironmentMember"];
+        post?: never;
+        /** Remove a member's role on this environment. */
+        delete: operations["removeEnvironmentMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The environment's protection policy. */
+        get: operations["getEnvironmentPolicy"];
+        /**
+         * Change the environment's protection policy. Stricter policies need
+         *     `env-write`; anything weaker needs an owner.
+         */
+        put: operations["putEnvironmentPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/registries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the registry logins of an environment (never their passwords). */
+        get: operations["listRegistryLogins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/registries/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the login of a registry: a new revision, used by the next runs. */
+        put: operations["putRegistryLogin"];
+        post?: never;
+        /** Delete a registry login. Runs accepted with it keep their revision. */
+        delete: operations["deleteRegistryLogin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/secrets": {
         parameters: {
             query?: never;
@@ -644,11 +1165,87 @@ export type paths = {
             cookie?: never;
         };
         get?: never;
-        /** Create or replace a secret. */
+        /**
+         * Set a secret's values: a new revision, rolled out unless `rollout` is
+         *     false.
+         */
         put: operations["putSecret"];
         post?: never;
-        /** Delete a secret created through Kuben. */
+        /** Delete a secret. Refused while an app of the environment references it. */
         delete: operations["deleteSecret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The revisions of an encrypted secret, newest first (no values). */
+        get: operations["listSecretRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions/{revision}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a revision for good: runs bound to it fail instead of delivering
+         *     it. Revoking the current revision blocks deployments until a new value is
+         *     set.
+         */
+        post: operations["revokeSecretRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/silences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The environment's alert silences in force. */
+        get: operations["listSilences"];
+        put?: never;
+        /** Silence the alerts of an environment, or of one of its apps. */
+        post: operations["createSilence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/silences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Lift a silence early. */
+        delete: operations["liftSilence"];
         options?: never;
         head?: never;
         patch?: never;
@@ -665,6 +1262,59 @@ export type paths = {
         put?: never;
         /** Deploy a template into an environment. */
         post: operations["deployTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Members with a role on this project. */
+        get: operations["listProjectMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/members/{member}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Give an organization member a role on this project, or change it. */
+        put: operations["putProjectMember"];
+        post?: never;
+        /** Remove a member's role on this project; their organization role stays. */
+        delete: operations["removeProjectMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who answers for a project. */
+        get: operations["getProjectOwner"];
+        /** Name who answers for a project. */
+        put: operations["putProjectOwner"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -741,6 +1391,110 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vulnerability-exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's vulnerability exceptions in force (or all). */
+        get: operations["listVulnerabilityExceptions"];
+        put?: never;
+        /** Let one finding pass the scan gates for a while. */
+        post: operations["createVulnerabilityException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vulnerability-exceptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an exception for good. */
+        delete: operations["revokeVulnerabilityException"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's webhook endpoints. */
+        get: operations["listWebhooks"];
+        put?: never;
+        /** Add a webhook endpoint; the answer holds its signing secret, once. */
+        post: operations["createWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disable a webhook endpoint for good. */
+        delete: operations["disableWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest deliveries to an endpoint. */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a `ping` event to an endpoint. */
+        post: operations["pingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -769,6 +1523,8 @@ export type components = {
             volumes: components["schemas"]["VolumeDto"][];
             created_at?: string | null;
             exposure?: null | components["schemas"]["ExposureDto"];
+            /** @description Why delivery is paused, while it is: new runs wait. */
+            paused?: string | null;
         };
         /** @description A Kubernetes event about one of the app's objects. */
         AppEvent: {
@@ -788,6 +1544,38 @@ export type components = {
             last_seen?: string | null;
             /** @description The component that reported it. */
             source?: string | null;
+        };
+        AppScansDto: {
+            /** Format: uuid */
+            release?: string | null;
+            /** @description `pass`, `warn` or `block`: what the environment's gate says now. */
+            gate: string;
+            reasons: string[];
+            images: components["schemas"]["ImageScanDto"][];
+        };
+        ApprovalDto: {
+            /** Format: uuid */
+            run: string;
+            phase: string;
+            /** @description Email of whoever asked for the deployment. */
+            requestedBy: string;
+            /**
+             * Format: int32
+             * @description Distinct approvals needed; 0 when the run needs none.
+             */
+            required: number;
+            /** Format: int32 */
+            approved: number;
+            /**
+             * Format: int64
+             * @description When the run is cancelled unless approved (Unix milliseconds).
+             */
+            expiresAt?: number | null;
+            /** @description What an approver confirms: send it back with the decision. */
+            planHash?: string | null;
+            /** @description Whether the caller may decide on this run now. */
+            canDecide: boolean;
+            decisions: components["schemas"]["DecisionDto"][];
         };
         AuditEventDto: {
             /** Format: int64 */
@@ -869,6 +1657,31 @@ export type components = {
             /** Format: password */
             new_password: string;
         };
+        CiPolicyDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            project: string;
+            /** Format: uuid */
+            environment?: string | null;
+            repository: string;
+            /** Format: int64 */
+            repositoryId: number;
+            /** Format: int64 */
+            repositoryOwnerId: number;
+            refs: string[];
+            environments: string[];
+            events: string[];
+            role: string;
+            /** Format: int32 */
+            tokenTtlSecs: number;
+            createdBy: string;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            revokedAt?: number | null;
+        };
         CreateApp: {
             /** @example api */
             name: string;
@@ -920,6 +1733,56 @@ export type components = {
              */
             fs_group?: number | null;
         };
+        CreateCiPolicy: {
+            /**
+             * @description Unique in the organization, 1–64 characters.
+             * @example shop-deploy
+             */
+            name: string;
+            /** @example shop */
+            project: string;
+            /** @description Narrows the tokens to one environment of `project`. */
+            environment?: string | null;
+            /**
+             * @description `owner/name`, for people; the ids decide.
+             * @example acme/shop
+             */
+            repository: string;
+            /**
+             * Format: int64
+             * @description GitHub's numeric repository id (`repository_id` claim).
+             */
+            repositoryId: number;
+            /**
+             * Format: int64
+             * @description GitHub's numeric owner id (`repository_owner_id` claim).
+             */
+            repositoryOwnerId: number;
+            /** @description `refs/heads/main`, `refs/tags/v*`, … */
+            refs: string[];
+            /** @description GitHub environments allowed; empty for any. */
+            environments?: string[];
+            /**
+             * @description Workflow events allowed; `push`, `workflow_dispatch` and `release`
+             *     when empty.
+             */
+            events?: string[];
+            /** @description `developer` (deploy) or `admin` (deploy and promote). */
+            role?: string | null;
+            /**
+             * Format: int32
+             * @description Life of an exchanged token, 60–3600 seconds (default 900).
+             */
+            tokenTtlSecs?: number | null;
+        };
+        CreateEndpoint: {
+            /** @example ops-pager */
+            name: string;
+            /** @example https://hooks.example.com/kuben */
+            url: string;
+            /** @description Event types, or `*` for all. */
+            events: string[];
+        };
         CreateEnvironment: {
             /**
              * @description Short name, e.g. `prod` (the object is named `<project>-<name>`).
@@ -928,6 +1791,27 @@ export type components = {
             name: string;
             env_type?: components["schemas"]["EnvType"];
             quota?: null | components["schemas"]["QuotaInput"];
+        };
+        CreateException: {
+            /**
+             * @description The finding's id, e.g. `CVE-2026-12345` or `GHSA-xxxx-xxxx-xxxx`.
+             * @example CVE-2026-12345
+             */
+            vulnerability: string;
+            reason: string;
+            /**
+             * @description Who answers for it: a person or a team.
+             * @example platform-team@example.com
+             */
+            owner: string;
+            /**
+             * Format: int32
+             * @description 1 to 90 days.
+             * @example 30
+             */
+            days: number;
+            /** @description Limit it to one project; every project when omitted. */
+            project?: string | null;
         };
         CreateProject: {
             /**
@@ -963,10 +1847,48 @@ export type components = {
              */
             expires_in_days?: number | null;
         };
+        CreateWindow: {
+            reason: string;
+            /** @description RFC 3339; now when omitted (freezes only). */
+            startsAt?: string | null;
+            /** @description RFC 3339. */
+            endsAt: string;
+            /** @description Silences only: one app of the environment. */
+            app?: string | null;
+        };
         CreatedToken: {
             /** @description The token itself. Shown exactly once; only its hash is stored. */
             token: string;
             info: components["schemas"]["TokenDto"];
+        };
+        DecideRequest: {
+            /** @description The plan hash shown with the deployment (hex). */
+            planHash: string;
+            /** @description Why, for the record; at most 1024 characters. */
+            comment?: string | null;
+        };
+        DecisionDto: {
+            /** @description Email of whoever decided. */
+            approver: string;
+            /** @description `approved` or `rejected`. */
+            decision: string;
+            comment?: string | null;
+            /** Format: int64 */
+            decidedAt: number;
+        };
+        DeliveryDto: {
+            /** Format: uuid */
+            id: string;
+            event: string;
+            /** @description `pending`, `delivered` or `failed`. */
+            status: string;
+            /** Format: int32 */
+            attempts: number;
+            /** Format: int32 */
+            lastStatus?: number | null;
+            lastError?: string | null;
+            createdAt: string;
+            finishedAt?: string | null;
         };
         /**
          * @description Why a run exists.
@@ -999,10 +1921,24 @@ export type components = {
              */
             generation: number;
             /**
-             * @description `planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,
-             *     `succeeded`, `failed`, `superseded`, …
+             * @description `planned`, `awaitingApproval`, `pendingDelivery`, `acceptedByCluster`,
+             *     `applying`, `succeeded`, `failed`, `superseded`, `cancelled`, …
              */
             phase: string;
+            /**
+             * Format: int32
+             * @description Distinct approvals the environment's policy requires before delivery.
+             */
+            approvals_required?: number;
+            /**
+             * Format: int64
+             * @description When a run waiting for approval is cancelled (Unix milliseconds).
+             */
+            approval_expires_at?: number | null;
+            /** @description The hash approvers confirm (hex), when approvals are required. */
+            plan_hash?: string | null;
+            /** @description What admission could not check, e.g. that the pods will be scheduled. */
+            warnings?: string[];
         };
         /** @description A deployment run with how it went. */
         DeploymentSummary: {
@@ -1013,7 +1949,10 @@ export type components = {
              * @description The target generation (the app's revision) this run owns.
              */
             generation: number;
-            /** @description `deploy`, `rollback` or `promotion`. */
+            /**
+             * @description `deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or
+             *     `rotation`.
+             */
             reason: string;
             phase: string;
             /** @description `succeeded`, `failed` or `cancelled` once it ended. */
@@ -1025,6 +1964,27 @@ export type components = {
             image?: string | null;
             /** @description Every phase it entered, oldest first. */
             timeline: components["schemas"]["PhaseStep"][];
+        };
+        DetachRequest: {
+            /** @description The app's name again. */
+            confirm: string;
+            /** @description Why; kept with the record and audited. */
+            reason: string;
+        };
+        DetachedAppDto: {
+            /** Format: uuid */
+            id: string;
+            app: string;
+            namespace: string;
+            reason: string;
+            requestedBy: string;
+            requestedAt: string;
+            /** @description Set once the objects are orphaned. */
+            completedAt?: string | null;
+            releasedAt?: string | null;
+            releasedBy?: string | null;
+            /** @description The export frozen with the request (only when one app is read). */
+            export?: Record<string, never> | null;
         };
         DoctorCheck: {
             /**
@@ -1055,6 +2015,33 @@ export type components = {
             status: string;
             message: string;
         };
+        EmergencyRollback: {
+            /** @description Why this cannot wait; kept on the run and in the audit log. */
+            reason: string;
+            /**
+             * Format: uuid
+             * @description The release to return to; the newest earlier release that ran
+             *     successfully when omitted.
+             */
+            release?: string | null;
+        };
+        EndpointDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            url: string;
+            events: string[];
+            createdBy: string;
+            createdAt: string;
+            disabledAt?: string | null;
+            /**
+             * Format: int32
+             * @description Deliveries given up in a row; the endpoint is disabled at 20.
+             */
+            failures: number;
+            /** @description The signing secret: shown once, when the endpoint is made. */
+            secret?: string | null;
+        };
         /** @enum {string} */
         EnvType: "standard" | "production" | "preview";
         /** @description Environment variable: a plain `value` or a `secret` reference. */
@@ -1081,6 +2068,21 @@ export type components = {
             /** @description When a soft-deleted environment will be purged. */
             deletion_scheduled_at?: string | null;
             created_at?: string | null;
+        };
+        ExceptionDto: {
+            /** Format: uuid */
+            id: string;
+            vulnerability: string;
+            /** Format: uuid */
+            project?: string | null;
+            reason: string;
+            owner: string;
+            createdBy: string;
+            createdAt: string;
+            expiresAt: string;
+            revokedAt?: string | null;
+            /** @description In force now. */
+            active: boolean;
         };
         /** @description How an app is reached through the gateway. */
         ExposureDto: {
@@ -1112,6 +2114,37 @@ export type components = {
             /** @description For `auto` hosts with a certificate of their own: whether it is issued. */
             certificate_ready?: boolean | null;
             certificate_message?: string | null;
+        };
+        ImageScanDto: {
+            digest: string;
+            scan?: null | components["schemas"]["ScanDto"];
+            /** @description An SBOM can be downloaded. */
+            sbom: boolean;
+        };
+        IncidentDto: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** @description `critical`, `warning` or `info`. */
+            severity: string;
+            title: string;
+            detail?: string | null;
+            /** Format: uuid */
+            project?: string | null;
+            /** Format: uuid */
+            environment?: string | null;
+            /** Format: uuid */
+            app?: string | null;
+            openedAt: string;
+            lastSeenAt: string;
+            /** Format: int64 */
+            occurrences: number;
+            acknowledgedAt?: string | null;
+            acknowledgedBy?: string | null;
+            resolvedAt?: string | null;
+            resolvedBy?: string | null;
+            /** @description What to do about it. */
+            runbook?: string | null;
         };
         InstallationDto: {
             /** Format: int64 */
@@ -1180,6 +2213,16 @@ export type components = {
             must_change_password: boolean;
             active: boolean;
         };
+        OwnerDto: {
+            /**
+             * @description A team or a person.
+             * @example payments-team
+             */
+            owner: string;
+            /** @description How to reach them: an email, a chat channel, an on-call rotation. */
+            contact?: string | null;
+            runbookUrl?: string | null;
+        };
         /** @description One step of a run's timeline. */
         PhaseStep: {
             phase: string;
@@ -1207,6 +2250,23 @@ export type components = {
             lines: string[];
             /** @description Why no logs could be read (e.g. the container is still starting). */
             error?: string | null;
+        };
+        PolicyDto: {
+            /**
+             * Format: int64
+             * @description 0 when the environment has no policy of its own yet.
+             */
+            revision: number;
+            /** Format: int32 */
+            requiredApprovals: number;
+            deployRole: string;
+            approveRole: string;
+            /** Format: int32 */
+            approvalTtlSecs: number;
+            scan: components["schemas"]["ScanGateDto"];
+            updatedBy?: string | null;
+            /** Format: int64 */
+            updatedAt?: number | null;
         };
         /** @description Problem Details body. */
         Problem: {
@@ -1274,11 +2334,52 @@ export type components = {
         };
         /** @enum {string} */
         ProtocolDto: "http" | "tcp";
+        PutPolicy: {
+            /**
+             * Format: int32
+             * @description Distinct approvers a deployment needs (0–5).
+             * @example 1
+             */
+            requiredApprovals: number;
+            /**
+             * @description The weakest role that may deploy: `developer`, `admin` or `owner`.
+             * @example developer
+             */
+            deployRole: string;
+            /**
+             * @description The weakest role that may approve: `admin` or `owner`.
+             * @example admin
+             */
+            approveRole: string;
+            /**
+             * Format: int32
+             * @description How long a deployment waits for approvals (300 s – 30 days).
+             * @example 604800
+             */
+            approvalTtlSecs?: number;
+            scan?: null | components["schemas"]["ScanGateDto"];
+        };
+        PutRegistryLogin: {
+            /** @description `ghcr.io`, `docker.io`, `registry.example.com:5000`. */
+            registry: string;
+            username: string;
+            /** @description A password or access token; write-only. */
+            password: string;
+        };
+        PutScopedRole: {
+            /**
+             * @description `viewer`, `developer`, `admin` or `owner`.
+             * @example developer
+             */
+            role: string;
+        };
         PutSecret: {
-            /** @description Key → UTF-8 value. Replaces the whole secret. */
+            /** @description Key → UTF-8 value. Replaces the whole secret with a new revision. */
             data: {
                 [key: string]: string;
             };
+            /** @description Roll the new value out to the apps that reference the secret. */
+            rollout?: boolean;
         };
         PutSource: {
             /**
@@ -1315,6 +2416,22 @@ export type components = {
              */
             pods?: number | null;
         };
+        Reason: {
+            reason: string;
+        };
+        RegistryLoginDto: {
+            name: string;
+            /** @description The registry as image references name it (`ghcr.io`, `docker.io`). */
+            registry: string;
+            /** Format: int64 */
+            revision: number;
+            /**
+             * @description The current revision is revoked: images from the registry are not
+             *     deployed until a new login is set.
+             */
+            revoked: boolean;
+            updatedAt: string;
+        };
         ReleaseDto: {
             /** Format: int64 */
             revision: number;
@@ -1336,20 +2453,103 @@ export type components = {
              */
             revision: number;
         };
+        /** @description One app's rollout of a new secret value. */
+        RolloutDto: {
+            app: string;
+            /**
+             * Format: uuid
+             * @description The rotation run; `None` when the app could not take one now.
+             */
+            run?: string | null;
+            /** Format: int32 */
+            approvals_required: number;
+            /** @description Why there is no run. */
+            skipped?: string | null;
+        };
         RunJob: {
             /** @description Scheduled process to run (default: the first one). */
             process?: string | null;
+        };
+        ScanDto: {
+            /**
+             * @description `ok`, or `unavailable` when the scanner, its feed or the image was
+             *     not reachable (never "clean").
+             */
+            status: string;
+            scanner: string;
+            /** @description When the vulnerability database was built. */
+            databaseUpdatedAt?: string | null;
+            scannedAt: string;
+            /** Format: int32 */
+            critical: number;
+            /** Format: int32 */
+            high: number;
+            /** Format: int32 */
+            medium: number;
+            /** Format: int32 */
+            low: number;
+            /** Format: int32 */
+            unknown: number;
+            /** @description `severity:id` of the most severe findings. */
+            findings: string[];
+        };
+        /** @description What vulnerability findings a deployment may carry. */
+        ScanGateDto: {
+            /**
+             * @description `off`, `warn` or `block`.
+             * @example block
+             */
+            mode: string;
+            /**
+             * @description Findings at or above this severity count: `high` or `critical`.
+             * @example critical
+             */
+            severity: string;
+            /** @description An image without a fresh successful scan counts as a finding. */
+            requireScan?: boolean;
+            /**
+             * Format: int32
+             * @description A scan older than this no longer counts (1 hour – 90 days).
+             * @example 604800
+             */
+            maxAgeSecs?: number;
         };
         SecretDto: {
             name: string;
             /** @description Key names only; values are never returned. */
             keys: string[];
             created_at?: string | null;
+            storage: components["schemas"]["SecretStorage"];
+            /**
+             * Format: int64
+             * @description The current revision of an encrypted secret.
+             */
+            revision?: number | null;
+            /** @description The current revision is revoked: set a new value before deploying. */
+            revoked: boolean;
+            updated_at?: string | null;
+            /** @description The runs that roll a new value out, after a change. */
+            rollouts?: components["schemas"]["RolloutDto"][];
         };
         SecretRef: {
             name: string;
             key: string;
         };
+        SecretRevisionDto: {
+            /** Format: int64 */
+            revision: number;
+            keys: string[];
+            current: boolean;
+            created_by: string;
+            created_at: string;
+            revoked_at?: string | null;
+            revoked_by?: string | null;
+        };
+        /**
+         * @description Where a secret's values are kept.
+         * @enum {string}
+         */
+        SecretStorage: "encrypted" | "cluster";
         SetupRequest: {
             /** @example ACME */
             org_name: string;
@@ -1384,6 +2584,13 @@ export type components = {
             head?: string | null;
             /** @description The sync this change or request queued, if any. */
             syncOperation?: string | null;
+        };
+        SsoInfo: {
+            enabled: boolean;
+            /** @description The sign-in button's label. */
+            displayName?: string | null;
+            /** @description Where the button leads. */
+            startUrl?: string | null;
         };
         StartDeploymentRequest: {
             /**
@@ -1497,6 +2704,22 @@ export type components = {
              */
             size?: string;
         };
+        WindowDto: {
+            /** Format: uuid */
+            id: string;
+            reason: string;
+            /**
+             * Format: uuid
+             * @description Silences only: the app, when not the whole environment.
+             */
+            app?: string | null;
+            createdBy: string;
+            startsAt: string;
+            endsAt: string;
+            liftedAt?: string | null;
+            /** @description In force now. */
+            active: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -1598,6 +2821,206 @@ export interface operations {
             };
         };
     };
+    getSsoInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoInfo"];
+                };
+            };
+        };
+    };
+    finishSso: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                /** @description Set by the provider when the person or the provider refused. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed in, or back to the sign-in page */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    startSso: {
+        parameters: {
+            query?: {
+                /** @description A path on this site to return to after signing in. */
+                returnTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description To the identity provider */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Single sign-on is not configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listCiTrustPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CiPolicyDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createCiTrustPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCiPolicy"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CiPolicyDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeCiTrustPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Policy id */
+                policy: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listGitInstallations: {
         parameters: {
             query?: never;
@@ -1696,6 +3119,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDetails"];
+                };
+            };
+        };
+    };
+    listIncidents: {
+        parameters: {
+            query?: {
+                /** @description Include resolved incidents. */
+                all?: boolean;
+                /** @description At most this many (default 100). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDto"][];
+                };
+            };
+        };
+    };
+    acknowledgeIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Incident id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Acknowledged */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resolveIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Incident id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -2044,6 +3549,82 @@ export interface operations {
             };
             /** @description The project still has environments */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getApplicationOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null | components["schemas"]["OwnerDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putApplicationOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2745,6 +4326,236 @@ export interface operations {
             };
         };
     };
+    getDeploymentApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approveDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+            /** @description Not an approver here, an API token, or the requester */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not waiting, expired, already decided, or a changed plan */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    rejectDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    detachApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetachRequest"];
+            };
+        };
+        responses: {
+            /** @description Detach scheduled; the answer holds the export */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetachedAppDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Being deleted, a run in flight, or never delivered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppDoctor: {
         parameters: {
             query?: never;
@@ -2813,6 +4624,61 @@ export interface operations {
             };
         };
     };
+    emergencyRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmergencyRollback"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No earlier release ran successfully */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppEvents: {
         parameters: {
             query?: never;
@@ -2838,6 +4704,50 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    exportApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export document (`kuben.dev/export/v1`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not delivered yet */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2937,6 +4847,44 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    pauseApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            /** @description Paused */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Paused already */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3075,6 +5023,40 @@ export interface operations {
             };
         };
     };
+    resumeApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not paused */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     rollbackApp: {
         parameters: {
             query?: never;
@@ -3174,6 +5156,77 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppSbom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Image digest (`sha256:…`) */
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CycloneDX JSON, `Content-Encoding: gzip` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.cyclonedx+json": unknown;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppScans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppScansDto"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3330,6 +5383,591 @@ export interface operations {
             };
         };
     };
+    listDetachedApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetachedAppDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDetachedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description The detached app's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetachedAppDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    releaseDetachedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description The detached app's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Released */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not complete yet, or released already */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listFreezes: {
+        parameters: {
+            query?: {
+                /** @description Include ended and lifted ones. */
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"][];
+                };
+            };
+        };
+    };
+    createFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWindow"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    liftFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Freeze id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lifted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listEnvironmentMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putEnvironmentMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutScopedRole"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeEnvironmentMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEnvironmentPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putEnvironmentPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPolicy"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDto"];
+                };
+            };
+            /** @description Weakening needs an owner; tokens cannot change policies */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listRegistryLogins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryLoginDto"][];
+                };
+            };
+        };
+    };
+    putRegistryLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Login name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutRegistryLogin"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryLoginDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name or registry is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteRegistryLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Login name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An app reads it as a secret */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listSecrets: {
         parameters: {
             query?: never;
@@ -3350,14 +5988,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecretDto"][];
-                };
-            };
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3390,7 +6020,15 @@ export interface operations {
                     "application/json": components["schemas"]["SecretDto"];
                 };
             };
-            /** @description A secret with this name exists and is not managed by Kuben */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The environment is being deleted, or the name is a registry login */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3400,6 +6038,14 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3426,6 +6072,197 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An app references the secret */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listSecretRevisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Secret name */
+                secret: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretRevisionDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeSecretRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Secret name */
+                secret: string;
+                /** @description Revision */
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Revoked already */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listSilences: {
+        parameters: {
+            query?: {
+                /** @description Include ended and lifted ones. */
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"][];
+                };
+            };
+        };
+    };
+    createSilence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWindow"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    liftSilence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Silence id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lifted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3479,6 +6316,225 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listProjectMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutScopedRole"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"];
+                };
+            };
+            /** @description Above your own role, or an API token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a member of the organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProjectOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null | components["schemas"]["OwnerDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putProjectOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerDto"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3656,6 +6712,275 @@ export interface operations {
         responses: {
             /** @description Revoked */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listVulnerabilityExceptions: {
+        parameters: {
+            query?: {
+                /** @description Include expired and revoked exceptions. */
+                all?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createVulnerabilityException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateException"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeVulnerabilityException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exception id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEndpoint"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    disableWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryDto"][];
+                };
+            };
+        };
+    };
+    pingWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

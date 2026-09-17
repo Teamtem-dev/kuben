@@ -11,6 +11,7 @@
 //! * [`materializer`] — writes the resources of accepted deployment runs
 //!   from SQL, the only desired-state writer (ADR-032).
 //! * [`build`] — Git sources and isolated builds (ADR-028).
+//! * [`secrets`] — managed secret values sealed at rest (ADR-030).
 //! * [`supervise`] / [`health`] — every long-running task is supervised and
 //!   reports into a health registry; a panic in one subsystem never takes
 //!   down the API.
@@ -28,6 +29,7 @@ pub mod materializer;
 pub mod projection;
 pub mod registry;
 pub mod render;
+pub mod secrets;
 pub mod supervise;
 
 #[cfg(feature = "activator")]

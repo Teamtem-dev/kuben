@@ -1,0 +1,82 @@
+---
+title: Incidents and webhooks
+description: Failed deployments and builds open incidents; signed webhooks and GitHub commit statuses tell other systems what happened.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Incidents
+
+A failed deployment or build opens an **incident** for its app. If it fails again, Kuben adds to the same open incident instead of opening a new one. The next success resolves it. Stale database backups open an organization-wide incident, which Kuben resolves once a fresh backup exists.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://kuben.example.com/api/v1/incidents
+```
+
+- **Acknowledge** an incident (`POST /api/v1/incidents/{id}/acknowledge`) to show that someone is working on it.
+- **Resolve** it by hand (`POST /api/v1/incidents/{id}/resolve`).
+- Add `?all=true` to the list request to include resolved incidents.
+
+A silence (`POST /api/v1/projects/{project}/environments/{env}/silences`) stops incident notifications for its environment or app. The incidents are still recorded.
+
+## Webhooks
+
+Organization admins add endpoints under `POST /api/v1/webhooks` with a name, an `https://` URL and a list of events (`*` means all events):
+
+| Event | When |
+|---|---|
+| `deployment.started`, `deployment.succeeded`, `deployment.failed`, `deployment.cancelled` | A deployment is accepted or settles |
+| `build.started`, `build.succeeded`, `build.failed`, `build.cancelled` | A Git build is queued or settles |
+| `incident.opened`, `incident.resolved` | An incident changes |
+| `ping` | You ask for one: `POST /api/v1/webhooks/{id}/ping` |
+
+The response shows the endpoint's signing secret (`whsec_…`). **This is the only time Kuben shows it.**
+
+### Delivery rules
+
+- **Retries.** A delivery is retried with growing waits, up to 12 times within one day.
+- **Disabling.** An endpoint whose deliveries fail 20 times in a row is disabled.
+- **Stale events.** Events more than an hour old when Kuben comes back from an outage are not sent.
+- **Deduplication.** Each event has a unique `Kuben-Delivery` id; use it to ignore repeats.
+
+To see recent deliveries, call `GET /api/v1/webhooks/{id}/deliveries`.
+
+### Verifying the signature
+
+Every request carries a signature header:
+
+```
+Kuben-Signature: t=1758103200,v1=5f2c…
+```
+
+`v1` is the hex HMAC-SHA256, keyed with the secret, of `<t>.<raw body>`. To verify a request:
+
+1. Recompute the HMAC over the **raw** request body.
+2. Compare it to `v1` in constant time.
+3. Reject timestamps older than a few minutes.
+
+```ts
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
+export function verify(secret: string, header: string, body: Buffer): boolean {
+  const parts = Object.fromEntries(header.split(',').map((p) => p.split('=')))
+  const age = Math.abs(Date.now() / 1000 - Number(parts.t))
+  if (!parts.v1 || age > 300) return false
+  const mac = createHmac('sha256', secret).update(`${parts.t}.`).update(body).digest()
+  const given = Buffer.from(parts.v1, 'hex')
+  return given.length === mac.length && timingSafeEqual(given, mac)
+}
+```
+
+<Aside type="caution">
+By default, Kuben does not send webhooks to private, loopback, link-local or carrier-grade NAT addresses, or over plain `http://`. To allow them for an internal receiver, set `notify.allow_private_targets` and `notify.allow_http` in the configuration.
+</Aside>
+
+## GitHub commit statuses
+
+For apps that deploy from a GitHub repository, Kuben reports a commit status on the commit:
+
+- `kuben/build` for builds;
+- `kuben/<environment>` for deployments.
+
+The status is `pending` when the work starts and `success`, `failure` or `error` when it ends. It links to the app's page when `server.public_url` is set. Kuben's GitHub App needs the **Commit statuses: write** permission.

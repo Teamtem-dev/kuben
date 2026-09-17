@@ -19,8 +19,33 @@ Two things that usually need care with operators are automatic here:
 
 - **CRDs.** Helm does not update the `crds/` folder on upgrade. The binary therefore **server-side-applies its own CRDs on every start**, so new fields appear as soon as the new pod runs. Downgrading leaves newer CRD fields in place; they are ignored by older binaries.
 - **Migrations.** Database migrations run at boot, under a lock, so several replicas starting together do not race.
+- **Preflight and backup.** A pre-upgrade hook runs with the *new* image: it takes a backup, then `kuben upgrade-check`. If the check fails, Helm stops before anything changed (`backup.beforeUpgrade`).
 
 The upgrade is a rolling update with `maxUnavailable: 0` and a leader hand-over: the controllers pause for a few seconds, the API not at all; see [High availability](/docs/operations/high-availability/).
+
+## What an upgrade checks
+
+`kuben upgrade-check` is run by the new version against the installation it
+is about to take over, and changes nothing. It fails when:
+
+- the step is not supported: Kuben goes forward one minor version at a time
+  (patch releases in between do not count); a major step needs `--major`
+  after its release notes; going back is never supported;
+- the database was migrated by a newer Kuben, or a migration failed
+  half-way;
+- migrations are pending and there is no backup from the last 24 hours;
+- a linked cluster agent speaks a protocol the new version no longer does
+  (the hub speaks its own protocol version and the one before it, so agents
+  are upgraded after the hub, one version behind at most).
+
+It warns about operations in flight (they resume after the upgrade) and
+little free disk space.
+
+Every start records its version, and every migration run is journaled as
+running, then succeeded or failed. An upgrade interrupted half-way resumes
+forward on the next start: each migration is a transaction of its own and is
+never applied twice. A binary older than the database's schema refuses to
+start instead of running against it.
 
 ## From 1.x
 
@@ -35,13 +60,17 @@ Re-run the installer, optionally pinned:
 
 ```bash
 curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v1.0.2
+sudo -u kuben kuben upgrade-check
 sudo systemctl restart kuben
 ```
 
-`kuben migrate` applies pending migrations without starting the server, if you prefer to run them as a separate step.
+When migrations are pending, the server takes a backup before it applies
+them (`backup.before_upgrade`), with the PostgreSQL client tools of the
+server. `kuben migrate` applies pending migrations without starting the
+server, the same way, if you prefer a separate step.
 
 <Aside type="tip" title="Before upgrading">
-Take a [backup](/docs/operations/backup-restore/): `kuben backup` plus a `pg_dump` of the database. Read the [release notes](https://github.com/Teamtem-dev/kuben/releases) for anything marked as a breaking change.
+Take a [backup](/docs/operations/backup-restore/) with `kuben backup` and check it with `kuben restore --check`. Read the [release notes](https://github.com/Teamtem-dev/kuben/releases) for anything marked as a breaking change.
 </Aside>
 
 ## Versioning

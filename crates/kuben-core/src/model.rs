@@ -15,7 +15,7 @@ pub struct Organization {
     pub created_at: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     pub id: UserId,
     pub email: String,
@@ -138,7 +138,7 @@ pub struct TokenScope {
 }
 
 /// A personal API token. Only `sha256(secret)` is ever stored.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApiToken {
     pub id: TokenId,
     pub org_id: OrgId,

@@ -18,14 +18,15 @@ use http::{HeaderMap, Method, Request, StatusCode, header};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper_util::client::proxy::matcher::Matcher;
 use kuben_core::artifact::Digest;
-use kuben_platform::build::{OutputVerifier, VerifyError};
+use kuben_platform::{
+    build::{OutputVerifier, VerifyError},
+    secrets::{DOCKER_HUB, RegistryLogin},
+};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 
 use crate::transport::{Schemes, Transport, chain};
 
-/// Registry host of Docker Hub references without one.
-const DOCKER_HUB: &str = "docker.io";
 /// Where Docker Hub's registry API answers.
 const DOCKER_HUB_API: &str = "registry-1.docker.io";
 const MANIFEST_TYPES: &str = "application/vnd.oci.image.index.v1+json, \
@@ -96,7 +97,7 @@ pub enum ResolveError {
     #[error("the registry has no image `{0}`")]
     NotFound(String),
     #[error(
-        "the registry of `{0}` refuses anonymous pulls; private registries are not supported yet, give repository@sha256:… instead"
+        "the registry of `{0}` refuses the pull: add a login for it to the environment's registries, or give repository@sha256:… instead"
     )]
     Unauthorized(String),
     #[error("cannot reach the registry of `{image}`: {reason}")]
@@ -162,6 +163,15 @@ pub struct Challenge {
     pub scope: Option<String>,
 }
 
+/// `WWW-Authenticate: Basic …`.
+fn is_basic_challenge(value: &str) -> bool {
+    value
+        .trim()
+        .split(' ')
+        .next()
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("basic"))
+}
+
 /// Parse a bearer challenge; any other scheme is `None`.
 #[must_use]
 pub fn parse_challenge(value: &str) -> Option<Challenge> {
@@ -193,7 +203,13 @@ pub fn parse_challenge(value: &str) -> Option<Challenge> {
 /// Resolves image references to digests.
 #[async_trait::async_trait]
 pub trait ImageResolver: Send + Sync + fmt::Debug {
-    async fn resolve(&self, image: &str) -> Result<Resolved, ResolveError>;
+    /// Resolve `image`, pulling as `login` when given (a private registry).
+    async fn resolve_as(&self, image: &str, login: Option<&RegistryLogin>) -> Result<Resolved, ResolveError>;
+
+    /// Resolve `image` anonymously.
+    async fn resolve(&self, image: &str) -> Result<Resolved, ResolveError> {
+        self.resolve_as(image, None).await
+    }
 }
 
 /// A reference already pinned by digest resolves to itself.
@@ -216,7 +232,11 @@ pub struct FixedImages(pub BTreeMap<String, Digest>);
 
 #[async_trait::async_trait]
 impl ImageResolver for FixedImages {
-    async fn resolve(&self, image: &str) -> Result<Resolved, ResolveError> {
+    async fn resolve_as(
+        &self,
+        image: &str,
+        _login: Option<&RegistryLogin>,
+    ) -> Result<Resolved, ResolveError> {
         if let Some(resolved) = pinned(image)? {
             return Ok(resolved);
         }
@@ -345,23 +365,35 @@ impl RegistryResolver {
     /// Ask for the manifest of `r`: HEAD first (no rate-limit cost on Docker
     /// Hub); a registry that sends no digest header gets a GET, and the digest
     /// is computed over the manifest it returns.
-    async fn manifest_digest(&self, r: &ImageRef, tag: &str, image: &str) -> Result<Digest, ResolveError> {
+    async fn manifest_digest(
+        &self,
+        r: &ImageRef,
+        tag: &str,
+        image: &str,
+        basic: Option<&str>,
+    ) -> Result<Digest, ResolveError> {
         let url = format!("https://{}/v2/{}/manifests/{tag}", r.api_host(), r.path);
-        let mut bearer: Option<String> = None;
+        let mut authorization: Option<String> = None;
         for method in [Method::HEAD, Method::GET] {
-            let (mut status, mut headers, mut body) =
-                self.send(method.clone(), &url, bearer.as_deref(), image).await?;
-            if status == StatusCode::UNAUTHORIZED && bearer.is_none() {
-                let challenge = headers
+            let (mut status, mut headers, mut body) = self
+                .send(method.clone(), &url, authorization.as_deref(), image)
+                .await?;
+            if status == StatusCode::UNAUTHORIZED && authorization.is_none() {
+                let offered = headers
                     .get(header::WWW_AUTHENTICATE)
                     .and_then(|v| v.to_str().ok())
-                    .and_then(parse_challenge)
-                    .ok_or_else(|| ResolveError::Unauthorized(image.to_owned()))?;
-                bearer = Some(format!(
-                    "Bearer {}",
-                    self.token(&challenge, r, image, None).await?
-                ));
-                (status, headers, body) = self.send(method.clone(), &url, bearer.as_deref(), image).await?;
+                    .unwrap_or_default();
+                authorization = Some(match parse_challenge(offered) {
+                    Some(challenge) => format!("Bearer {}", self.token(&challenge, r, image, basic).await?),
+                    // A registry asking for Basic takes the login as it is.
+                    None => match basic {
+                        Some(basic) if is_basic_challenge(offered) => basic.to_owned(),
+                        _ => return Err(ResolveError::Unauthorized(image.to_owned())),
+                    },
+                });
+                (status, headers, body) = self
+                    .send(method.clone(), &url, authorization.as_deref(), image)
+                    .await?;
             }
             match status {
                 StatusCode::OK => {}
@@ -404,7 +436,7 @@ impl RegistryResolver {
 
 #[async_trait::async_trait]
 impl ImageResolver for RegistryResolver {
-    async fn resolve(&self, image: &str) -> Result<Resolved, ResolveError> {
+    async fn resolve_as(&self, image: &str, login: Option<&RegistryLogin>) -> Result<Resolved, ResolveError> {
         if let Some(resolved) = pinned(image)? {
             return Ok(resolved);
         }
@@ -412,7 +444,8 @@ impl ImageResolver for RegistryResolver {
         let Reference::Tag(tag) = &r.reference else {
             return Err(ResolveError::Invalid(image.to_owned()));
         };
-        let digest = self.manifest_digest(&r, tag, image).await?;
+        let basic = login.map(RegistryLogin::basic);
+        let digest = self.manifest_digest(&r, tag, image, basic.as_deref()).await?;
         Ok(Resolved {
             repository: r.repository(),
             digest,
@@ -601,6 +634,15 @@ mod tests {
         ] {
             assert!(parse(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn basic_challenges_are_recognized() {
+        assert!(is_basic_challenge(r#"Basic realm="registry""#));
+        assert!(is_basic_challenge("basic"));
+        assert!(!is_basic_challenge(r#"Bearer realm="https://auth""#));
+        assert!(!is_basic_challenge(""));
+        assert_eq!(parse_challenge(r#"Basic realm="registry""#), None);
     }
 
     #[test]

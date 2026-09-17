@@ -341,7 +341,26 @@ fn app_spec(m: &Materialization) -> Result<AppSpec, RenderError> {
         "source".into(),
         json!({ "image": format!("{repository}@{}", digest.as_str()) }),
     );
-    serde_json::from_value(config).map_err(|e| invalid(e.to_string()))
+    let mut spec: AppSpec = serde_json::from_value(config).map_err(|e| invalid(e.to_string()))?;
+    // A managed secret is read from the immutable object of the revision the
+    // run is bound to; other names stay the cluster's own Secrets. Images are
+    // pulled with the bound registry logins only.
+    for reference in spec.env.iter_mut().filter_map(|e| e.from_secret.as_mut()) {
+        if let Some(bound) = m
+            .secrets
+            .iter()
+            .find(|b| b.registry.is_none() && b.name == reference.name)
+        {
+            reference.name = crate::secrets::object_name(&bound.name, bound.revision);
+        }
+    }
+    spec.image_pull_secrets = m
+        .secrets
+        .iter()
+        .filter(|b| b.registry.is_some())
+        .map(|b| crate::secrets::object_name(&b.name, b.revision))
+        .collect();
+    Ok(spec)
 }
 
 #[cfg(test)]
@@ -360,6 +379,10 @@ mod tests {
         Materialization {
             render_plan: None,
             restarted_at: None,
+            approval_expires_at: None,
+            secrets: Vec::new(),
+            emergency: false,
+            paused: false,
             cluster: kuben_core::ids::ClusterId::new(),
             delivery: kuben_store::repo::Delivery::Controller,
             org: OrgId::new(),
@@ -399,6 +422,45 @@ mod tests {
 
     fn with_config(config: Value) -> Materialization {
         Materialization { config, ..sample() }
+    }
+
+    #[test]
+    fn bound_secrets_are_read_from_their_revision_objects() {
+        let m = Materialization {
+            secrets: vec![
+                kuben_store::repo::SecretBinding {
+                    name: "db".into(),
+                    secret: uuid::Uuid::now_v7(),
+                    revision: 4,
+                    registry: None,
+                },
+                kuben_store::repo::SecretBinding {
+                    name: "ghcr".into(),
+                    secret: uuid::Uuid::now_v7(),
+                    revision: 2,
+                    registry: Some("ghcr.io".into()),
+                },
+            ],
+            ..with_config(json!({
+                "runtime": { "processes": { "web": { "port": 8080 } } },
+                "imagePullSecrets": ["anything-the-config-says"],
+                "env": [
+                    { "name": "DATABASE_URL", "fromSecret": { "name": "db", "key": "url" } },
+                    { "name": "TOKEN", "fromSecret": { "name": "legacy", "key": "token" } },
+                ],
+            }))
+        };
+        let app = render(&m).expect("render").app;
+        let names: Vec<_> = app
+            .spec
+            .env
+            .iter()
+            .filter_map(|e| e.from_secret.as_ref().map(|r| (r.name.as_str(), r.key.as_str())))
+            .collect();
+        assert_eq!(names, [("db.r4", "url"), ("legacy", "token")]);
+        assert_eq!(app.spec.image_pull_secrets, ["ghcr.r2"], "bound logins only");
+        let plain = render(&sample()).expect("render").app;
+        assert!(plain.spec.image_pull_secrets.is_empty());
     }
 
     #[test]

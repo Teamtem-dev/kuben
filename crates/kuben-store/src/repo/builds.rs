@@ -1187,6 +1187,9 @@ impl Tenant {
             Started::Accepted { run, generation, .. } => (Some(run), "deployed".into(), Some(generation)),
             Started::Rejected(reject) => (None, reject_code(reject).into(), None),
             Started::NotFound => (None, "TargetMissing".into(), None),
+            Started::SecretRevoked => (None, "SecretRevoked".into(), None),
+            Started::VulnerabilityBlocked => (None, "VulnerabilityBlocked".into(), None),
+            Started::Frozen => (None, "EnvironmentFrozen".into(), None),
             Started::Replayed(_) | Started::KeyReused(_) => (None, "Replayed".into(), None),
         })
     }

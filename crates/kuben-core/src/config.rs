@@ -38,6 +38,13 @@ pub struct Config {
     pub agent: AgentCfg,
     pub git: GitCfg,
     pub build: BuildCfg,
+    pub ci: CiCfg,
+    pub sso: SsoCfg,
+    pub secrets: SecretsCfg,
+    pub quota: QuotaCfg,
+    pub backup: BackupCfg,
+    pub notify: NotifyCfg,
+    pub retention: RetentionCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -410,6 +417,233 @@ impl GitCfg {
     }
 }
 
+/// Single sign-on with an OpenID Connect provider (M4.3).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SsoCfg {
+    pub enabled: bool,
+    /// The provider's issuer URL; its discovery document names the rest.
+    pub issuer: Option<String>,
+    pub client_id: Option<String>,
+    /// A file holding the client secret (preferred), or the secret itself.
+    pub client_secret_file: Option<String>,
+    pub client_secret: Option<String>,
+    /// Shown on the sign-in button.
+    pub display_name: String,
+    pub scopes: Vec<String>,
+    /// The ID token claim that lists the person's groups.
+    pub group_claim: String,
+    /// Provider group → organization role (`viewer` … `owner`).
+    pub groups: std::collections::BTreeMap<String, String>,
+    /// The role of people in no mapped group; unset refuses them.
+    pub default_role: Option<String>,
+    /// Email domains allowed; empty for any.
+    pub allowed_domains: Vec<String>,
+    pub require_verified_email: bool,
+    /// The organization people join; default `bootstrap.org_slug`.
+    pub org: Option<String>,
+    /// Accounts linked to the provider cannot sign in with a password. Off by
+    /// default so a local owner keeps a way in while the provider is down.
+    pub disable_password_for_linked: bool,
+}
+
+impl Default for SsoCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            issuer: None,
+            client_id: None,
+            client_secret_file: None,
+            client_secret: None,
+            display_name: "Single sign-on".into(),
+            scopes: vec!["openid".into(), "email".into(), "profile".into()],
+            group_claim: "groups".into(),
+            groups: std::collections::BTreeMap::new(),
+            default_role: None,
+            allowed_domains: Vec::new(),
+            require_verified_email: true,
+            org: None,
+            disable_password_for_linked: false,
+        }
+    }
+}
+
+impl SsoCfg {
+    /// Who may sign in and as what, from this configuration.
+    ///
+    /// # Errors
+    ///
+    /// A role name that is not a role.
+    pub fn policy(&self) -> Result<crate::sso::SsoPolicy, crate::Error> {
+        let groups = self
+            .groups
+            .iter()
+            .map(|(group, role)| Ok((group.clone(), role.parse()?)))
+            .collect::<Result<_, crate::Error>>()?;
+        Ok(crate::sso::SsoPolicy {
+            groups,
+            default_role: self.default_role.as_deref().map(str::parse).transpose()?,
+            allowed_domains: self
+                .allowed_domains
+                .iter()
+                .map(|d| d.trim().trim_start_matches('@').to_ascii_lowercase())
+                .collect(),
+            require_verified_email: self.require_verified_email,
+        })
+    }
+}
+
+/// Webhooks and commit statuses (M4.10).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotifyCfg {
+    /// Deliver webhooks to private, loopback and link-local addresses too
+    /// (by default they are refused: an endpoint could reach inside).
+    pub allow_private_targets: bool,
+    /// Allow `http://` endpoints (by default only `https://`).
+    pub allow_http: bool,
+}
+
+/// How long rows that only describe the past are kept (M4.12). Audit
+/// events, runs, releases and evidence are not covered: they are kept.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RetentionCfg {
+    /// Delivered outbox messages.
+    pub outbox_days: u32,
+    /// Delivered and given-up webhook deliveries.
+    pub webhook_delivery_days: u32,
+    /// Resolved incidents.
+    pub resolved_incident_days: u32,
+}
+
+impl Default for RetentionCfg {
+    fn default() -> Self {
+        Self {
+            outbox_days: 7,
+            webhook_delivery_days: 30,
+            resolved_incident_days: 180,
+        }
+    }
+}
+
+/// Backups of the database (M4.7). `kuben backup` writes them (a systemd
+/// timer or the chart's CronJob runs it); the server only watches their age.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BackupCfg {
+    /// Where backups go; default `backups` in [`Config::state_dir`]. Copy
+    /// them off this host: a backup on the same disk is no backup.
+    pub dir: Option<String>,
+    /// Backups kept in `dir`; older ones are removed after a good backup.
+    pub keep: u32,
+    /// The server reports itself degraded when the newest good backup is
+    /// older than this; 0 turns the check off.
+    pub max_age_hours: u32,
+    /// Take a backup before a new version migrates the database (where
+    /// PostgreSQL's client tools are installed).
+    pub before_upgrade: bool,
+}
+
+impl Default for BackupCfg {
+    fn default() -> Self {
+        Self {
+            dir: None,
+            keep: 7,
+            max_age_hours: 26,
+            before_upgrade: true,
+        }
+    }
+}
+
+/// What every organization of the installation may request at most (M4.5).
+/// Set by the operator; nobody raises it from the console. Unset is
+/// unlimited.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuotaCfg {
+    /// CPU requests of all apps of an organization at their peak, e.g. `32`.
+    pub org_cpu: Option<String>,
+    /// Memory requests of all apps of an organization at their peak, e.g. `64Gi`.
+    pub org_memory: Option<String>,
+    /// Pods of all apps of an organization at their peak.
+    pub org_pods: Option<u64>,
+    /// Live apps (application targets) per organization.
+    pub org_apps: Option<u64>,
+    /// Live environments per organization.
+    pub org_environments: Option<u64>,
+}
+
+impl QuotaCfg {
+    /// The organization limits, or why a quantity is not one.
+    pub fn org_limits(&self) -> Result<crate::capacity::Limits, String> {
+        let parse = |name: &str, value: Option<&String>, f: fn(&str) -> Option<u64>| {
+            value
+                .map(|v| f(v).ok_or_else(|| format!("quota.{name} `{v}` is not a quantity")))
+                .transpose()
+        };
+        Ok(crate::capacity::Limits {
+            cpu_millis: parse("org_cpu", self.org_cpu.as_ref(), crate::capacity::cpu_millis)?,
+            memory_bytes: parse("org_memory", self.org_memory.as_ref(), crate::capacity::bytes)?,
+            pods: self.org_pods,
+        })
+    }
+}
+
+/// Managed secrets (M4.4, ADR-030).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecretsCfg {
+    /// The keyring of key-encryption keys: `version:base64-key` lines, owner
+    /// readable only. Every replica must read the same file (mount it from a
+    /// Kubernetes Secret) and it must be backed up apart from the database.
+    /// Default: `secrets.keyring` in [`Config::state_dir`], created with one
+    /// key when missing.
+    pub keyring_file: Option<String>,
+}
+
+/// External CI trust (M4.2): GitHub Actions exchanges its OIDC token for a
+/// short-lived Kuben token under an organization's trust policy.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CiCfg {
+    /// Accept GitHub Actions OIDC tokens.
+    pub github_actions: bool,
+    /// The only issuer trusted; its JWKS is read from
+    /// `<issuer>/.well-known/jwks`, never from a token.
+    pub github_oidc_issuer: String,
+    /// The audience workflows request (`id-token` `audience`); defaults to
+    /// `server.public_url`.
+    pub github_oidc_audience: Option<String>,
+}
+
+impl Default for CiCfg {
+    fn default() -> Self {
+        Self {
+            github_actions: false,
+            github_oidc_issuer: crate::ci::GITHUB_ACTIONS_ISSUER.into(),
+            github_oidc_audience: None,
+        }
+    }
+}
+
+impl Config {
+    /// The audience of GitHub Actions OIDC tokens, if CI trust is on and one
+    /// is known.
+    #[must_use]
+    pub fn github_oidc_audience(&self) -> Option<String> {
+        if !self.ci.github_actions {
+            return None;
+        }
+        self.ci
+            .github_oidc_audience
+            .clone()
+            .or_else(|| self.server.public_url.clone())
+            .map(|a| a.trim().trim_end_matches('/').to_owned())
+            .filter(|a| !a.is_empty())
+    }
+}
+
 /// Isolated builds (ADR-028): one rootless BuildKit Job per attempt.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -449,6 +683,13 @@ pub struct BuildCfg {
     pub registry_auth_file: Option<String>,
     /// Node selector `key=value` of the build pool; required when set.
     pub node_pool: Option<String>,
+    /// Trivy image that writes the SBOM of every built image and scans it
+    /// (M4.6); empty disables scanning, and scans are then unavailable.
+    pub scanner_image: String,
+    /// Memory request and limit of the scan container.
+    pub scanner_memory: String,
+    /// Rescan the images apps run when their newest scan is older than this.
+    pub rescan_hours: u32,
 }
 
 impl BuildCfg {
@@ -460,6 +701,7 @@ impl BuildCfg {
             Some(self.fetch_image.as_str()),
             self.railpack_image.as_deref(),
             self.railpack_frontend.as_deref(),
+            Some(self.scanner_image.as_str()),
         ]
         .into_iter()
         .flatten()
@@ -475,6 +717,9 @@ impl Default for BuildCfg {
             namespace: None,
             buildkit_image: "moby/buildkit:v0.33.0-rootless".into(),
             fetch_image: "alpine/git:2.49.1".into(),
+            scanner_image: "aquasec/trivy:0.74.0".into(),
+            scanner_memory: "1Gi".into(),
+            rescan_hours: 24,
             railpack_frontend: None,
             railpack_image: None,
             cpu_request: "500m".into(),
@@ -591,6 +836,24 @@ impl Config {
             .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback())
     }
 
+    /// Where backups go.
+    #[must_use]
+    pub fn backup_dir(&self) -> PathBuf {
+        match self.backup.dir.as_deref().filter(|d| !d.is_empty()) {
+            Some(dir) => PathBuf::from(dir),
+            None => self.state_dir().join("backups"),
+        }
+    }
+
+    /// The keyring file of managed secrets.
+    #[must_use]
+    pub fn secret_keyring_file(&self) -> PathBuf {
+        match self.secrets.keyring_file.as_deref().filter(|f| !f.is_empty()) {
+            Some(file) => PathBuf::from(file),
+            None => self.state_dir().join("secrets.keyring"),
+        }
+    }
+
     /// Where files that belong to this installation go (the setup token, a
     /// generated initial admin password): `server.state_dir` when set. Else an
     /// existing `/data` (the container volume, and where binaries before 1.0.3
@@ -654,11 +917,41 @@ mod tests {
     }
 
     #[test]
+    fn sso_mappings_become_a_policy() {
+        let mut sso = SsoCfg::default();
+        assert!(sso.require_verified_email && !sso.enabled);
+        sso.groups.insert("admins".into(), "admin".into());
+        sso.allowed_domains = vec!["@Example.com".into()];
+        let policy = sso.policy().expect("policy");
+        assert_eq!(policy.groups["admins"], crate::perm::Role::Admin);
+        assert_eq!(policy.allowed_domains, vec!["example.com".to_owned()]);
+        assert_eq!(policy.default_role, None);
+        sso.groups.insert("x".into(), "root".into());
+        assert!(sso.policy().is_err());
+    }
+
+    #[test]
+    fn the_ci_audience_defaults_to_the_public_url() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.github_oidc_audience(), None, "off by default");
+        cfg.ci.github_actions = true;
+        assert_eq!(cfg.github_oidc_audience(), None, "no audience known");
+        cfg.server.public_url = Some("https://kuben.example.com/".into());
+        assert_eq!(
+            cfg.github_oidc_audience().as_deref(),
+            Some("https://kuben.example.com")
+        );
+        cfg.ci.github_oidc_audience = Some("kuben-ci".into());
+        assert_eq!(cfg.github_oidc_audience().as_deref(), Some("kuben-ci"));
+    }
+
+    #[test]
     fn unpinned_build_images_are_reported() {
         let mut build = BuildCfg::default();
-        assert_eq!(build.unpinned_images().len(), 2, "the tag-pinned defaults");
+        assert_eq!(build.unpinned_images().len(), 3, "the tag-pinned defaults");
         build.buildkit_image = format!("moby/buildkit@sha256:{}", "a".repeat(64));
         build.fetch_image = format!("alpine/git@sha256:{}", "b".repeat(64));
+        build.scanner_image = format!("aquasec/trivy@sha256:{}", "c".repeat(64));
         assert!(build.unpinned_images().is_empty());
         build.railpack_frontend = Some("ghcr.io/railwayapp/railpack-frontend".into());
         assert_eq!(
@@ -687,6 +980,37 @@ mod tests {
                 .find(|(name, _)| *name == key)
                 .map(|(_, value)| OsString::from(value))
         }
+    }
+
+    #[test]
+    fn organization_quotas_are_quantities() {
+        let mut quota = QuotaCfg::default();
+        assert!(quota.org_limits().expect("limits").is_unlimited());
+        quota.org_cpu = Some("16".into());
+        quota.org_memory = Some("32Gi".into());
+        quota.org_pods = Some(100);
+        let limits = quota.org_limits().expect("limits");
+        assert_eq!(
+            (limits.cpu_millis, limits.memory_bytes, limits.pods),
+            (Some(16_000), Some(32 << 30), Some(100))
+        );
+        quota.org_memory = Some("lots".into());
+        assert_eq!(
+            quota.org_limits().map(|_| ()),
+            Err("quota.org_memory `lots` is not a quantity".into())
+        );
+    }
+
+    #[test]
+    fn the_keyring_lives_in_the_state_dir_unless_named() {
+        let mut cfg = Config::default();
+        cfg.server.state_dir = Some("/var/lib/kuben".into());
+        assert_eq!(
+            cfg.secret_keyring_file(),
+            PathBuf::from("/var/lib/kuben/secrets.keyring")
+        );
+        cfg.secrets.keyring_file = Some("/etc/kuben/keyring".into());
+        assert_eq!(cfg.secret_keyring_file(), PathBuf::from("/etc/kuben/keyring"));
     }
 
     #[test]

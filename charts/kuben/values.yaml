@@ -46,6 +46,46 @@ postgresql:
     limits:
       memory: 512Mi
 
+# Managed secrets (M4.4): their values are sealed with the keys of a keyring
+# that never enters the database.
+secrets:
+  # Secret with a `secrets.keyring` key (`version:base64-key` lines). Empty:
+  # the chart makes one and keeps it on `helm uninstall`. Back it up apart
+  # from the database: a restore needs it.
+  existingKeyringSecret: ""
+
+# Scheduled backups of the database (M4.7): `kuben backup` in a CronJob, to a
+# kept volume. Copy them off the cluster (a backup on the same storage is no
+# backup) and check a restore now and then (`kuben restore --check`).
+backup:
+  enabled: true
+  schedule: "17 3 * * *"
+  # Backups kept on the volume.
+  keep: 7
+  # Kuben reports itself degraded when the newest good backup is older.
+  maxAgeHours: 26
+  # Also copy the keyring into each backup: whoever has such a backup can
+  # read every secret.
+  includeKeyring: false
+  # Before `helm upgrade`: a backup, then the new version's preflight; a
+  # failure stops the upgrade (see `kuben upgrade-check`).
+  beforeUpgrade: true
+  # An image with PostgreSQL client tools at least as new as the server;
+  # default: the chart's PostgreSQL image.
+  image: ""
+  deadlineSeconds: 3600
+  persistence:
+    size: 20Gi
+    storageClass: ""
+    # Write to this claim instead of making one.
+    existingClaim: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
+
 # A 1.x install kept its data in SQLite on the volume `<fullname>-data`. This
 # chart keeps the data in PostgreSQL and does not carry 1.x data over. An
 # upgrade over such a volume stops, so that a fresh, empty database is never

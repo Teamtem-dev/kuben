@@ -13,7 +13,29 @@ credit reporters in the advisory unless you ask us not to.
 
 ## Supported versions
 
-Only the latest release receives security fixes.
+Only the latest release receives security fixes. A fix that cannot wait for
+the next release ships as a patch release of the latest minor version, with an
+advisory naming the affected versions and the upgrade path.
+
+## Handling a report
+
+Every confirmed vulnerability gets an owner, a severity (CVSS) and a target
+date: critical within 7 days, high within 14, others with the next release.
+When a fix cannot ship in time, the advisory documents the exception: who
+owns it, why it is acceptable, the mitigation and the date it expires. An
+exception never outlives 90 days without a new review.
+
+## Software bill of materials
+
+Every release publishes a CycloneDX SBOM of its binaries
+(`kuben-<target>.cdx.json`, listed in the signed `checksums.txt`), and the
+container image carries its SBOM attestation.
+
+Kuben itself scans what it builds: every built image gets an SBOM and a
+vulnerability scan by digest, running images are rescanned daily with a fresh
+database, and each environment's policy decides whether known findings warn
+or block a deployment. A scan that could not run is recorded as
+*unavailable*, never as clean; exceptions are owned and expire.
 
 ## Verifying releases
 

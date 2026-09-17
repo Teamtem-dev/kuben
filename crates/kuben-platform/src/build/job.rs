@@ -24,7 +24,7 @@ use k8s_openapi::{
 };
 use kube::api::ObjectMeta;
 use kuben_core::{
-    ops::outcome::{BUILD_CONTAINER, FETCH_CONTAINER},
+    ops::outcome::{BUILD_CONTAINER, FETCH_CONTAINER, SCAN_CONTAINER},
     source::BuildStrategy,
 };
 use kuben_crd::{BuildRun, BuildRunSpec, BuildStrategy as CrdStrategy};
@@ -95,7 +95,38 @@ if [ "$KUBEN_INSECURE_REGISTRY" = true ]; then output="$output,registry.insecure
 buildctl-daemonless.sh build "$@" --local "context=$ctx" --output "$output" --metadata-file /workspace/metadata.json
 digest=$(tr ',' '\n' </workspace/metadata.json | sed -n 's/.*"containerimage\.digest": *"\(sha256:[0-9a-f]\{64\}\)".*/\1/p' | head -n 1)
 [ -n "$digest" ] || fail "the build wrote no image digest"
+printf '%s' "$digest" >/workspace/digest
 printf '{"digest":"%s","strategy":"%s"}' "$digest" "$strategy" >/dev/termination-log
+"#;
+
+/// Writes the SBOM of the pushed image and scans it. It always exits 0: a
+/// scan that cannot run reports `unavailable`, never a clean image. The SBOM
+/// goes to the log (gzip, base64, between markers); the summary to the
+/// termination log, which holds 4 KiB.
+pub const SCAN_SCRIPT: &str = r#"set -u
+report() { printf '{"status":"unavailable","scanner":"%s","detail":"%s"}' "${scanner:-}" "$1" >/dev/termination-log; exit 0; }
+cd /workspace
+export TRIVY_CACHE_DIR=/workspace/trivy TRIVY_NO_PROGRESS=true TRIVY_DISABLE_VEX_NOTICE=true
+scanner="trivy $(trivy --version 2>/dev/null | sed -n 's/^Version: *//p' | head -n 1)"
+digest=${KUBEN_DIGEST:-$(cat /workspace/digest 2>/dev/null)}
+case "$digest" in sha256:*) ;; *) report "no image digest to scan";; esac
+insecure=""
+if [ "$KUBEN_INSECURE_REGISTRY" = true ]; then insecure="--insecure"; fi
+trivy image --quiet $insecure --format cyclonedx --output sbom.json "$KUBEN_REPOSITORY@$digest" 2>scan.err || report "the SBOM could not be written"
+trivy sbom --quiet --scanners vuln --format template   --template '{{ range . }}{{ range .Vulnerabilities }}{{ .Severity }}:{{ .VulnerabilityID }}{{ "
+" }}{{ end }}{{ end }}'   --output found.txt sbom.json 2>scan.err || report "the vulnerability database is not available"
+db=$(trivy version --format json 2>/dev/null | tr ',' '
+' | sed -n 's/.*"UpdatedAt": *"\([^"]*\)".*//p' | head -n 1)
+sort -u found.txt | tr -cd 'A-Za-z0-9:._
+-' >unique.txt
+n() { grep -c "^$1:" unique.txt || true; }
+findings=$( (grep '^CRITICAL:' unique.txt; grep '^HIGH:' unique.txt) | head -n 40 | sed 's/.*/"&"/' | paste -sd, -)
+printf '{"status":"ok","scanner":"%s","db":"%s","counts":{"critical":%s,"high":%s,"medium":%s,"low":%s,"unknown":%s},"findings":[%s]}'   "$scanner" "$db" "$(n CRITICAL)" "$(n HIGH)" "$(n MEDIUM)" "$(n LOW)" "$(n UNKNOWN)" "$findings" >/dev/termination-log
+echo kuben-sbom-begin
+gzip -c sbom.json | base64 | tr -d '
+'
+echo
+echo kuben-sbom-end
 "#;
 
 /// Where and with what a build runs.
@@ -115,6 +146,9 @@ pub struct BuildSettings {
     pub insecure_registry: bool,
     /// `(label key, value)` of the required build pool.
     pub node_pool: Option<(String, String)>,
+    /// The Trivy image; `None` builds without a scan.
+    pub scanner_image: Option<String>,
+    pub scanner_memory: String,
 }
 
 impl BuildSettings {
@@ -145,6 +179,8 @@ impl BuildSettings {
                 .as_deref()
                 .and_then(|p| p.split_once('='))
                 .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned())),
+            scanner_image: Some(cfg.scanner_image.clone()).filter(|i| !i.is_empty()),
+            scanner_memory: cfg.scanner_memory.clone(),
         }
     }
 }
@@ -285,6 +321,17 @@ pub fn job(
         vec![json!({ "key": key, "operator": "Equal", "value": value, "effect": "NoSchedule" })]
     });
     let labels = labels(attempt);
+    let mut inits = init_containers(attempt, settings, clone_url);
+    // With a scanner the build runs to its end first; the scan follows.
+    let main = match scan_container(settings, &attempt.image_repository, None) {
+        Some(scan) => {
+            if let Some(list) = inits.as_array_mut() {
+                list.push(build);
+            }
+            vec![scan]
+        }
+        None => vec![build],
+    };
     let value = json!({
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -315,14 +362,58 @@ pub fn job(
                     },
                     "affinity": affinity,
                     "tolerations": tolerations,
-                    "initContainers": init_containers(attempt, settings, clone_url),
-                    "containers": [build],
+                    "initContainers": inits,
+                    "containers": main,
                     "volumes": volumes,
                 },
             },
         },
     });
     serde_json::from_value(value)
+}
+
+/// The container that writes the SBOM of `repository@digest` and scans it;
+/// the digest the build wrote when `digest` is `None`. `None` without a
+/// scanner.
+#[must_use]
+pub fn scan_container(
+    settings: &BuildSettings,
+    repository: &str,
+    digest: Option<&str>,
+) -> Option<serde_json::Value> {
+    let image = settings.scanner_image.as_deref()?;
+    let insecure = if settings.insecure_registry {
+        "true"
+    } else {
+        "false"
+    };
+    let mut vars = vec![
+        ("KUBEN_REPOSITORY", repository),
+        ("KUBEN_INSECURE_REGISTRY", insecure),
+        ("HOME", "/workspace/home"),
+    ];
+    if let Some(digest) = digest {
+        vars.push(("KUBEN_DIGEST", digest));
+    }
+    let mut mounts = vec![json!({ "name": "workspace", "mountPath": "/workspace" })];
+    if settings.push_secret.is_some() {
+        vars.push(("DOCKER_CONFIG", DOCKER_DIR));
+        mounts.push(json!({ "name": "push", "mountPath": DOCKER_DIR, "readOnly": true }));
+    }
+    Some(json!({
+        "name": SCAN_CONTAINER,
+        "image": image,
+        "command": ["sh", "-c", SCAN_SCRIPT],
+        "env": env(&vars),
+        "securityContext": restricted(),
+        "resources": {
+            "requests": { "cpu": HELPER_CPU, "memory": settings.scanner_memory, "ephemeral-storage": "256Mi" },
+            "limits": { "memory": settings.scanner_memory, "ephemeral-storage": settings.ephemeral_storage },
+        },
+        // The log carries the SBOM; only the file is the report.
+        "terminationMessagePolicy": "File",
+        "volumeMounts": mounts,
+    }))
 }
 
 /// The fetch and plan containers.
@@ -546,7 +637,7 @@ pub(crate) mod tests {
         };
         assert!(mounts_source(container(pod, "initContainers", FETCH_CONTAINER)));
         assert!(!mounts_source(container(pod, "initContainers", PLAN_CONTAINER)));
-        assert!(!mounts_source(container(pod, "containers", BUILD_CONTAINER)));
+        assert!(!mounts_source(container(pod, "initContainers", BUILD_CONTAINER)));
         let fetch = container(pod, "initContainers", FETCH_CONTAINER);
         assert_eq!(fetch["securityContext"]["allowPrivilegeEscalation"], false);
         assert_eq!(fetch["securityContext"]["capabilities"]["drop"][0], "ALL");
@@ -556,7 +647,7 @@ pub(crate) mod tests {
     fn budgets_are_mandatory_and_memory_is_guaranteed() {
         let (_, job) = rendered(BuildRecipe::default());
         let pod = &job["spec"]["template"]["spec"];
-        let build = container(pod, "containers", BUILD_CONTAINER);
+        let build = container(pod, "initContainers", BUILD_CONTAINER);
         let res = &build["resources"];
         assert_eq!(res["requests"]["memory"], res["limits"]["memory"]);
         for key in ["cpu", "memory", "ephemeral-storage"] {
@@ -581,7 +672,8 @@ pub(crate) mod tests {
         for (list, name) in [
             ("initContainers", FETCH_CONTAINER),
             ("initContainers", PLAN_CONTAINER),
-            ("containers", BUILD_CONTAINER),
+            ("initContainers", BUILD_CONTAINER),
+            ("containers", SCAN_CONTAINER),
         ] {
             let c = container(pod, list, name);
             let script = c["command"][2].as_str().expect("script");
@@ -596,6 +688,14 @@ pub(crate) mod tests {
                 .iter()
                 .any(|e| e["value"] == "apps/$(rm -rf ~)")
         );
+        let scan = container(pod, "containers", SCAN_CONTAINER);
+        assert!(
+            scan["env"]
+                .as_array()
+                .expect("env")
+                .iter()
+                .any(|e| e["name"] == "KUBEN_REPOSITORY" && e["value"] == "registry.local/acme/shop")
+        );
         assert!(
             BUILD_SCRIPT.contains(r#"inside "$ctx""#),
             "symlinked contexts are refused"
@@ -604,6 +704,58 @@ pub(crate) mod tests {
             BUILD_SCRIPT.contains(r#"inside "$dir""#),
             "symlinked Dockerfiles are refused"
         );
+    }
+
+    #[test]
+    fn the_scan_follows_the_build_and_never_fails_it() {
+        let (_, job) = rendered(BuildRecipe::default());
+        let pod = &job["spec"]["template"]["spec"];
+        let inits: Vec<&str> = pod["initContainers"]
+            .as_array()
+            .expect("init")
+            .iter()
+            .filter_map(|c| c["name"].as_str())
+            .collect();
+        assert_eq!(inits, [FETCH_CONTAINER, PLAN_CONTAINER, BUILD_CONTAINER]);
+        let scan = container(pod, "containers", SCAN_CONTAINER);
+        assert_eq!(scan["image"], "aquasec/trivy:0.74.0");
+        assert_eq!(
+            scan["terminationMessagePolicy"], "File",
+            "the log carries the SBOM"
+        );
+        assert_eq!(
+            scan["resources"]["requests"]["memory"],
+            scan["resources"]["limits"]["memory"]
+        );
+        assert_eq!(scan["securityContext"]["allowPrivilegeEscalation"], false);
+        assert!(!scan.to_string().contains("\"source\""), "no fetch token");
+        assert!(SCAN_SCRIPT.lines().all(|l| !l.trim_start().starts_with("exit 1")));
+        assert!(SCAN_SCRIPT.contains(r#""status":"unavailable""#));
+        assert!(BUILD_SCRIPT.contains("/workspace/digest"));
+        let pinned =
+            scan_container(&settings(), "registry.local/acme/shop", Some("sha256:abc")).expect("scan");
+        assert!(
+            pinned["env"]
+                .as_array()
+                .expect("env")
+                .iter()
+                .any(|e| e["name"] == "KUBEN_DIGEST")
+        );
+
+        let unscanned = BuildSettings {
+            scanner_image: None,
+            ..settings()
+        };
+        let a = attempt(BuildRecipe::default());
+        let job =
+            serde_json::to_value(super::job(&a, &unscanned, &build_run(&a, &unscanned), "u").expect("job"))
+                .expect("json");
+        let pod = &job["spec"]["template"]["spec"];
+        assert_eq!(
+            container(pod, "containers", BUILD_CONTAINER)["name"],
+            BUILD_CONTAINER
+        );
+        assert_eq!(pod["initContainers"].as_array().map(Vec::len), Some(2));
     }
 
     #[test]
@@ -636,7 +788,7 @@ pub(crate) mod tests {
     fn push_credentials_and_railpack_are_optional() {
         let (_, job) = rendered(BuildRecipe::default());
         let pod = &job["spec"]["template"]["spec"];
-        let build = container(pod, "containers", BUILD_CONTAINER);
+        let build = container(pod, "initContainers", BUILD_CONTAINER);
         assert!(
             build["env"]
                 .as_array()

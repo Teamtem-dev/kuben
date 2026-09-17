@@ -12,7 +12,7 @@ use k8s_openapi::api::core::v1::Secret;
 use kube::{Api, ResourceExt, api::ListParams};
 use kuben_core::{Error, ops::Generation, perm::Perm};
 use kuben_crd::{AppSpec, labels};
-use kuben_store::repo::RunReason;
+use kuben_store::repo::{RunReason, Tenant};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -20,7 +20,11 @@ use super::{AppDto, Artifact, Change, deploy, desired_spec, spec::validate_spec}
 use crate::{
     authz::Authz,
     error::ApiResult,
-    routes::{request, scope, validate},
+    routes::{
+        request,
+        scope::{self, EnvScope},
+        validate,
+    },
     state::ApiState,
 };
 
@@ -69,6 +73,7 @@ pub fn promote_spec(source: &AppSpec, target: Option<&AppSpec>) -> AppSpec {
             Some(t) if !t.volumes.is_empty() => t.volumes.clone(),
             _ => source.volumes.clone(),
         },
+        image_pull_secrets: Vec::new(),
     }
 }
 
@@ -158,26 +163,42 @@ pub fn missing_secrets(spec: &AppSpec, available: &BTreeMap<String, BTreeSet<Str
         .collect()
 }
 
-async fn managed_secret_keys(
-    client: &kube::Client,
-    namespace: &str,
+/// The keys of every secret `target` offers: its encrypted secrets with a
+/// usable current revision, and the Secrets Kuben wrote into its namespace
+/// before M4.4.
+async fn available_secret_keys(
+    state: &ApiState,
+    tenant: &mut Tenant,
+    target: &EnvScope,
 ) -> ApiResult<BTreeMap<String, BTreeSet<String>>> {
-    let list = Api::<Secret>::namespaced(client.clone(), namespace)
-        .list(&ListParams::default().labels(labels::MANAGED_SELECTOR))
+    let mut out: BTreeMap<String, BTreeSet<String>> = tenant
+        .secrets(target.id())
+        .await?
+        .into_iter()
+        .filter(|s| !s.revoked)
+        .map(|s| (s.name, s.keys.into_iter().collect()))
+        .collect();
+    if state.cluster.is_none() {
+        return Ok(out);
+    }
+    let selector = format!(
+        "{},!{}",
+        labels::MANAGED_SELECTOR,
+        kuben_platform::secrets::SECRET_ID
+    );
+    let list = Api::<Secret>::namespaced(scope::cluster(state)?, &target.namespace())
+        .list(&ListParams::default().labels(&selector))
         .await
         .map_err(|e| scope::kube_error(e, "secrets"))?;
-    Ok(list
-        .items
-        .iter()
-        .map(|s| {
-            let keys = s
-                .data
-                .as_ref()
-                .map(|d| d.keys().cloned().collect())
-                .unwrap_or_default();
-            (s.name_any(), keys)
-        })
-        .collect())
+    for s in &list.items {
+        let keys = s
+            .data
+            .as_ref()
+            .map(|d| d.keys().cloned().collect())
+            .unwrap_or_default();
+        out.entry(s.name_any()).or_insert(keys);
+    }
+    Ok(out)
 }
 
 /// Promote the app to another environment of the same project.
@@ -230,13 +251,7 @@ pub async fn promote(
     let spec = promote_spec(&source, current.as_ref());
     validate_spec(&spec)?;
     let changes = spec_changes(current.as_ref(), &spec);
-    let warnings = match &state.cluster {
-        Some(_) => missing_secrets(
-            &spec,
-            &managed_secret_keys(&scope::cluster(&state)?, &target.namespace()).await?,
-        ),
-        None => Vec::new(),
-    };
+    let warnings = missing_secrets(&spec, &available_secret_keys(&state, &mut tenant, &target).await?);
     if body.dry_run || (existing.is_some() && changes.is_empty()) {
         return Ok(Json(PromoteResult {
             dry_run: body.dry_run,
@@ -268,8 +283,10 @@ pub async fn promote(
         expected,
         reason: RunReason::Promotion,
         reference: format!("{project}/{}/{app}", target.short_name()),
+        chain: target.chain(),
+        environment: (target.id(), target.env.quota.as_ref()),
     };
-    deploy(&mut tenant, &authz, change).await?;
+    deploy(&state, &mut tenant, &authz, change).await?;
     let record = tenant
         .app(target.id(), a.slug())
         .await?

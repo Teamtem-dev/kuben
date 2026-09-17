@@ -15,6 +15,8 @@ pub enum Perm {
     EnvRead,
     EnvWrite,
     EnvDeleteProtected,
+    /// Weaken an environment's protection policy (M4.1).
+    EnvProtect,
     AppRead,
     AppWrite,
     AppDeploy,
@@ -43,8 +45,8 @@ impl Role {
     #[must_use]
     pub fn perms(self) -> &'static [Perm] {
         use Perm::{
-            AppDeploy, AppExec, AppLogsRead, AppRead, AppWrite, AuditRead, EnvDeleteProtected, EnvRead,
-            EnvWrite, OrgAdmin, OrgRead, ProjectRead, ProjectWrite, ReleaseApprove, ReleasePromote,
+            AppDeploy, AppExec, AppLogsRead, AppRead, AppWrite, AuditRead, EnvDeleteProtected, EnvProtect,
+            EnvRead, EnvWrite, OrgAdmin, OrgRead, ProjectRead, ProjectWrite, ReleaseApprove, ReleasePromote,
             SecretRead, SecretWrite, UserAdmin,
         };
         match self {
@@ -56,6 +58,7 @@ impl Role {
                 EnvRead,
                 EnvWrite,
                 EnvDeleteProtected,
+                EnvProtect,
                 AppRead,
                 AppWrite,
                 AppDeploy,
@@ -191,6 +194,16 @@ mod tests {
         assert!(!Role::Viewer.grants(Perm::AppExec));
         assert!(!Role::Viewer.grants(Perm::AppWrite));
         assert!(Role::Viewer.grants(Perm::AppLogsRead));
+    }
+
+    #[test]
+    fn only_owners_weaken_protection() {
+        assert!(Role::Owner.grants(Perm::EnvProtect));
+        for role in [Role::Admin, Role::Developer, Role::Viewer] {
+            assert!(!role.grants(Perm::EnvProtect), "{role}");
+        }
+        assert!(Role::Admin.grants(Perm::ReleaseApprove));
+        assert!(!Role::Developer.grants(Perm::ReleaseApprove));
     }
 
     #[test]

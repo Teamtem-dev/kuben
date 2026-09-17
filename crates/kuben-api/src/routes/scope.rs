@@ -255,6 +255,8 @@ pub struct TargetScope {
     pub environment: EnvironmentId,
     pub application: ApplicationId,
     pub target: TargetId,
+    /// The environment's quota, for admission.
+    pub quota: Option<serde_json::Value>,
     chain: ScopeChain,
 }
 
@@ -281,6 +283,7 @@ pub async fn sql_target(
         application: a.app.application,
         target: a.app.target,
         chain: a.chain(),
+        quota: a.env.env.quota,
     })
 }
 

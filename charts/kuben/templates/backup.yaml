@@ -1,0 +1,71 @@
+{{- /*
+Scheduled backups (M4.7): `kuben backup` runs next to PostgreSQL's client
+tools (the chart's PostgreSQL image) and writes to a kept volume. Copy the
+backups off the cluster: a backup on the same storage is no backup.
+Before `helm upgrade` (M4.8), a hook Job takes a backup and runs the new
+version's preflight; a failure stops the upgrade before anything changed.
+*/}}
+{{- if .Values.backup.enabled }}
+{{- $name := printf "%s-backup" (include "kuben.fullname" .) }}
+{{- $claim := .Values.backup.persistence.existingClaim | default $name }}
+{{- $backup := list "/tools/kuben" "backup" "--scheduled" }}
+{{- if .Values.backup.includeKeyring }}
+{{- $backup = append $backup "--include-keyring" }}
+{{- end }}
+{{- if not .Values.backup.persistence.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.backup.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.persistence.size }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ .Values.backup.deadlineSeconds }}
+      template:
+        {{- include "kuben.backup.pod" (dict "root" . "claim" $claim "command" $backup) | nindent 8 }}
+{{- $volume := or .Values.backup.persistence.existingClaim (lookup "v1" "PersistentVolumeClaim" .Release.Namespace $name) }}
+{{- if and .Release.IsUpgrade .Values.backup.beforeUpgrade $volume }}
+{{- $check := list "/bin/sh" "-c" (printf "%s && /tools/kuben upgrade-check" (join " " $backup)) }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-pre-upgrade
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ .Values.backup.deadlineSeconds }}
+  template:
+    {{- include "kuben.backup.pod" (dict "root" . "claim" $claim "command" $check) | nindent 4 }}
+{{- end }}
+{{- end }}

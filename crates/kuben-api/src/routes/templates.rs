@@ -330,6 +330,7 @@ fn render(t: &Template, app: &str) -> Rendered {
                 storage_class: None,
             })
             .collect(),
+        image_pull_secrets: Vec::new(),
     };
     Rendered { spec, secret }
 }

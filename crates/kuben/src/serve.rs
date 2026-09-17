@@ -51,15 +51,9 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     let health = Health::new();
     tokio::spawn(watchdog(health.clone(), shutdown.child_token()));
 
-    let store = kuben_store::Store::connect(&cfg.database).await?;
-    tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
-    if let Ok(Some(role)) = store.role_bypassing_row_security().await {
-        tracing::warn!(
-            %role,
-            "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
-        );
-    }
-    record_install_journal(&cfg, &store).await;
+    let store = kuben_store::Store::connect_unmigrated(&cfg.database).await?;
+    crate::cli::upgrade::migrate(&cfg, &store).await?;
+    database_ready(&cfg, &store, &health, &shutdown).await;
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 
@@ -77,6 +71,8 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     // kubeconfig of its own; the materializer hands it envelopes.
     let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
     let github = github_app(&cfg)?;
+    let sso = sso_client(&cfg)?;
+    let keyring = secret_keyring(&cfg, &store).await?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -91,6 +87,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             agent_link
                 .as_ref()
                 .map(kuben_platform::agentlink::AgentLink::dispatch),
+            &keyring,
             &shutdown,
         )
     } else {
@@ -105,6 +102,13 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     tasks.extend(spawn_builds(&cfg, &store, cluster.as_ref(), github.clone(), &health, &shutdown).await?);
+    tasks.push(spawn_notifier(
+        &cfg,
+        &store,
+        (github.as_ref(), &keyring),
+        &health,
+        &shutdown,
+    ));
 
     if let Some(link) = agent_link {
         let (h, t) = (health.clone(), shutdown.child_token());
@@ -122,15 +126,8 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     if cfg.has_role(Role::Api) {
-        let state = kuben_api::ApiState::new(
-            cfg.clone(),
-            store.clone(),
-            cluster.clone(),
-            projections.clone(),
-            health.clone(),
-            Arc::new(StaticPolicy),
-        );
-        let app = kuben_api::router(state.with_github(github.clone()));
+        let parts = (&store, cluster.as_ref(), &projections, &health);
+        let app = kuben_api::router(api_state(&cfg, parts, (github.clone(), sso, keyring))?);
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -159,6 +156,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The keyring of managed secrets (M4.4), checked against the keys this
+/// installation has used; older revisions are resealed under its current
+/// key. A keyring that is not the installation's stops the server.
+async fn secret_keyring(
+    cfg: &Config,
+    store: &kuben_store::Store,
+) -> anyhow::Result<Arc<kuben_platform::secrets::Keyring>> {
+    let file = cfg.secret_keyring_file();
+    let keyring = kuben_platform::secrets::Keyring::load_or_create(&file).context("secret keyring")?;
+    kuben_platform::secrets::prepare(store, &keyring)
+        .await
+        .context("secret keyring")?;
+    tracing::info!(file = %file.display(), key_version = keyring.current(), "secret keyring ready");
+    Ok(Arc::new(keyring))
+}
+
 /// The GitHub App of Git sources (M3), when configured. A configured App
 /// whose key cannot be read stops the server instead of silently building
 /// nothing.
@@ -170,6 +183,73 @@ fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubAp
     let app = kuben_api::github::GithubApp::from_config(git).context("Git sources")?;
     tracing::info!(api = %git.github_api_url, "GitHub App ready for Git sources");
     Ok(Some(app))
+}
+
+/// The API state, with the Git, CI and single sign-on integrations the
+/// configuration enables and the secret keyring. A quota that is not one
+/// stops the server instead of admitting everything.
+fn api_state(
+    cfg: &Config,
+    (store, cluster, projections, health): (
+        &kuben_store::Store,
+        Option<&ClusterRegistry>,
+        &Arc<Projections>,
+        &Health,
+    ),
+    (github, sso, keyring): (
+        Option<kuben_api::github::GithubApp>,
+        Option<Arc<kuben_api::sso::SsoClient>>,
+        Arc<kuben_platform::secrets::Keyring>,
+    ),
+) -> anyhow::Result<kuben_api::ApiState> {
+    cfg.quota.org_limits().map_err(anyhow::Error::msg)?;
+    let mut state = kuben_api::ApiState::new(
+        cfg.clone(),
+        store.clone(),
+        cluster.cloned(),
+        projections.clone(),
+        health.clone(),
+        Arc::new(StaticPolicy),
+    )
+    .with_github(github)
+    .with_github_oidc(github_oidc(cfg))
+    .with_keyring(keyring);
+    state.sso = sso;
+    Ok(state)
+}
+
+/// Single sign-on (M4.3), when enabled. A broken configuration stops the
+/// server instead of silently offering password sign-in only.
+fn sso_client(cfg: &Config) -> anyhow::Result<Option<Arc<kuben_api::sso::SsoClient>>> {
+    if !cfg.sso.enabled {
+        return Ok(None);
+    }
+    let client = kuben_api::sso::SsoClient::from_config(
+        &cfg.sso,
+        cfg.server.public_url.as_deref(),
+        &cfg.bootstrap.org_slug,
+    )
+    .context("single sign-on")?;
+    tracing::info!(issuer = %client.issuer(), org = %client.org_slug(), "single sign-on enabled");
+    Ok(Some(Arc::new(client)))
+}
+
+/// The GitHub Actions OIDC verifier (M4.2), when CI trust is on and its
+/// audience is known.
+fn github_oidc(cfg: &Config) -> Option<kuben_api::oidc::GithubOidc> {
+    let Some(audience) = cfg.github_oidc_audience() else {
+        if cfg.ci.github_actions {
+            tracing::warn!(
+                "ci.github_actions is set without an audience (ci.github_oidc_audience or server.public_url): CI tokens are refused"
+            );
+        }
+        return None;
+    };
+    tracing::info!(issuer = %cfg.ci.github_oidc_issuer, %audience, "GitHub Actions OIDC exchange enabled");
+    Some(kuben_api::oidc::GithubOidc::new(
+        &cfg.ci.github_oidc_issuer,
+        &audience,
+    ))
 }
 
 /// Namespace of build Jobs unless `build.namespace` names one: never Kuben's
@@ -187,16 +267,16 @@ async fn spawn_builds(
     github: Option<kuben_api::github::GithubApp>,
     health: &Health,
     shutdown: &CancellationToken,
-) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+) -> anyhow::Result<Vec<tokio::task::JoinHandle<()>>> {
     let build = &cfg.build;
     let (true, true, Some(registry)) = (build.enabled, cfg.has_role(Role::Controller), cluster) else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     let Some(github) = github else {
         tracing::warn!(
             "build.enabled is set, but Git sources are not configured (git.github_app_id): no builds run"
         );
-        return Ok(None);
+        return Ok(Vec::new());
     };
     for image in build.unpinned_images() {
         tracing::warn!(%image, "a build image is not pinned by digest; pin it as image@sha256:… in production");
@@ -222,6 +302,21 @@ async fn spawn_builds(
         total: build.max_concurrent,
         per_org: build.max_concurrent_per_org,
     };
+    let mut tasks = Vec::new();
+    if settings.scanner_image.is_some() {
+        let rescanner = kuben_platform::build::rescan::Rescanner::new(
+            store.clone(),
+            registry.primary(),
+            settings.clone(),
+            Duration::from_secs(u64::from(build.rescan_hours.max(1)) * 3600),
+        );
+        let (h, t) = (health.clone(), shutdown.child_token());
+        tasks.push(tokio::spawn(supervise("rescans", t, h.clone(), move |tok| {
+            kuben_platform::build::rescan::run(rescanner.clone(), h.clone(), tok)
+        })));
+    } else {
+        tracing::warn!("build.scanner_image is empty: images are not scanned and scans are unavailable");
+    }
     let worker = kuben_platform::build::BuildWorker::new(
         store.clone(),
         registry.primary(),
@@ -233,12 +328,10 @@ async fn spawn_builds(
     );
     tracing::info!(%namespace, max_concurrent = build.max_concurrent, "build worker ready");
     let (h, t) = (health.clone(), shutdown.child_token());
-    Ok(Some(tokio::spawn(supervise(
-        "builds",
-        t,
-        h.clone(),
-        move |tok| kuben_platform::build::run(worker.clone(), h.clone(), tok),
-    ))))
+    tasks.push(tokio::spawn(supervise("builds", t, h.clone(), move |tok| {
+        kuben_platform::build::run(worker.clone(), h.clone(), tok)
+    })));
+    Ok(tasks)
 }
 
 async fn ensure_build_namespace(client: kube::Client, name: &str) -> anyhow::Result<()> {
@@ -298,6 +391,7 @@ fn spawn_cluster_tasks(
     health: &Health,
     election: Option<&Election>,
     agents: Option<Arc<dyn kuben_platform::materializer::AgentDispatch>>,
+    keyring: &Arc<kuben_platform::secrets::Keyring>,
     shutdown: &CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut tasks = Vec::new();
@@ -335,7 +429,8 @@ fn spawn_cluster_tasks(
         // resources (ADR-032).
         let mut worker =
             kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity())
-                .with_facts(facts.clone());
+                .with_facts(facts.clone())
+                .with_keyring(keyring.clone());
         if let Some(agents) = agents {
             // Targets delivered by their cluster's agent go through the hub.
             worker = worker.with_agents(agents);
@@ -525,6 +620,148 @@ fn instance_identity() -> String {
 }
 
 /// Heartbeat for `/livez`: if the runtime is wedged this stops ticking.
+/// Log what the database is, record the install journal and watch the
+/// backups.
+async fn database_ready(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    health: &Health,
+    shutdown: &CancellationToken,
+) {
+    tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
+    if let Ok(Some(role)) = store.role_bypassing_row_security().await {
+        tracing::warn!(
+            %role,
+            "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
+        );
+    }
+    record_install_journal(cfg, store).await;
+    tokio::spawn(watch_backups(
+        cfg.clone(),
+        store.clone(),
+        health.clone(),
+        shutdown.child_token(),
+    ));
+    tokio::spawn(keep_budgets(cfg.clone(), store.clone(), shutdown.child_token()));
+}
+
+/// Remove rows older than their retention budget (M4.12), hourly, and more
+/// often while a pass still finds a full batch.
+async fn keep_budgets(cfg: Config, store: kuben_store::Store, token: CancellationToken) {
+    let mut wait = Duration::from_mins(1);
+    loop {
+        tokio::select! {
+            () = tokio::time::sleep(wait) => {}
+            () = token.cancelled() => return,
+        }
+        wait = match store.apply_retention_now(&cfg.retention).await {
+            Ok(done) => {
+                if done.total() > 0 {
+                    tracing::info!(?done, "old rows removed");
+                }
+                if done.more {
+                    Duration::from_secs(5)
+                } else {
+                    Duration::from_hours(1)
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "retention pass failed");
+                Duration::from_mins(10)
+            }
+        };
+    }
+}
+
+/// Report `backups` degraded while the newest good backup is older than
+/// `backup.max_age_hours` (M4.7): the alert an operator acts on.
+async fn watch_backups(cfg: Config, store: kuben_store::Store, health: Health, token: CancellationToken) {
+    if cfg.backup.max_age_hours == 0 {
+        return;
+    }
+    let mut tick = tokio::time::interval(Duration::from_mins(10));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            () = token.cancelled() => return,
+        }
+        let state = match store.last_backup().await {
+            Ok(last) => crate::cli::backup::freshness(
+                last.map(|b| b.finished_at),
+                kuben_core::time::now_ms(),
+                cfg.backup.max_age_hours,
+            ),
+            Err(e) => Err(format!("cannot read the backups: {e}")),
+        };
+        match &state {
+            Ok(_) => health.ok("backups"),
+            Err(problem) => health.degraded("backups", problem),
+        }
+        if let Err(e) = backup_incident(&cfg, &store, state.err()).await {
+            tracing::warn!(error = %e, "the backup incident was not updated");
+        }
+    }
+}
+
+/// Open an incident of the installation's organization while backups are
+/// stale (`problem`), and resolve it once they are not.
+async fn backup_incident(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    problem: Option<String>,
+) -> anyhow::Result<()> {
+    const KEY: &str = "backup:stale";
+    let Some(org) = store.installation_org(&cfg.bootstrap.org_slug).await? else {
+        return Ok(());
+    };
+    let mut tenant = store.tenant(org).await?;
+    match problem {
+        Some(detail) => {
+            let incident = kuben_store::repo::NewIncident {
+                project: None,
+                environment: None,
+                target: None,
+                kind: "backup.stale".into(),
+                severity: "critical",
+                dedupe_key: KEY.into(),
+                title: "Database backups are stale".into(),
+                detail: Some(detail),
+            };
+            tenant.open_incident(&incident).await?;
+        }
+        None => {
+            tenant.resolve_incident_key(KEY, "system:backups").await?;
+        }
+    }
+    tenant.commit().await?;
+    Ok(())
+}
+
+/// The notifier (M4.10): incidents, webhooks and commit statuses from the
+/// outbox. Every replica runs one; they share the work.
+fn spawn_notifier(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    (github, keyring): (
+        Option<&kuben_api::github::GithubApp>,
+        &Arc<kuben_platform::secrets::Keyring>,
+    ),
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    let notifier = kuben_api::notify::Notifier::new(
+        store.clone(),
+        keyring.clone(),
+        github.cloned().map(Arc::new),
+        cfg.notify.clone(),
+        cfg.server.public_url.clone(),
+    );
+    let (h, t) = (health.clone(), shutdown.child_token());
+    tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
+        kuben_api::notify::run(notifier.clone(), h.clone(), tok)
+    }))
+}
+
 async fn watchdog(health: Health, token: CancellationToken) {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     loop {
