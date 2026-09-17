@@ -15,13 +15,13 @@ use std::fmt::Debug;
 use k8s_openapi::api::core::v1::PersistentVolumeClaim;
 use kube::{
     Api, Resource, ResourceExt,
-    api::{DeleteParams, ListParams},
+    api::{DeleteParams, ListParams, Patch, PatchParams},
 };
 use kuben_core::{
     ids::{EnvironmentId, OperationId, OrgId, ProjectId},
     ops::RunPhase,
 };
-use kuben_crd::{App, Environment, Project, labels};
+use kuben_crd::{App, DeletionPolicy, Environment, Project, labels};
 use kuben_store::repo::{
     AppRecord, Claim, ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, EnvironmentRecord, PROJECT_APPLY,
     PROJECT_DELETE, Project as ProjectRecord, Subject, TARGET_DELETE,
@@ -46,6 +46,7 @@ impl Worker {
         let done = match claim.kind.as_str() {
             PROJECT_APPLY => self.apply_project(claim.org, claim.id, subject).await,
             ENVIRONMENT_APPLY => self.apply_environment(claim.org, claim.id, subject).await,
+            TARGET_DELETE if subject.detach => self.detach_target(claim.org, subject).await,
             TARGET_DELETE => self.delete_target(claim.org, subject).await,
             ENVIRONMENT_DELETE => self.delete_environment(claim.org, subject).await,
             PROJECT_DELETE => self.delete_project(claim.org, subject).await,
@@ -194,6 +195,7 @@ impl Worker {
                 return Err(refused("NameTaken"));
             }
             if live.metadata.deletion_timestamp.is_none() {
+                self.keep_detached_namespace(org, environment.id, &live).await?;
                 remove(&environments, &name).await?;
             }
             // Its controller removes the namespace first, then the object.
@@ -202,6 +204,31 @@ impl Worker {
         let mut tenant = self.store.tenant(org).await?;
         tenant.finish_environment_deletion(environment.id).await?;
         tenant.commit().await?;
+        Ok(())
+    }
+
+    /// An environment with unreleased detached apps keeps its namespace
+    /// (M4.11): its object is switched to `Retain` before it is deleted.
+    async fn keep_detached_namespace(
+        &self,
+        org: OrgId,
+        environment: EnvironmentId,
+        live: &Environment,
+    ) -> Result<(), Stop> {
+        if live.spec.deletion_policy == DeletionPolicy::Retain {
+            return Ok(());
+        }
+        let mut tenant = self.store.tenant(org).await?;
+        let held = tenant.detached_held(environment).await?;
+        drop(tenant);
+        if held == 0 {
+            return Ok(());
+        }
+        let retain = serde_json::json!({ "spec": { "deletionPolicy": DeletionPolicy::Retain } });
+        Api::<Environment>::all(self.client.clone())
+            .patch(&live.name_any(), &PatchParams::default(), &Patch::Merge(&retain))
+            .await?;
+        tracing::info!(%environment, held, "the namespace stays for detached apps");
         Ok(())
     }
 

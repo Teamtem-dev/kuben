@@ -62,6 +62,10 @@ fn main() -> anyhow::Result<()> {
         cli::Command::ResetAdmin(opts) => serve::block_on(&runtime, cli::admin::reset(cfg, opts)),
         cli::Command::SetupToken => bootstrap::print_setup_token(&cfg),
         cli::Command::AgentToken(opts) => serve::block_on(&runtime, cli::agent::token(cfg, opts)),
+        cli::Command::SupportBundle(opts) => {
+            let path = args.config.clone();
+            serve::block_on(&runtime, cli::support::run(cfg, opts, path.as_deref()))
+        }
         cli::Command::Backup(opts) => serve::block_on(&runtime, cli::backup::run(cfg, opts)),
         cli::Command::Restore(opts) => serve::block_on(&runtime, cli::backup::restore(cfg, opts)),
         cli::Command::Version(opts) => {

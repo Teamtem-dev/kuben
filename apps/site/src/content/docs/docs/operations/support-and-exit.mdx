@@ -1,0 +1,133 @@
+---
+title: Support bundles and leaving Kuben
+description: Collect a local support bundle, export or detach an app, and uninstall Kuben while your apps keep running.
+sidebar:
+  order: 8
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Support bundle
+
+```bash
+sudo -u kuben kuben support-bundle --preview
+sudo -u kuben kuben support-bundle
+```
+
+`kuben support-bundle` writes one JSON file, readable only by its owner, to `support/` in the state directory, or to `--out`. It keeps the newest 3 bundles (`--keep`). Kuben never uploads it. Creating a bundle is recorded in the audit log with the file's checksum.
+
+**Always in the bundle:**
+
+- **Versions:** the Kuben version and this platform.
+- **Configuration:** only settings on a fixed allowlist. The bundle lists the names of the settings it left out, never their values. The database URL, passwords, client secrets and webhook secrets are always left out.
+- **Doctor:** the output of `kuben doctor`.
+- **Database:** the schema version, server facts and last backup. From your data, only counts and error codes: operations by kind and phase, stuck operations, the outbox backlog, webhook deliveries and open incidents. It holds no app names and no payloads.
+- **Cluster:** the apiserver and node versions, the state of Kuben's own pods, warning events in Kuben's namespace, and the status of `KubenConfig`.
+
+**Only with `--logs`:** the newest lines of Kuben's own logs. The default is 500 lines per container (`--log-lines`, at most 5000). In a cluster these come from the Kuben pods; on a server, from the `kuben` systemd unit.
+
+The bundle is capped at 8 MiB. If it would be larger, the oldest log lines are dropped.
+
+`--preview` shows each section and its size, plus the settings left out, and writes nothing.
+
+<Aside type="caution">
+Kuben removes anything in the bundle that looks like a credential in a URL, but this is best effort. Logs can name apps, hosts and people. Read the file before you share it.
+</Aside>
+
+In a Helm install, run the command in the Kuben pod and copy the file out:
+
+```bash
+kubectl -n kuben-system exec deploy/kuben -- kuben support-bundle --out /tmp/support
+kubectl -n kuben-system cp <pod>:/tmp/support ./support
+```
+
+## Export an app
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  https://kuben.example.com/api/v1/projects/shop/environments/prod/apps/web/export > web.json
+```
+
+The export (`kuben.dev/export/v1`) is built from the app's newest successful deployment. It contains:
+
+- **The portable release:** image digests, process contract and portable configuration.
+- **The configuration revision.**
+- **`manifests`:** the Kubernetes objects Kuben applies, as frozen by the renderer (its version is included). They form a `v1/List`, so `jq .manifests web.json | kubectl apply -f -` works.
+- **`references`:**
+  - the Secret objects the app uses, including registry pull Secrets (object names, never values);
+  - the volumes;
+  - the hostnames;
+  - the Gateway and the ClusterIssuer.
+- **`inventory`:** every object that belongs to the app.
+- **`runbook`:** the steps that are left for you to do.
+
+Secret values are never exported. Copy the Secrets yourself, or recreate them from your own secret store.
+
+## Detach an app
+
+Detaching hands an app over to you. Kuben stops managing it, and the app keeps running and serving.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"confirm":"web","reason":"moving to our own GitOps"}' \
+  https://kuben.example.com/api/v1/projects/shop/environments/prod/apps/web/detach
+```
+
+The response contains the export, frozen at the moment of the request. A detach is refused while a deployment of the app is still running. Then Kuben:
+
+1. **Orphans the objects.** It removes its own `App` (or `ApplicationRuntime`) object so that its controllers stop managing the app. The Deployments, Services, routes and CronJobs stay, without an owner, so nothing prunes them.
+2. **Releases the Secrets.** The Secrets the app uses lose Kuben's `managed-by` label and get `kuben.dev/detached`, so Kuben's secret cleanup never deletes them.
+3. **Keeps the volumes.** They were never owned by the app and stay as they are.
+4. **Removes the app from its lists.** A record remains under `GET …/environments/prod/detached`.
+
+While Kuben runs, its Gateway keeps serving the detached app's hostnames, and cert-manager keeps renewing their certificates. Before you uninstall Kuben, attach the routes to a Gateway you own (see the export's runbook).
+
+**Deleting the environment keeps its namespace** while it holds a detached app that has not been released.
+
+When you own the app for good, release it:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  https://kuben.example.com/api/v1/projects/shop/environments/prod/detached/<id>/release
+```
+
+After the release, deleting the environment deletes its namespace and everything in it.
+
+<Aside>
+A new app with the same name in the same environment takes the detached objects over. Use another name, or remove the objects first.
+</Aside>
+
+## Uninstall and keep the apps
+
+**On a server:**
+
+```bash
+sudo kuben uninstall --purge --keep-apps
+```
+
+This removes:
+
+- Kuben itself: the service, binary, configuration and data;
+- its database, if `kuben setup` created it;
+- the console;
+- the agent.
+
+It keeps what the apps need to keep being served:
+
+- the cluster (k3s too, even if setup installed it);
+- the `kuben-system` namespace with the Gateway;
+- the Traefik settings;
+- the ClusterIssuer;
+- the apps' namespaces, Secrets and volumes.
+
+At the end, it lists what is left. Apps you did not detach keep running as they are, but nobody updates them. A new Kuben install takes them over again.
+
+A plain `kuben uninstall`, without `--purge`, only stops the service. Everything else stays, including the apps.
+
+**With Helm**, `helm uninstall kuben -n kuben-system` leaves the following in place:
+
+- the CRDs and every Kuben object in the cluster;
+- the Gateway;
+- the `KubenConfig`, the database Secret, the keyring and the backup volume, which the chart marks `helm.sh/resource-policy: keep`.
+
+The apps keep running. As on a server, detach the apps first and move their routes to a Gateway you own if Kuben is not coming back.

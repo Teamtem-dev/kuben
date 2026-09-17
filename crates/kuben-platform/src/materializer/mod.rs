@@ -12,10 +12,12 @@
 //!   and removes what is being deleted.
 //! * `secrets` — the immutable Secrets of the secret revisions a run is
 //!   bound to (M4.4).
+//! * [`detach`] — lets go of an app and leaves its objects running (M4.11).
 //! * [`drift`] — reports changes someone else made to a materialized App
 //!   object and writes it again.
 
 pub mod agent;
+pub mod detach;
 pub mod drift;
 pub mod fence;
 pub mod lifecycle;

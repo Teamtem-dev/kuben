@@ -126,6 +126,12 @@ pub struct UninstallOpts {
     /// `kuben setup` installed it.
     #[arg(long)]
     pub purge: bool,
+    /// With --purge: keep the apps running without Kuben. The cluster
+    /// (k3s too), the Gateway, the ClusterIssuer and the apps' namespaces,
+    /// Secrets and volumes stay; what is left is listed. Detach the apps
+    /// first for a clean handover.
+    #[arg(long, requires = "purge")]
+    pub keep_apps: bool,
     /// Do not ask for confirmation.
     #[arg(long, short = 'y')]
     pub yes: bool,
@@ -1412,13 +1418,17 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         bail!("run it as root: sudo kuben uninstall");
     }
     let mut book = Book::open(Path::new(STATE_DIR), None)?;
-    let owned = Owned::of(book.journal());
+    let mut owned = Owned::of(book.journal());
+    // The apps run on that cluster: it stays.
+    owned.k3s &= !opts.keep_apps;
     if !opts.yes {
         let what = if opts.purge {
             format!(
                 "Remove Kuben, its data in {STATE_DIR}, {CONFIG_DIR}{}?",
                 if owned.k3s {
                     " and the k3s it installed"
+                } else if opts.keep_apps {
+                    " (the apps keep running)"
                 } else {
                     ""
                 }
@@ -1453,16 +1463,24 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         if owned.k3s {
             ui.note("k3s stays as well; --purge removes it too.");
         }
+        ui.note("The apps keep running; nobody updates them until kuben.service runs again.");
         return Ok(());
     }
     let kubeconfig = Path::new(STATE_DIR).join("kubeconfig");
     if !owned.k3s && kubeconfig.exists() {
-        let kept = platform::purge_objects(ui, &kubeconfig, book.journal());
+        let kept = platform::purge_objects(ui, &kubeconfig, book.journal(), opts.keep_apps);
         if !kept.is_empty() {
             ui.note(&format!(
                 "Kept in the cluster, other workloads may use them: {}.",
                 kept.join(", ")
             ));
+        }
+        if opts.keep_apps {
+            match platform::retained_inventory(&kubeconfig) {
+                Ok(lines) if lines.is_empty() => ui.note("No apps are left in the cluster."),
+                Ok(lines) => ui.note(&format!("Left for the apps:\n  {}", lines.join("\n  "))),
+                Err(e) => ui.warn("Listing what stays", e.to_string()),
+            }
         }
     }
     purge(ui, &owned);

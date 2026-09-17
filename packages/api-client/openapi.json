@@ -2616,6 +2616,96 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/detach": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Detach an app: Kuben lets go of it and leaves its objects running.",
+        "operationId": "detachApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Detach scheduled; the answer holds the export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetachedAppDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Being deleted, a run in flight, or never delivered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
       "get": {
         "tags": [
@@ -2881,6 +2971,76 @@
           },
           "503": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/export": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Export an app: portable release and configuration, standard manifests,\nreferences, inventory and runbook. No secret values.",
+        "operationId": "exportApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export document (`kuben.dev/export/v1`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not delivered yet",
             "content": {
               "application/json": {
                 "schema": {
@@ -3930,6 +4090,185 @@
           },
           "404": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/detached": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The apps detached from an environment.",
+        "operationId": "listDetachedApps",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DetachedAppDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "One detached app, with its export.",
+        "operationId": "getDetachedApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The detached app's id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetachedAppDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}/release": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Release a detached app: someone owns it now, and deleting the\nenvironment no longer keeps its namespace.",
+        "operationId": "releaseDetachedApp",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The detached app's id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Released"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not complete yet, or released already",
             "content": {
               "application/json": {
                 "schema": {
@@ -7449,6 +7788,82 @@
               "$ref": "#/components/schemas/PhaseStep"
             },
             "description": "Every phase it entered, oldest first."
+          }
+        }
+      },
+      "DetachRequest": {
+        "type": "object",
+        "required": [
+          "confirm",
+          "reason"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "description": "The app's name again."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why; kept with the record and audited."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DetachedAppDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "app",
+          "namespace",
+          "reason",
+          "requestedBy",
+          "requestedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "app": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set once the objects are orphaned."
+          },
+          "releasedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "releasedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "export": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The export frozen with the request (only when one app is read)."
           }
         }
       },

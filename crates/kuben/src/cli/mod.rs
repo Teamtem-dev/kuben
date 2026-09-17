@@ -4,6 +4,7 @@ pub mod backup;
 pub mod client;
 pub mod doctor;
 pub mod setup;
+pub mod support;
 pub mod ui;
 pub mod upgrade;
 
@@ -74,6 +75,10 @@ pub enum Command {
     Backup(BackupOpts),
     /// Restore a backup made by `kuben backup` into an empty database.
     Restore(RestoreOpts),
+    /// Write a local support bundle: versions, allowlisted configuration,
+    /// doctor, database counts, cluster state and (with --logs) Kuben's
+    /// logs. Nothing is uploaded; `--preview` writes nothing.
+    SupportBundle(support::SupportOpts),
     /// Print version information; `--bundle` adds what a release installs
     /// besides Kuben, with its digests.
     Version(VersionOpts),

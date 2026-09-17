@@ -3054,3 +3054,143 @@ async fn incidents_are_handled(app: &TestApp, alice: &str, bob: &str) {
         "{all}"
     );
 }
+
+/// Deliver the run in `run` as the materializer would: freeze a plan with a
+/// Deployment and a route, and succeed.
+async fn deliver_with_plan(app: &TestApp, run: &serde_json::Value) {
+    let id: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+    let run_id = kuben_core::ids::DeploymentRunId::from_uuid(id);
+    let claim = app
+        .store
+        .claim_operation(
+            "test",
+            &[kuben_store::repo::RUN_KIND],
+            std::time::Duration::from_mins(1),
+        )
+        .await
+        .expect("claim")
+        .expect("an operation");
+    let resources = json!([
+        { "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "api-web" } },
+        { "apiVersion": "gateway.networking.k8s.io/v1", "kind": "HTTPRoute",
+          "metadata": { "name": "api" }, "spec": { "hostnames": ["api.example.com"] } },
+    ]);
+    let capabilities = json!({ "sizes": [], "gateway": "kuben-system/kuben" });
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    t.freeze_run_plan(&claim, run_id, "kuben-renderer/2", &capabilities, &resources)
+        .await
+        .expect("freeze")
+        .expect("frozen");
+    t.commit().await.expect("commit");
+    assert!(
+        app.store
+            .finish_operation(&claim, "succeeded", None)
+            .await
+            .expect("finish")
+    );
+    succeed(app, run).await;
+}
+
+/// M4.11: an app is exported, detached with its export frozen, and
+/// released once the materializer let go of it.
+#[tokio::test]
+async fn m4_export_detach_and_release() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let base = format!("{PROD}/apps/api");
+    let (status, _) = send(&app.router, get(&format!("{base}/export"), &alice)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "nothing delivered yet");
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    deliver_with_plan(&app, &run).await;
+    let (status, export) = send(&app.router, get(&format!("{base}/export"), &alice)).await;
+    assert_eq!(status, StatusCode::OK, "{export}");
+    assert_eq!(export["format"], "kuben.dev/export/v1");
+    assert_eq!(export["manifests"]["items"].as_array().map(Vec::len), Some(2));
+    assert_eq!(export["references"]["hostnames"], json!(["api.example.com"]));
+    assert!(export["release"]["artifacts"].is_object());
+
+    let detach = format!("{base}/detach");
+    let body = json!({ "confirm": "api", "reason": "moving to our own GitOps" });
+    assert_eq!(
+        post_json(&app, &detach, &bob, body.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let wrong = json!({ "confirm": "web", "reason": "x" });
+    assert_eq!(
+        post_json(&app, &detach, &alice, wrong).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, detached) = post_json(&app, &detach, &alice, body.clone()).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{detached}");
+    assert_eq!(detached["export"]["manifests"], export["manifests"]);
+    assert_eq!(
+        post_json(&app, &detach, &alice, body).await.0,
+        StatusCode::CONFLICT
+    );
+    let id = detached["id"].as_str().expect("id").to_owned();
+    assert_eq!(id, target.as_uuid().to_string());
+
+    let (_, list) = send(&app.router, get(&format!("{PROD}/detached"), &alice)).await;
+    assert_eq!(list.as_array().map(Vec::len), Some(1), "{list}");
+    assert!(list[0]["completedAt"].is_null() && list[0].get("export").is_none());
+    let release = format!("{PROD}/detached/{id}/release");
+    assert_eq!(
+        post_json(&app, &release, &alice, json!({})).await.0,
+        StatusCode::CONFLICT,
+        "not finished"
+    );
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    assert_eq!(
+        t.detached_held(target_environment(&app).await)
+            .await
+            .expect("held"),
+        1
+    );
+    assert!(t.complete_detach(target).await.expect("complete"));
+    t.commit().await.expect("commit");
+    assert_eq!(
+        post_json(&app, &release, &bob, json!({})).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post_json(&app, &release, &alice, json!({})).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        post_json(&app, &release, &alice, json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    let (status, one) = send(&app.router, get(&format!("{PROD}/detached/{id}"), &alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(one["export"]["format"], "kuben.dev/export/v1");
+    assert!(one["releasedBy"].as_str().is_some_and(|b| b.starts_with("user:")));
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    assert_eq!(
+        t.detached_held(target_environment(&app).await)
+            .await
+            .expect("held"),
+        0
+    );
+}
+
+/// The id of the test app's environment.
+async fn target_environment(app: &TestApp) -> kuben_core::ids::EnvironmentId {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t
+        .projects()
+        .await
+        .expect("projects")
+        .into_iter()
+        .find(|p| p.slug == "shop")
+        .expect("shop");
+    t.environments(project.id)
+        .await
+        .expect("environments")
+        .into_iter()
+        .find(|e| e.slug == "prod")
+        .expect("prod")
+        .id
+}

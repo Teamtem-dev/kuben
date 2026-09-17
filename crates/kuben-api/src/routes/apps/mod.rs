@@ -8,6 +8,7 @@
 //! * [`doctor`] — why an app is or is not reachable, check by check;
 //! * [`promote`] — promotion between environments (scenario 10);
 //! * [`deployments`] — deploy acceptance by digest or release;
+//! * [`export`] — export and detach (M4.11);
 //! * [`source`] — the Git repository and branch an app builds from (M3);
 //! * [`builds`] — the app's builds, their outcome, release and run (M3);
 //! * [`spec`] — request bodies, validation and spec construction. Cross-field
@@ -29,6 +30,7 @@ pub mod crud;
 pub mod deployments;
 pub mod doctor;
 pub mod domains;
+pub mod export;
 pub mod jobs;
 pub mod logs;
 pub mod promote;

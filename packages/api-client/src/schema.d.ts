@@ -604,6 +604,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Detach an app: Kuben lets go of it and leaves its objects running. */
+        post: operations["detachApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
         parameters: {
             query?: never;
@@ -675,6 +692,26 @@ export type paths = {
          *     newest first, at most 100. Kubernetes keeps events for about an hour.
          */
         get: operations["getAppEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export an app: portable release and configuration, standard manifests,
+         *     references, inventory and runbook. No secret values.
+         */
+        get: operations["exportApp"];
         put?: never;
         post?: never;
         delete?: never;
@@ -917,6 +954,60 @@ export type paths = {
         put?: never;
         /** Read the branch head from GitHub now and build it if it is new. */
         post: operations["syncAppSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/detached": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The apps detached from an environment. */
+        get: operations["listDetachedApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One detached app, with its export. */
+        get: operations["getDetachedApp"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/detached/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a detached app: someone owns it now, and deleting the
+         *     environment no longer keeps its namespace.
+         */
+        post: operations["releaseDetachedApp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1873,6 +1964,27 @@ export type components = {
             image?: string | null;
             /** @description Every phase it entered, oldest first. */
             timeline: components["schemas"]["PhaseStep"][];
+        };
+        DetachRequest: {
+            /** @description The app's name again. */
+            confirm: string;
+            /** @description Why; kept with the record and audited. */
+            reason: string;
+        };
+        DetachedAppDto: {
+            /** Format: uuid */
+            id: string;
+            app: string;
+            namespace: string;
+            reason: string;
+            requestedBy: string;
+            requestedAt: string;
+            /** @description Set once the objects are orphaned. */
+            completedAt?: string | null;
+            releasedAt?: string | null;
+            releasedBy?: string | null;
+            /** @description The export frozen with the request (only when one app is read). */
+            export?: Record<string, never> | null;
         };
         DoctorCheck: {
             /**
@@ -4386,6 +4498,62 @@ export interface operations {
             };
         };
     };
+    detachApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetachRequest"];
+            };
+        };
+        responses: {
+            /** @description Detach scheduled; the answer holds the export */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetachedAppDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Being deleted, a run in flight, or never delivered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppDoctor: {
         parameters: {
             query?: never;
@@ -4534,6 +4702,50 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    exportApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export document (`kuben.dev/export/v1`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not delivered yet */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5160,6 +5372,114 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDetachedApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetachedAppDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDetachedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description The detached app's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetachedAppDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    releaseDetachedApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description The detached app's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Released */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not complete yet, or released already */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
