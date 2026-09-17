@@ -94,12 +94,7 @@ impl Worker {
 
     /// Delete `slug`'s ApplicationRuntime, orphaning its workloads; done
     /// once it is gone.
-    async fn orphan_runtime(
-        &self,
-        namespace: &str,
-        slug: &str,
-        target: TargetId,
-    ) -> Result<(), Stop> {
+    async fn orphan_runtime(&self, namespace: &str, slug: &str, target: TargetId) -> Result<(), Stop> {
         let runtimes = Api::<ApplicationRuntime>::namespaced(self.client.clone(), namespace);
         let Some(live) = runtimes.get_opt(slug).await? else {
             return Ok(());
