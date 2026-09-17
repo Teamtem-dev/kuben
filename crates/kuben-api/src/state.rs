@@ -36,6 +36,8 @@ pub struct ApiState {
     pub log_streams: Arc<crate::routes::apps::logs::LogStreams>,
     /// The GitHub App; `None` when Git sources are not configured (M3).
     pub github: Option<Arc<crate::github::GithubApp>>,
+    /// Verifies GitHub Actions OIDC tokens; `None` when CI trust is off (M4.2).
+    pub github_oidc: Option<Arc<crate::oidc::GithubOidc>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -78,6 +80,7 @@ impl ApiState {
             images: Arc::new(RegistryResolver::new()),
             log_streams: Arc::default(),
             github: None,
+            github_oidc: None,
         }
     }
 
@@ -85,6 +88,13 @@ impl ApiState {
     #[must_use]
     pub fn with_images(mut self, images: Arc<dyn ImageResolver>) -> Self {
         self.images = images;
+        self
+    }
+
+    /// Exchange GitHub Actions OIDC tokens verified by `oidc`, when set.
+    #[must_use]
+    pub fn with_github_oidc(mut self, oidc: Option<crate::oidc::GithubOidc>) -> Self {
+        self.github_oidc = oidc.map(Arc::new);
         self
     }
 

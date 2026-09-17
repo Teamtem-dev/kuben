@@ -127,6 +127,155 @@
         }
       }
     },
+    "/api/v1/ci/trust-policies": {
+      "get": {
+        "tags": [
+          "ci"
+        ],
+        "summary": "The organization's CI trust policies.",
+        "operationId": "listCiTrustPolicies",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CiPolicyDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ci"
+        ],
+        "summary": "Trust one GitHub repository's workflows to deploy into a project.\nExchanged tokens act with the creator's authority, capped at `role`.",
+        "operationId": "createCiTrustPolicy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCiPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiPolicyDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ci/trust-policies/{policy}": {
+      "delete": {
+        "tags": [
+          "ci"
+        ],
+        "summary": "Revoke a trust policy and every token exchanged under it.",
+        "operationId": "revokeCiTrustPolicy",
+        "parameters": [
+          {
+            "name": "policy",
+            "in": "path",
+            "description": "Policy id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/git/installations": {
       "get": {
         "tags": [
@@ -4648,6 +4797,97 @@
           }
         }
       },
+      "CiPolicyDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "project",
+          "repository",
+          "repositoryId",
+          "repositoryOwnerId",
+          "refs",
+          "environments",
+          "events",
+          "role",
+          "tokenTtlSecs",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "repositoryId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "repositoryOwnerId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "role": {
+            "type": "string"
+          },
+          "tokenTtlSecs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revokedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "CreateApp": {
         "type": "object",
         "required": [
@@ -4766,6 +5006,90 @@
             "example": 1000
           }
         }
+      },
+      "CreateCiPolicy": {
+        "type": "object",
+        "required": [
+          "name",
+          "project",
+          "repository",
+          "repositoryId",
+          "repositoryOwnerId",
+          "refs"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization, 1–64 characters.",
+            "example": "shop-deploy"
+          },
+          "project": {
+            "type": "string",
+            "example": "shop"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Narrows the tokens to one environment of `project`."
+          },
+          "repository": {
+            "type": "string",
+            "description": "`owner/name`, for people; the ids decide.",
+            "example": "acme/shop"
+          },
+          "repositoryId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub's numeric repository id (`repository_id` claim).",
+            "minimum": 0
+          },
+          "repositoryOwnerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "GitHub's numeric owner id (`repository_owner_id` claim).",
+            "minimum": 0
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`refs/heads/main`, `refs/tags/v*`, …"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub environments allowed; empty for any."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Workflow events allowed; `push`, `workflow_dispatch` and `release`\nwhen empty."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`developer` (deploy) or `admin` (deploy and promote)."
+          },
+          "tokenTtlSecs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Life of an exchanged token, 60–3600 seconds (default 900).",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "CreateEnvironment": {
         "type": "object",
@@ -6624,6 +6948,10 @@
     {
       "name": "git",
       "description": "GitHub App installations for Git sources"
+    },
+    {
+      "name": "ci",
+      "description": "Trust for external CI (GitHub Actions OIDC)"
     },
     {
       "name": "templates",

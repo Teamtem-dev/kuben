@@ -11,7 +11,12 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use kuben_api::{ApiState, auth::CLIENT_HEADER, oci::FixedImages};
+use kuben_api::{
+    ApiState,
+    auth::CLIENT_HEADER,
+    oci::FixedImages,
+    oidc::{GithubOidc, Jwks},
+};
 use kuben_core::{config::Config, ids::OrgId, ops::Generation, perm::Role, traits::StaticPolicy};
 use kuben_platform::{
     health::Health,
@@ -75,6 +80,10 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     let health = Health::new();
     health.set_ready(true);
     let projections = Arc::new(Projections::new());
+    // CI trust with the fixture's keys, at a time its tokens are valid.
+    let oidc = cfg.github_oidc_audience().map(|audience| {
+        GithubOidc::with_keys(&cfg.ci.github_oidc_issuer, &audience, ci_fixture().0).with_clock(|| CI_NOW)
+    });
     let state = ApiState::new(
         cfg,
         store.clone(),
@@ -83,7 +92,8 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
         health,
         Arc::new(StaticPolicy),
     )
-    .with_images(images());
+    .with_images(images())
+    .with_github_oidc(oidc);
     Some(TestApp {
         router: kuben_api::router(state),
         projections,
@@ -1840,4 +1850,183 @@ async fn m4_project_roles_are_granted_without_escalation() {
         StatusCode::NOT_FOUND,
         "the project role went with the membership"
     );
+}
+
+/// Signed GitHub Actions tokens and their issuer's keys (M4.2).
+const CI_FIXTURE: &str = include_str!("../src/testdata/github-oidc.json");
+/// Between the fixture tokens' `iat` and `exp`.
+const CI_NOW: i64 = 1_800_000_100;
+const CI_EXCHANGE: &str = "/api/v1/ci/github/token";
+
+fn ci_fixture() -> (Jwks, serde_json::Value) {
+    let all: serde_json::Value = serde_json::from_str(CI_FIXTURE).expect("fixture");
+    (
+        serde_json::from_value(all["jwks"].clone()).expect("jwks"),
+        all["tokens"].clone(),
+    )
+}
+
+async fn exchange(app: &TestApp, token: &str, policy: &str) -> (StatusCode, serde_json::Value) {
+    let (status, _, body) = call(
+        &app.router,
+        "POST",
+        CI_EXCHANGE,
+        Auth::Bearer(token),
+        Some(json!({ "policy": policy })),
+        None,
+    )
+    .await;
+    (status, body)
+}
+
+/// The app on CI trust with shop's policy for `acme/shop`'s main branch,
+/// made by alice: the app, alice's cookie and the policy id.
+async fn trusted() -> Option<(TestApp, String, String)> {
+    let app = setup_with(|cfg| {
+        cfg.ci.github_actions = true;
+        cfg.ci.github_oidc_audience = Some("https://kuben.example.com".into());
+    })
+    .await?;
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    assert_eq!(
+        status_of(
+            &app.router,
+            "POST",
+            "/api/v1/ci/trust-policies",
+            &bob,
+            Some(ci_policy())
+        )
+        .await,
+        StatusCode::FORBIDDEN,
+        "viewers cannot trust CI"
+    );
+    let (status, _, made) = call(
+        &app.router,
+        "POST",
+        "/api/v1/ci/trust-policies",
+        Auth::Cookie(&alice),
+        Some(ci_policy()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let id = made["id"].as_str().expect("id").to_owned();
+    Some((app, alice, id))
+}
+
+fn ci_policy() -> serde_json::Value {
+    json!({
+        "name": "shop-deploy", "project": "shop", "repository": "acme/shop",
+        "repositoryId": 123_456, "repositoryOwnerId": 42, "refs": ["refs/heads/main"],
+    })
+}
+
+fn ci_token(name: &str) -> String {
+    ci_fixture().1[name].as_str().expect("token").to_owned()
+}
+
+/// M4.2 (S04): forged, foreign and pull-request tokens get nothing.
+#[tokio::test]
+async fn m4_untrusted_ci_tokens_get_nothing() {
+    let Some((app, _, id)) = trusted().await else {
+        return;
+    };
+    for name in [
+        "tampered",
+        "wrong_aud",
+        "wrong_iss",
+        "unknown_kid",
+        "pull_request",
+    ] {
+        let (status, body) = exchange(&app, &ci_token(name), &id).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{name}: {body}");
+    }
+    let (status, _) = exchange(&app, &ci_token("valid"), &uuid::Uuid::now_v7().to_string()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "an unknown policy");
+    let (status, _, _) = call(
+        &app.router,
+        "POST",
+        CI_EXCHANGE,
+        Auth::Anonymous,
+        Some(json!({ "policy": id })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "no provider token");
+}
+
+/// M4.2 (S04): a trusted workflow gets a short-lived, project-scoped token
+/// once per provider token; revoking the policy ends it.
+#[tokio::test]
+async fn m4_trusted_ci_gets_a_scoped_token_once() {
+    let Some((app, alice, id)) = trusted().await else {
+        return;
+    };
+    let (status, issued) = exchange(&app, &ci_token("valid"), &id).await;
+    assert_eq!(status, StatusCode::CREATED, "{issued}");
+    assert_eq!(issued["role"], "developer");
+    let ci = issued["token"].as_str().expect("token").to_owned();
+    let (status, replay) = exchange(&app, &ci_token("valid"), &id).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a provider token works once: {replay}"
+    );
+
+    let as_ci = |method: &'static str, path: &'static str, body: Option<serde_json::Value>| {
+        let (ci, router) = (ci.clone(), app.router.clone());
+        async move { call(&router, method, path, Auth::Bearer(&ci), body, None).await.0 }
+    };
+    assert_eq!(
+        as_ci("GET", "/api/v1/projects/shop/environments", None).await,
+        StatusCode::OK
+    );
+    let deploy_body = json!({
+        "image": format!("ghcr.io/acme/api@{DIGEST}"),
+        "config": { "runtime": { "processes": { "web": { "port": 8080 } } } },
+        "expected_generation": 0,
+    });
+    assert_eq!(
+        as_ci("POST", DEPLOYMENTS, Some(deploy_body)).await,
+        StatusCode::ACCEPTED
+    );
+    assert_eq!(
+        as_ci("GET", "/api/v1/members", None).await,
+        StatusCode::FORBIDDEN,
+        "project-scoped"
+    );
+    assert_eq!(
+        as_ci("POST", "/api/v1/ci/trust-policies", Some(ci_policy())).await,
+        StatusCode::FORBIDDEN,
+        "tokens cannot mint trust"
+    );
+
+    assert_eq!(
+        status_of(
+            &app.router,
+            "DELETE",
+            &format!("/api/v1/ci/trust-policies/{id}"),
+            &alice,
+            None
+        )
+        .await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        as_ci("GET", "/api/v1/projects/shop/environments", None).await,
+        StatusCode::UNAUTHORIZED,
+        "revoked with its policy"
+    );
+    let (_, _, listed) = call(
+        &app.router,
+        "GET",
+        "/api/v1/ci/trust-policies",
+        Auth::Cookie(&alice),
+        None,
+        None,
+    )
+    .await;
+    assert!(listed[0]["revokedAt"].is_i64(), "{listed}");
 }

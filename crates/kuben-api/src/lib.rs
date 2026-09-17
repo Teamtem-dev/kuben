@@ -14,6 +14,7 @@ pub mod error;
 pub mod github;
 pub mod host;
 pub mod oci;
+pub mod oidc;
 pub mod openapi;
 pub mod routes;
 pub mod setup;
@@ -88,6 +89,10 @@ pub fn router(state: ApiState) -> Router {
         .route(
             routes::git::WEBHOOK_PATH,
             post(routes::git::webhook).layer(DefaultBodyLimit::max(routes::git::WEBHOOK_BODY_LIMIT)),
+        )
+        .route(
+            routes::ci::EXCHANGE_PATH,
+            post(routes::ci::exchange).layer(DefaultBodyLimit::max(routes::ci::EXCHANGE_BODY_LIMIT)),
         )
         .route("/livez", get(routes::health::livez))
         .route("/readyz", get(routes::health::readyz))

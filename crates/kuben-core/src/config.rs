@@ -38,6 +38,7 @@ pub struct Config {
     pub agent: AgentCfg,
     pub git: GitCfg,
     pub build: BuildCfg,
+    pub ci: CiCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -410,6 +411,48 @@ impl GitCfg {
     }
 }
 
+/// External CI trust (M4.2): GitHub Actions exchanges its OIDC token for a
+/// short-lived Kuben token under an organization's trust policy.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CiCfg {
+    /// Accept GitHub Actions OIDC tokens.
+    pub github_actions: bool,
+    /// The only issuer trusted; its JWKS is read from
+    /// `<issuer>/.well-known/jwks`, never from a token.
+    pub github_oidc_issuer: String,
+    /// The audience workflows request (`id-token` `audience`); defaults to
+    /// `server.public_url`.
+    pub github_oidc_audience: Option<String>,
+}
+
+impl Default for CiCfg {
+    fn default() -> Self {
+        Self {
+            github_actions: false,
+            github_oidc_issuer: crate::ci::GITHUB_ACTIONS_ISSUER.into(),
+            github_oidc_audience: None,
+        }
+    }
+}
+
+impl Config {
+    /// The audience of GitHub Actions OIDC tokens, if CI trust is on and one
+    /// is known.
+    #[must_use]
+    pub fn github_oidc_audience(&self) -> Option<String> {
+        if !self.ci.github_actions {
+            return None;
+        }
+        self.ci
+            .github_oidc_audience
+            .clone()
+            .or_else(|| self.server.public_url.clone())
+            .map(|a| a.trim().trim_end_matches('/').to_owned())
+            .filter(|a| !a.is_empty())
+    }
+}
+
 /// Isolated builds (ADR-028): one rootless BuildKit Job per attempt.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -651,6 +694,21 @@ mod tests {
         assert!(cfg.agent.bind.is_none(), "AgentLink is off unless configured");
         assert!(!cfg.build.enabled, "builds are off unless configured");
         assert!(!cfg.git.github_enabled());
+    }
+
+    #[test]
+    fn the_ci_audience_defaults_to_the_public_url() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.github_oidc_audience(), None, "off by default");
+        cfg.ci.github_actions = true;
+        assert_eq!(cfg.github_oidc_audience(), None, "no audience known");
+        cfg.server.public_url = Some("https://kuben.example.com/".into());
+        assert_eq!(
+            cfg.github_oidc_audience().as_deref(),
+            Some("https://kuben.example.com")
+        );
+        cfg.ci.github_oidc_audience = Some("kuben-ci".into());
+        assert_eq!(cfg.github_oidc_audience().as_deref(), Some("kuben-ci"));
     }
 
     #[test]

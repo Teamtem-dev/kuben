@@ -8,7 +8,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     auth,
     routes::{
-        access, apps, audit, environments, git, health, members, policy, projects, secrets, templates, tokens,
+        access, apps, audit, ci, environments, git, health, members, policy, projects, secrets, templates,
+        tokens,
     },
     state::ApiState,
 };
@@ -27,6 +28,7 @@ use crate::{
         (name = "apps", description = "Apps, rollouts, releases, logs, scheduled runs and promotion"),
         (name = "secrets", description = "Write-only environment secrets"),
         (name = "git", description = "GitHub App installations for Git sources"),
+        (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
         (name = "tokens", description = "Personal API tokens for CI/CD"),
         (name = "members", description = "Organization members and roles"),
@@ -75,6 +77,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::builds::get))
         .routes(routes!(apps::builds::cancel))
         .routes(routes!(git::list, git::link))
+        .routes(routes!(ci::list, ci::create))
+        .routes(routes!(ci::revoke))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
         .routes(routes!(templates::list))
@@ -133,6 +137,8 @@ mod tests {
             &format!("{app}/builds/{{build}}"),
             &format!("{app}/builds/{{build}}/cancel"),
             "/api/v1/git/installations",
+            "/api/v1/ci/trust-policies",
+            "/api/v1/ci/trust-policies/{policy}",
             &format!("{app}/deployments/{{run}}/approval"),
             &format!("{app}/deployments/{{run}}/approve"),
             &format!("{app}/deployments/{{run}}/reject"),

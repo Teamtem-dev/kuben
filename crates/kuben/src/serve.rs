@@ -130,7 +130,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             health.clone(),
             Arc::new(StaticPolicy),
         );
-        let app = kuben_api::router(state.with_github(github.clone()));
+        let app = kuben_api::router(with_integrations(state, &cfg, github.clone()));
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -170,6 +170,33 @@ fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubAp
     let app = kuben_api::github::GithubApp::from_config(git).context("Git sources")?;
     tracing::info!(api = %git.github_api_url, "GitHub App ready for Git sources");
     Ok(Some(app))
+}
+
+/// The API state with the Git and CI integrations the configuration enables.
+fn with_integrations(
+    state: kuben_api::ApiState,
+    cfg: &Config,
+    github: Option<kuben_api::github::GithubApp>,
+) -> kuben_api::ApiState {
+    state.with_github(github).with_github_oidc(github_oidc(cfg))
+}
+
+/// The GitHub Actions OIDC verifier (M4.2), when CI trust is on and its
+/// audience is known.
+fn github_oidc(cfg: &Config) -> Option<kuben_api::oidc::GithubOidc> {
+    let Some(audience) = cfg.github_oidc_audience() else {
+        if cfg.ci.github_actions {
+            tracing::warn!(
+                "ci.github_actions is set without an audience (ci.github_oidc_audience or server.public_url): CI tokens are refused"
+            );
+        }
+        return None;
+    };
+    tracing::info!(issuer = %cfg.ci.github_oidc_issuer, %audience, "GitHub Actions OIDC exchange enabled");
+    Some(kuben_api::oidc::GithubOidc::new(
+        &cfg.ci.github_oidc_issuer,
+        &audience,
+    ))
 }
 
 /// Namespace of build Jobs unless `build.namespace` names one: never Kuben's

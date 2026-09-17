@@ -8,6 +8,7 @@ mod audit;
 mod builds;
 mod capabilities;
 mod catalog;
+mod ci;
 mod deployments;
 mod installs;
 mod lifecycle;
@@ -33,6 +34,7 @@ pub use builds::{
 };
 pub use capabilities::CapabilityRecord;
 pub use catalog::{AppRecord, EnvironmentRecord, RunRecord, RuntimeStatus};
+pub use ci::{CiExchange, CiPolicy, Exchanged, NewCiPolicy};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use lifecycle::{
     ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, LIFECYCLE_KINDS, PROJECT_APPLY, PROJECT_DELETE, Subject,

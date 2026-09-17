@@ -58,6 +58,44 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ci/trust-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's CI trust policies. */
+        get: operations["listCiTrustPolicies"];
+        put?: never;
+        /**
+         * Trust one GitHub repository's workflows to deploy into a project.
+         *     Exchanged tokens act with the creator's authority, capped at `role`.
+         */
+        post: operations["createCiTrustPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ci/trust-policies/{policy}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a trust policy and every token exchanged under it. */
+        delete: operations["revokeCiTrustPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/git/installations": {
         parameters: {
             query?: never;
@@ -1038,6 +1076,31 @@ export type components = {
             /** Format: password */
             new_password: string;
         };
+        CiPolicyDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            project: string;
+            /** Format: uuid */
+            environment?: string | null;
+            repository: string;
+            /** Format: int64 */
+            repositoryId: number;
+            /** Format: int64 */
+            repositoryOwnerId: number;
+            refs: string[];
+            environments: string[];
+            events: string[];
+            role: string;
+            /** Format: int32 */
+            tokenTtlSecs: number;
+            createdBy: string;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            revokedAt?: number | null;
+        };
         CreateApp: {
             /** @example api */
             name: string;
@@ -1088,6 +1151,48 @@ export type components = {
              * @example 1000
              */
             fs_group?: number | null;
+        };
+        CreateCiPolicy: {
+            /**
+             * @description Unique in the organization, 1–64 characters.
+             * @example shop-deploy
+             */
+            name: string;
+            /** @example shop */
+            project: string;
+            /** @description Narrows the tokens to one environment of `project`. */
+            environment?: string | null;
+            /**
+             * @description `owner/name`, for people; the ids decide.
+             * @example acme/shop
+             */
+            repository: string;
+            /**
+             * Format: int64
+             * @description GitHub's numeric repository id (`repository_id` claim).
+             */
+            repositoryId: number;
+            /**
+             * Format: int64
+             * @description GitHub's numeric owner id (`repository_owner_id` claim).
+             */
+            repositoryOwnerId: number;
+            /** @description `refs/heads/main`, `refs/tags/v*`, … */
+            refs: string[];
+            /** @description GitHub environments allowed; empty for any. */
+            environments?: string[];
+            /**
+             * @description Workflow events allowed; `push`, `workflow_dispatch` and `release`
+             *     when empty.
+             */
+            events?: string[];
+            /** @description `developer` (deploy) or `admin` (deploy and promote). */
+            role?: string | null;
+            /**
+             * Format: int32
+             * @description Life of an exchanged token, 60–3600 seconds (default 900).
+             */
+            tokenTtlSecs?: number | null;
         };
         CreateEnvironment: {
             /**
@@ -1838,6 +1943,126 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listCiTrustPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CiPolicyDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createCiTrustPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCiPolicy"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CiPolicyDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeCiTrustPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Policy id */
+                policy: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
             };
         };
     };

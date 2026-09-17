@@ -4,6 +4,7 @@
 
 pub mod artifact;
 pub mod authz;
+pub mod ci;
 pub mod config;
 pub mod error;
 pub mod ids;
