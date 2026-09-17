@@ -1212,7 +1212,13 @@ mod tests {
                 f.project,
                 &PortableRelease {
                     application,
-                    artifacts: [("web".to_owned(), DIGEST.parse().expect("digest"))].into(),
+                    artifacts: [(
+                        "web".to_owned(),
+                        "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                            .parse()
+                            .expect("digest"),
+                    )]
+                    .into(),
                     process_contract: json!({}),
                     portable_config: json!({}),
                     renderer_schema: 1,

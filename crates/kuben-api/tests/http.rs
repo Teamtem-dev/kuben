@@ -2759,7 +2759,7 @@ async fn m4_freezes_pauses_and_emergency_rollbacks() {
         StatusCode::CONFLICT
     );
     let (_, _, shown) = call(&app.router, "GET", &api, Auth::Cookie(&alice), None, None).await;
-    assert_eq!(shown["paused"], "incident 42");
+    assert_eq!(shown["app"]["paused"], "incident 42");
     let emergency = format!("{api}/emergency-rollback");
     let why = json!({ "reason": "checkout is down" });
     assert_eq!(
