@@ -10,6 +10,7 @@ pub mod config;
 pub mod domain;
 pub mod error;
 pub mod ids;
+pub mod image_policy;
 pub mod model;
 pub mod ops;
 pub mod perm;

@@ -738,8 +738,8 @@ async fn backup_incident(
 }
 
 /// The work every replica shares through SQL claims: the notifier (M4.10:
-/// incidents, webhooks and commit statuses from the outbox) and the preview
-/// janitor (M5.1).
+/// incidents, webhooks and commit statuses from the outbox), the preview
+/// janitor (M5.1) and the image update watcher (M5.4).
 fn spawn_background(
     cfg: &Config,
     store: &kuben_store::Store,
@@ -759,6 +759,11 @@ fn spawn_background(
         cfg.server.public_url.clone(),
     );
     let janitor = kuben_api::previews::Janitor::new(store.clone(), github);
+    let watcher = kuben_api::image_watch::Watcher::new(
+        store.clone(),
+        Arc::new(kuben_api::oci::RegistryResolver::new()),
+        Some(keyring.clone()),
+    );
     let (h, t) = (health.clone(), shutdown.child_token());
     let notifications = tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
         kuben_api::notify::run(notifier.clone(), h.clone(), tok)
@@ -767,7 +772,11 @@ fn spawn_background(
     let previews = tokio::spawn(supervise("previews", t, h.clone(), move |tok| {
         kuben_api::previews::run(janitor.clone(), h.clone(), tok)
     }));
-    vec![notifications, previews]
+    let (h, t) = (health.clone(), shutdown.child_token());
+    let images = tokio::spawn(supervise("image-policies", t, h.clone(), move |tok| {
+        kuben_api::image_watch::run(watcher.clone(), h.clone(), tok)
+    }));
+    vec![notifications, previews, images]
 }
 
 async fn watchdog(health: Health, token: CancellationToken) {

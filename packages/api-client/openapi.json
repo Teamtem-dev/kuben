@@ -3480,6 +3480,195 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/image-policy": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "An app's image update policy.",
+        "operationId": "getImagePolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePolicyDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Follow a tag pattern of the app's image repository: a new digest is\ndeployed (with approval where the environment asks for it).",
+        "operationId": "putImagePolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutImagePolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePolicyDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The app builds from Git",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Stop following the image repository.",
+        "operationId": "deleteImagePolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs": {
       "get": {
         "tags": [
@@ -9261,6 +9450,73 @@
           }
         }
       },
+      "ImagePolicyDto": {
+        "type": "object",
+        "required": [
+          "repository",
+          "pattern",
+          "enabled",
+          "intervalSecs",
+          "nextCheckAt",
+          "failures"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "`semver:<range>`, `tag:<glob>` or a tag."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "intervalSecs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nextCheckAt": {
+            "type": "string"
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastTag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastDigest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Failed checks in a row."
+          },
+          "lastRun": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The run the policy started last."
+          }
+        }
+      },
       "ImageScanDto": {
         "type": "object",
         "required": [
@@ -10154,6 +10410,34 @@
             "type": "string"
           }
         }
+      },
+      "PutImagePolicy": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The repository to watch; the app's current image repository when\nunset."
+          },
+          "pattern": {
+            "type": "string",
+            "example": "semver:^1.2"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "intervalSecs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "PutPolicy": {
         "type": "object",

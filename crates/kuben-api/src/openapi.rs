@@ -59,6 +59,11 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::crud::restart))
         .routes(routes!(apps::crud::hand_over))
         .routes(routes!(apps::export::export))
+        .routes(routes!(
+            apps::image_policy::get,
+            apps::image_policy::put,
+            apps::image_policy::delete
+        ))
         .routes(routes!(apps::export::detach))
         .routes(routes!(apps::export::list_detached))
         .routes(routes!(apps::export::get_detached))

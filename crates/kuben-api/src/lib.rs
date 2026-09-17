@@ -14,6 +14,7 @@ pub mod dns;
 pub mod error;
 pub mod github;
 pub mod host;
+pub mod image_watch;
 pub mod notify;
 pub mod oci;
 pub mod oidc;

@@ -31,6 +31,7 @@ pub mod deployments;
 pub mod doctor;
 pub mod domains;
 pub mod export;
+pub mod image_policy;
 pub mod jobs;
 pub mod logs;
 pub mod promote;

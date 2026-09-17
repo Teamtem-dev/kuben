@@ -14,6 +14,7 @@ mod controls;
 mod deployments;
 mod detach;
 mod domains;
+mod image_policies;
 mod installs;
 mod lifecycle;
 mod materialize;
@@ -54,6 +55,7 @@ pub use controls::{Freeze, NewWindow, Owner, Silence};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use detach::{DetachedApp, ExportMaterial, NewDetach, SecretReference};
 pub use domains::{DnsProvider, DnsRecord, DomainClaim, NewDnsRecord, Verified};
+pub use image_policies::{Checked, ImagePolicy, NewImagePolicy};
 pub use lifecycle::{
     ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, LIFECYCLE_KINDS, PROJECT_APPLY, PROJECT_DELETE, Subject,
     TARGET_DELETE,

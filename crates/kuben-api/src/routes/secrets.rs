@@ -346,16 +346,30 @@ pub(crate) async fn registry_login(
     e: &EnvScope,
     registry: &str,
 ) -> ApiResult<Option<RegistryLogin>> {
-    let Some(current) = tenant.registry_login(e.id(), registry).await? else {
+    if state.keyring.is_none() && tenant.registry_login(e.id(), registry).await?.is_none() {
+        return Ok(None);
+    }
+    Ok(open_registry_login(keyring(state)?, tenant, e.project.org, e.id(), registry).await?)
+}
+
+/// The login of `environment` (of `org`) for `registry`, opened.
+pub(crate) async fn open_registry_login(
+    keyring: &Keyring,
+    tenant: &mut Tenant,
+    org: kuben_core::ids::OrgId,
+    environment: kuben_core::ids::EnvironmentId,
+    registry: &str,
+) -> Result<Option<RegistryLogin>, Error> {
+    let Some(current) = tenant.registry_login(environment, registry).await? else {
         return Ok(None);
     };
-    let (org, id) = (e.project.org.to_string(), current.secret.to_string());
+    let (org, id) = (org.to_string(), current.secret.to_string());
     let who = Identity {
         org: &org,
         secret: &id,
         revision: current.revision,
     };
-    let values = keyring(state)?
+    let values = keyring
         .open_values(who, &current.sealed)
         .map_err(|err| Error::Internal(format!("opening a registry login failed: {err}")))?;
     Ok(RegistryLogin::from_values(&values))

@@ -849,6 +849,28 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/image-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An app's image update policy. */
+        get: operations["getImagePolicy"];
+        /**
+         * Follow a tag pattern of the app's image repository: a new digest is
+         *     deployed (with approval where the environment asks for it).
+         */
+        put: operations["putImagePolicy"];
+        post?: never;
+        /** Stop following the image repository. */
+        delete: operations["deleteImagePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs": {
         parameters: {
             query?: never;
@@ -2385,6 +2407,29 @@ export type components = {
             certificate_ready?: boolean | null;
             certificate_message?: string | null;
         };
+        ImagePolicyDto: {
+            repository: string;
+            /** @description `semver:<range>`, `tag:<glob>` or a tag. */
+            pattern: string;
+            enabled: boolean;
+            /** Format: int32 */
+            intervalSecs: number;
+            nextCheckAt: string;
+            lastCheckedAt?: string | null;
+            lastTag?: string | null;
+            lastDigest?: string | null;
+            lastError?: string | null;
+            /**
+             * Format: int32
+             * @description Failed checks in a row.
+             */
+            failures: number;
+            /**
+             * Format: uuid
+             * @description The run the policy started last.
+             */
+            lastRun?: string | null;
+        };
         ImageScanDto: {
             digest: string;
             scan?: null | components["schemas"]["ScanDto"];
@@ -2663,6 +2708,18 @@ export type components = {
             components: components["schemas"]["PublicComponent"][];
             incidents: components["schemas"]["PublicIncidentDto"][];
             updatedAt: string;
+        };
+        PutImagePolicy: {
+            /**
+             * @description The repository to watch; the app's current image repository when
+             *     unset.
+             */
+            repository?: string | null;
+            /** @example semver:^1.2 */
+            pattern: string;
+            enabled?: boolean;
+            /** Format: int32 */
+            intervalSecs?: number;
         };
         PutPolicy: {
             /**
@@ -5418,6 +5475,120 @@ export interface operations {
             };
             /** @description Delivered by the agent already, being deleted, or no agent to take it */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getImagePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePolicyDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putImagePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutImagePolicy"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePolicyDto"];
+                };
+            };
+            /** @description The app builds from Git */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteImagePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

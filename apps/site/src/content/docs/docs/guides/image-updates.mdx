@@ -1,0 +1,41 @@
+---
+title: Automatic image updates
+description: Let an app follow a tag pattern of its image repository. New versions are deployed as they appear, and production still waits for approval.
+sidebar:
+  order: 11
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+An app deployed from an image can **follow** its repository. Kuben watches the repository's tags and deploys the matching image when it changes, like Keel or Renovate but inside Kuben's own release model.
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"pattern":"semver:^1.4","intervalSecs":300}' \
+  https://kuben.example.com/api/v1/projects/shop/environments/staging/apps/web/image-policy
+```
+
+## Patterns
+
+| Pattern | Follows |
+|---|---|
+| `semver:^1.4`, `semver:1.4.*`, `semver:>=1.4, <2` | The highest version matching the range. A leading `v` and short versions (`1.4`) count. Prereleases count only when the range names one. |
+| `tag:release-*` | The highest tag matching the glob, with numbers compared as numbers (`release-10` comes after `release-9`). |
+| `latest` (or any single tag) | Whatever digest that tag points to. |
+
+- **`repository`** defaults to the repository of the app's current image. The environment's registry login is used for private registries.
+- **Git-built apps** cannot follow an image. Their builds decide what they run.
+
+## What happens
+
+- **Checks.** Every `intervalSecs` (60 seconds to 1 day), Kuben lists the repository's tags, picks the matching one and resolves it to a digest.
+- **Deploys.** When the digest differs from what the app runs, Kuben records a new release and deploys it with the app's current configuration.
+- **Protected environments** keep their rules. The run waits for approval, and the vulnerability gate and freezes still apply. In development and preview environments, the run starts right away.
+- **Failures.** A failed check is retried with growing waits, up to once a day. A registry's `Retry-After` is honored.
+- **No duplicates.** The same digest is never deployed twice.
+
+`GET` on the same address shows the last tag and digest found, the last run started, the next check and the last error. `DELETE` stops following.
+
+<Aside type="caution">
+A moving tag such as `latest` deploys whatever the registry points it at. Prefer a SemVer range for production, and keep its approval requirement.
+</Aside>

@@ -142,6 +142,14 @@ impl ImageResolver for TestImages {
             _ => Err(ResolveError::Unauthorized(image.to_owned())),
         }
     }
+
+    async fn list_tags(
+        &self,
+        repository: &str,
+        login: Option<&RegistryLogin>,
+    ) -> Result<Vec<String>, ResolveError> {
+        self.0.list_tags(repository, login).await
+    }
 }
 
 fn images() -> Arc<TestImages> {
@@ -3762,4 +3770,75 @@ async fn m5_public_status_pages_show_only_public_facts() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _, _) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "taken down at once");
+}
+
+/// M5.4: an app follows a SemVer range of its repository; a new digest is
+/// deployed and waits for approval in production; the same digest is not
+/// deployed twice.
+#[tokio::test]
+async fn m5_image_policies_deploy_new_digests() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (status, _) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let path = "/api/v1/projects/shop/environments/prod/apps/api/image-policy";
+    let policy = json!({ "repository": "nginx", "pattern": "semver:>=1.26", "intervalSecs": 300 });
+    let put = |cookie: &str, body: serde_json::Value| {
+        let cookie = cookie.to_owned();
+        let router = app.router.clone();
+        async move { call(&router, "PUT", path, Auth::Cookie(&cookie), Some(body), None).await }
+    };
+    assert_eq!(put(&bob, policy.clone()).await.0, StatusCode::FORBIDDEN);
+    let bad = json!({ "repository": "nginx", "pattern": "semver:nope" });
+    assert_eq!(put(&alice, bad).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let fast = json!({ "repository": "nginx", "pattern": "latest", "intervalSecs": 5 });
+    assert_eq!(put(&alice, fast).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _, saved) = put(&alice, policy.clone()).await;
+    assert_eq!(
+        (status, saved["repository"].clone()),
+        (StatusCode::OK, json!("docker.io/library/nginx")),
+        "{saved}"
+    );
+
+    let keyring = Arc::new(kuben_platform::secrets::Keyring::from_keys([(1, [7; 32])]));
+    let watcher = kuben_api::image_watch::Watcher::new(app.store.clone(), images(), Some(keyring));
+    assert_eq!(watcher.pass().await.expect("pass"), 1);
+    let (_, followed) = send(&app.router, get(path, &alice)).await;
+    assert_eq!(
+        (followed["lastTag"].clone(), followed["lastDigest"].clone()),
+        (json!("1.27"), json!(NGINX_127)),
+        "{followed}"
+    );
+    assert!(followed["lastRun"].is_string() && followed["lastError"].is_null());
+    let (_, runs) = send(&app.router, get(DEPLOYMENTS, &alice)).await;
+    let newest = &runs.as_array().expect("runs")[0];
+    assert_eq!(
+        newest["phase"], "awaitingApproval",
+        "production still needs an approval: {newest}"
+    );
+    assert_eq!(
+        newest["requested_by"],
+        target.to_string(),
+        "the policy asked: {newest}"
+    );
+    let count = runs.as_array().map(Vec::len);
+    assert_eq!(watcher.pass().await.expect("pass"), 0, "not due yet");
+    put(&alice, policy).await;
+    assert_eq!(watcher.pass().await.expect("pass"), 1);
+    let (_, again) = send(&app.router, get(DEPLOYMENTS, &alice)).await;
+    assert_eq!(
+        again.as_array().map(Vec::len),
+        count,
+        "the same digest is not deployed twice"
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", path, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        send(&app.router, get(path, &alice)).await.0,
+        StatusCode::NOT_FOUND
+    );
 }
