@@ -39,7 +39,11 @@ The response shows the endpoint's signing secret (`whsec_…`). **This is the on
 - **Stale events.** Events more than an hour old when Kuben comes back from an outage are not sent.
 - **Deduplication.** Each event has a unique `Kuben-Delivery` id; use it to ignore repeats.
 
-To see recent deliveries, call `GET /api/v1/webhooks/{id}/deliveries`.
+To see recent deliveries, call `GET /api/v1/webhooks/{id}/deliveries`. To send a failed delivery again right away, call `POST /api/v1/webhooks/{id}/deliveries/{delivery}/retry`. Only failed deliveries of enabled endpoints can be retried, and the retry gets the full number of attempts again.
+
+### In the console
+
+The **Incidents** page lists open incidents (tick **Show resolved** to include the rest) with their timeline and runbook, and has the acknowledge and resolve actions. The **Webhooks** page creates endpoints, shows each endpoint's deliveries with their HTTP status and error, sends test pings, retries failed deliveries and disables endpoints. Both pages are available in English and Persian.
 
 ### Verifying the signature
 

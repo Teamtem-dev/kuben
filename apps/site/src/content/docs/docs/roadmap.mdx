@@ -13,9 +13,9 @@ Kuben 1.0 deploys images, isolates environments, serves custom domains over HTTP
 
 Build from a repository without an external CI: a persistent BuildKit daemon plus a light `buildctl` Job per build, Dockerfile or buildpacks, pushed by digest to your registry. Build pods never get cluster credentials; the controller watches the `BuildRun` and creates the `Release` itself. The `BuildRun` type and the `git` source already exist in the CRDs so the schema is stable.
 
-### Preview environments <Badge text="phase 1" variant="tip" />
+### Preview environments <Badge text="shipped in 1.2" variant="success" />
 
-A short-lived environment per pull request, created from a webhook, with generated hostnames under the base domain and a time-to-live (`idle`, `max`) that cleans it up. `type: preview` environments and `ttl` already exist in the `Environment` resource.
+A short-lived environment per pull request, with its own namespace, a time-to-live, and no secrets for forks. See [Preview environments](/docs/guides/previews/).
 
 ### Scale to zero <Badge text="phase 2" variant="note" />
 
