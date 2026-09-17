@@ -3,6 +3,7 @@ import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useId, useState } from 'react'
 import { AuthLayout, control } from '../components/ui'
 import { completeSetup, meQuery, setupQuery } from '../lib/api'
+import { usePrefs } from '../lib/prefs'
 import { ApiError, problemMessage } from '../lib/problem'
 import { setupTokenFrom, tunnelFor } from '../lib/setupToken'
 
@@ -17,6 +18,7 @@ const route = getRouteApi('/setup')
  */
 export function SetupPage() {
   const { token: queryToken } = route.useSearch()
+  const { t } = usePrefs()
   const [token] = useState(() => setupTokenFrom(window.location.hash, queryToken))
   useEffect(() => {
     if (window.location.hash || window.location.search) window.history.replaceState(null, '', '/setup')
@@ -56,7 +58,7 @@ export function SetupPage() {
     status.data?.secure === false || (error instanceof ApiError && error.code === 'insecure_transport')
   const message =
     error instanceof ApiError && error.status === 403 && !insecure
-      ? 'The setup link has expired or its token is wrong. Print a new one on the server with `kuben setup-token`.'
+      ? t('setup.expired')
       : error && !insecure
         ? problemMessage(error)
         : null
@@ -66,34 +68,40 @@ export function SetupPage() {
     return (
       <AuthLayout>
         <section className="w-full max-w-lg space-y-4 rounded-2xl border border-line bg-surface p-8 shadow-2xl shadow-black/40">
-          <h1 className="font-semibold text-2xl tracking-tight">Finish the setup securely</h1>
-          <p className="text-fg-soft text-sm">
-            This page is served over plain HTTP, so the admin password is not asked for here. Use one of
-            these:
-          </p>
+          <h1 className="font-semibold text-2xl tracking-tight">{t('setup.secureTitle')}</h1>
+          <p className="text-fg-soft text-sm">{t('setup.secureLead')}</p>
           <ol className="list-decimal space-y-3 ps-5 text-fg-soft text-sm">
             <li>
-              Through an SSH tunnel from your computer:
+              {t('setup.viaTunnel')}
               <code className="mt-1 block rounded-lg bg-canvas px-3 py-2 font-mono text-xs" dir="ltr">
                 {tunnel.command}
               </code>
-              then open{' '}
+              {t('setup.thenOpen')}{' '}
               <code className="rounded bg-canvas px-1 font-mono text-xs" dir="ltr">
                 {tunnel.link}
               </code>
             </li>
             <li>
-              Over HTTPS: run{' '}
-              <code className="font-mono text-xs">
+              {t('setup.viaHttps')}{' '}
+              <code dir="ltr" className="font-mono text-xs">
                 kuben setup --domain apps.example.com --acme-email you@example.com
               </code>{' '}
-              on the server and open <code className="font-mono text-xs">https://kuben.apps.example.com</code>
+              {t('setup.onServerOpen')}{' '}
+              <code dir="ltr" className="font-mono text-xs">
+                https://kuben.apps.example.com
+              </code>
               .
             </li>
             <li>
-              On a network you trust, allow plain HTTP:{' '}
-              <code className="font-mono text-xs">kuben setup --allow-http-setup</code> (or{' '}
-              <code className="font-mono text-xs">security.insecure_setup = true</code>).
+              {t('setup.viaHttp')}{' '}
+              <code dir="ltr" className="font-mono text-xs">
+                kuben setup --allow-http-setup
+              </code>{' '}
+              ({t('setup.or')}{' '}
+              <code dir="ltr" className="font-mono text-xs">
+                security.insecure_setup = true
+              </code>
+              ).
             </li>
           </ol>
         </section>
@@ -108,15 +116,13 @@ export function SetupPage() {
         className="w-full max-w-sm space-y-5 rounded-2xl border border-line bg-surface p-8 shadow-2xl shadow-black/40"
       >
         <header className="space-y-1">
-          <h1 className="font-semibold text-2xl tracking-tight">Set up Kuben</h1>
-          <p className="text-muted text-sm">
-            Create the admin account. You can invite the rest of the team afterwards.
-          </p>
+          <h1 className="font-semibold text-2xl tracking-tight">{t('setup.title')}</h1>
+          <p className="text-muted text-sm">{t('setup.lead')}</p>
         </header>
 
         <div className="space-y-1.5">
           <label htmlFor={orgId} className="font-medium text-sm">
-            Organization
+            {t('setup.organization')}
           </label>
           <input
             id={orgId}
@@ -131,7 +137,7 @@ export function SetupPage() {
 
         <div className="space-y-1.5">
           <label htmlFor={emailId} className="font-medium text-sm">
-            Email
+            {t('login.email')}
           </label>
           <input
             id={emailId}
@@ -145,7 +151,7 @@ export function SetupPage() {
 
         <div className="space-y-1.5">
           <label htmlFor={passwordId} className="font-medium text-sm">
-            Password
+            {t('login.password')}
           </label>
           <input
             id={passwordId}
@@ -156,17 +162,18 @@ export function SetupPage() {
             required
             className={control}
           />
-          <p className="text-subtle text-xs">At least 12 characters.</p>
+          <p className="text-subtle text-xs">{t('setup.passwordHint')}</p>
         </div>
 
         {askForToken && (
           <div className="space-y-1.5">
             <label htmlFor={tokenId} className="font-medium text-sm">
-              Setup token
+              {t('setup.token')}
             </label>
             <input id={tokenId} name="token" type="text" autoComplete="off" required className={control} />
             <p className="text-subtle text-xs">
-              Printed by the installer; on the server, <code>kuben setup-token</code> prints a new one.
+              {t('setup.tokenHintBefore')} <code dir="ltr">kuben setup-token</code>{' '}
+              {t('setup.tokenHintAfter')}
             </p>
           </div>
         )}
@@ -182,7 +189,7 @@ export function SetupPage() {
           disabled={mutation.isPending || status.isPending}
           className="w-full rounded-lg bg-accent px-3 py-2 font-medium text-sm text-on-accent transition hover:bg-accent-hover disabled:opacity-60"
         >
-          {mutation.isPending ? 'Creating…' : 'Create admin account'}
+          {mutation.isPending ? t('ui.creating') : t('setup.submit')}
         </button>
       </form>
     </AuthLayout>

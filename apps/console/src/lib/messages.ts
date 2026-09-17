@@ -1,9 +1,13 @@
 /**
  * Interface text in English and Persian. Every Persian entry is required:
  * `fa` has the type of `en`, so a missing translation does not compile.
- * Pages move their strings here as they are translated.
+ * Pages move their strings here as they are translated. The operational
+ * views (M5.6) and the older pages keep theirs in `messages/`.
  */
-export const en = {
+import { opsEn, opsFa } from './messages/ops'
+import { pagesEn, pagesFa } from './messages/pages'
+
+const coreEn = {
   'app.name': 'Kuben',
   'common.loading': 'Loading…',
   'common.backToProjects': 'Back to projects',
@@ -112,9 +116,7 @@ export const en = {
   'theme.dark': 'Dark',
 } as const
 
-export type MessageKey = keyof typeof en
-
-export const fa: Record<MessageKey, string> = {
+const coreFa: Record<keyof typeof coreEn, string> = {
   'app.name': 'کوبن',
   'common.loading': 'در حال بارگذاری…',
   'common.backToProjects': 'بازگشت به پروژه‌ها',
@@ -222,5 +224,11 @@ export const fa: Record<MessageKey, string> = {
   'theme.light': 'روشن',
   'theme.dark': 'تیره',
 }
+
+export const en = { ...coreEn, ...opsEn, ...pagesEn } as const
+
+export type MessageKey = keyof typeof en
+
+export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa }
 
 export const locales = { en, fa } as const

@@ -29,9 +29,11 @@ import {
   type Volume,
 } from '../lib/api'
 import { formatEnvLines, parseEnvLines } from '../lib/env'
+import { fill } from '../lib/messages/pages'
 import { usePrefs } from '../lib/prefs'
 import { DeploymentsCard } from './app-deployments'
 import { LiveLogs } from './app-logs'
+import { DetachCard, DnsCard, ImagePolicyCard, UsageCard } from './ops/app-ops'
 
 const route = getRouteApi('/_authed/projects/$project/$environment/$app')
 
@@ -85,23 +87,23 @@ export function AppPage() {
         }
         title={
           <span className="flex items-center gap-3">
-            {a.name} <Status ready={a.ready} label={a.reason} />
+            <span dir="auto">{a.name}</span> <Status ready={a.ready} label={a.reason} />
           </span>
         }
         subtitle={
           a.url ? (
-            <a href={a.url} target="_blank" rel="noreferrer" className="text-link hover:underline">
+            <a href={a.url} target="_blank" rel="noreferrer" dir="ltr" className="text-link hover:underline">
               {a.url}
             </a>
           ) : (
-            'Not exposed'
+            t('app.notExposed')
           )
         }
         actions={
           <>
             {scheduled && (
               <Button variant="secondary" disabled={run.isPending} onClick={() => run.mutate()}>
-                {run.isPending ? 'Starting…' : 'Run now'}
+                {run.isPending ? t('app.starting') : t('app.runNow')}
               </Button>
             )}
             <Link
@@ -112,20 +114,25 @@ export function AppPage() {
               {t('doctor.open')}
             </Link>
             <Button variant="secondary" disabled={restart.isPending} onClick={() => restart.mutate()}>
-              {restart.isPending ? 'Restarting…' : 'Restart'}
+              {restart.isPending ? t('app.restarting') : t('app.restart')}
             </Button>
           </>
         }
       />
       {scheduled && (
         <p className="text-muted text-sm">
-          Scheduled job: <code className="font-mono">{scheduled.schedule}</code>
-          {run.data && <span className="text-ok"> · started {run.data.job}</span>}
+          {t('app.scheduledJob')}{' '}
+          <code dir="ltr" className="font-mono">
+            {scheduled.schedule}
+          </code>
+          {run.data && <span className="text-ok"> · {fill(t('app.started'), { job: run.data.job })}</span>}
         </p>
       )}
       <ErrorNote error={run.error} />
       {!a.ready && a.message && (
-        <p className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">{a.message}</p>
+        <p dir="auto" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
+          {a.message}
+        </p>
       )}
       <ErrorNote error={restart.error} />
 
@@ -152,18 +159,18 @@ export function AppPage() {
         <PromoteCard project={project} environment={environment} app={app} />
       </div>
 
-      <Card title={`Pods (${data.pods.length})`}>
+      <Card title={fill(t('app.pods'), { count: data.pods.length })}>
         {data.pods.length === 0 ? (
-          <p className="text-subtle text-sm">No pods yet.</p>
+          <p className="text-subtle text-sm">{t('app.noPods')}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-start text-sm">
               <thead className="text-subtle text-xs">
                 <tr>
-                  <th className="pb-2 font-medium">Pod</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Restarts</th>
-                  <th className="pb-2 font-medium">Node</th>
+                  <th className="pb-2 font-medium">{t('app.pod')}</th>
+                  <th className="pb-2 font-medium">{t('app.status')}</th>
+                  <th className="pb-2 font-medium">{t('app.restarts')}</th>
+                  <th className="pb-2 font-medium">{t('app.node')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-soft">
@@ -206,6 +213,12 @@ export function AppPage() {
         onSave={(domains) => update.mutate({ domains })}
       />
 
+      <DnsCard project={project} environment={environment} app={app} domains={a.domains} />
+
+      <UsageCard project={project} environment={environment} app={app} />
+
+      <ImagePolicyCard project={project} environment={environment} app={app} />
+
       {a.volumes.length > 0 && <VolumesCard volumes={a.volumes} />}
 
       {a.volumes.length > 0 && (
@@ -215,12 +228,13 @@ export function AppPage() {
             checked={deleteVolumes}
             onChange={(e) => setDeleteVolumes(e.target.checked)}
           />
-          Also delete the app's volumes when deleting it (irreversible). Otherwise they are kept.
+          {t('app.deleteVolumes')}
         </label>
       )}
+      <DetachCard project={project} environment={environment} app={app} />
       <ConfirmDelete
         name={a.name}
-        what="app"
+        what={t('app.what')}
         pending={remove.isPending}
         error={remove.error}
         onConfirm={() => remove.mutate()}
@@ -240,18 +254,19 @@ function DeployCard({
   error: unknown
   onDeploy: (image: string) => void
 }) {
+  const { t } = usePrefs()
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const next = String(new FormData(event.currentTarget).get('image') ?? '').trim()
     if (next) onDeploy(next)
   }
   return (
-    <Card title="Image">
+    <Card title={t('environment.image')}>
       <form onSubmit={onSubmit} className="space-y-3">
-        <TextField key={image} label="Deploy image" name="image" defaultValue={image} required />
+        <TextField key={image} label={t('app.deployImage')} name="image" defaultValue={image} required />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={pending}>
-            Deploy
+            {t('ui.deploy')}
           </Button>
           <ErrorNote error={error} />
         </div>
@@ -273,6 +288,7 @@ function ScaleCard({
   pending: boolean
   onSave: (body: UpdateApp) => void
 }) {
+  const { t } = usePrefs()
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -281,21 +297,28 @@ function ScaleCard({
     onSave({ replicas, max_replicas: Math.max(replicas, maxReplicas) })
   }
   return (
-    <Card title={`Scale · ${size}`}>
+    <Card title={`${t('app.scale')} · ${size}`}>
       <form onSubmit={onSubmit} key={`${min}-${max}`} className="grid grid-cols-2 gap-3">
-        <TextField label="Replicas" name="replicas" type="number" min={0} max={50} defaultValue={min} />
         <TextField
-          label="Autoscale up to"
+          label={t('environment.replicas')}
+          name="replicas"
+          type="number"
+          min={0}
+          max={50}
+          defaultValue={min}
+        />
+        <TextField
+          label={t('environment.autoscale')}
           name="max_replicas"
           type="number"
           min={0}
           max={50}
           defaultValue={max}
-          hint="Equal to replicas disables autoscaling."
+          hint={t('app.autoscaleHint')}
         />
         <div className="col-span-2">
           <Button type="submit" variant="secondary" disabled={pending}>
-            Save
+            {t('ui.save')}
           </Button>
         </div>
       </form>
@@ -314,6 +337,7 @@ function EnvCard({
   error: unknown
   onSave: (env: ReturnType<typeof parseEnvLines>['vars']) => void
 }) {
+  const { t } = usePrefs()
   const [parseError, setParseError] = useState<string | null>(null)
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -322,18 +346,18 @@ function EnvCard({
     if (!errors.length) onSave(vars)
   }
   return (
-    <Card title="Environment variables">
+    <Card title={t('environment.envVars')}>
       <form onSubmit={onSubmit} className="space-y-3">
         <TextArea
           key={text}
-          label="Variables"
+          label={t('app.variables')}
           name="env"
           defaultValue={text}
-          hint="Saving rolls out new pods. KEY=@secret/key references a secret."
+          hint={t('app.variablesHint')}
         />
         <div className="flex items-center gap-3">
           <Button type="submit" variant="secondary" disabled={pending}>
-            Save and roll out
+            {t('app.saveAndRollOut')}
           </Button>
           {parseError && <ErrorNote error={new Error(parseError)} />}
           <ErrorNote error={error} />
@@ -344,6 +368,7 @@ function EnvCard({
 }
 
 function ReleasesCard({ project, environment, app }: { project: string; environment: string; app: string }) {
+  const { t, locale } = usePrefs()
   const queryClient = useQueryClient()
   const releases = useQuery({ ...releasesQuery(project, environment, app), retry: false })
   const rollback = useMutation({
@@ -351,11 +376,11 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] }),
   })
   return (
-    <Card title="Releases">
+    <Card title={t('app.releases')}>
       {releases.isError ? (
         <ErrorNote error={releases.error} />
       ) : !releases.data?.length ? (
-        <p className="text-subtle text-sm">No releases recorded yet.</p>
+        <p className="text-subtle text-sm">{t('app.noReleases')}</p>
       ) : (
         <ul className="max-h-80 divide-y divide-line-soft overflow-y-auto">
           {releases.data.map((r) => (
@@ -363,23 +388,32 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
               <div className="min-w-0">
                 <p className="truncate">
                   <span className="font-mono">#{r.revision}</span> <Badge>{r.reason}</Badge>{' '}
-                  <span className="font-mono text-muted text-xs">{r.image ?? '—'}</span>
+                  <span dir="ltr" className="font-mono text-muted text-xs">
+                    {r.image ?? '—'}
+                  </span>
                 </p>
                 <p className="truncate text-subtle text-xs">
-                  {new Date(r.created_at).toLocaleString()}
+                  {new Date(r.created_at).toLocaleString(locale)}
                   {r.actor ? ` · ${r.actor}` : ''}
-                  {r.note ? ` · ${r.note}` : ''}
+                  {r.note ? (
+                    <>
+                      {' · '}
+                      <span dir="auto">{r.note}</span>
+                    </>
+                  ) : (
+                    ''
+                  )}
                 </p>
               </div>
               {r.current ? (
-                <span className="text-ok text-xs">current</span>
+                <span className="text-ok text-xs">{t('app.current')}</span>
               ) : (
                 <Button
                   variant="secondary"
                   disabled={rollback.isPending}
                   onClick={() => rollback.mutate(r.revision)}
                 >
-                  Roll back
+                  {t('app.rollBack')}
                 </Button>
               )}
             </li>
@@ -392,6 +426,7 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
 }
 
 function PromoteCard({ project, environment, app }: { project: string; environment: string; app: string }) {
+  const { t } = usePrefs()
   const environments = useQuery(environmentsQuery(project))
   const targets = (environments.data ?? []).filter((e) => e.name !== environment)
   const [target, setTarget] = useState('')
@@ -403,17 +438,17 @@ function PromoteCard({ project, environment, app }: { project: string; environme
   if (targets.length === 0) return null
   const previewed = result?.dry_run === true
   return (
-    <Card title="Promote">
+    <Card title={t('app.promote')}>
       <div className="flex flex-wrap items-end gap-3">
         <Select
-          label="Target environment"
+          label={t('app.targetEnvironment')}
           value={target}
           onChange={(e) => {
             setTarget(e.target.value)
             setResult(null)
           }}
         >
-          <option value="">Choose…</option>
+          <option value="">{t('app.choose')}</option>
           {targets.map((e) => (
             <option key={e.name} value={e.name}>
               {e.name} ({e.env_type})
@@ -425,34 +460,34 @@ function PromoteCard({ project, environment, app }: { project: string; environme
           disabled={!target || promote.isPending}
           onClick={() => promote.mutate(true)}
         >
-          Preview changes
+          {t('app.previewChanges')}
         </Button>
         <Button disabled={!previewed || promote.isPending} onClick={() => promote.mutate(false)}>
-          Promote
+          {t('app.promote')}
         </Button>
       </div>
-      <p className="mt-2 text-subtle text-xs">
-        Copies image, processes and variables. The target keeps its domains, scaling and volumes.
-      </p>
+      <p className="mt-2 text-subtle text-xs">{t('app.promoteHint')}</p>
       {result && (
         <div className="mt-3 space-y-2 text-sm">
           {result.dry_run ? (
             <p className="text-fg-soft">
-              {result.changes.length ? `Changes in ${target}:` : `${target} is already up to date.`}
+              {result.changes.length
+                ? fill(t('app.changesIn'), { target })
+                : fill(t('app.upToDate'), { target })}
             </p>
           ) : (
             <p className="text-ok">
-              Promoted to {target}
-              {result.created ? ' (app created)' : ''}.
+              {fill(t('app.promoted'), { target })}
+              {result.created ? ` (${t('app.appCreated')})` : ''}.
             </p>
           )}
-          <ul className="list-disc space-y-0.5 ps-5 font-mono text-xs">
+          <ul dir="ltr" className="list-disc space-y-0.5 ps-5 text-start font-mono text-xs">
             {result.changes.map((c) => (
               <li key={c}>{c}</li>
             ))}
           </ul>
           {result.warnings.map((w) => (
-            <p key={w} className="text-warn text-xs">
+            <p key={w} dir="auto" className="text-warn text-xs">
               {w}
             </p>
           ))}
@@ -485,6 +520,7 @@ function DomainsCard({
   pending: boolean
   onSave: (domains: string[]) => void
 }) {
+  const { t, tOr } = usePrefs()
   const check = useMutation({ mutationFn: () => checkDomains(project, environment, app) })
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -493,10 +529,10 @@ function DomainsCard({
   }
   return (
     <Card
-      title="Domains"
+      title={t('environment.domains')}
       actions={
         <Button variant="secondary" disabled={check.isPending} onClick={() => check.mutate()}>
-          {check.isPending ? 'Checking…' : 'Check DNS'}
+          {check.isPending ? t('app.checking') : t('app.checkDns')}
         </Button>
       }
     >
@@ -504,24 +540,28 @@ function DomainsCard({
         <div className="min-w-64 flex-1">
           <TextField
             key={domains.join(' ')}
-            label="Custom domains"
+            label={t('app.customDomains')}
             name="domains"
             defaultValue={domains.join(' ')}
             placeholder="api.example.com www.example.com"
-            hint="HTTPS certificates are issued automatically once the DNS record points at the gateway."
+            hint={t('app.customDomainsHint')}
           />
         </div>
         <Button type="submit" variant="secondary" disabled={pending}>
-          Save
+          {t('ui.save')}
         </Button>
       </form>
       {check.data && (
         <ul className="mt-3 space-y-1 text-sm">
           {check.data.map((d) => (
             <li key={d.host} className="flex flex-wrap items-center gap-2">
-              <span className="font-mono">{d.host}</span>
-              <span className={dnsColor[d.status] ?? ''}>{d.status}</span>
-              <span className="text-subtle text-xs">{d.message}</span>
+              <span dir="ltr" className="font-mono">
+                {d.host}
+              </span>
+              <span className={dnsColor[d.status] ?? ''}>{tOr(`app.dns.${d.status}`, d.status)}</span>
+              <span dir="auto" className="text-subtle text-xs">
+                {d.message}
+              </span>
             </li>
           ))}
         </ul>
@@ -532,14 +572,18 @@ function DomainsCard({
 }
 
 function VolumesCard({ volumes }: { volumes: readonly Volume[] }) {
+  const { t } = usePrefs()
   return (
-    <Card title="Volumes">
+    <Card title={t('app.volumes')}>
       <ul className="space-y-1 text-sm">
         {volumes.map((v) => (
           <li key={v.name}>
-            <span className="font-mono">{v.mount_path}</span> <Badge>{v.size}</Badge>{' '}
+            <span dir="ltr" className="font-mono">
+              {v.mount_path}
+            </span>{' '}
+            <Badge>{v.size}</Badge>{' '}
             <span className="text-subtle text-xs">
-              {v.name} · kept when the app is deleted unless you choose otherwise
+              {v.name} · {t('app.volumeKept')}
             </span>
           </li>
         ))}

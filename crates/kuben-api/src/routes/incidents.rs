@@ -441,6 +441,39 @@ pub async fn deliveries(
     Ok(Json(found.into_iter().map(DeliveryDto::from).collect()))
 }
 
+/// Try a failed delivery again, now.
+#[utoipa::path(
+    post, path = "/webhooks/{id}/deliveries/{delivery}/retry", operation_id = "retryWebhookDelivery",
+    tag = "incidents",
+    params(
+        ("id" = Uuid, Path, description = "Endpoint id"),
+        ("delivery" = Uuid, Path, description = "Delivery id"),
+    ),
+    responses((status = 202, description = "Queued again"), (status = 404, body = crate::error::Problem))
+)]
+pub async fn retry(
+    State(state): State<ApiState>,
+    authz: Authz,
+    Path((id, delivery)): Path<(Uuid, Uuid)>,
+) -> ApiResult<StatusCode> {
+    let org = org_of(&authz)?;
+    let _proof = authz.require(&state, Perm::OrgAdmin, &ScopeChain::org(org))?;
+    let mut tenant = state.store.tenant(org).await?;
+    if !tenant.retry_delivery(id, delivery).await? {
+        return Err(Error::NotFound(format!("failed delivery `{delivery}` of an enabled webhook")).into());
+    }
+    tenant
+        .append_audit(request::audit(
+            &authz,
+            "webhook.delivery.retried",
+            "webhook",
+            id.to_string(),
+        ))
+        .await?;
+    tenant.commit().await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

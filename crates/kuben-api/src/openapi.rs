@@ -119,6 +119,7 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(incidents::disable_endpoint))
         .routes(routes!(incidents::ping))
         .routes(routes!(incidents::deliveries))
+        .routes(routes!(incidents::retry))
         .routes(routes!(previews::get_policy, previews::put_policy))
         .routes(routes!(previews::list))
         .routes(routes!(previews::extend))

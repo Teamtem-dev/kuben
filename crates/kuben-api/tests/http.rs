@@ -3020,6 +3020,13 @@ async fn m4_signed_webhooks_and_incidents() {
             .all(|d| d["status"] == "delivered"),
         "{deliveries}"
     );
+    let delivered = deliveries[0]["id"].as_str().expect("delivery id");
+    let retry = format!("{hooks}/{id}/deliveries/{delivered}/retry");
+    assert_eq!(
+        post_json(&app, &retry, &alice, json!({})).await.0,
+        StatusCode::NOT_FOUND,
+        "only failed deliveries are retried"
+    );
     incidents_are_handled(&app, &alice, &bob).await;
 }
 

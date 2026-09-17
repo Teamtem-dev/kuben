@@ -7549,6 +7549,52 @@
         }
       }
     },
+    "/api/v1/webhooks/{id}/deliveries/{delivery}/retry": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Try a failed delivery again, now.",
+        "operationId": "retryWebhookDelivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "delivery",
+            "in": "path",
+            "description": "Delivery id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued again"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/webhooks/{id}/ping": {
       "post": {
         "tags": [

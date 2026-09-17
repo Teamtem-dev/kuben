@@ -97,7 +97,7 @@ export function LoginPage() {
               href={`${sso.data.startUrl}?returnTo=${encodeURIComponent(redirect ?? '/')}`}
               className="block w-full rounded-lg border border-line px-3 py-2 text-center font-medium text-sm transition hover:bg-hover"
             >
-              {t('login.sso')} {sso.data.displayName}
+              {t('login.sso')} <span dir="auto">{sso.data.displayName}</span>
             </a>
           </>
         )}

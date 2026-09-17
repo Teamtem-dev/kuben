@@ -7,6 +7,7 @@ import {
   useId,
   useState,
 } from 'react'
+import { fill } from '../lib/messages/pages'
 import { usePrefs } from '../lib/prefs'
 import { problemMessage } from '../lib/problem'
 import { Logo } from './brand'
@@ -138,12 +139,13 @@ export function PageHeader({
 }
 
 export function Status({ ready, label }: { ready: boolean; label?: string | null }) {
+  const { t } = usePrefs()
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-xs ${ready ? 'bg-ok/10 text-ok' : 'bg-warn/10 text-warn'}`}
     >
       <span className={`size-1.5 rounded-full ${ready ? 'bg-ok' : 'bg-warn'}`} />
-      {label ?? (ready ? 'Ready' : 'Not ready')}
+      {label ?? (ready ? t('ui.ready') : t('ui.notReady'))}
     </span>
   )
 }
@@ -183,19 +185,20 @@ export function ConfirmDelete({
   error?: unknown
   onConfirm: () => void
 }) {
+  const { t } = usePrefs()
   const [open, setOpen] = useState(false)
   const [typed, setTyped] = useState('')
   if (!open) {
     return (
       <Button variant="ghost" onClick={() => setOpen(true)}>
-        Delete {what}
+        {fill(t('ui.deleteWhat'), { what })}
       </Button>
     )
   }
   return (
     <div className="w-full space-y-3 rounded-xl border border-danger/30 bg-danger/5 p-4">
       <TextField
-        label={`Type "${name}" to delete this ${what}`}
+        label={fill(t('ui.typeToDelete'), { name, what })}
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
         autoComplete="off"
@@ -203,10 +206,10 @@ export function ConfirmDelete({
       <ErrorNote error={error} />
       <div className="flex gap-2">
         <Button variant="danger" disabled={typed !== name || pending} onClick={onConfirm}>
-          {pending ? 'Deleting…' : `Delete ${what}`}
+          {pending ? t('ui.deleting') : fill(t('ui.deleteWhat'), { what })}
         </Button>
         <Button variant="secondary" onClick={() => setOpen(false)}>
-          Cancel
+          {t('ui.cancel')}
         </Button>
       </div>
     </div>

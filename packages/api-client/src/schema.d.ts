@@ -1729,6 +1729,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/{id}/deliveries/{delivery}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Try a failed delivery again, now. */
+        post: operations["retryWebhookDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/{id}/ping": {
         parameters: {
             query?: never;
@@ -8155,6 +8172,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeliveryDto"][];
+                };
+            };
+        };
+    };
+    retryWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+                /** @description Delivery id */
+                delivery: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };

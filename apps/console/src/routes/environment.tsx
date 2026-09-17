@@ -31,11 +31,15 @@ import {
   templatesQuery,
 } from '../lib/api'
 import { parseEnvLines } from '../lib/env'
+import { fill } from '../lib/messages/pages'
+import { usePrefs } from '../lib/prefs'
+import { DetachedCard } from './ops/environment-ops'
 
 const route = getRouteApi('/_authed/projects/$project/$environment')
 
 export function EnvironmentPage() {
   const { project, environment } = route.useParams()
+  const { t, locale } = usePrefs()
   const { data: p } = useSuspenseQuery(projectQuery(project))
   const { data: env } = useSuspenseQuery(environmentQuery(project, environment))
   const { data: apps } = useSuspenseQuery(appsQuery(project, environment))
@@ -56,11 +60,11 @@ export function EnvironmentPage() {
         crumbs={
           <>
             <Link to="/" className="hover:text-fg">
-              Projects
+              {t('projects.title')}
             </Link>
             <span>/</span>
             <Link to="/projects/$project" params={{ project }} className="hover:text-fg">
-              {p.display_name}
+              <span dir="auto">{p.display_name}</span>
             </Link>
           </>
         }
@@ -69,23 +73,27 @@ export function EnvironmentPage() {
             {env.name} <Badge>{env.env_type}</Badge>
           </span>
         }
-        subtitle={<span className="font-mono">{env.namespace}</span>}
+        subtitle={
+          <span dir="ltr" className="font-mono">
+            {env.namespace}
+          </span>
+        }
         actions={
           <Button
             variant={deploying ? 'secondary' : 'primary'}
             onClick={() => setDeploying((v) => !v)}
             disabled={env.deleting}
           >
-            {deploying ? 'Cancel' : 'Deploy app'}
+            {deploying ? t('ui.cancel') : t('environment.deployApp')}
           </Button>
         }
       />
 
       {env.deleting && (
         <p role="status" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
-          This environment is being deleted
+          {t('environment.deleting')}
           {env.deletion_scheduled_at
-            ? ` — its namespace is purged at ${new Date(env.deletion_scheduled_at).toLocaleString()}`
+            ? ` — ${fill(t('environment.purgedAt'), { date: new Date(env.deletion_scheduled_at).toLocaleString(locale) })}`
             : ''}
           .
         </p>
@@ -96,9 +104,7 @@ export function EnvironmentPage() {
       )}
 
       {apps.length === 0 ? (
-        <Empty>
-          No apps yet. Deploy any container image; Kuben creates the Deployment, Service and route.
-        </Empty>
+        <Empty>{t('environment.empty')}</Empty>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
           {apps.map((a) => (
@@ -109,12 +115,24 @@ export function EnvironmentPage() {
                 className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="truncate font-medium">{a.name}</span>
+                  <span dir="auto" className="truncate font-medium">
+                    {a.name}
+                  </span>
                   <Status ready={a.ready} label={a.reason} />
                 </div>
-                <p className="mt-1 truncate font-mono text-subtle text-xs">{a.image ?? a.git_repo}</p>
-                {a.url && <p className="mt-1 truncate text-link text-xs">{a.url}</p>}
-                {!a.ready && a.message && <p className="mt-2 text-warn/80 text-xs">{a.message}</p>}
+                <p dir="ltr" className="mt-1 truncate text-start font-mono text-subtle text-xs">
+                  {a.image ?? a.git_repo}
+                </p>
+                {a.url && (
+                  <p dir="ltr" className="mt-1 truncate text-start text-link text-xs">
+                    {a.url}
+                  </p>
+                )}
+                {!a.ready && a.message && (
+                  <p dir="auto" className="mt-2 text-warn/80 text-xs">
+                    {a.message}
+                  </p>
+                )}
               </Link>
             </li>
           ))}
@@ -127,10 +145,12 @@ export function EnvironmentPage() {
 
       <RegistryLogins project={project} environment={environment} />
 
+      <DetachedCard project={project} environment={environment} />
+
       <div className="border-line border-t pt-6">
         <ConfirmDelete
           name={env.name}
-          what="environment"
+          what={t('environment.what')}
           pending={remove.isPending}
           error={remove.error}
           onConfirm={() => remove.mutate()}
@@ -149,6 +169,7 @@ function DeployForm({
   environment: string
   onDone: () => void
 }) {
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const [envError, setEnvError] = useState<string | null>(null)
   const mutation = useMutation({
@@ -194,7 +215,7 @@ function DeployForm({
       className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3"
     >
       <TextField
-        label="Name"
+        label={t('projects.name')}
         name="name"
         required
         pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
@@ -202,55 +223,71 @@ function DeployForm({
         placeholder="api"
       />
       <div className="sm:col-span-2">
-        <TextField label="Image" name="image" required placeholder="ghcr.io/acme/api:1.4.2" />
+        <TextField
+          label={t('environment.image')}
+          name="image"
+          required
+          placeholder="ghcr.io/acme/api:1.4.2"
+        />
       </div>
       <TextField
-        label="Port"
+        label={t('environment.port')}
         name="port"
         type="number"
         min={1}
         max={65535}
-        placeholder="8080 (empty for workers)"
+        placeholder={t('environment.portPlaceholder')}
       />
-      <TextField label="Replicas" name="replicas" type="number" min={0} max={50} defaultValue={1} />
       <TextField
-        label="Autoscale up to"
+        label={t('environment.replicas')}
+        name="replicas"
+        type="number"
+        min={0}
+        max={50}
+        defaultValue={1}
+      />
+      <TextField
+        label={t('environment.autoscale')}
         name="max_replicas"
         type="number"
         min={1}
         max={50}
-        placeholder="optional"
+        placeholder={t('environment.optional')}
       />
-      <Select label="Size" name="size" defaultValue="small">
+      <Select label={t('environment.size')} name="size" defaultValue="small">
         <option value="nano">nano — 50m / 128Mi</option>
         <option value="small">small — 100m / 256Mi</option>
         <option value="medium">medium — 250m / 1Gi</option>
         <option value="large">large — 1 CPU / 4Gi</option>
       </Select>
-      <TextField label="Health check path" name="health" placeholder="/healthz" />
-      <TextField label="Domains" name="domains" placeholder="api.example.com" />
-      <Select label="Protocol" name="protocol" defaultValue="http">
-        <option value="http">http — public route</option>
-        <option value="tcp">tcp — internal only (databases)</option>
+      <TextField label={t('environment.healthPath')} name="health" placeholder="/healthz" />
+      <TextField label={t('environment.domains')} name="domains" placeholder="api.example.com" />
+      <Select label={t('environment.protocol')} name="protocol" defaultValue="http">
+        <option value="http">http — {t('environment.protocolHttp')}</option>
+        <option value="tcp">tcp — {t('environment.protocolTcp')}</option>
       </Select>
-      <TextField label="Schedule (cron)" name="schedule" placeholder="0 3 * * * (runs as a job; no port)" />
       <TextField
-        label="Volume"
+        label={t('environment.schedule')}
+        name="schedule"
+        placeholder={t('environment.schedulePlaceholder')}
+      />
+      <TextField
+        label={t('environment.volume')}
         name="volume"
-        placeholder="/data:5Gi (single replica)"
+        placeholder={t('environment.volumePlaceholder')}
         pattern="/[^:]+(:[0-9]+(Ki|Mi|Gi|Ti))?"
       />
       <div className="sm:col-span-3">
         <TextArea
-          label="Environment variables"
+          label={t('environment.envVars')}
           name="env"
           placeholder={'LOG_LEVEL=info\nDATABASE_URL=@db/url'}
-          hint="One KEY=value per line; KEY=@secret/key references a secret."
+          hint={t('environment.envVarsHint')}
         />
       </div>
       <div className="flex items-center gap-3 sm:col-span-3">
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Deploying…' : 'Deploy'}
+          {mutation.isPending ? t('ui.deploying') : t('ui.deploy')}
         </Button>
         {envError && <ErrorNote error={new Error(envError)} />}
         <ErrorNote error={mutation.error} />
@@ -260,6 +297,7 @@ function DeployForm({
 }
 
 function Secrets({ project, environment }: { project: string; environment: string }) {
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const secrets = useQuery({ ...secretsQuery(project, environment), retry: false })
   const [formError, setFormError] = useState<string | null>(null)
@@ -281,7 +319,7 @@ function Secrets({ project, environment }: { project: string; environment: strin
     const { vars, errors } = parseEnvLines(String(form.get('data') ?? ''))
     const data = Object.fromEntries(vars.map((v) => [v.name, v.value ?? '']))
     if (errors.length || vars.length === 0) {
-      setFormError(errors.length ? errors.join('; ') : 'Add at least one KEY=value line.')
+      setFormError(errors.length ? errors.join('; ') : t('environment.secretNeedsKey'))
       return
     }
     setFormError(null)
@@ -292,7 +330,7 @@ function Secrets({ project, environment }: { project: string; environment: strin
   }
 
   return (
-    <Card title="Secrets">
+    <Card title={t('environment.secrets')}>
       <div className="space-y-4">
         {secrets.isError ? (
           <ErrorNote error={secrets.error} />
@@ -301,28 +339,28 @@ function Secrets({ project, environment }: { project: string; environment: strin
             {secrets.data.map((s) => (
               <li key={s.name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <span className="font-mono text-sm">{s.name}</span>
+                  <span dir="ltr" className="font-mono text-sm">
+                    {s.name}
+                  </span>
                   <p className="truncate text-subtle text-xs">
-                    {s.keys.join(', ')}
-                    {s.revision != null && ` · revision ${s.revision}`}
-                    {s.storage === 'cluster' && ' · stored in the cluster'}
-                    {s.revoked && ' · revoked: set a new value before deploying'}
+                    <span dir="ltr">{s.keys.join(', ')}</span>
+                    {s.revision != null && ` · ${fill(t('environment.revision'), { revision: s.revision })}`}
+                    {s.storage === 'cluster' && ` · ${t('environment.storedInCluster')}`}
+                    {s.revoked && ` · ${t('environment.secretRevoked')}`}
                   </p>
                 </div>
                 <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(s.name)}>
-                  Remove
+                  {t('ui.remove')}
                 </Button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-subtle text-sm">
-            No secrets. Values are write-only: they can be replaced, never read back.
-          </p>
+          <p className="text-subtle text-sm">{t('environment.noSecrets')}</p>
         )}
         <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-3">
           <TextField
-            label="Secret name"
+            label={t('environment.secretName')}
             name="name"
             required
             pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
@@ -330,15 +368,15 @@ function Secrets({ project, environment }: { project: string; environment: strin
           />
           <div className="sm:col-span-2">
             <TextArea
-              label="Keys"
+              label={t('environment.keys')}
               name="data"
               placeholder="url=postgres://…"
-              hint="One key=value per line. Saving stores a new encrypted revision and rolls it out to the apps that use it."
+              hint={t('environment.keysHint')}
             />
           </div>
           <div className="flex items-center gap-3 sm:col-span-3">
             <Button type="submit" variant="secondary" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save secret'}
+              {save.isPending ? t('ui.saving') : t('environment.saveSecret')}
             </Button>
             {formError && <ErrorNote error={new Error(formError)} />}
             <ErrorNote error={save.error ?? remove.error} />
@@ -350,6 +388,7 @@ function Secrets({ project, environment }: { project: string; environment: strin
 }
 
 function RegistryLogins({ project, environment }: { project: string; environment: string }) {
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const logins = useQuery({ ...registriesQuery(project, environment), retry: false })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['registries', project, environment] })
@@ -387,7 +426,7 @@ function RegistryLogins({ project, environment }: { project: string; environment
   }
 
   return (
-    <Card title="Registry logins">
+    <Card title={t('environment.registryLogins')}>
       <div className="space-y-4">
         {logins.isError ? (
           <ErrorNote error={logins.error} />
@@ -396,35 +435,35 @@ function RegistryLogins({ project, environment }: { project: string; environment
             {logins.data.map((l) => (
               <li key={l.name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
-                  <span className="font-mono text-sm">{l.registry}</span>
+                  <span dir="ltr" className="font-mono text-sm">
+                    {l.registry}
+                  </span>
                   <p className="truncate text-subtle text-xs">
-                    {l.name} · revision {l.revision}
-                    {l.revoked && ' · revoked: set a new login before deploying'}
+                    {l.name} · {fill(t('environment.revision'), { revision: l.revision })}
+                    {l.revoked && ` · ${t('environment.loginRevoked')}`}
                   </p>
                 </div>
                 <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(l.name)}>
-                  Remove
+                  {t('ui.remove')}
                 </Button>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-subtle text-sm">
-            No registry logins. Images from private registries need one; passwords are never shown again.
-          </p>
+          <p className="text-subtle text-sm">{t('environment.noLogins')}</p>
         )}
         <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
           <TextField
-            label="Name"
+            label={t('projects.name')}
             name="name"
             required
             pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
             placeholder="ghcr"
           />
-          <TextField label="Registry" name="registry" required placeholder="ghcr.io" />
-          <TextField label="Username" name="username" required autoComplete="off" />
+          <TextField label={t('environment.registry')} name="registry" required placeholder="ghcr.io" />
+          <TextField label={t('environment.username')} name="username" required autoComplete="off" />
           <TextField
-            label="Password or token"
+            label={t('environment.passwordOrToken')}
             name="password"
             type="password"
             required
@@ -432,7 +471,7 @@ function RegistryLogins({ project, environment }: { project: string; environment
           />
           <div className="flex items-center gap-3 sm:col-span-2">
             <Button type="submit" variant="secondary" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save login'}
+              {save.isPending ? t('ui.saving') : t('environment.saveLogin')}
             </Button>
             <ErrorNote error={save.error ?? remove.error} />
           </div>
@@ -443,6 +482,7 @@ function RegistryLogins({ project, environment }: { project: string; environment
 }
 
 function Templates({ project, environment }: { project: string; environment: string }) {
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const templates = useQuery(templatesQuery)
   const [chosen, setChosen] = useState<string | null>(null)
@@ -464,52 +504,61 @@ function Templates({ project, environment }: { project: string; environment: str
   }
 
   return (
-    <Card title="One-click templates">
+    <Card title={t('environment.templates')}>
       {deployed && (
         <div role="status" className="mb-4 rounded-lg border border-ok/30 bg-ok/5 p-3 text-sm">
-          Deployed <strong>{deployed.app.name}</strong>. Credentials are in the secret{' '}
-          <code className="font-mono">{deployed.credentials_secret}</code>
+          {t('environment.templateDeployed')} <strong dir="auto">{deployed.app.name}</strong>.{' '}
+          {t('environment.credentialsIn')}{' '}
+          <code dir="ltr" className="font-mono">
+            {deployed.credentials_secret}
+          </code>
           {deployed.connection_keys.includes('url') && (
             <>
               {' '}
-              — connect another app with{' '}
-              <code className="font-mono">DATABASE_URL=@{deployed.credentials_secret}/url</code>
+              — {t('environment.connectWith')}{' '}
+              <code dir="ltr" className="font-mono">
+                DATABASE_URL=@{deployed.credentials_secret}/url
+              </code>
             </>
           )}
           .
         </div>
       )}
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {templates.data?.map((t) => (
-          <li key={t.id} className="flex flex-col gap-2 rounded-lg border border-line p-3">
+        {templates.data?.map((tpl) => (
+          <li key={tpl.id} className="flex flex-col gap-2 rounded-lg border border-line p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-sm">{t.name}</span>
-              <Badge>{t.protocol}</Badge>
+              <span className="font-medium text-sm">{tpl.name}</span>
+              <Badge>{tpl.protocol}</Badge>
             </div>
-            <p className="flex-1 text-muted text-xs">{t.description}</p>
-            <p className="truncate font-mono text-subtle text-xs">{t.image}</p>
-            {chosen === t.id ? (
-              <form onSubmit={(e) => onSubmit(e, t.id)} className="space-y-2">
+            <p dir="auto" className="flex-1 text-muted text-xs">
+              {tpl.description}
+            </p>
+            <p dir="ltr" className="truncate text-start font-mono text-subtle text-xs">
+              {tpl.image}
+            </p>
+            {chosen === tpl.id ? (
+              <form onSubmit={(e) => onSubmit(e, tpl.id)} className="space-y-2">
                 <TextField
-                  label="App name"
+                  label={t('environment.appName')}
                   name="name"
                   required
-                  defaultValue={t.category === 'database' ? 'db' : t.id}
+                  defaultValue={tpl.category === 'database' ? 'db' : tpl.id}
                   pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
                   maxLength={40}
                 />
                 <div className="flex gap-2">
                   <Button type="submit" disabled={deploy.isPending}>
-                    {deploy.isPending ? 'Deploying…' : 'Deploy'}
+                    {deploy.isPending ? t('ui.deploying') : t('ui.deploy')}
                   </Button>
                   <Button variant="ghost" onClick={() => setChosen(null)}>
-                    Cancel
+                    {t('ui.cancel')}
                   </Button>
                 </div>
               </form>
             ) : (
-              <Button variant="secondary" onClick={() => setChosen(t.id)}>
-                Use template
+              <Button variant="secondary" onClick={() => setChosen(tpl.id)}>
+                {t('environment.useTemplate')}
               </Button>
             )}
           </li>

@@ -43,14 +43,14 @@ interface Outcome<T> {
 }
 
 /** Resolve an openapi-fetch call to its data, or throw an `ApiError`. */
-async function unwrap<T>(request: Promise<Outcome<T>>): Promise<T> {
+export async function unwrap<T>(request: Promise<Outcome<T>>): Promise<T> {
   const { data, error, response } = await request
   if (!response.ok || data === undefined) throw toApiError(error, response.status)
   return data
 }
 
 /** For endpoints without a body (202/204). */
-async function ok(request: Promise<Outcome<unknown>>): Promise<void> {
+export async function ok(request: Promise<Outcome<unknown>>): Promise<void> {
   const { error, response } = await request
   if (!response.ok) throw toApiError(error, response.status)
 }
