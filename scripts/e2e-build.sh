@@ -54,6 +54,7 @@ cleanup() {
   local status=$?
   if [[ -n $pid ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   if [[ -n $mock_pid ]]; then kill "$mock_pid" 2>/dev/null || true; wait "$mock_pid" 2>/dev/null || true; fi
+  if [[ -n $reg_pf_pid ]]; then kill "$reg_pf_pid" 2>/dev/null || true; wait "$reg_pf_pid" 2>/dev/null || true; fi
   if ((status != 0)); then
     if [[ -z $failed ]]; then
       annotate "exit ${status}; last kuben log lines:%0A$(tail -n 20 "$work/kuben.log" 2>/dev/null | sed 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')"
@@ -160,6 +161,14 @@ spec:
       nodePort: $REG_PORT
 YAML
 eventually 60 "registry ready" kubectl -n kuben-system wait deployment/e2e-registry --for=condition=Available --timeout=60s
+
+# Allow host runner (Kuben verifier) to reach the registry at e2e-registry.kuben-system.svc.cluster.local:5000
+if command -v sudo >/dev/null 2>&1; then
+  echo "127.0.0.1 e2e-registry.kuben-system.svc.cluster.local" | sudo tee -a /etc/hosts >/dev/null || true
+fi
+kubectl -n kuben-system port-forward svc/e2e-registry 5000:5000 >"$work/registry-pf.log" 2>&1 &
+reg_pf_pid=$!
+eventually 20 "registry port-forward ready" curl -fsS "http://127.0.0.1:5000/v2/"
 
 # In-cluster registry address reachable by BuildKit
 CLUSTER_REG_BASE="e2e-registry.kuben-system.svc.cluster.local:5000"
@@ -323,16 +332,16 @@ for r in "${repos[@]}"; do
   
   # Verify build attempt exists in API
   eventually 30 "build queued for $r" bash -c \
-    "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/$r/builds' | jq -e '((.builds // .) | length) > 0'"
+    "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/$r/builds' | jq -e 'length > 0'"
 done
 
 step "Criterion 2: Duplicate push, out-of-order, and force-push"
 # 1. Duplicate push: sending the exact same commit should not queue a new build attempt
-count_before=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq '(.builds // .) | length')
+count_before=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq 'length')
 code=$(send_webhook "test-org/dockerfile-app" "main" "$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD)")
 [[ $code == 200 || $code == 202 ]] || fail "duplicate webhook returned $code: $(cat "$work/body" 2>/dev/null || true)"
 sleep 2
-count_after=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq '(.builds // .) | length')
+count_after=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq 'length')
 [[ $count_before == "$count_after" ]] || fail "duplicate push created duplicate build ($count_before -> $count_after)"
 echo "Duplicate push ignored cleanly: build count stayed $count_before"
 
@@ -347,7 +356,7 @@ sha_2=$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD)
 code=$(send_webhook "test-org/dockerfile-app" "main" "$sha_2")
 [[ $code == 200 || $code == 202 ]] || fail "webhook for commit 2 returned $code: $(cat "$work/body" 2>/dev/null || true)"
 eventually 15 "build queued for commit 2" bash -c \
-  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds' | jq -e '((.builds // .) | length) > $count_before'"
+  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds' | jq -e 'length > $count_before'"
 
 # 3. Out of order push: re-sending older commit 1
 sha_1=$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD~1)
@@ -357,8 +366,19 @@ code=$(send_webhook "test-org/dockerfile-app" "main" "$sha_1")
 echo "Out of order push handled with CAS safety"
 
 step "Criterion 3: Build failure injection & cancellation"
-# 1. Cancel while queued or running
-latest_build_id=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq -r '(.builds // .)[0].id')
+# Push commit 3 to test cancellation while queued or running
+(
+  cd "$work/worktrees/dockerfile-app"
+  echo "v3" >> Dockerfile
+  git commit -am "commit 3" >/dev/null
+  git push origin main >/dev/null 2>&1
+)
+sha_3=$(cd "$work/worktrees/dockerfile-app" && git rev-parse HEAD)
+code=$(send_webhook "test-org/dockerfile-app" "main" "$sha_3")
+[[ $code == 200 || $code == 202 ]] || fail "webhook for commit 3 returned $code: $(cat "$work/body" 2>/dev/null || true)"
+eventually 15 "build queued for commit 3" bash -c \
+  "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds' | jq -e 'length > 0'"
+latest_build_id=$(curl -fsS -b "$work/cookies" "$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds" | jq -r '.[0].id')
 expect 202 POST "/projects/$P/environments/$ENV/apps/dockerfile-app/builds/$latest_build_id/cancel"
 eventually 20 "build cancelled" bash -c \
   "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments/$ENV/apps/dockerfile-app/builds/$latest_build_id' | jq -r .phase | grep -qE '^(cancelled|cancelling|cancelRequested)$'"
