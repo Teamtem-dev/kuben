@@ -252,11 +252,19 @@ impl BuildWorker {
         ) {
             return Outcome::Done("failed", Some(BuildFailure::CredentialsRefused.code().into()));
         }
-        let head = match self
-            .provider
-            .head(binding.installation_id, &binding.repository, &binding.branch)
-            .await
-        {
+        let read = match binding.pull_request {
+            Some(number) => {
+                self.provider
+                    .pull_head(binding.installation_id, &binding.repository, number)
+                    .await
+            }
+            None => {
+                self.provider
+                    .head(binding.installation_id, &binding.repository, &binding.branch)
+                    .await
+            }
+        };
+        let head = match read {
             Ok(head) => head,
             Err(ProviderError::NotFound(what)) => {
                 tracing::warn!(binding = %binding.id, %what, "the source is gone");

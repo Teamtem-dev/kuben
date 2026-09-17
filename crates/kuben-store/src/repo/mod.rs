@@ -20,6 +20,7 @@ mod notify;
 mod operations;
 mod orgs;
 mod policies;
+mod previews;
 mod product;
 mod releases;
 mod resolve;
@@ -60,6 +61,7 @@ pub use notify::{
 };
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use policies::{ApprovalRecord, Decided, PolicyRevision, RunApproval};
+pub use previews::{CloseReason, NewPreview, Preview, PreviewPolicy, PreviewSource};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};

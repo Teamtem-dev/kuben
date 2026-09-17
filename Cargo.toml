@@ -94,6 +94,8 @@ utoipa-scalar = { version = "0.3", features = ["axum"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4", features = ["derive", "env"] }
 thiserror = "2"
+idna = "1.1"
+semver = "1.0.28"
 anyhow = "1"
 async-trait = "0.1"
 tracing = "0.1"

@@ -102,7 +102,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     tasks.extend(spawn_builds(&cfg, &store, cluster.as_ref(), github.clone(), &health, &shutdown).await?);
-    tasks.push(spawn_notifier(
+    tasks.extend(spawn_background(
         &cfg,
         &store,
         (github.as_ref(), &keyring),
@@ -737,9 +737,10 @@ async fn backup_incident(
     Ok(())
 }
 
-/// The notifier (M4.10): incidents, webhooks and commit statuses from the
-/// outbox. Every replica runs one; they share the work.
-fn spawn_notifier(
+/// The work every replica shares through SQL claims: the notifier (M4.10:
+/// incidents, webhooks and commit statuses from the outbox) and the preview
+/// janitor (M5.1).
+fn spawn_background(
     cfg: &Config,
     store: &kuben_store::Store,
     (github, keyring): (
@@ -748,18 +749,25 @@ fn spawn_notifier(
     ),
     health: &Health,
     shutdown: &CancellationToken,
-) -> tokio::task::JoinHandle<()> {
+) -> Vec<tokio::task::JoinHandle<()>> {
+    let github = github.cloned().map(Arc::new);
     let notifier = kuben_api::notify::Notifier::new(
         store.clone(),
         keyring.clone(),
-        github.cloned().map(Arc::new),
+        github.clone(),
         cfg.notify.clone(),
         cfg.server.public_url.clone(),
     );
+    let janitor = kuben_api::previews::Janitor::new(store.clone(), github);
     let (h, t) = (health.clone(), shutdown.child_token());
-    tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
+    let notifications = tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
         kuben_api::notify::run(notifier.clone(), h.clone(), tok)
-    }))
+    }));
+    let (h, t) = (health.clone(), shutdown.child_token());
+    let previews = tokio::spawn(supervise("previews", t, h.clone(), move |tok| {
+        kuben_api::previews::run(janitor.clone(), h.clone(), tok)
+    }));
+    vec![notifications, previews]
 }
 
 async fn watchdog(health: Health, token: CancellationToken) {

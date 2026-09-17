@@ -101,6 +101,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     )
     .with_images(images())
     .with_github_oidc(oidc)
+    .with_github(Some(kuben_api::github::GithubApp::webhook_only(HOOK_SECRET)))
     .with_sso(sso)
     .with_keyring(Arc::new(kuben_platform::secrets::Keyring::from_keys([(
         1, [7; 32],
@@ -3193,4 +3194,269 @@ async fn target_environment(app: &TestApp) -> kuben_core::ids::EnvironmentId {
         .find(|e| e.slug == "prod")
         .expect("prod")
         .id
+}
+
+/// The webhook secret of the test GitHub App.
+const HOOK_SECRET: &[u8] = b"hook-secret";
+const HEAD: &str = "89abcdef0123456789abcdef0123456789abcdef";
+
+/// POST a signed GitHub delivery.
+async fn github_delivery(
+    app: &TestApp,
+    event: &str,
+    body: &serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    use std::fmt::Write as _;
+    let bytes = body.to_string();
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, HOOK_SECRET);
+    let tag = ring::hmac::sign(&key, bytes.as_bytes());
+    let hex = tag.as_ref().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    let req = Request::post("/api/v1/webhooks/github")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-hub-signature-256", format!("sha256={hex}"))
+        .header("x-github-event", event)
+        .header("x-github-delivery", uuid::Uuid::now_v7().to_string())
+        .body(Body::from(bytes))
+        .expect("request");
+    send(&app.router, req).await
+}
+
+fn pull(action: &str, number: u64, head_repo: &str, updated_at: &str) -> serde_json::Value {
+    json!({
+        "action": action,
+        "number": number,
+        "pull_request": {
+            "number": number,
+            "state": if action == "closed" { "closed" } else { "open" },
+            "updated_at": updated_at,
+            "head": { "sha": HEAD, "ref": "feature", "repo": { "full_name": head_repo } }
+        },
+        "repository": { "id": 42, "full_name": "acme/shop" },
+        "installation": { "id": 77 }
+    })
+}
+
+/// The test app, built from GitHub: a linked installation and a binding.
+async fn git_app(app: &TestApp) {
+    let target = sql_app(app).await;
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    assert!(t.link_installation(77, "acme").await.expect("link"));
+    let project = t.projects().await.expect("projects")[0].id;
+    let config = json!({
+        "runtime": { "processes": { "web": { "port": 8080 } } },
+        "env": [{ "name": "DB", "fromSecret": { "name": "db", "key": "url" } }],
+        "domains": [{ "host": "shop.example.com" }]
+    });
+    t.create_config_revision(project, target, &config, "user:test")
+        .await
+        .expect("config")
+        .expect("target");
+    let binding = kuben_store::repo::NewBinding {
+        installation_id: 77,
+        repository: "acme/shop".parse().expect("repo"),
+        branch: "main".parse().expect("branch"),
+        recipe: kuben_core::source::BuildRecipe::default(),
+        image_repository: "registry.local/acme/shop".into(),
+        pull_request: None,
+    };
+    t.bind_source(project, target, &binding).await.expect("bind");
+    t.commit().await.expect("commit");
+}
+
+/// M5.1: pull requests open, follow, close and reopen previews; forks
+/// need the project's consent and never get secrets.
+#[tokio::test]
+async fn m5_previews_follow_pull_requests() {
+    let Some(app) = setup().await else { return };
+    git_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let policy = "/api/v1/projects/shop/previews/policy";
+    let settings = json!({ "enabled": true, "sourceEnvironment": "prod", "ttlHours": 2, "maxActive": 5 });
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        policy,
+        Auth::Cookie(&bob),
+        Some(settings.clone()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, saved) = call(
+        &app.router,
+        "PUT",
+        policy,
+        Auth::Cookie(&alice),
+        Some(settings),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, saved["sourceEnvironment"].clone()),
+        (StatusCode::OK, json!("prod")),
+        "{saved}"
+    );
+
+    let (status, answer) = github_delivery(
+        &app,
+        "pull_request",
+        &pull("opened", 12, "acme/shop", "2026-09-17T10:00:00Z"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{answer}");
+    let previews = "/api/v1/projects/shop/previews";
+    let (_, listed) = send(&app.router, get(previews, &alice)).await;
+    assert_eq!(listed[0]["environment"], "pr12-1", "{listed}");
+    assert_eq!(
+        (listed[0]["trusted"].clone(), listed[0]["state"].clone()),
+        (json!(true), json!("active"))
+    );
+    assert!(listed[0]["remainingSeconds"].as_i64().is_some_and(|s| s > 7000));
+    let (_, apps) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/pr12-1/apps", &alice),
+    )
+    .await;
+    assert_eq!(apps.as_array().map(Vec::len), Some(1), "{apps}");
+    let (_, copied) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/pr12-1/apps/api", &alice),
+    )
+    .await;
+    assert_eq!(copied["app"]["env"], json!([]), "no secret references: {copied}");
+    assert_eq!(copied["app"]["domains"], json!([]), "no custom domains");
+
+    let (_, answer) = github_delivery(
+        &app,
+        "pull_request",
+        &pull("synchronize", 12, "acme/shop", "2026-09-17T09:00:00Z"),
+    )
+    .await;
+    assert_eq!(
+        answer["outcome"], "previews",
+        "stale events are accepted but change nothing: {answer}"
+    );
+    let (_, answer) = github_delivery(
+        &app,
+        "pull_request",
+        &pull("opened", 13, "mallory/shop", "2026-09-17T10:00:00Z"),
+    )
+    .await;
+    assert_eq!(answer["outcome"], "previews");
+    let (_, listed) = send(&app.router, get(previews, &alice)).await;
+    assert_eq!(
+        listed.as_array().map(Vec::len),
+        Some(1),
+        "forks need consent: {listed}"
+    );
+
+    close_and_reopen(&app, &alice, previews).await;
+    forks_and_manual_actions(&app, &alice, policy, previews).await;
+}
+
+/// Closing ends a preview; a late event does not revive it; reopening makes a new one.
+async fn close_and_reopen(app: &TestApp, alice: &str, previews: &str) {
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("closed", 12, "acme/shop", "2026-09-17T11:00:00Z"),
+    )
+    .await;
+    let (_, listed) = send(&app.router, get(&format!("{previews}?all=true"), alice)).await;
+    assert_eq!(
+        (listed[0]["state"].clone(), listed[0]["closeReason"].clone()),
+        (json!("closed"), json!("closed"))
+    );
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("synchronize", 12, "acme/shop", "2026-09-17T10:30:00Z"),
+    )
+    .await;
+    let (_, active) = send(&app.router, get(previews, alice)).await;
+    assert_eq!(active, json!([]), "a late event does not bring it back");
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("reopened", 12, "acme/shop", "2026-09-17T12:00:00Z"),
+    )
+    .await;
+    let (_, active) = send(&app.router, get(previews, alice)).await;
+    assert_eq!(active[0]["environment"], "pr12-2", "a new epoch: {active}");
+}
+
+async fn forks_and_manual_actions(app: &TestApp, alice: &str, policy: &str, previews: &str) {
+    let settings = json!({ "enabled": true, "sourceEnvironment": "prod", "allowForks": true });
+    call(
+        &app.router,
+        "PUT",
+        policy,
+        Auth::Cookie(alice),
+        Some(settings),
+        None,
+    )
+    .await;
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("opened", 13, "mallory/shop", "2026-09-17T10:00:00Z"),
+    )
+    .await;
+    let (_, active) = send(&app.router, get(previews, alice)).await;
+    let fork = active
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["pullRequest"] == 13))
+        .expect("fork preview")
+        .clone();
+    assert_eq!(
+        (fork["environment"].clone(), fork["trusted"].clone()),
+        (json!("pr13-1"), json!(false))
+    );
+    let secret = "/api/v1/projects/shop/environments/pr13-1/secrets/db";
+    let (status, _, body) = call(
+        &app.router,
+        "PUT",
+        secret,
+        Auth::Cookie(alice),
+        Some(json!({ "data": { "url": "x" } })),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "no secrets in a fork's preview: {body}"
+    );
+
+    let extend = format!("{previews}/pr13-1/extend");
+    let (status, extended) = post_json(app, &extend, alice, json!({ "hours": 5, "keep": true })).await;
+    assert_eq!(
+        (status, extended["autoDelete"].clone()),
+        (StatusCode::OK, json!(false)),
+        "{extended}"
+    );
+    assert!(extended["remainingSeconds"].as_i64() > fork["remainingSeconds"].as_i64());
+    assert_eq!(
+        post_json(app, &extend, alice, json!({ "hours": 0 })).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let destroy = format!("{previews}/pr13-1");
+    assert_eq!(
+        status_of(&app.router, "DELETE", &destroy, alice, None).await,
+        StatusCode::ACCEPTED
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &destroy, alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+    let (_, all) = send(&app.router, get(&format!("{previews}?all=true"), alice)).await;
+    let closed = all
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["environment"] == "pr13-1"))
+        .expect("closed");
+    assert_eq!(closed["closeReason"], "manual");
 }

@@ -37,7 +37,7 @@ Every support bundle includes the envelope.
 | Workloads | Stateless web and worker processes; production data in an external PostgreSQL |
 | Availability | A single failure domain. **No high-availability claim** (planned for M7) |
 | Nodes | Adding, draining and replacing nodes is the operator's job (planned for M6) |
-| Previews | No preview environments (planned for M5) |
+| Previews | One preview environment per GitHub pull request, with a lifetime; a fork's preview gets no secrets |
 | Registries | OCI registries with basic or token auth; GitHub for Git sources |
 | Gateways | One Gateway API implementation. Traefik (k3s) is the tested one |
 

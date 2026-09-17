@@ -317,6 +317,10 @@ pub(crate) async fn store_revision(
     if e.deleting() {
         return Err(deleting().into());
     }
+    // No secret ever reaches code from outside the repository (M5.1).
+    if tenant.untrusted_environment(e.id()).await? {
+        return Err(super::apps::untrusted().into());
+    }
     let (_, actor) = request::actor(authz);
     let reserved = match tenant
         .reserve_secret_revision(e.project.id(), e.id(), new.name, new.kind, &actor)
@@ -445,6 +449,7 @@ async fn rotate(
             Started::SecretRevoked => skipped("another secret it references is revoked"),
             Started::VulnerabilityBlocked => skipped("the vulnerability gate refuses its release"),
             Started::Frozen => skipped("the environment is frozen"),
+            Started::Untrusted => skipped("an untrusted preview binds no secrets"),
             Started::NotFound | Started::Replayed(_) | Started::KeyReused(_) => {
                 skipped("the app changed meanwhile")
             }

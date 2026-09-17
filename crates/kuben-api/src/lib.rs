@@ -17,6 +17,7 @@ pub mod notify;
 pub mod oci;
 pub mod oidc;
 pub mod openapi;
+pub mod previews;
 pub mod routes;
 pub mod setup;
 pub mod sso;

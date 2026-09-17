@@ -220,6 +220,9 @@ pub enum Started {
     VulnerabilityBlocked,
     /// The environment is frozen (M4.9): only an emergency rollback passes.
     Frozen,
+    /// An untrusted preview (a fork's, M5.1) would bind a secret or a
+    /// registry login.
+    Untrusted,
 }
 
 /// The outcome of [`Store::advance_run`].
@@ -499,6 +502,9 @@ impl Tenant {
             .await?;
         if secrets.iter().any(|s| s.revoked) {
             return Ok(Started::SecretRevoked);
+        }
+        if !secrets.is_empty() && self.untrusted_target(req.target).await? {
+            return Ok(Started::Untrusted);
         }
         let governed = req.reason.carries_new_code() && emergency.is_none();
         if governed && self.active_freeze(req.target, now_ms()).await?.is_some() {

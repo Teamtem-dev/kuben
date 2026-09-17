@@ -78,6 +78,15 @@ pub trait SourceProvider: Send + Sync + fmt::Debug {
         branch: &BranchName,
     ) -> Result<Head, ProviderError>;
 
+    /// The current head of pull request `number` (`refs/pull/<n>/head`),
+    /// which the base repository serves even for a fork (M5.1).
+    async fn pull_head(
+        &self,
+        installation: u64,
+        repository: &RepoName,
+        number: u64,
+    ) -> Result<Head, ProviderError>;
+
     /// A token that can only read `repository`'s contents.
     async fn fetch_token(
         &self,

@@ -12,6 +12,7 @@ pub mod health;
 pub mod incidents;
 pub mod members;
 pub mod policy;
+pub mod previews;
 pub mod projects;
 pub mod registries;
 pub mod request;

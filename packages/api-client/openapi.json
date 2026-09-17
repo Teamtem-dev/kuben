@@ -5961,6 +5961,267 @@
         }
       }
     },
+    "/api/v1/projects/{project}/previews": {
+      "get": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "A project's previews, newest first.",
+        "operationId": "listPreviews",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include closed previews.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PreviewDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/previews/policy": {
+      "get": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "A project's preview settings.",
+        "operationId": "getPreviewPolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewPolicyDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Set a project's preview settings.",
+        "operationId": "putPreviewPolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPreviewPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewPolicyDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/previews/{environment}": {
+      "delete": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Destroy a preview now: its environment is deleted.",
+        "operationId": "destroyPreview",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "The preview's environment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Deletion accepted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/previews/{environment}/extend": {
+      "post": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Give a preview more time.",
+        "operationId": "extendPreview",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "The preview's environment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendPreview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/setup": {
       "get": {
         "tags": [
@@ -8213,6 +8474,25 @@
           }
         }
       },
+      "ExtendPreview": {
+        "type": "object",
+        "required": [
+          "hours"
+        ],
+        "properties": {
+          "hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Hours added to the lifetime (at most 30 days from now in total).",
+            "minimum": 0
+          },
+          "keep": {
+            "type": "boolean",
+            "description": "Keep the preview past its expiry until someone destroys it."
+          }
+        },
+        "additionalProperties": false
+      },
       "HealthDetails": {
         "type": "object",
         "required": [
@@ -8762,6 +9042,132 @@
           }
         }
       },
+      "PreviewDto": {
+        "type": "object",
+        "required": [
+          "environment",
+          "repository",
+          "pullRequest",
+          "epoch",
+          "headRepository",
+          "branch",
+          "commit",
+          "trusted",
+          "state",
+          "autoDelete",
+          "expiresAt",
+          "remainingSeconds",
+          "createdAt"
+        ],
+        "properties": {
+          "environment": {
+            "type": "string",
+            "description": "The preview's environment (`pr<n>-<epoch>`)."
+          },
+          "repository": {
+            "type": "string"
+          },
+          "pullRequest": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "headRepository": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "trusted": {
+            "type": "boolean",
+            "description": "False for a fork's preview: it gets no secrets."
+          },
+          "state": {
+            "type": "string",
+            "description": "`active` or `closed`."
+          },
+          "autoDelete": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "remainingSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until it expires (0 once it has)."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "closedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "closeReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`closed`, `expired`, `manual` or `deleted`."
+          }
+        }
+      },
+      "PreviewPolicyDto": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "ttlHours",
+          "maxActive",
+          "allowForks"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "sourceEnvironment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The environment whose Git-built apps previews copy."
+          },
+          "ttlHours": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "maxActive": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "allowForks": {
+            "type": "boolean",
+            "description": "Pull requests from forks get (untrusted) previews too."
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Problem": {
         "type": "object",
         "description": "Problem Details body.",
@@ -9011,6 +9417,36 @@
                 "description": "The vulnerability gate; the current one is kept when omitted."
               }
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PutPreviewPolicy": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "sourceEnvironment"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "sourceEnvironment": {
+            "type": "string",
+            "example": "staging"
+          },
+          "ttlHours": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "maxActive": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "allowForks": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -10064,6 +10500,10 @@
     {
       "name": "incidents",
       "description": "Incidents and signed webhooks"
+    },
+    {
+      "name": "previews",
+      "description": "Preview environments of pull requests"
     },
     {
       "name": "git",

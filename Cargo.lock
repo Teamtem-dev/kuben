@@ -2238,9 +2238,11 @@ version = "1.2.0"
 dependencies = [
  "async-trait",
  "figment",
+ "idna",
  "jiff",
  "proptest",
  "secrecy",
+ "semver",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

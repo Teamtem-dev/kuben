@@ -1321,6 +1321,75 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's previews, newest first. */
+        get: operations["listPreviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/previews/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's preview settings. */
+        get: operations["getPreviewPolicy"];
+        /** Set a project's preview settings. */
+        put: operations["putPreviewPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/previews/{environment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Destroy a preview now: its environment is deleted. */
+        delete: operations["destroyPreview"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/previews/{environment}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give a preview more time. */
+        post: operations["extendPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -2094,6 +2163,15 @@ export type components = {
             message?: string | null;
             hosts: components["schemas"]["HostDto"][];
         };
+        ExtendPreview: {
+            /**
+             * Format: int32
+             * @description Hours added to the lifetime (at most 30 days from now in total).
+             */
+            hours: number;
+            /** @description Keep the preview past its expiry until someone destroys it. */
+            keep?: boolean;
+        };
         HealthDetails: {
             ready: boolean;
             database: string;
@@ -2268,6 +2346,46 @@ export type components = {
             /** Format: int64 */
             updatedAt?: number | null;
         };
+        PreviewDto: {
+            /** @description The preview's environment (`pr<n>-<epoch>`). */
+            environment: string;
+            repository: string;
+            /** Format: int64 */
+            pullRequest: number;
+            /** Format: int64 */
+            epoch: number;
+            headRepository: string;
+            branch: string;
+            commit: string;
+            /** @description False for a fork's preview: it gets no secrets. */
+            trusted: boolean;
+            /** @description `active` or `closed`. */
+            state: string;
+            autoDelete: boolean;
+            expiresAt: string;
+            /**
+             * Format: int64
+             * @description Seconds until it expires (0 once it has).
+             */
+            remainingSeconds: number;
+            createdAt: string;
+            closedAt?: string | null;
+            /** @description `closed`, `expired`, `manual` or `deleted`. */
+            closeReason?: string | null;
+        };
+        PreviewPolicyDto: {
+            enabled: boolean;
+            /** @description The environment whose Git-built apps previews copy. */
+            sourceEnvironment?: string | null;
+            /** Format: int32 */
+            ttlHours: number;
+            /** Format: int32 */
+            maxActive: number;
+            /** @description Pull requests from forks get (untrusted) previews too. */
+            allowForks: boolean;
+            updatedBy?: string | null;
+            updatedAt?: string | null;
+        };
         /** @description Problem Details body. */
         Problem: {
             /**
@@ -2358,6 +2476,16 @@ export type components = {
              */
             approvalTtlSecs?: number;
             scan?: null | components["schemas"]["ScanGateDto"];
+        };
+        PutPreviewPolicy: {
+            enabled: boolean;
+            /** @example staging */
+            sourceEnvironment: string;
+            /** Format: int32 */
+            ttlHours?: number;
+            /** Format: int32 */
+            maxActive?: number;
+            allowForks?: boolean;
         };
         PutRegistryLogin: {
             /** @description `ghcr.io`, `docker.io`, `registry.example.com:5000`. */
@@ -6543,6 +6671,178 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listPreviews: {
+        parameters: {
+            query?: {
+                /** @description Include closed previews. */
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPreviewPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewPolicyDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putPreviewPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPreviewPolicy"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewPolicyDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    destroyPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description The preview's environment */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deletion accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    extendPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description The preview's environment */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtendPreview"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
