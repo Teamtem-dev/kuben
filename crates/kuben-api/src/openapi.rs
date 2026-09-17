@@ -9,7 +9,7 @@ use crate::{
     auth,
     routes::{
         access, apps, audit, ci, controls, domains, environments, git, health, incidents, members, policy,
-        previews, projects, registries, secrets, templates, tokens, vulnerabilities,
+        previews, projects, registries, secrets, status, templates, tokens, vulnerabilities,
     },
     state::ApiState,
 };
@@ -31,6 +31,7 @@ use crate::{
         (name = "incidents", description = "Incidents and signed webhooks"),
         (name = "previews", description = "Preview environments of pull requests"),
         (name = "domains", description = "Domain claims, DNS providers and app DNS records"),
+        (name = "status", description = "Public status pages of projects"),
         (name = "git", description = "GitHub App installations for Git sources"),
         (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
@@ -122,6 +123,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(domains::list_providers, domains::create_provider))
         .routes(routes!(domains::delete_provider))
         .routes(routes!(domains::sync_app))
+        .routes(routes!(status::public))
+        .routes(routes!(status::get, status::put, status::delete))
         .routes(routes!(vulnerabilities::list, vulnerabilities::create))
         .routes(routes!(vulnerabilities::revoke))
         .routes(routes!(templates::list))

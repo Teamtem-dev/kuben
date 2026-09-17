@@ -30,6 +30,7 @@ mod scans;
 mod secrets;
 mod sessions;
 mod sso;
+mod status;
 mod support;
 mod throttle;
 mod tokens;
@@ -75,6 +76,7 @@ pub use secrets::{
 };
 pub use sessions::NewSession;
 pub use sso::{PendingSso, SsoSignIn};
+pub use status::{PublicIncident, StatusPage};
 pub use support::{OperationCount, SUPPORT_WINDOW_MS, SupportSummary};
 pub use throttle::ThrottleWindow;
 pub use tokens::NewToken;

@@ -34,6 +34,7 @@ export type Member = Schemas['MemberDto']
 export type InvitedMember = Schemas['InvitedMember']
 export type AuditEvent = Schemas['AuditEventDto']
 export type AuditPage = Schemas['AuditPage']
+export type PublicStatus = Schemas['PublicStatus']
 
 interface Outcome<T> {
   data?: T
@@ -432,3 +433,11 @@ export const removeMember = (member: string) =>
 
 export const auditPage = (before?: number) =>
   unwrap(api.GET('/api/v1/audit', { params: { query: { limit: 50, before } } }))
+
+// ---- public status (M5.3) ----
+
+export const publicStatusQuery = (slug: string) =>
+  queryOptions({
+    queryKey: ['public-status', slug],
+    queryFn: () => unwrap(api.GET('/api/v1/public/status/{slug}', { params: { path: { slug } } })),
+  })

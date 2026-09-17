@@ -3678,3 +3678,88 @@ async fn app_records(app: &TestApp, alice: &str, target: kuben_core::ids::Target
     let (status, _) = post_json(app, "/api/v1/domains", alice, json!({ "domain": "rival.io" })).await;
     assert_eq!(status, StatusCode::CONFLICT);
 }
+
+/// M5.3: a published status page is public, cached, and leaks nothing
+/// internal.
+#[tokio::test]
+async fn m5_public_status_pages_show_only_public_facts() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let public = "/api/v1/public/status/shop-status";
+    let (status, _, _) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let incident = kuben_store::repo::NewIncident {
+        project: None,
+        environment: None,
+        target: Some(target),
+        kind: "deployment.failed".into(),
+        severity: "critical",
+        dedupe_key: "k".into(),
+        title: "The deployment of shop/prod/api failed".into(),
+        detail: Some("secret internal detail".into()),
+    };
+    t.open_incident(&incident).await.expect("incident");
+    t.commit().await.expect("commit");
+
+    let page = "/api/v1/projects/shop/status-page";
+    let body = json!({ "slug": "shop-status", "title": "Shop", "environments": ["prod"] });
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        page,
+        Auth::Cookie(&bob),
+        Some(body.clone()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let bad = json!({ "slug": "Shop Status", "title": "Shop", "environments": ["prod"] });
+    let (status, _, _) = call(&app.router, "PUT", page, Auth::Cookie(&alice), Some(bad), None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let unknown = json!({ "slug": "shop-status", "title": "Shop", "environments": ["nope"] });
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        page,
+        Auth::Cookie(&alice),
+        Some(unknown),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _, saved) = call(&app.router, "PUT", page, Auth::Cookie(&alice), Some(body), None).await;
+    assert_eq!(
+        (status, saved["path"].clone()),
+        (StatusCode::OK, json!("/status/shop-status")),
+        "{saved}"
+    );
+
+    let (status, headers, shown) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
+    assert_eq!(status, StatusCode::OK, "{shown}");
+    assert_eq!(headers[header::CACHE_CONTROL], "public, max-age=15");
+    assert_eq!(shown["title"], "Shop");
+    assert_eq!(
+        shown["components"],
+        json!([{ "name": "API", "status": "degraded" }])
+    );
+    assert_eq!(shown["status"], "degraded");
+    assert_eq!(shown["incidents"][0]["severity"], "critical");
+    assert_eq!(shown["incidents"][0]["component"], "API");
+    let text = shown.to_string();
+    for leak in [
+        "secret internal detail",
+        "shop/prod/api",
+        "kb-shop-prod",
+        &target.to_string(),
+        "deployment.failed",
+    ] {
+        assert!(!text.contains(leak), "{leak} leaked: {text}");
+    }
+    let (status, _, _) = call(&app.router, "DELETE", page, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _, _) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "taken down at once");
+}

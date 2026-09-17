@@ -1497,6 +1497,42 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/status-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's status page settings. */
+        get: operations["getStatusPage"];
+        /** Publish or change a project's status page. */
+        put: operations["putStatusPage"];
+        post?: never;
+        /** Take a project's status page down. */
+        delete: operations["deleteStatusPage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/status/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's public status page. No sign-in; nothing internal. */
+        get: operations["getPublicStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -2608,6 +2644,26 @@ export type components = {
         };
         /** @enum {string} */
         ProtocolDto: "http" | "tcp";
+        PublicComponent: {
+            name: string;
+            status: string;
+        };
+        PublicIncidentDto: {
+            /** @description The affected component. */
+            component: string;
+            /** @description `critical`, `warning` or `info`. */
+            severity: string;
+            startedAt: string;
+            resolvedAt?: string | null;
+        };
+        PublicStatus: {
+            title: string;
+            /** @description `operational`, `degraded` or `majorOutage`. */
+            status: string;
+            components: components["schemas"]["PublicComponent"][];
+            incidents: components["schemas"]["PublicIncidentDto"][];
+            updatedAt: string;
+        };
         PutPolicy: {
             /**
              * Format: int32
@@ -2688,6 +2744,15 @@ export type components = {
              * @example registry.example.com/acme/shop
              */
             imageRepository: string;
+        };
+        PutStatusPage: {
+            /** @example shop */
+            slug: string;
+            /** @example Shop */
+            title: string;
+            enabled?: boolean;
+            /** @description The environments whose apps the page lists. */
+            environments: string[];
         };
         QuotaInput: {
             /** @example 4 */
@@ -2900,6 +2965,16 @@ export type components = {
              *     replaces a newer one: a stale value is refused with `409`.
              */
             expected_generation: number;
+        };
+        StatusPageDto: {
+            slug: string;
+            title: string;
+            enabled: boolean;
+            environments: string[];
+            /** @description Where the page is served: `/status/<slug>` on the console's address. */
+            path: string;
+            updatedBy: string;
+            updatedAt: string;
         };
         /** @enum {string} */
         StrategyDto: "auto" | "dockerfile" | "railpack";
@@ -7265,6 +7340,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getStatusPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putStatusPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutStatusPage"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageDto"];
+                };
+            };
+            /** @description The slug is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteStatusPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPublicStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's public name */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatus"];
                 };
             };
             404: {

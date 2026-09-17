@@ -31,6 +31,7 @@ import { ProjectPage } from './routes/project'
 import { ProjectsPage } from './routes/projects'
 import { SetupPage } from './routes/setup'
 import { AppShell } from './routes/shell'
+import { StatusPage } from './routes/status'
 import { TeamPage } from './routes/team'
 import { TokensPage } from './routes/tokens'
 
@@ -91,6 +92,13 @@ const loginRoute = createRoute({
     if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
   },
   component: LoginPage,
+})
+
+/** A project's public status page: no session needed (M5.3). */
+const statusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/status/$slug',
+  component: StatusPage,
 })
 
 /** Pathless layout: everything below it requires a session. */
@@ -184,6 +192,7 @@ const accountRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
+  statusRoute,
   authedRoute.addChildren([
     projectsRoute,
     projectRoute,

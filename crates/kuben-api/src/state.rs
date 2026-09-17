@@ -44,6 +44,8 @@ pub struct ApiState {
     pub keyring: Option<Arc<kuben_platform::secrets::Keyring>>,
     /// DNS lookups and provider accounts (M5.2).
     pub dns: Arc<dyn crate::dns::DnsBackend>,
+    /// Public status pages built lately (M5.3).
+    pub status_cache: crate::routes::status::StatusCache,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -91,6 +93,7 @@ impl ApiState {
             sso: None,
             keyring: None,
             dns: Arc::new(crate::dns::PublicDns::new(&cfg_domains)),
+            status_cache: crate::routes::status::status_cache(),
         }
     }
 

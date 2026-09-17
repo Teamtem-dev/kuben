@@ -6587,6 +6587,183 @@
         }
       }
     },
+    "/api/v1/projects/{project}/status-page": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "A project's status page settings.",
+        "operationId": "getStatusPage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Publish or change a project's status page.",
+        "operationId": "putStatusPage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutStatusPage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The slug is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Take a project's status page down.",
+        "operationId": "deleteStatusPage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/status/{slug}": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "A project's public status page. No sign-in; nothing internal.",
+        "operationId": "getPublicStatus",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "The page's public name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/setup": {
       "get": {
         "tags": [
@@ -9902,6 +10079,82 @@
           "tcp"
         ]
       },
+      "PublicComponent": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicIncidentDto": {
+        "type": "object",
+        "required": [
+          "component",
+          "severity",
+          "startedAt"
+        ],
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "The affected component."
+          },
+          "severity": {
+            "type": "string",
+            "description": "`critical`, `warning` or `info`."
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PublicStatus": {
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "components",
+          "incidents",
+          "updatedAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`operational`, `degraded` or `majorOutage`."
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicComponent"
+            }
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicIncidentDto"
+            }
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
       "PutPolicy": {
         "type": "object",
         "required": [
@@ -10081,6 +10334,35 @@
             "example": "registry.example.com/acme/shop"
           }
         }
+      },
+      "PutStatusPage": {
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "environments"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "shop"
+          },
+          "title": {
+            "type": "string",
+            "example": "Shop"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The environments whose apps the page lists."
+          }
+        },
+        "additionalProperties": false
       },
       "QuotaInput": {
         "type": "object",
@@ -10647,6 +10929,45 @@
         },
         "additionalProperties": false
       },
+      "StatusPageDto": {
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "enabled",
+          "environments",
+          "path",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "path": {
+            "type": "string",
+            "description": "Where the page is served: `/status/<slug>` on the console's address."
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
       "StrategyDto": {
         "type": "string",
         "enum": [
@@ -11061,6 +11382,10 @@
     {
       "name": "domains",
       "description": "Domain claims, DNS providers and app DNS records"
+    },
+    {
+      "name": "status",
+      "description": "Public status pages of projects"
     },
     {
       "name": "git",

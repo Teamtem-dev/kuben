@@ -19,6 +19,7 @@ pub mod registries;
 pub mod request;
 pub mod scope;
 pub mod secrets;
+pub mod status;
 pub mod templates;
 pub mod tokens;
 pub mod validate;

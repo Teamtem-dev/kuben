@@ -1,0 +1,40 @@
+---
+title: Public status pages
+description: Publish a read-only page that shows your users whether a project's services are up, without signing in and without exposing anything internal.
+sidebar:
+  order: 10
+---
+
+A project can publish a **status page**. Anyone can open it without signing in, at `https://<console address>/status/<slug>`.
+
+## Publish a page
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"slug":"shop","title":"Shop","environments":["production"]}' \
+  https://kuben.example.com/api/v1/projects/shop/status-page
+```
+
+- **`slug`** must be unique across the installation.
+- **`environments`** lists whose apps the page shows (1 to 20).
+- **`"enabled": false`** hides the page but keeps its settings.
+- **`DELETE`** on the same address takes the page down at once.
+
+## What the page shows
+
+- **The overall state:** operational, degraded or major outage. It is the state of the worst service.
+- **Each app** of the listed environments, by its display name, with its state:
+  - **operational:** the app reports ready and all its pods are ready;
+  - **degraded:** some pods are not ready, an incident is open, or Kuben has no fresh report of the app;
+  - **major outage:** the app has pods and none of them is ready.
+
+  If Kuben has not observed an app, the page never calls it operational.
+- **Incidents** of those apps: the open ones and those resolved in the last 7 days, with their severity and times.
+
+It never shows:
+
+- namespaces, pods, nodes, addresses or images;
+- incident titles, details or error codes;
+- apps of other environments, and incidents that concern the whole installation.
+
+The same data is available as JSON at `GET /api/v1/public/status/<slug>`. Answers are cached for 15 seconds (`Cache-Control: public, max-age=15`), and the console page refreshes every 30 seconds. The page follows the visitor's language (English or Persian) and light or dark theme.
