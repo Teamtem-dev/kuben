@@ -647,11 +647,16 @@ expect 201 POST "$APP" "{\"name\":\"keep\",\"image\":\"${IMAGE}\",\"port\":8080}
 eventually 180 "keep delivered (its export exists)" bash -c \
   "curl -fsS -b '$work/cookies' $BASE$APP/keep/export | jq -e '.format == \"kuben.dev/export/v1\"'"
 eventually 180 "keep-web running" kubectl -n "$NS" rollout status deployment/keep-web --timeout=10s
+eventually 60 "keep ready via API" bash -c \
+  "curl -fsS -b '$work/cookies' $BASE$APP/keep | jq -e '.app.ready and (.pods | length == 1)'"
+eventually 60 "keep deployment settled" bash -c \
+  "curl -fsS -b '$work/cookies' $BASE$APP/keep/deployments | jq -e '.[0].outcome == \"succeeded\"'"
 expect 200 GET "$APP/keep/export"
 jq -e '[.manifests.items[].kind] | index("Deployment") != null' "$work/body" >/dev/null ||
   fail "the export has no Deployment: $(cat "$work/body")"
 expect 422 POST "$APP/keep/detach" '{"confirm":"other","reason":"e2e"}'
-expect 202 POST "$APP/keep/detach" '{"confirm":"keep","reason":"e2e"}'
+eventually 30 "keep detached" bash -c \
+  "curl -sS -b '$work/cookies' -c '$work/cookies' -o '$work/body' -w '%{http_code}' -X POST -H 'content-type: application/json' -H 'x-kuben-client: e2e' --data '{\"confirm\":\"keep\",\"reason\":\"e2e\"}' '$BASE$APP/keep/detach' | grep -qx 202"
 detached=$(jq -r .id "$work/body")
 eventually 120 "detach complete" bash -c \
   "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments/dev/detached/${detached} | jq -e '.completedAt != null'"
