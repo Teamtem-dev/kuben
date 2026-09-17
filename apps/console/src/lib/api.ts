@@ -34,6 +34,7 @@ export type Member = Schemas['MemberDto']
 export type InvitedMember = Schemas['InvitedMember']
 export type AuditEvent = Schemas['AuditEventDto']
 export type AuditPage = Schemas['AuditPage']
+export type PublicStatus = Schemas['PublicStatus']
 
 interface Outcome<T> {
   data?: T
@@ -42,14 +43,14 @@ interface Outcome<T> {
 }
 
 /** Resolve an openapi-fetch call to its data, or throw an `ApiError`. */
-async function unwrap<T>(request: Promise<Outcome<T>>): Promise<T> {
+export async function unwrap<T>(request: Promise<Outcome<T>>): Promise<T> {
   const { data, error, response } = await request
   if (!response.ok || data === undefined) throw toApiError(error, response.status)
   return data
 }
 
 /** For endpoints without a body (202/204). */
-async function ok(request: Promise<Outcome<unknown>>): Promise<void> {
+export async function ok(request: Promise<Outcome<unknown>>): Promise<void> {
   const { error, response } = await request
   if (!response.ok) throw toApiError(error, response.status)
 }
@@ -432,3 +433,11 @@ export const removeMember = (member: string) =>
 
 export const auditPage = (before?: number) =>
   unwrap(api.GET('/api/v1/audit', { params: { query: { limit: 50, before } } }))
+
+// ---- public status (M5.3) ----
+
+export const publicStatusQuery = (slug: string) =>
+  queryOptions({
+    queryKey: ['public-status', slug],
+    queryFn: () => unwrap(api.GET('/api/v1/public/status/{slug}', { params: { path: { slug } } })),
+  })

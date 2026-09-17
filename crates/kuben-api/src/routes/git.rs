@@ -19,7 +19,7 @@ use kuben_core::{
     authz::ScopeChain,
     ids::OrgId,
     perm::Perm,
-    source::{InstallationAction, PushEvent, WebhookEvent},
+    source::{InstallationAction, PullEvent, PushEvent, WebhookEvent},
 };
 use kuben_platform::build::ProviderError;
 use kuben_store::repo::{GITHUB, NewAudit, Received};
@@ -191,6 +191,7 @@ pub async fn webhook(State(state): State<ApiState>, headers: HeaderMap, body: By
             ..
         } => installation_event(&state, action, installation_id).await,
         WebhookEvent::Push(push) => push_event(&state, delivery, &body, &push).await,
+        WebhookEvent::PullRequest(pull) => pull_event(&state, delivery, &body, &pull).await,
     };
     result.unwrap_or_else(|e| {
         tracing::error!(delivery, error = %e.0, "a GitHub delivery could not be recorded");
@@ -216,6 +217,32 @@ async fn installation_event(
     Ok(answer(
         StatusCode::ACCEPTED,
         if known { "recorded" } else { "unknown" },
+    ))
+}
+
+async fn pull_event(state: &ApiState, delivery: &str, body: &[u8], pull: &PullEvent) -> ApiResult<Response> {
+    let Some((org, suspended)) = state.store.git_installation_org(pull.installation_id).await? else {
+        return Ok(answer(StatusCode::ACCEPTED, "unknownInstallation"));
+    };
+    if suspended {
+        return Ok(answer(StatusCode::ACCEPTED, "suspended"));
+    }
+    match state.store.receive(org, GITHUB, delivery, body).await? {
+        Received::New(_) => {}
+        Received::Duplicate(_) => return Ok(answer(StatusCode::OK, "duplicate")),
+        Received::Changed => return Ok(answer(StatusCode::CONFLICT, "deliveryChanged")),
+    }
+    let outcomes = crate::previews::on_pull(state, org, pull).await?;
+    for o in &outcomes {
+        tracing::info!(delivery, project = %o.project, result = o.result, number = pull.number, "pull request event");
+    }
+    Ok(answer(
+        StatusCode::ACCEPTED,
+        if outcomes.is_empty() {
+            "noPreview"
+        } else {
+            "previews"
+        },
     ))
 }
 

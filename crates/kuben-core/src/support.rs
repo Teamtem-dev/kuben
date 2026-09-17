@@ -161,7 +161,10 @@ pub const LIMITS: &[(&str, &str)] = &[
         "nodes",
         "node lifecycle (add, drain, replace) is the operator's (M6)",
     ),
-    ("previews", "no preview environments (M5)"),
+    (
+        "previews",
+        "one preview environment per GitHub pull request, with a lifetime; a fork's preview gets no secrets",
+    ),
     (
         "registries",
         "OCI registries with basic or token auth; GitHub for Git sources",

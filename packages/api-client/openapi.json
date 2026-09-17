@@ -6,7 +6,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "1.1.2"
+    "version": "1.2.0"
   },
   "paths": {
     "/api/v1/audit": {
@@ -372,6 +372,298 @@
           },
           "404": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dns-providers": {
+      "get": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "The organization's DNS provider accounts.",
+        "operationId": "listDnsProviders",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DnsProviderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Add a DNS provider account; its token is checked first and kept sealed.",
+        "operationId": "createDnsProvider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDnsProvider"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnsProviderDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unknown kind, or the provider refused the token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dns-providers/{id}": {
+      "delete": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Remove a DNS provider account (its records stay at the provider).",
+        "operationId": "deleteDnsProvider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains": {
+      "get": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "The organization's domain claims.",
+        "operationId": "listDomainClaims",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include revoked claims.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Claim a domain; verify it next.",
+        "operationId": "createDomainClaim",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClaim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Claimed already, here or elsewhere",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains/{id}": {
+      "delete": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Revoke a claim: its apps keep their domains, but nothing protects them.",
+        "operationId": "revokeDomainClaim",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Claim id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains/{id}/verify": {
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Verify a claim through its TXT record or a DNS provider account.",
+        "operationId": "verifyDomainClaim",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Claim id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyClaim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The claim; `lastError` says why it is still pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another organization verified an overlapping domain",
             "content": {
               "application/json": {
                 "schema": {
@@ -2706,6 +2998,79 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/dns": {
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Write an app's DNS records: every custom domain the organization\nverified points at the Gateway (or `domains.cname_target`).",
+        "operationId": "syncAppDns",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncDns"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DnsChangeDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
       "get": {
         "tags": [
@@ -3115,6 +3480,195 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/image-policy": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "An app's image update policy.",
+        "operationId": "getImagePolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePolicyDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Follow a tag pattern of the app's image repository: a new digest is\ndeployed (with approval where the environment asks for it).",
+        "operationId": "putImagePolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutImagePolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePolicyDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The app builds from Git",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Stop following the image repository.",
+        "operationId": "deleteImagePolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs": {
       "get": {
         "tags": [
@@ -3213,6 +3767,75 @@
             }
           },
           "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/metrics": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "An app's CPU and memory usage.",
+        "operationId": "getAppMetrics",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "description": "`1h` (live samples) or `7d` (hourly averages and peaks).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsDto"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -5961,6 +6584,444 @@
         }
       }
     },
+    "/api/v1/projects/{project}/previews": {
+      "get": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "A project's previews, newest first.",
+        "operationId": "listPreviews",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include closed previews.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PreviewDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/previews/policy": {
+      "get": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "A project's preview settings.",
+        "operationId": "getPreviewPolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewPolicyDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Set a project's preview settings.",
+        "operationId": "putPreviewPolicy",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutPreviewPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewPolicyDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/previews/{environment}": {
+      "delete": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Destroy a preview now: its environment is deleted.",
+        "operationId": "destroyPreview",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "The preview's environment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Deletion accepted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/previews/{environment}/extend": {
+      "post": {
+        "tags": [
+          "previews"
+        ],
+        "summary": "Give a preview more time.",
+        "operationId": "extendPreview",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "The preview's environment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtendPreview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/status-page": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "A project's status page settings.",
+        "operationId": "getStatusPage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Publish or change a project's status page.",
+        "operationId": "putStatusPage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutStatusPage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPageDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The slug is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Take a project's status page down.",
+        "operationId": "deleteStatusPage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/status/{slug}": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "A project's public status page. No sign-in; nothing internal.",
+        "operationId": "getPublicStatus",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "The page's public name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/setup": {
       "get": {
         "tags": [
@@ -6481,6 +7542,52 @@
                   "items": {
                     "$ref": "#/components/schemas/DeliveryDto"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries/{delivery}/retry": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Try a failed delivery again, now.",
+        "operationId": "retryWebhookDelivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "delivery",
+            "in": "path",
+            "description": "Delivery id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued again"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -7123,6 +8230,69 @@
           }
         }
       },
+      "ClaimDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "challengeName",
+          "challengeValue",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending`, `verified` or `revoked`."
+          },
+          "challengeName": {
+            "type": "string",
+            "description": "The TXT record that proves the claim, and its value."
+          },
+          "challengeValue": {
+            "type": "string"
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`txt` or the provider kind that proved it."
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "verifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CreateApp": {
         "type": "object",
         "required": [
@@ -7322,6 +8492,42 @@
             "format": "int32",
             "description": "Life of an exchanged token, 60–3600 seconds (default 900).",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateClaim": {
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "example": "example.com"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDnsProvider": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "token"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "cloudflare"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`cloudflare`."
+          },
+          "token": {
+            "type": "string",
+            "description": "An API token that may edit the zones' DNS (write-only)."
           }
         },
         "additionalProperties": false
@@ -7867,6 +9073,69 @@
           }
         }
       },
+      "DnsChangeDto": {
+        "type": "object",
+        "required": [
+          "host",
+          "action"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "recordType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "description": "`created`, `updated`, `unchanged`, `deleted`, `conflict`, `skipped` or\n`failed`."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DnsProviderDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`cloudflare`."
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        }
+      },
       "DoctorCheck": {
         "type": "object",
         "required": [
@@ -7878,7 +9147,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "`gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,\n`certificate`, `dns` or `agent`."
+            "description": "`gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,\n`certificate`, `dns`, `claim`, `delegation`, `proxy` or `agent`."
           },
           "subject": {
             "type": "string",
@@ -7904,7 +9173,9 @@
         "type": "object",
         "required": [
           "status",
-          "checks"
+          "checks",
+          "graph",
+          "findings"
         ],
         "properties": {
           "status": {
@@ -7916,6 +9187,17 @@
             "items": {
               "$ref": "#/components/schemas/DoctorCheck"
             }
+          },
+          "graph": {
+            "type": "object",
+            "description": "Every layer from the build to the visitor, with what was observed\n(M5.5)."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Conclusions, root causes first; nothing unobserved counts as fine."
           }
         }
       },
@@ -8213,6 +9495,25 @@
           }
         }
       },
+      "ExtendPreview": {
+        "type": "object",
+        "required": [
+          "hours"
+        ],
+        "properties": {
+          "hours": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Hours added to the lifetime (at most 30 days from now in total).",
+            "minimum": 0
+          },
+          "keep": {
+            "type": "boolean",
+            "description": "Keep the preview past its expiry until someone destroys it."
+          }
+        },
+        "additionalProperties": false
+      },
       "HealthDetails": {
         "type": "object",
         "required": [
@@ -8274,6 +9575,73 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ImagePolicyDto": {
+        "type": "object",
+        "required": [
+          "repository",
+          "pattern",
+          "enabled",
+          "intervalSecs",
+          "nextCheckAt",
+          "failures"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "`semver:<range>`, `tag:<glob>` or a tag."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "intervalSecs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nextCheckAt": {
+            "type": "string"
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastTag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastDigest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Failed checks in a row."
+          },
+          "lastRun": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The run the policy started last."
           }
         }
       },
@@ -8586,6 +9954,86 @@
           }
         }
       },
+      "MetricPoint": {
+        "type": "object",
+        "required": [
+          "at",
+          "cpuMillis",
+          "memoryBytes"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "description": "RFC 3339."
+          },
+          "cpuMillis": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cpuMax": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The hour's peaks (`7d` only).",
+            "minimum": 0
+          },
+          "memoryMax": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "pods": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Pods sampled (`1h` only).",
+            "minimum": 0
+          }
+        }
+      },
+      "MetricsDto": {
+        "type": "object",
+        "required": [
+          "window",
+          "available",
+          "points"
+        ],
+        "properties": {
+          "window": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False when there is nothing to show: never read as zero."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is unavailable."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricPoint"
+            }
+          }
+        }
+      },
       "OwnerDto": {
         "type": "object",
         "required": [
@@ -8759,6 +10207,132 @@
               "null"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "PreviewDto": {
+        "type": "object",
+        "required": [
+          "environment",
+          "repository",
+          "pullRequest",
+          "epoch",
+          "headRepository",
+          "branch",
+          "commit",
+          "trusted",
+          "state",
+          "autoDelete",
+          "expiresAt",
+          "remainingSeconds",
+          "createdAt"
+        ],
+        "properties": {
+          "environment": {
+            "type": "string",
+            "description": "The preview's environment (`pr<n>-<epoch>`)."
+          },
+          "repository": {
+            "type": "string"
+          },
+          "pullRequest": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "headRepository": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "trusted": {
+            "type": "boolean",
+            "description": "False for a fork's preview: it gets no secrets."
+          },
+          "state": {
+            "type": "string",
+            "description": "`active` or `closed`."
+          },
+          "autoDelete": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "remainingSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until it expires (0 once it has)."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "closedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "closeReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`closed`, `expired`, `manual` or `deleted`."
+          }
+        }
+      },
+      "PreviewPolicyDto": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "ttlHours",
+          "maxActive",
+          "allowForks"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "sourceEnvironment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The environment whose Git-built apps previews copy."
+          },
+          "ttlHours": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "maxActive": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "allowForks": {
+            "type": "boolean",
+            "description": "Pull requests from forks get (untrusted) previews too."
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -8969,6 +10543,110 @@
           "tcp"
         ]
       },
+      "PublicComponent": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicIncidentDto": {
+        "type": "object",
+        "required": [
+          "component",
+          "severity",
+          "startedAt"
+        ],
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "The affected component."
+          },
+          "severity": {
+            "type": "string",
+            "description": "`critical`, `warning` or `info`."
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PublicStatus": {
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "components",
+          "incidents",
+          "updatedAt"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`operational`, `degraded` or `majorOutage`."
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicComponent"
+            }
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicIncidentDto"
+            }
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "PutImagePolicy": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The repository to watch; the app's current image repository when\nunset."
+          },
+          "pattern": {
+            "type": "string",
+            "example": "semver:^1.2"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "intervalSecs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "PutPolicy": {
         "type": "object",
         "required": [
@@ -9011,6 +10689,36 @@
                 "description": "The vulnerability gate; the current one is kept when omitted."
               }
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PutPreviewPolicy": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "sourceEnvironment"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "sourceEnvironment": {
+            "type": "string",
+            "example": "staging"
+          },
+          "ttlHours": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "maxActive": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "allowForks": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -9118,6 +10826,35 @@
             "example": "registry.example.com/acme/shop"
           }
         }
+      },
+      "PutStatusPage": {
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "environments"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "shop"
+          },
+          "title": {
+            "type": "string",
+            "example": "Shop"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The environments whose apps the page lists."
+          }
+        },
+        "additionalProperties": false
       },
       "QuotaInput": {
         "type": "object",
@@ -9684,6 +11421,45 @@
         },
         "additionalProperties": false
       },
+      "StatusPageDto": {
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "enabled",
+          "environments",
+          "path",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "path": {
+            "type": "string",
+            "description": "Where the page is served: `/status/<slug>` on the console's address."
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
       "StrategyDto": {
         "type": "string",
         "enum": [
@@ -9691,6 +11467,19 @@
           "dockerfile",
           "railpack"
         ]
+      },
+      "SyncDns": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "The DNS provider account to write through."
+          }
+        },
+        "additionalProperties": false
       },
       "TemplateDto": {
         "type": "object",
@@ -9964,6 +11753,19 @@
           }
         }
       },
+      "VerifyClaim": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prove the claim with this DNS provider account instead of a TXT record."
+          }
+        },
+        "additionalProperties": false
+      },
       "VolumeDto": {
         "type": "object",
         "description": "Persistent volume (kept when the app is deleted, unless requested).",
@@ -10064,6 +11866,18 @@
     {
       "name": "incidents",
       "description": "Incidents and signed webhooks"
+    },
+    {
+      "name": "previews",
+      "description": "Preview environments of pull requests"
+    },
+    {
+      "name": "domains",
+      "description": "Domain claims, DNS providers and app DNS records"
+    },
+    {
+      "name": "status",
+      "description": "Public status pages of projects"
     },
     {
       "name": "git",

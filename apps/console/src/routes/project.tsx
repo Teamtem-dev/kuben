@@ -13,11 +13,15 @@ import {
   TextField,
 } from '../components/ui'
 import { createEnvironment, deleteProject, type EnvType, environmentsQuery, projectQuery } from '../lib/api'
+import { fill } from '../lib/messages/pages'
+import { usePrefs } from '../lib/prefs'
+import { PreviewsCard, StatusPageCard } from './ops/project-ops'
 
 const route = getRouteApi('/_authed/projects/$project')
 
 export function ProjectPage() {
   const { project } = route.useParams()
+  const { t } = usePrefs()
   const { data: p } = useSuspenseQuery(projectQuery(project))
   const { data: environments } = useSuspenseQuery(environmentsQuery(project))
   const [creating, setCreating] = useState(false)
@@ -36,14 +40,14 @@ export function ProjectPage() {
       <PageHeader
         crumbs={
           <Link to="/" className="hover:text-fg">
-            Projects
+            {t('projects.title')}
           </Link>
         }
-        title={p.display_name}
-        subtitle={p.description ?? p.name}
+        title={<span dir="auto">{p.display_name}</span>}
+        subtitle={<span dir="auto">{p.description ?? p.name}</span>}
         actions={
           <Button variant={creating ? 'secondary' : 'primary'} onClick={() => setCreating((v) => !v)}>
-            {creating ? 'Cancel' : 'New environment'}
+            {creating ? t('ui.cancel') : t('project.newEnvironment')}
           </Button>
         }
       />
@@ -51,7 +55,7 @@ export function ProjectPage() {
       {creating && <CreateEnvironmentForm project={project} onDone={() => setCreating(false)} />}
 
       {environments.length === 0 ? (
-        <Empty>No environments yet. Each environment gets its own isolated namespace.</Empty>
+        <Empty>{t('project.empty')}</Empty>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {environments.map((e) => (
@@ -63,26 +67,39 @@ export function ProjectPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate font-medium">{e.name}</span>
-                  <Status ready={e.ready} label={e.deleting ? 'Terminating' : (e.phase ?? undefined)} />
+                  <Status
+                    ready={e.ready}
+                    label={e.deleting ? t('project.terminating') : (e.phase ?? undefined)}
+                  />
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Badge>{e.env_type}</Badge>
-                  <span className="truncate font-mono text-subtle text-xs">{e.namespace}</span>
+                  <span dir="ltr" className="truncate font-mono text-subtle text-xs">
+                    {e.namespace}
+                  </span>
                 </div>
-                {e.message && <p className="mt-2 text-warn/80 text-xs">{e.message}</p>}
+                {e.message && (
+                  <p dir="auto" className="mt-2 text-warn/80 text-xs">
+                    {e.message}
+                  </p>
+                )}
               </Link>
             </li>
           ))}
         </ul>
       )}
 
+      <PreviewsCard project={project} />
+
+      <StatusPageCard project={project} />
+
       <div className="border-line border-t pt-6">
         {environments.length > 0 ? (
-          <p className="text-subtle text-sm">Delete all environments before deleting the project.</p>
+          <p className="text-subtle text-sm">{t('project.deleteEnvironmentsFirst')}</p>
         ) : (
           <ConfirmDelete
             name={project}
-            what="project"
+            what={t('project.what')}
             pending={remove.isPending}
             error={remove.error}
             onConfirm={() => remove.mutate()}
@@ -94,6 +111,7 @@ export function ProjectPage() {
 }
 
 function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: () => void }) {
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: (body: Parameters<typeof createEnvironment>[1]) => createEnvironment(project, body),
@@ -122,30 +140,39 @@ function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: (
       className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3"
     >
       <TextField
-        label="Name"
+        label={t('projects.name')}
         name="name"
         required
         pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
         maxLength={20}
         placeholder="staging"
       />
-      <Select
-        label="Type"
-        name="env_type"
-        defaultValue="standard"
-        hint="Deleting production has a 7-day grace period."
-      >
-        <option value="standard">Standard</option>
-        <option value="production">Production</option>
-        <option value="preview">Preview</option>
+      <Select label={t('project.type')} name="env_type" defaultValue="standard" hint={t('project.typeHint')}>
+        <option value="standard">{t('project.type.standard')}</option>
+        <option value="production">{t('project.type.production')}</option>
+        <option value="preview">{t('project.type.preview')}</option>
       </Select>
       <div />
-      <TextField label="CPU quota" name="cpu" placeholder="e.g. 4" />
-      <TextField label="Memory quota" name="memory" placeholder="e.g. 8Gi" />
-      <TextField label="Max pods" name="pods" type="number" min={1} placeholder="e.g. 50" />
+      <TextField
+        label={t('project.cpuQuota')}
+        name="cpu"
+        placeholder={fill(t('ui.example'), { value: '4' })}
+      />
+      <TextField
+        label={t('project.memoryQuota')}
+        name="memory"
+        placeholder={fill(t('ui.example'), { value: '8Gi' })}
+      />
+      <TextField
+        label={t('project.maxPods')}
+        name="pods"
+        type="number"
+        min={1}
+        placeholder={fill(t('ui.example'), { value: '50' })}
+      />
       <div className="flex items-center gap-3 sm:col-span-3">
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Creating…' : 'Create environment'}
+          {mutation.isPending ? t('ui.creating') : t('project.createEnvironment')}
         </Button>
         <ErrorNote error={mutation.error} />
       </div>

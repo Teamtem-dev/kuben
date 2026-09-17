@@ -14,6 +14,9 @@ const NAV = [
   { to: '/', label: 'nav.projects', icon: 'projects', exact: true },
   { to: '/team', label: 'nav.team', icon: 'team', exact: false },
   { to: '/tokens', label: 'nav.tokens', icon: 'tokens', exact: false },
+  { to: '/incidents', label: 'nav.incidents', icon: 'incidents', exact: false },
+  { to: '/webhooks', label: 'nav.webhooks', icon: 'webhooks', exact: false },
+  { to: '/domains', label: 'nav.domains', icon: 'domains', exact: false },
   { to: '/audit', label: 'nav.audit', icon: 'audit', exact: false },
 ] as const satisfies readonly {
   to: string

@@ -2124,9 +2124,10 @@ dependencies = [
 
 [[package]]
 name = "kuben"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "base64 0.23.1",
  "clap",
@@ -2157,7 +2158,7 @@ dependencies = [
 
 [[package]]
 name = "kuben-agent"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2183,7 +2184,7 @@ dependencies = [
 
 [[package]]
 name = "kuben-api"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2234,13 +2235,15 @@ dependencies = [
 
 [[package]]
 name = "kuben-core"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "async-trait",
  "figment",
+ "idna",
  "jiff",
  "proptest",
  "secrecy",
+ "semver",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -2250,7 +2253,7 @@ dependencies = [
 
 [[package]]
 name = "kuben-crd"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "insta",
  "k8s-openapi",
@@ -2263,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "kuben-platform"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2298,7 +2301,7 @@ dependencies = [
 
 [[package]]
 name = "kuben-store"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "kuben-core",
  "kuben-store",

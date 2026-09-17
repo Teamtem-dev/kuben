@@ -3,12 +3,15 @@ import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { type FormEvent, useState } from 'react'
 import { Button, Card, ErrorNote, PageHeader, TextField } from '../components/ui'
 import { changePassword, meQuery } from '../lib/api'
+import { fill } from '../lib/messages/pages'
+import { usePrefs } from '../lib/prefs'
 
 const route = getRouteApi('/_authed')
 const MIN_LENGTH = 12
 
 export function AccountPage() {
   const { me } = route.useRouteContext()
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const router = useRouter()
   const [mismatch, setMismatch] = useState(false)
@@ -41,32 +44,32 @@ export function AccountPage() {
 
   return (
     <section className="max-w-xl space-y-6">
-      <PageHeader title="Account" subtitle={me.email} />
+      <PageHeader title={t('shell.account')} subtitle={<span dir="ltr">{me.email}</span>} />
       {me.must_change_password && (
         <p role="alert" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
-          You signed in with a temporary password. Choose your own password to continue.
+          {t('account.temporary')}
         </p>
       )}
-      <Card title="Change password">
+      <Card title={t('account.changePassword')}>
         <form onSubmit={onSubmit} className="space-y-3">
           <TextField
-            label="Current password"
+            label={t('account.current')}
             name="current"
             type="password"
             autoComplete="current-password"
             required
           />
           <TextField
-            label="New password"
+            label={t('account.new')}
             name="next"
             type="password"
             autoComplete="new-password"
             minLength={MIN_LENGTH}
             required
-            hint={`At least ${MIN_LENGTH} characters. Other sessions are signed out.`}
+            hint={fill(t('account.newHint'), { count: MIN_LENGTH })}
           />
           <TextField
-            label="Repeat new password"
+            label={t('account.repeat')}
             name="repeat"
             type="password"
             autoComplete="new-password"
@@ -74,11 +77,11 @@ export function AccountPage() {
           />
           <div className="flex items-center gap-3">
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Change password'}
+              {save.isPending ? t('ui.saving') : t('account.changePassword')}
             </Button>
-            {mismatch && <ErrorNote error={new Error('The new passwords do not match.')} />}
+            {mismatch && <ErrorNote error={new Error(t('account.mismatch'))} />}
             <ErrorNote error={save.error} />
-            {done && !save.isPending && <span className="text-ok text-sm">Password changed.</span>}
+            {done && !save.isPending && <span className="text-ok text-sm">{t('account.changed')}</span>}
           </div>
         </form>
       </Card>

@@ -425,12 +425,149 @@ pub fn agent_check(agent: &AgentState, stale_after: u64) -> Check {
     }
 }
 
+/// Who holds the verified claim covering a host (M5.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClaimOwner {
+    /// This organization, through its claim on the domain.
+    Ours(String),
+    /// Another organization.
+    Others,
+    Nobody,
+}
+
+/// Whether a custom domain is claimed; with `required`, an unclaimed one
+/// fails.
+#[must_use]
+pub fn claim_check(host: &str, owner: &ClaimOwner, required: bool) -> Check {
+    match owner {
+        ClaimOwner::Ours(domain) => Check::new(
+            "claim",
+            host,
+            Status::Ok,
+            format!("verified for this organization through its claim on {domain}"),
+        ),
+        ClaimOwner::Others => Check::new(
+            "claim",
+            host,
+            Status::Fail,
+            "another organization verified this domain; the app cannot serve it",
+        )
+        .hint("Use a domain your organization owns."),
+        ClaimOwner::Nobody => Check::new(
+            "claim",
+            host,
+            if required { Status::Fail } else { Status::Warn },
+            "no organization verified this domain",
+        )
+        .hint("Claim the domain (Domains) and verify it with its TXT record or a DNS provider."),
+    }
+}
+
+/// How `zone` is delegated: its name servers, as the public DNS answers.
+#[must_use]
+pub fn delegation_check(host: &str, zone: &str, nameservers: Result<&[String], &str>) -> Check {
+    match nameservers {
+        Err(e) => Check::new(
+            "delegation",
+            host,
+            Status::Unknown,
+            format!("the name servers of {zone} could not be read: {e}"),
+        ),
+        Ok([]) => Check::new(
+            "delegation",
+            host,
+            Status::Fail,
+            format!("{zone} has no name servers in the public DNS"),
+        )
+        .hint("Register the domain and delegate it to a DNS provider."),
+        Ok(servers) => {
+            let cloudflare = servers.iter().all(|s| s.ends_with(".ns.cloudflare.com"));
+            Check::new(
+                "delegation",
+                host,
+                Status::Ok,
+                format!(
+                    "{zone} is served by {}{}",
+                    servers.join(", "),
+                    if cloudflare { " (Cloudflare)" } else { "" }
+                ),
+            )
+        }
+    }
+}
+
+/// Whether a provider proxies `host`'s record: a proxy hides the Gateway,
+/// so HTTP-01 challenges and passthrough TLS may fail.
+#[must_use]
+pub fn proxy_check(host: &str, proxied: Option<bool>) -> Check {
+    match proxied {
+        None => Check::new(
+            "proxy",
+            host,
+            Status::Unknown,
+            "no DNS provider account holds this record",
+        ),
+        Some(false) => Check::new(
+            "proxy",
+            host,
+            Status::Ok,
+            "the record points straight at its target",
+        ),
+        Some(true) => Check::new(
+            "proxy",
+            host,
+            Status::Warn,
+            "the provider proxies this record: visitors reach its edge, not the Gateway",
+        )
+        .hint(
+            "Use DNS-01 certificates (kuben dns01-issuer) and full TLS at the proxy, or turn the proxy off.",
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
     use crate::{discovery::Readiness, projection::HostExposure};
+
+    #[test]
+    fn claims_delegation_and_proxies_are_judged() {
+        assert_eq!(
+            claim_check("a.example.com", &ClaimOwner::Ours("example.com".into()), true).status,
+            Status::Ok
+        );
+        assert_eq!(
+            claim_check("a.example.com", &ClaimOwner::Others, false).status,
+            Status::Fail
+        );
+        assert_eq!(
+            claim_check("a.example.com", &ClaimOwner::Nobody, false).status,
+            Status::Warn
+        );
+        assert_eq!(
+            claim_check("a.example.com", &ClaimOwner::Nobody, true).status,
+            Status::Fail
+        );
+        let servers = [
+            "ada.ns.cloudflare.com".to_owned(),
+            "bob.ns.cloudflare.com".to_owned(),
+        ];
+        let ok = delegation_check("a.example.com", "example.com", Ok(&servers));
+        assert!(ok.status == Status::Ok && ok.detail.contains("(Cloudflare)"));
+        assert_eq!(
+            delegation_check("a.example.com", "example.com", Ok(&[])).status,
+            Status::Fail
+        );
+        assert_eq!(
+            delegation_check("a.example.com", "example.com", Err("timeout")).status,
+            Status::Unknown
+        );
+        assert_eq!(proxy_check("a.example.com", Some(true)).status, Status::Warn);
+        assert!(proxy_check("a.example.com", Some(true)).hint.is_some());
+        assert_eq!(proxy_check("a.example.com", None).status, Status::Unknown);
+    }
 
     fn platform(issuer: Option<&str>) -> Platform {
         let mut spec = json!({ "gatewayClassName": "traefik" });

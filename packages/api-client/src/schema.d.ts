@@ -147,6 +147,93 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dns-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's DNS provider accounts. */
+        get: operations["listDnsProviders"];
+        put?: never;
+        /** Add a DNS provider account; its token is checked first and kept sealed. */
+        post: operations["createDnsProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dns-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a DNS provider account (its records stay at the provider). */
+        delete: operations["deleteDnsProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's domain claims. */
+        get: operations["listDomainClaims"];
+        put?: never;
+        /** Claim a domain; verify it next. */
+        post: operations["createDomainClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a claim: its apps keep their domains, but nothing protects them. */
+        delete: operations["revokeDomainClaim"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a claim through its TXT record or a DNS provider account. */
+        post: operations["verifyDomainClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/git/installations": {
         parameters: {
             query?: never;
@@ -621,6 +708,26 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write an app's DNS records: every custom domain the organization
+         *     verified points at the Gateway (or `domains.cname_target`).
+         */
+        post: operations["syncAppDns"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
         parameters: {
             query?: never;
@@ -742,6 +849,28 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/image-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An app's image update policy. */
+        get: operations["getImagePolicy"];
+        /**
+         * Follow a tag pattern of the app's image repository: a new digest is
+         *     deployed (with approval where the environment asks for it).
+         */
+        put: operations["putImagePolicy"];
+        post?: never;
+        /** Stop following the image repository. */
+        delete: operations["deleteImagePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/logs": {
         parameters: {
             query?: never;
@@ -754,6 +883,23 @@ export type paths = {
          *     `follow=true` a live stream of new ones.
          */
         get: operations["getAppLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An app's CPU and memory usage. */
+        get: operations["getAppMetrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1321,6 +1467,111 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's previews, newest first. */
+        get: operations["listPreviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/previews/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's preview settings. */
+        get: operations["getPreviewPolicy"];
+        /** Set a project's preview settings. */
+        put: operations["putPreviewPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/previews/{environment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Destroy a preview now: its environment is deleted. */
+        delete: operations["destroyPreview"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/previews/{environment}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give a preview more time. */
+        post: operations["extendPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/status-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's status page settings. */
+        get: operations["getStatusPage"];
+        /** Publish or change a project's status page. */
+        put: operations["putStatusPage"];
+        post?: never;
+        /** Take a project's status page down. */
+        delete: operations["deleteStatusPage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/status/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A project's public status page. No sign-in; nothing internal. */
+        get: operations["getPublicStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -1472,6 +1723,23 @@ export type paths = {
         get: operations["listWebhookDeliveries"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/deliveries/{delivery}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Try a failed delivery again, now. */
+        post: operations["retryWebhookDelivery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1682,6 +1950,23 @@ export type components = {
             /** Format: int64 */
             revokedAt?: number | null;
         };
+        ClaimDto: {
+            /** Format: uuid */
+            id: string;
+            domain: string;
+            /** @description `pending`, `verified` or `revoked`. */
+            status: string;
+            /** @description The TXT record that proves the claim, and its value. */
+            challengeName: string;
+            challengeValue: string;
+            /** @description `txt` or the provider kind that proved it. */
+            method?: string | null;
+            createdBy: string;
+            createdAt: string;
+            verifiedAt?: string | null;
+            lastCheckedAt?: string | null;
+            lastError?: string | null;
+        };
         CreateApp: {
             /** @example api */
             name: string;
@@ -1774,6 +2059,18 @@ export type components = {
              * @description Life of an exchanged token, 60–3600 seconds (default 900).
              */
             tokenTtlSecs?: number | null;
+        };
+        CreateClaim: {
+            /** @example example.com */
+            domain: string;
+        };
+        CreateDnsProvider: {
+            /** @example cloudflare */
+            name: string;
+            /** @description `cloudflare`. */
+            kind: string;
+            /** @description An API token that may edit the zones' DNS (write-only). */
+            token: string;
         };
         CreateEndpoint: {
             /** @example ops-pager */
@@ -1986,10 +2283,30 @@ export type components = {
             /** @description The export frozen with the request (only when one app is read). */
             export?: Record<string, never> | null;
         };
+        DnsChangeDto: {
+            host: string;
+            recordType?: string | null;
+            content?: string | null;
+            /**
+             * @description `created`, `updated`, `unchanged`, `deleted`, `conflict`, `skipped` or
+             *     `failed`.
+             */
+            action: string;
+            detail?: string | null;
+        };
+        DnsProviderDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description `cloudflare`. */
+            kind: string;
+            createdBy: string;
+            createdAt: string;
+        };
         DoctorCheck: {
             /**
              * @description `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
-             *     `certificate`, `dns` or `agent`.
+             *     `certificate`, `dns`, `claim`, `delegation`, `proxy` or `agent`.
              */
             id: string;
             /** @description What was checked (a host, a class, a port), when there are several. */
@@ -2004,6 +2321,13 @@ export type components = {
             /** @description The worst status of the checks; `unknown` is never `ok`. */
             status: string;
             checks: components["schemas"]["DoctorCheck"][];
+            /**
+             * @description Every layer from the build to the visitor, with what was observed
+             *     (M5.5).
+             */
+            graph: Record<string, never>;
+            /** @description Conclusions, root causes first; nothing unobserved counts as fine. */
+            findings: Record<string, never>[];
         };
         DomainCheck: {
             host: string;
@@ -2094,6 +2418,15 @@ export type components = {
             message?: string | null;
             hosts: components["schemas"]["HostDto"][];
         };
+        ExtendPreview: {
+            /**
+             * Format: int32
+             * @description Hours added to the lifetime (at most 30 days from now in total).
+             */
+            hours: number;
+            /** @description Keep the preview past its expiry until someone destroys it. */
+            keep?: boolean;
+        };
         HealthDetails: {
             ready: boolean;
             database: string;
@@ -2114,6 +2447,29 @@ export type components = {
             /** @description For `auto` hosts with a certificate of their own: whether it is issued. */
             certificate_ready?: boolean | null;
             certificate_message?: string | null;
+        };
+        ImagePolicyDto: {
+            repository: string;
+            /** @description `semver:<range>`, `tag:<glob>` or a tag. */
+            pattern: string;
+            enabled: boolean;
+            /** Format: int32 */
+            intervalSecs: number;
+            nextCheckAt: string;
+            lastCheckedAt?: string | null;
+            lastTag?: string | null;
+            lastDigest?: string | null;
+            lastError?: string | null;
+            /**
+             * Format: int32
+             * @description Failed checks in a row.
+             */
+            failures: number;
+            /**
+             * Format: uuid
+             * @description The run the policy started last.
+             */
+            lastRun?: string | null;
         };
         ImageScanDto: {
             digest: string;
@@ -2213,6 +2569,34 @@ export type components = {
             must_change_password: boolean;
             active: boolean;
         };
+        MetricPoint: {
+            /** @description RFC 3339. */
+            at: string;
+            /** Format: int64 */
+            cpuMillis: number;
+            /** Format: int64 */
+            memoryBytes: number;
+            /**
+             * Format: int64
+             * @description The hour's peaks (`7d` only).
+             */
+            cpuMax?: number | null;
+            /** Format: int64 */
+            memoryMax?: number | null;
+            /**
+             * Format: int32
+             * @description Pods sampled (`1h` only).
+             */
+            pods?: number | null;
+        };
+        MetricsDto: {
+            window: string;
+            /** @description False when there is nothing to show: never read as zero. */
+            available: boolean;
+            /** @description Why it is unavailable. */
+            reason?: string | null;
+            points: components["schemas"]["MetricPoint"][];
+        };
         OwnerDto: {
             /**
              * @description A team or a person.
@@ -2267,6 +2651,46 @@ export type components = {
             updatedBy?: string | null;
             /** Format: int64 */
             updatedAt?: number | null;
+        };
+        PreviewDto: {
+            /** @description The preview's environment (`pr<n>-<epoch>`). */
+            environment: string;
+            repository: string;
+            /** Format: int64 */
+            pullRequest: number;
+            /** Format: int64 */
+            epoch: number;
+            headRepository: string;
+            branch: string;
+            commit: string;
+            /** @description False for a fork's preview: it gets no secrets. */
+            trusted: boolean;
+            /** @description `active` or `closed`. */
+            state: string;
+            autoDelete: boolean;
+            expiresAt: string;
+            /**
+             * Format: int64
+             * @description Seconds until it expires (0 once it has).
+             */
+            remainingSeconds: number;
+            createdAt: string;
+            closedAt?: string | null;
+            /** @description `closed`, `expired`, `manual` or `deleted`. */
+            closeReason?: string | null;
+        };
+        PreviewPolicyDto: {
+            enabled: boolean;
+            /** @description The environment whose Git-built apps previews copy. */
+            sourceEnvironment?: string | null;
+            /** Format: int32 */
+            ttlHours: number;
+            /** Format: int32 */
+            maxActive: number;
+            /** @description Pull requests from forks get (untrusted) previews too. */
+            allowForks: boolean;
+            updatedBy?: string | null;
+            updatedAt?: string | null;
         };
         /** @description Problem Details body. */
         Problem: {
@@ -2334,6 +2758,38 @@ export type components = {
         };
         /** @enum {string} */
         ProtocolDto: "http" | "tcp";
+        PublicComponent: {
+            name: string;
+            status: string;
+        };
+        PublicIncidentDto: {
+            /** @description The affected component. */
+            component: string;
+            /** @description `critical`, `warning` or `info`. */
+            severity: string;
+            startedAt: string;
+            resolvedAt?: string | null;
+        };
+        PublicStatus: {
+            title: string;
+            /** @description `operational`, `degraded` or `majorOutage`. */
+            status: string;
+            components: components["schemas"]["PublicComponent"][];
+            incidents: components["schemas"]["PublicIncidentDto"][];
+            updatedAt: string;
+        };
+        PutImagePolicy: {
+            /**
+             * @description The repository to watch; the app's current image repository when
+             *     unset.
+             */
+            repository?: string | null;
+            /** @example semver:^1.2 */
+            pattern: string;
+            enabled?: boolean;
+            /** Format: int32 */
+            intervalSecs?: number;
+        };
         PutPolicy: {
             /**
              * Format: int32
@@ -2358,6 +2814,16 @@ export type components = {
              */
             approvalTtlSecs?: number;
             scan?: null | components["schemas"]["ScanGateDto"];
+        };
+        PutPreviewPolicy: {
+            enabled: boolean;
+            /** @example staging */
+            sourceEnvironment: string;
+            /** Format: int32 */
+            ttlHours?: number;
+            /** Format: int32 */
+            maxActive?: number;
+            allowForks?: boolean;
         };
         PutRegistryLogin: {
             /** @description `ghcr.io`, `docker.io`, `registry.example.com:5000`. */
@@ -2404,6 +2870,15 @@ export type components = {
              * @example registry.example.com/acme/shop
              */
             imageRepository: string;
+        };
+        PutStatusPage: {
+            /** @example shop */
+            slug: string;
+            /** @example Shop */
+            title: string;
+            enabled?: boolean;
+            /** @description The environments whose apps the page lists. */
+            environments: string[];
         };
         QuotaInput: {
             /** @example 4 */
@@ -2617,8 +3092,22 @@ export type components = {
              */
             expected_generation: number;
         };
+        StatusPageDto: {
+            slug: string;
+            title: string;
+            enabled: boolean;
+            environments: string[];
+            /** @description Where the page is served: `/status/<slug>` on the console's address. */
+            path: string;
+            updatedBy: string;
+            updatedAt: string;
+        };
         /** @enum {string} */
         StrategyDto: "auto" | "dockerfile" | "railpack";
+        SyncDns: {
+            /** @description The DNS provider account to write through. */
+            provider: string;
+        };
         TemplateDto: {
             id: string;
             name: string;
@@ -2691,6 +3180,10 @@ export type components = {
              *     anything else is allowed.
              */
             must_change_password: boolean;
+        };
+        VerifyClaim: {
+            /** @description Prove the claim with this DNS provider account instead of a TXT record. */
+            provider?: string | null;
         };
         /** @description Persistent volume (kept when the app is deleted, unless requested). */
         VolumeDto: {
@@ -3012,6 +3505,229 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDnsProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderDto"][];
+                };
+            };
+        };
+    };
+    createDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDnsProvider"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderDto"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown kind, or the provider refused the token */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDomainClaims: {
+        parameters: {
+            query?: {
+                /** @description Include revoked claims. */
+                all?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimDto"][];
+                };
+            };
+        };
+    };
+    createDomainClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateClaim"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimDto"];
+                };
+            };
+            /** @description Claimed already, here or elsewhere */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeDomainClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Claim id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    verifyDomainClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Claim id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyClaim"];
+            };
+        };
+        responses: {
+            /** @description The claim; `lastError` says why it is still pending */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another organization verified an overlapping domain */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4556,6 +5272,44 @@ export interface operations {
             };
         };
     };
+    syncAppDns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncDns"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsChangeDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppDoctor: {
         parameters: {
             query?: never;
@@ -4799,6 +5553,120 @@ export interface operations {
             };
         };
     };
+    getImagePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePolicyDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putImagePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutImagePolicy"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePolicyDto"];
+                };
+            };
+            /** @description The app builds from Git */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteImagePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppLogs: {
         parameters: {
             query?: {
@@ -4847,6 +5715,43 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppMetrics: {
+        parameters: {
+            query?: {
+                /** @description `1h` (live samples) or `7d` (hourly averages and peaks). */
+                window?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsDto"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6552,6 +7457,310 @@ export interface operations {
             };
         };
     };
+    listPreviews: {
+        parameters: {
+            query?: {
+                /** @description Include closed previews. */
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPreviewPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewPolicyDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putPreviewPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPreviewPolicy"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewPolicyDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    destroyPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description The preview's environment */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deletion accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    extendPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description The preview's environment */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtendPreview"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getStatusPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putStatusPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutStatusPage"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusPageDto"];
+                };
+            };
+            /** @description The slug is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteStatusPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPublicStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's public name */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatus"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     setupStatus: {
         parameters: {
             query?: never;
@@ -6963,6 +8172,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeliveryDto"][];
+                };
+            };
+        };
+    };
+    retryWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+                /** @description Delivery id */
+                delivery: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued again */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };

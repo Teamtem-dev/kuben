@@ -164,6 +164,31 @@ export const doctor = {
       hint: 'point the record at the Gateway',
     },
   ],
+  graph: { nodes: [], edges: [] },
+  findings: [
+    {
+      kind: 'rootCause',
+      layer: 'dns',
+      status: 'fail',
+      confidence: 'high',
+      summary: 'no DNS record points at the Gateway',
+      evidence: ['web.apps.example.com: NXDOMAIN'],
+      related: ['tls'],
+      action: 'point the record at the Gateway',
+    },
+  ],
+}
+
+const metrics = {
+  window: '1h',
+  available: true,
+  reason: null,
+  points: [0, 1, 2, 3].map((i) => ({
+    at: `2026-09-16T09:5${i}:00Z`,
+    cpuMillis: 120 + i * 15,
+    memoryBytes: (96 + i * 4) * 1024 * 1024,
+    pods: 2,
+  })),
 }
 
 const sse = (events: [string, unknown][]) =>
@@ -195,6 +220,8 @@ export async function mockApi(page: Page, { signedIn = true } = {}) {
       })
     if (path === `${appPath}/deployments`) return json(route, deployments)
     if (path === `${appPath}/doctor`) return json(route, doctor)
+    if (path === `${appPath}/metrics`) return json(route, metrics)
+    if (path === '/api/v1/dns-providers') return json(route, [])
     if (path === `${appPath}/releases`) {
       return json(route, [
         {

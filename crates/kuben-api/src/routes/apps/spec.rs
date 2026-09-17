@@ -453,6 +453,7 @@ pub(super) async fn ensure_domains_free(
     if spec.domains.is_empty() {
         return Ok(());
     }
+    ensure_domains_claimed(state, org, spec).await?;
     let taken = |host: &str| {
         ApiError(Error::Conflict(format!(
             "domain `{host}` is already used by another app"
@@ -477,6 +478,32 @@ pub(super) async fn ensure_domains_free(
             .find(|d| other.domains.iter().any(|o| o.eq_ignore_ascii_case(&d.host)))
         {
             return Err(taken(&d.host));
+        }
+    }
+    Ok(())
+}
+
+/// No app serves a domain another organization verified (M5.2); with
+/// `domains.require_claim`, only domains its own organization verified.
+async fn ensure_domains_claimed(state: &ApiState, org: OrgId, spec: &AppSpec) -> ApiResult<()> {
+    for d in &spec.domains {
+        let host = kuben_core::domain::canonical(&d.host).map_err(|e| Error::Validation(e.to_string()))?;
+        match state.store.domain_owner(&host).await? {
+            Some((_, owner)) if owner != org => {
+                return Err(Error::Conflict(format!(
+                    "domain `{}` is claimed by another organization",
+                    d.host
+                ))
+                .into());
+            }
+            None if state.cfg.domains.require_claim => {
+                return Err(Error::Validation(format!(
+                    "domain `{}` is not verified for this organization: claim it first",
+                    d.host
+                ))
+                .into());
+            }
+            _ => {}
         }
     }
     Ok(())

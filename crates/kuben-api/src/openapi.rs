@@ -8,8 +8,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     auth,
     routes::{
-        access, apps, audit, ci, controls, environments, git, health, incidents, members, policy, projects,
-        registries, secrets, templates, tokens, vulnerabilities,
+        access, apps, audit, ci, controls, domains, environments, git, health, incidents, members, policy,
+        previews, projects, registries, secrets, status, templates, tokens, vulnerabilities,
     },
     state::ApiState,
 };
@@ -29,6 +29,9 @@ use crate::{
         (name = "secrets", description = "Write-only environment secrets and registry logins"),
         (name = "security", description = "Vulnerability exceptions"),
         (name = "incidents", description = "Incidents and signed webhooks"),
+        (name = "previews", description = "Preview environments of pull requests"),
+        (name = "domains", description = "Domain claims, DNS providers and app DNS records"),
+        (name = "status", description = "Public status pages of projects"),
         (name = "git", description = "GitHub App installations for Git sources"),
         (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
@@ -56,6 +59,12 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::crud::restart))
         .routes(routes!(apps::crud::hand_over))
         .routes(routes!(apps::export::export))
+        .routes(routes!(apps::metrics::get))
+        .routes(routes!(
+            apps::image_policy::get,
+            apps::image_policy::put,
+            apps::image_policy::delete
+        ))
         .routes(routes!(apps::export::detach))
         .routes(routes!(apps::export::list_detached))
         .routes(routes!(apps::export::get_detached))
@@ -110,6 +119,19 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(incidents::disable_endpoint))
         .routes(routes!(incidents::ping))
         .routes(routes!(incidents::deliveries))
+        .routes(routes!(incidents::retry))
+        .routes(routes!(previews::get_policy, previews::put_policy))
+        .routes(routes!(previews::list))
+        .routes(routes!(previews::extend))
+        .routes(routes!(previews::destroy))
+        .routes(routes!(domains::list, domains::create))
+        .routes(routes!(domains::verify))
+        .routes(routes!(domains::revoke))
+        .routes(routes!(domains::list_providers, domains::create_provider))
+        .routes(routes!(domains::delete_provider))
+        .routes(routes!(domains::sync_app))
+        .routes(routes!(status::public))
+        .routes(routes!(status::get, status::put, status::delete))
         .routes(routes!(vulnerabilities::list, vulnerabilities::create))
         .routes(routes!(vulnerabilities::revoke))
         .routes(routes!(templates::list))

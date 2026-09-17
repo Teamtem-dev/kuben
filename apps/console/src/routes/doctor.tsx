@@ -3,6 +3,7 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { Button, Card, ErrorNote, PageHeader } from '../components/ui'
 import { type DoctorCheck, doctorQuery } from '../lib/api'
 import { usePrefs } from '../lib/prefs'
+import { type Finding, FindingsCard } from './ops/findings'
 
 const route = getRouteApi('/_authed/projects/$project/$environment/$app/doctor')
 
@@ -88,13 +89,16 @@ export function DoctorPage() {
       ) : !report.data ? (
         <p className="text-subtle text-sm">{t('doctor.checking')}</p>
       ) : (
-        <Card title={tOr(`doctor.summary.${report.data.status}`, report.data.status)}>
-          <ul className="divide-y divide-line-soft">
-            {report.data.checks.map((check) => (
-              <CheckRow key={`${check.id}:${check.subject}`} check={check} />
-            ))}
-          </ul>
-        </Card>
+        <>
+          <FindingsCard findings={report.data.findings as unknown as Finding[] | undefined} />
+          <Card title={tOr(`doctor.summary.${report.data.status}`, report.data.status)}>
+            <ul className="divide-y divide-line-soft">
+              {report.data.checks.map((check) => (
+                <CheckRow key={`${check.id}:${check.subject}`} check={check} />
+              ))}
+            </ul>
+          </Card>
+        </>
       )}
     </section>
   )

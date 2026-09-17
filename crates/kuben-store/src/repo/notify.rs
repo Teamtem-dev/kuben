@@ -58,6 +58,11 @@ const GIVE_UP: &str = "UPDATE webhook_deliveries \
 const COUNT_FAILURE: &str = "UPDATE webhook_endpoints SET failures = failures + 1, \
      disabled_at = CASE WHEN failures + 1 >= $2 THEN $3 ELSE disabled_at END \
      WHERE id = (SELECT endpoint_id FROM webhook_deliveries WHERE id = $1)";
+const RETRY_FAILED: &str = "UPDATE webhook_deliveries d SET status = 'pending', next_attempt_at = $4, \
+     attempts = 0, finished_at = NULL, last_error = NULL \
+     FROM webhook_endpoints e \
+     WHERE d.id = $3 AND d.endpoint_id = $2 AND d.org_id = $1 AND d.status = 'failed' \
+       AND e.id = d.endpoint_id AND e.org_id = d.org_id AND e.disabled_at IS NULL";
 const DELIVERIES: &str = "SELECT id, event, status, attempts, last_status, last_error, created_at, finished_at \
      FROM webhook_deliveries WHERE org_id = $1 AND endpoint_id = $2 ORDER BY created_at DESC LIMIT $3";
 const RUN_CONTEXT: &str = "SELECT r.project_id, p.environment_id, r.target_id, pr.slug AS project, \
@@ -393,6 +398,20 @@ impl Tenant {
             .await?)
     }
 
+    /// Try failed delivery `delivery` of enabled endpoint `endpoint` again,
+    /// now. False when it is not a failed delivery of an enabled endpoint.
+    pub async fn retry_delivery(&mut self, endpoint: Uuid, delivery: Uuid) -> Result<bool, StoreError> {
+        let rows = sqlx::query(RETRY_FAILED)
+            .bind(self.org.to_string())
+            .bind(endpoint)
+            .bind(delivery)
+            .bind(now_ms())
+            .execute(&mut *self.tx)
+            .await?
+            .rows_affected();
+        Ok(rows == 1)
+    }
+
     /// Where the settled operation `operation` happened: a deployment run's
     /// or (with `build`) a build's target, names and source.
     pub async fn operation_context(
@@ -699,7 +718,23 @@ mod tests {
         t.commit().await.expect("commit");
         let taken = store.take_deliveries(100, 60_000).await.expect("take");
         assert_eq!(taken.len(), usize::try_from(MAX_ENDPOINT_FAILURES).expect("size"));
-        for d in &taken {
+        store
+            .delivery_failed(taken[0].id, Some(500), "boom", None)
+            .await
+            .expect("record");
+        let mut t = store.tenant(org).await.expect("tenant");
+        assert!(
+            t.retry_delivery(id, taken[0].id).await.expect("retry"),
+            "a failed delivery goes again"
+        );
+        assert!(!t.retry_delivery(id, taken[0].id).await.expect("retry"), "once");
+        t.commit().await.expect("commit");
+        let again = store.take_deliveries(100, 60_000).await.expect("take");
+        assert_eq!(
+            again.iter().map(|d| (d.id, d.attempts)).collect::<Vec<_>>(),
+            [(taken[0].id, 1)]
+        );
+        for d in &taken[1..] {
             store
                 .delivery_failed(d.id, Some(500), "boom", None)
                 .await

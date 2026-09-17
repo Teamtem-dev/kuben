@@ -357,6 +357,49 @@ pub struct PushEvent {
     pub deleted: bool,
 }
 
+/// What happened to a pull request, as far as previews care (M5.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PullAction {
+    /// Opened, reopened or marked ready: a preview should exist.
+    Opened,
+    /// New commits: the preview follows its head.
+    Updated,
+    /// Closed or merged: the preview goes.
+    Closed,
+}
+
+/// A pull request event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PullEvent {
+    pub action: PullAction,
+    pub installation_id: u64,
+    /// The base repository the pull request targets.
+    pub repository: RepoName,
+    pub repository_id: u64,
+    pub number: u64,
+    /// The repository the head lives in; another one for a fork.
+    pub head_repository: String,
+    pub head_branch: String,
+    pub head: CommitSha,
+    /// The pull request is still open, as the event reports it.
+    pub open: bool,
+    pub draft: bool,
+    /// The provider's `updated_at`, in Unix milliseconds: events older than
+    /// what a preview has seen are ignored.
+    pub updated_at: i64,
+}
+
+impl PullEvent {
+    /// The head is in another repository than the base: the change comes
+    /// from outside the repository's writers.
+    #[must_use]
+    pub fn from_fork(&self) -> bool {
+        !self
+            .head_repository
+            .eq_ignore_ascii_case(self.repository.as_str())
+    }
+}
+
 /// The installation lifecycle events Kuben tracks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InstallationAction {
@@ -376,6 +419,7 @@ pub enum WebhookEvent {
         installation_id: u64,
         account: String,
     },
+    PullRequest(PullEvent),
     /// Tag pushes, other events and actions Kuben does not act on.
     Ignored,
 }
@@ -407,6 +451,38 @@ struct RawPush {
     forced: bool,
     #[serde(default)]
     deleted: bool,
+    repository: RawRepository,
+    installation: Option<RawInstallation>,
+}
+
+#[derive(Deserialize)]
+struct RawPullRepo {
+    full_name: String,
+}
+
+#[derive(Deserialize)]
+struct RawPullSide {
+    sha: String,
+    #[serde(rename = "ref")]
+    git_ref: String,
+    /// `null` when the fork was deleted.
+    repo: Option<RawPullRepo>,
+}
+
+#[derive(Deserialize)]
+struct RawPull {
+    number: u64,
+    state: String,
+    #[serde(default)]
+    draft: bool,
+    updated_at: String,
+    head: RawPullSide,
+}
+
+#[derive(Deserialize)]
+struct RawPullEvent {
+    action: String,
+    pull_request: RawPull,
     repository: RawRepository,
     installation: Option<RawInstallation>,
 }
@@ -445,6 +521,7 @@ impl WebhookEvent {
                     deleted: raw.deleted,
                 }))
             }
+            "pull_request" => Self::parse_pull(body),
             "installation" => {
                 let raw: RawInstallationEvent = payload(body)?;
                 let action = match raw.action.as_str() {
@@ -462,6 +539,40 @@ impl WebhookEvent {
             }
             _ => Ok(Self::Ignored),
         }
+    }
+
+    fn parse_pull(body: &[u8]) -> Result<Self, InvalidSource> {
+        let raw: RawPullEvent = payload(body)?;
+        let action = match raw.action.as_str() {
+            "opened" | "reopened" | "ready_for_review" => PullAction::Opened,
+            "synchronize" => PullAction::Updated,
+            "closed" => PullAction::Closed,
+            _ => return Ok(Self::Ignored),
+        };
+        let installation = raw
+            .installation
+            .ok_or_else(|| InvalidSource::Payload("a pull request without an installation".into()))?;
+        let pull = raw.pull_request;
+        let updated_at = jiff::Timestamp::from_str(&pull.updated_at)
+            .map_err(|e| InvalidSource::Payload(format!("updated_at: {e}")))?
+            .as_millisecond();
+        Ok(Self::PullRequest(PullEvent {
+            action,
+            installation_id: installation.id,
+            repository: raw.repository.full_name.parse()?,
+            repository_id: raw.repository.id,
+            number: pull.number,
+            // A deleted fork is still a fork.
+            head_repository: pull
+                .head
+                .repo
+                .map_or_else(|| "(deleted)".to_owned(), |r| r.full_name),
+            head_branch: pull.head.git_ref,
+            head: pull.head.sha.parse()?,
+            open: pull.state == "open",
+            draft: pull.draft,
+            updated_at,
+        }))
     }
 }
 
@@ -606,6 +717,64 @@ mod tests {
                 installation_id: 9,
                 account: "acme".into(),
             }
+        );
+    }
+
+    fn pull_body(action: &str, head_repo: &serde_json::Value) -> Vec<u8> {
+        json!({
+            "action": action,
+            "number": 12,
+            "pull_request": {
+                "number": 12, "state": if action == "closed" { "closed" } else { "open" },
+                "draft": false, "updated_at": "2026-09-17T10:00:00Z",
+                "head": { "sha": SHA, "ref": "feature/x", "repo": head_repo },
+                "base": { "ref": "main" }
+            },
+            "repository": { "id": 42, "full_name": "Acme/Shop" },
+            "installation": { "id": 7 }
+        })
+        .to_string()
+        .into_bytes()
+    }
+
+    #[test]
+    fn pull_requests_become_preview_events() {
+        let body = pull_body("synchronize", &json!({ "full_name": "acme/shop" }));
+        let WebhookEvent::PullRequest(pull) =
+            WebhookEvent::parse_github("pull_request", &body).expect("pull")
+        else {
+            panic!("not a pull request");
+        };
+        assert_eq!(
+            (pull.action, pull.number, pull.installation_id),
+            (PullAction::Updated, 12, 7)
+        );
+        assert_eq!(pull.repository.as_str(), "acme/shop");
+        assert_eq!((pull.head_branch.as_str(), pull.open), ("feature/x", true));
+        assert_eq!(pull.updated_at, 1_789_639_200_000);
+        assert!(!pull.from_fork());
+
+        let fork = pull_body("opened", &json!({ "full_name": "mallory/shop" }));
+        let WebhookEvent::PullRequest(pull) =
+            WebhookEvent::parse_github("pull_request", &fork).expect("pull")
+        else {
+            panic!("not a pull request");
+        };
+        assert_eq!(pull.action, PullAction::Opened);
+        assert!(pull.from_fork());
+
+        let gone = pull_body("closed", &serde_json::Value::Null);
+        let WebhookEvent::PullRequest(pull) =
+            WebhookEvent::parse_github("pull_request", &gone).expect("pull")
+        else {
+            panic!("not a pull request");
+        };
+        assert!(pull.from_fork() && !pull.open && pull.action == PullAction::Closed);
+
+        let labeled = pull_body("labeled", &json!({ "full_name": "acme/shop" }));
+        assert_eq!(
+            WebhookEvent::parse_github("pull_request", &labeled).expect("labeled"),
+            WebhookEvent::Ignored
         );
     }
 }

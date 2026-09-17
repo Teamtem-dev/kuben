@@ -13,6 +13,8 @@ mod ci;
 mod controls;
 mod deployments;
 mod detach;
+mod domains;
+mod image_policies;
 mod installs;
 mod lifecycle;
 mod materialize;
@@ -20,14 +22,17 @@ mod notify;
 mod operations;
 mod orgs;
 mod policies;
+mod previews;
 mod product;
 mod releases;
 mod resolve;
 mod retention;
+mod rollups;
 mod scans;
 mod secrets;
 mod sessions;
 mod sso;
+mod status;
 mod support;
 mod throttle;
 mod tokens;
@@ -50,6 +55,8 @@ pub use ci::{CiExchange, CiPolicy, Exchanged, NewCiPolicy};
 pub use controls::{Freeze, NewWindow, Owner, Silence};
 pub use deployments::{Advance, PortableRelease, RUN_KIND, RunReason, RunSummary, StartDeployment, Started};
 pub use detach::{DetachedApp, ExportMaterial, NewDetach, SecretReference};
+pub use domains::{DnsProvider, DnsRecord, DomainClaim, NewDnsRecord, Verified};
+pub use image_policies::{Checked, ImagePolicy, NewImagePolicy};
 pub use lifecycle::{
     ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, LIFECYCLE_KINDS, PROJECT_APPLY, PROJECT_DELETE, Subject,
     TARGET_DELETE,
@@ -60,10 +67,12 @@ pub use notify::{
 };
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use policies::{ApprovalRecord, Decided, PolicyRevision, RunApproval};
+pub use previews::{CloseReason, NewPreview, Preview, PreviewPolicy, PreviewSource};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};
 pub use retention::Retained;
+pub use rollups::UsageHour;
 pub use scans::{NewException, NewScan, VulnException};
 pub use secrets::{
     BoundSecret, KeyringCheck, Reservation, Reserved, Revoked, SealedBytes, SealedRevision, SecretBinding,
@@ -71,6 +80,7 @@ pub use secrets::{
 };
 pub use sessions::NewSession;
 pub use sso::{PendingSso, SsoSignIn};
+pub use status::{PublicIncident, StatusPage};
 pub use support::{OperationCount, SUPPORT_WINDOW_MS, SupportSummary};
 pub use throttle::ThrottleWindow;
 pub use tokens::NewToken;

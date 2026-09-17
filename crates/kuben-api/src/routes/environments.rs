@@ -11,7 +11,9 @@ use axum::{
 use kuben_core::{Error, perm::Perm, policy::EnvironmentPolicy};
 use kuben_crd::Quota;
 use kuben_platform::{controller::resources::namespace_name, projection::EnvironmentView};
-use kuben_store::repo::{ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, EnvironmentKind, EnvironmentRecord, Subject};
+use kuben_store::repo::{
+    CloseReason, ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, EnvironmentKind, EnvironmentRecord, Subject,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -302,6 +304,11 @@ pub async fn delete(
     };
     let _proof = authz.require(&state, perm, &e.chain())?;
     let mut tenant = state.store.tenant(e.project.org).await?;
+    // A preview deleted by hand is closed: its pull request's next event
+    // does not bring it back (M5.1).
+    tenant
+        .close_preview(e.id(), CloseReason::Deleted, kuben_core::time::now_ms())
+        .await?;
     if !tenant.mark_environment_deleting(e.id()).await? {
         return Err(Error::Conflict(format!("environment `{environment}` is being deleted")).into());
     }

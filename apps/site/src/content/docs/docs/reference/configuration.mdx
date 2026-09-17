@@ -154,6 +154,15 @@ How long rows that only describe the past are kept. See [Budgets](/docs/operatio
 | `KUBEN_RETENTION__WEBHOOK_DELIVERY_DAYS` | `30` | finished webhook deliveries |
 | `KUBEN_RETENTION__RESOLVED_INCIDENT_DAYS` | `180` | resolved incidents |
 
+## `domains`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_DOMAINS__REQUIRE_CLAIM` | `false` | apps may only use custom domains their organization verified |
+| `KUBEN_DOMAINS__DOH_URL` | `https://cloudflare-dns.com/dns-query` | the DNS-over-HTTPS resolver claims are checked with (JSON API) |
+| `KUBEN_DOMAINS__CLOUDFLARE_API_URL` | `https://api.cloudflare.com/client/v4` | the Cloudflare API |
+| `KUBEN_DOMAINS__CNAME_TARGET` | unset | app DNS records become a CNAME to this name instead of A/AAAA records of the Gateway |
+
 <Aside type="note" title="Platform settings live in the cluster">
 `baseDomain`, `gateway`, `clusterIssuer`, `wildcardTlsSecret`, the registry and the size presets are **not** process configuration: they are the `KubenConfig` custom resource, so every replica and every `kubectl` user sees the same values. The Helm chart writes it from `platform.*`. See [Custom resources](/docs/reference/custom-resources/).
 </Aside>

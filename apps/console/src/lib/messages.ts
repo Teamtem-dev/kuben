@@ -1,9 +1,13 @@
 /**
  * Interface text in English and Persian. Every Persian entry is required:
  * `fa` has the type of `en`, so a missing translation does not compile.
- * Pages move their strings here as they are translated.
+ * Pages move their strings here as they are translated. The operational
+ * views (M5.6) and the older pages keep theirs in `messages/`.
  */
-export const en = {
+import { opsEn, opsFa } from './messages/ops'
+import { pagesEn, pagesFa } from './messages/pages'
+
+const coreEn = {
   'app.name': 'Kuben',
   'common.loading': 'Loading…',
   'common.backToProjects': 'Back to projects',
@@ -89,6 +93,22 @@ export const en = {
   'doctor.check.certificate': 'Certificate',
   'doctor.check.dns': 'DNS',
   'doctor.check.agent': 'Cluster agent',
+  'status.components': 'Services',
+  'status.incidents': 'Incidents in the last 7 days',
+  'status.noComponents': 'No services are listed.',
+  'status.noIncidents': 'No incidents.',
+  'status.ongoing': 'Ongoing',
+  'status.resolved': 'Resolved',
+  'status.updated': 'Updated',
+  'status.state.operational': 'Operational',
+  'status.state.degraded': 'Degraded',
+  'status.state.majorOutage': 'Major outage',
+  'status.summary.operational': 'All services are operational.',
+  'status.summary.degraded': 'Some services are degraded.',
+  'status.summary.majorOutage': 'A major outage is in progress.',
+  'status.severity.critical': 'critical',
+  'status.severity.warning': 'minor',
+  'status.severity.info': 'notice',
   'prefs.language': 'Language',
   'prefs.theme': 'Theme',
   'theme.system': 'System',
@@ -96,9 +116,7 @@ export const en = {
   'theme.dark': 'Dark',
 } as const
 
-export type MessageKey = keyof typeof en
-
-export const fa: Record<MessageKey, string> = {
+const coreFa: Record<keyof typeof coreEn, string> = {
   'app.name': 'کوبن',
   'common.loading': 'در حال بارگذاری…',
   'common.backToProjects': 'بازگشت به پروژه‌ها',
@@ -184,11 +202,33 @@ export const fa: Record<MessageKey, string> = {
   'doctor.check.certificate': 'گواهی',
   'doctor.check.dns': 'DNS',
   'doctor.check.agent': 'agent کلاستر',
+  'status.components': 'سرویس‌ها',
+  'status.incidents': 'رخدادهای ۷ روز گذشته',
+  'status.noComponents': 'سرویسی فهرست نشده است.',
+  'status.noIncidents': 'رخدادی نیست.',
+  'status.ongoing': 'در جریان',
+  'status.resolved': 'رفع‌شده',
+  'status.updated': 'به‌روزرسانی',
+  'status.state.operational': 'فعال',
+  'status.state.degraded': 'اختلال جزئی',
+  'status.state.majorOutage': 'قطعی گسترده',
+  'status.summary.operational': 'همهٔ سرویس‌ها فعال‌اند.',
+  'status.summary.degraded': 'برخی سرویس‌ها با اختلال کار می‌کنند.',
+  'status.summary.majorOutage': 'قطعی گسترده در جریان است.',
+  'status.severity.critical': 'بحرانی',
+  'status.severity.warning': 'جزئی',
+  'status.severity.info': 'اطلاع‌رسانی',
   'prefs.language': 'زبان',
   'prefs.theme': 'تم',
   'theme.system': 'سیستم',
   'theme.light': 'روشن',
   'theme.dark': 'تیره',
 }
+
+export const en = { ...coreEn, ...opsEn, ...pagesEn } as const
+
+export type MessageKey = keyof typeof en
+
+export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa }
 
 export const locales = { en, fa } as const

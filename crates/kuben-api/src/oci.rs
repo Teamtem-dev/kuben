@@ -102,6 +102,9 @@ pub enum ResolveError {
     Unauthorized(String),
     #[error("cannot reach the registry of `{image}`: {reason}")]
     Unreachable { image: String, reason: String },
+    /// The registry asked to slow down; try again after this many seconds.
+    #[error("the registry of `{image}` limits requests; retry in {retry_after}s")]
+    RateLimited { image: String, retry_after: u64 },
 }
 
 /// Parse `[registry/]path[:tag][@digest]`. Without a registry the image is on
@@ -210,6 +213,56 @@ pub trait ImageResolver: Send + Sync + fmt::Debug {
     async fn resolve(&self, image: &str) -> Result<Resolved, ResolveError> {
         self.resolve_as(image, None).await
     }
+
+    /// The tags of `repository` (M5.4), at most [`MAX_TAGS`].
+    async fn list_tags(
+        &self,
+        repository: &str,
+        _login: Option<&RegistryLogin>,
+    ) -> Result<Vec<String>, ResolveError> {
+        Err(ResolveError::Unreachable {
+            image: repository.to_owned(),
+            reason: "this resolver cannot list tags".into(),
+        })
+    }
+}
+
+/// The most tags read from a repository.
+pub const MAX_TAGS: usize = 10_000;
+const TAG_PAGES: usize = 20;
+
+#[derive(Deserialize)]
+struct TagList {
+    #[serde(default)]
+    tags: Option<Vec<String>>,
+}
+
+/// The path and query of the next page a `Link` header names.
+fn next_link(link: &str) -> Option<String> {
+    link.split(',').find_map(|part| {
+        let (target, params) = part.split_once(';')?;
+        params
+            .split(';')
+            .any(|p| p.trim().replace(' ', "") == "rel=\"next\"")
+            .then(|| {
+                target
+                    .trim()
+                    .trim_start_matches('<')
+                    .trim_end_matches('>')
+                    .to_owned()
+            })
+    })
+}
+
+/// Seconds a `Retry-After` header asks for (60 when it names a date or
+/// nothing).
+fn retry_after(headers: &HeaderMap) -> u64 {
+    headers
+        .get(header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(60)
+        .min(3600)
 }
 
 /// A reference already pinned by digest resolves to itself.
@@ -240,15 +293,43 @@ impl ImageResolver for FixedImages {
         if let Some(resolved) = pinned(image)? {
             return Ok(resolved);
         }
+        let wanted = parse(image)?;
         let digest = self
             .0
             .get(image)
+            .or_else(|| {
+                // `nginx:1.27` and `docker.io/library/nginx:1.27` are one image.
+                self.0.iter().find_map(|(key, digest)| {
+                    let r = parse(key).ok()?;
+                    (r.repository() == wanted.repository() && r.reference == wanted.reference)
+                        .then_some(digest)
+                })
+            })
             .ok_or_else(|| ResolveError::NotFound(image.to_owned()))?;
         Ok(Resolved {
             repository: parse(image)?.repository(),
             digest: digest.clone(),
             given: image.to_owned(),
         })
+    }
+
+    async fn list_tags(
+        &self,
+        repository: &str,
+        _login: Option<&RegistryLogin>,
+    ) -> Result<Vec<String>, ResolveError> {
+        let wanted = parse(repository)?.repository();
+        Ok(self
+            .0
+            .keys()
+            .filter_map(|image| {
+                let r = parse(image).ok()?;
+                match r.reference {
+                    Reference::Tag(tag) if r.repository() == wanted => Some(tag),
+                    _ => None,
+                }
+            })
+            .collect())
     }
 }
 
@@ -362,6 +443,35 @@ impl RegistryResolver {
             .ok_or_else(|| ResolveError::Unauthorized(image.to_owned()))
     }
 
+    /// `GET url`, answering the registry's authentication challenge once.
+    async fn get_authorized(
+        &self,
+        url: &str,
+        r: &ImageRef,
+        image: &str,
+        basic: Option<&str>,
+        authorization: &mut Option<String>,
+    ) -> Result<(StatusCode, HeaderMap, Bytes), ResolveError> {
+        let (status, headers, body) = self
+            .send(Method::GET, url, authorization.as_deref(), image)
+            .await?;
+        if status != StatusCode::UNAUTHORIZED || authorization.is_some() {
+            return Ok((status, headers, body));
+        }
+        let offered = headers
+            .get(header::WWW_AUTHENTICATE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        *authorization = Some(match parse_challenge(offered) {
+            Some(challenge) => format!("Bearer {}", self.token(&challenge, r, image, basic).await?),
+            None => match basic {
+                Some(basic) if is_basic_challenge(offered) => basic.to_owned(),
+                _ => return Err(ResolveError::Unauthorized(image.to_owned())),
+            },
+        });
+        self.send(Method::GET, url, authorization.as_deref(), image).await
+    }
+
     /// Ask for the manifest of `r`: HEAD first (no rate-limit cost on Docker
     /// Hub); a registry that sends no digest header gets a GET, and the digest
     /// is computed over the manifest it returns.
@@ -451,6 +561,62 @@ impl ImageResolver for RegistryResolver {
             digest,
             given: image.to_owned(),
         })
+    }
+
+    async fn list_tags(
+        &self,
+        repository: &str,
+        login: Option<&RegistryLogin>,
+    ) -> Result<Vec<String>, ResolveError> {
+        let r = parse(repository)?;
+        let basic = login.map(RegistryLogin::basic);
+        let base = format!("https://{}", r.api_host());
+        let mut next = Some(format!("/v2/{}/tags/list?n=1000", r.path));
+        let mut authorization = None;
+        let mut tags = Vec::new();
+        for _ in 0..TAG_PAGES {
+            let Some(path) = next.take() else {
+                break;
+            };
+            let url = format!("{base}{path}");
+            let (status, headers, body) = self
+                .get_authorized(&url, &r, repository, basic.as_deref(), &mut authorization)
+                .await?;
+            match status {
+                StatusCode::OK => {}
+                StatusCode::NOT_FOUND => return Err(ResolveError::NotFound(repository.to_owned())),
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                    return Err(ResolveError::Unauthorized(repository.to_owned()));
+                }
+                StatusCode::TOO_MANY_REQUESTS => {
+                    return Err(ResolveError::RateLimited {
+                        image: repository.to_owned(),
+                        retry_after: retry_after(&headers),
+                    });
+                }
+                other => {
+                    return Err(ResolveError::Unreachable {
+                        image: repository.to_owned(),
+                        reason: format!("HTTP {other}"),
+                    });
+                }
+            }
+            let page: TagList = serde_json::from_slice(&body).map_err(|e| ResolveError::Unreachable {
+                image: repository.to_owned(),
+                reason: format!("unexpected tag list: {e}"),
+            })?;
+            tags.extend(page.tags.unwrap_or_default());
+            if tags.len() >= MAX_TAGS {
+                tags.truncate(MAX_TAGS);
+                break;
+            }
+            next = headers
+                .get(header::LINK)
+                .and_then(|v| v.to_str().ok())
+                .and_then(next_link)
+                .filter(|p| p.starts_with('/'));
+        }
+        Ok(tags)
     }
 }
 
@@ -576,6 +742,21 @@ fn encode(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tag_pages_follow_link_headers() {
+        assert_eq!(
+            next_link(r#"</v2/acme/web/tags/list?n=1000&last=v9>; rel="next""#).as_deref(),
+            Some("/v2/acme/web/tags/list?n=1000&last=v9")
+        );
+        assert_eq!(next_link(r#"</x>; rel="prev""#), None);
+        let mut headers = HeaderMap::new();
+        assert_eq!(retry_after(&headers), 60);
+        headers.insert(header::RETRY_AFTER, "7".parse().expect("value"));
+        assert_eq!(retry_after(&headers), 7);
+        headers.insert(header::RETRY_AFTER, "99999".parse().expect("value"));
+        assert_eq!(retry_after(&headers), 3600);
+    }
 
     const DIGEST: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 

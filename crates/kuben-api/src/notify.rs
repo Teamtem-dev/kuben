@@ -467,7 +467,7 @@ pub fn seal_secret(
         .map_err(|e| e.to_string())
 }
 
-fn open_secret(
+pub(crate) fn open_secret(
     keyring: &Keyring,
     org: OrgId,
     endpoint: Uuid,

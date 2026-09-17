@@ -176,6 +176,14 @@ Checks, without changing anything, whether this binary may upgrade the installat
 kuben upgrade-check [--major]
 ```
 
+## `dns01-issuer`
+
+Creates or updates a cert-manager ClusterIssuer that answers ACME DNS-01 challenges through Cloudflare, for wildcard and apex certificates. The token goes into a Secret next to cert-manager. See [Custom domains](/docs/guides/custom-domains/#wildcard-and-apex-certificates-dns-01).
+
+```bash
+kuben dns01-issuer --email ops@example.com --token-file ./cloudflare-token [--name letsencrypt-dns] [--staging] [--dry-run]
+```
+
 ## `support-bundle`
 
 Writes a local support bundle containing:

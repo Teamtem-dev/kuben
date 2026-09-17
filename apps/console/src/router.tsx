@@ -25,14 +25,18 @@ import { AccountPage } from './routes/account'
 import { AppPage } from './routes/app'
 import { AuditPage } from './routes/audit'
 import { DoctorPage } from './routes/doctor'
+import { DomainsPage } from './routes/domains'
 import { EnvironmentPage } from './routes/environment'
+import { IncidentsPage } from './routes/incidents'
 import { LoginPage } from './routes/login'
 import { ProjectPage } from './routes/project'
 import { ProjectsPage } from './routes/projects'
 import { SetupPage } from './routes/setup'
 import { AppShell } from './routes/shell'
+import { StatusPage } from './routes/status'
 import { TeamPage } from './routes/team'
 import { TokensPage } from './routes/tokens'
+import { WebhooksPage } from './routes/webhooks'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -91,6 +95,13 @@ const loginRoute = createRoute({
     if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
   },
   component: LoginPage,
+})
+
+/** A project's public status page: no session needed (M5.3). */
+const statusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/status/$slug',
+  component: StatusPage,
 })
 
 /** Pathless layout: everything below it requires a session. */
@@ -175,6 +186,24 @@ const auditRoute = createRoute({
   component: AuditPage,
 })
 
+const incidentsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/incidents',
+  component: IncidentsPage,
+})
+
+const webhooksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/webhooks',
+  component: WebhooksPage,
+})
+
+const domainsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/domains',
+  component: DomainsPage,
+})
+
 const accountRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/account',
@@ -184,6 +213,7 @@ const accountRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
+  statusRoute,
   authedRoute.addChildren([
     projectsRoute,
     projectRoute,
@@ -193,6 +223,9 @@ const routeTree = rootRoute.addChildren([
     teamRoute,
     tokensRoute,
     auditRoute,
+    incidentsRoute,
+    webhooksRoute,
+    domainsRoute,
     accountRoute,
   ]),
 ])

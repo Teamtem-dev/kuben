@@ -102,7 +102,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     tasks.extend(spawn_builds(&cfg, &store, cluster.as_ref(), github.clone(), &health, &shutdown).await?);
-    tasks.push(spawn_notifier(
+    tasks.extend(spawn_background(
         &cfg,
         &store,
         (github.as_ref(), &keyring),
@@ -126,7 +126,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     if cfg.has_role(Role::Api) {
-        let parts = (&store, cluster.as_ref(), &projections, &health);
+        let parts = (&store, cluster.as_ref(), &projections, (&health, &shutdown));
         let app = kuben_api::router(api_state(&cfg, parts, (github.clone(), sso, keyring))?);
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
@@ -190,11 +190,11 @@ fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubAp
 /// stops the server instead of admitting everything.
 fn api_state(
     cfg: &Config,
-    (store, cluster, projections, health): (
+    (store, cluster, projections, (health, shutdown)): (
         &kuben_store::Store,
         Option<&ClusterRegistry>,
         &Arc<Projections>,
-        &Health,
+        (&Health, &CancellationToken),
     ),
     (github, sso, keyring): (
         Option<kuben_api::github::GithubApp>,
@@ -215,7 +215,58 @@ fn api_state(
     .with_github_oidc(github_oidc(cfg))
     .with_keyring(keyring);
     state.sso = sso;
+    if let Some(cluster) = cluster {
+        state = state.with_usage(spawn_usage(cluster.primary(), store, health, shutdown));
+    }
     Ok(state)
+}
+
+/// Stores hourly usage (M5.5) in the app's organization.
+struct StoreRollups(kuben_store::Store);
+
+#[async_trait::async_trait]
+impl kuben_platform::usage::RollupSink for StoreRollups {
+    async fn keep(
+        &self,
+        key: &kuben_platform::usage::SeriesKey,
+        r: kuben_platform::usage::Rollup,
+    ) -> anyhow::Result<()> {
+        let org = key.org.parse()?;
+        let mut tenant = self.0.tenant(org).await?;
+        if let Some(target) = tenant.target_by_name(&key.namespace, &key.app).await? {
+            tenant
+                .keep_usage(
+                    target,
+                    (
+                        r.hour,
+                        r.cpu_avg,
+                        r.cpu_max,
+                        r.memory_avg,
+                        r.memory_max,
+                        r.samples,
+                    ),
+                )
+                .await?;
+            tenant.commit().await?;
+        }
+        Ok(())
+    }
+}
+
+/// The live usage window of this replica, and the task that fills it.
+fn spawn_usage(
+    client: kube::Client,
+    store: &kuben_store::Store,
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> Arc<kuben_platform::usage::UsageBuffer> {
+    let buffer = kuben_platform::usage::UsageBuffer::new();
+    let sink: Arc<dyn kuben_platform::usage::RollupSink> = Arc::new(StoreRollups(store.clone()));
+    let (b, h, t) = (buffer.clone(), health.clone(), shutdown.child_token());
+    tokio::spawn(supervise("usage", t, h.clone(), move |tok| {
+        kuben_platform::usage::run(client.clone(), b.clone(), sink.clone(), h.clone(), tok)
+    }));
+    buffer
 }
 
 /// Single sign-on (M4.3), when enabled. A broken configuration stops the
@@ -737,9 +788,10 @@ async fn backup_incident(
     Ok(())
 }
 
-/// The notifier (M4.10): incidents, webhooks and commit statuses from the
-/// outbox. Every replica runs one; they share the work.
-fn spawn_notifier(
+/// The work every replica shares through SQL claims: the notifier (M4.10:
+/// incidents, webhooks and commit statuses from the outbox), the preview
+/// janitor (M5.1) and the image update watcher (M5.4).
+fn spawn_background(
     cfg: &Config,
     store: &kuben_store::Store,
     (github, keyring): (
@@ -748,18 +800,34 @@ fn spawn_notifier(
     ),
     health: &Health,
     shutdown: &CancellationToken,
-) -> tokio::task::JoinHandle<()> {
+) -> Vec<tokio::task::JoinHandle<()>> {
+    let github = github.cloned().map(Arc::new);
     let notifier = kuben_api::notify::Notifier::new(
         store.clone(),
         keyring.clone(),
-        github.cloned().map(Arc::new),
+        github.clone(),
         cfg.notify.clone(),
         cfg.server.public_url.clone(),
     );
+    let janitor = kuben_api::previews::Janitor::new(store.clone(), github);
+    let watcher = kuben_api::image_watch::Watcher::new(
+        store.clone(),
+        Arc::new(kuben_api::oci::RegistryResolver::new()),
+        Some(keyring.clone()),
+    );
     let (h, t) = (health.clone(), shutdown.child_token());
-    tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
+    let notifications = tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
         kuben_api::notify::run(notifier.clone(), h.clone(), tok)
-    }))
+    }));
+    let (h, t) = (health.clone(), shutdown.child_token());
+    let previews = tokio::spawn(supervise("previews", t, h.clone(), move |tok| {
+        kuben_api::previews::run(janitor.clone(), h.clone(), tok)
+    }));
+    let (h, t) = (health.clone(), shutdown.child_token());
+    let images = tokio::spawn(supervise("image-policies", t, h.clone(), move |tok| {
+        kuben_api::image_watch::run(watcher.clone(), h.clone(), tok)
+    }));
+    vec![notifications, previews, images]
 }
 
 async fn watchdog(health: Health, token: CancellationToken) {

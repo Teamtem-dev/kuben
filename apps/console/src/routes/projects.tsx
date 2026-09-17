@@ -3,19 +3,26 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { type FormEvent, useState } from 'react'
 import { Button, Empty, ErrorNote, PageHeader, Status, TextField } from '../components/ui'
 import { createProject, projectQuery, projectsQuery } from '../lib/api'
+import { fill } from '../lib/messages/pages'
+import { usePrefs } from '../lib/prefs'
 
 export function ProjectsPage() {
+  const { t } = usePrefs()
   const { data: projects } = useSuspenseQuery(projectsQuery)
   const [creating, setCreating] = useState(false)
 
   return (
     <section className="space-y-6">
       <PageHeader
-        title="Projects"
-        subtitle={projects.length === 1 ? '1 project' : `${projects.length} projects`}
+        title={t('projects.title')}
+        subtitle={
+          projects.length === 1
+            ? t('projects.countOne')
+            : fill(t('projects.count'), { count: projects.length })
+        }
         actions={
           <Button variant={creating ? 'secondary' : 'primary'} onClick={() => setCreating((v) => !v)}>
-            {creating ? 'Cancel' : 'New project'}
+            {creating ? t('ui.cancel') : t('projects.new')}
           </Button>
         }
       />
@@ -23,7 +30,7 @@ export function ProjectsPage() {
       {creating && <CreateProjectForm onDone={() => setCreating(false)} />}
 
       {projects.length === 0 ? (
-        <Empty>No projects yet. A project groups environments such as staging and production.</Empty>
+        <Empty>{t('projects.empty')}</Empty>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => (
@@ -34,13 +41,22 @@ export function ProjectsPage() {
                 className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="truncate font-medium">{p.display_name}</span>
-                  <Status ready={p.ready} label={p.deleting ? 'Deleting' : undefined} />
+                  <span dir="auto" className="truncate font-medium">
+                    {p.display_name}
+                  </span>
+                  <Status ready={p.ready} label={p.deleting ? t('projects.deleting') : undefined} />
                 </div>
                 <p className="mt-1 font-mono text-subtle text-xs">
-                  {p.name} · {p.environments === 1 ? '1 environment' : `${p.environments} environments`}
+                  {p.name} ·{' '}
+                  {p.environments === 1
+                    ? t('projects.environmentsOne')
+                    : fill(t('projects.environments'), { count: p.environments })}
                 </p>
-                {p.description && <p className="mt-2 line-clamp-2 text-muted text-sm">{p.description}</p>}
+                {p.description && (
+                  <p dir="auto" className="mt-2 line-clamp-2 text-muted text-sm">
+                    {p.description}
+                  </p>
+                )}
               </Link>
             </li>
           ))}
@@ -51,6 +67,7 @@ export function ProjectsPage() {
 }
 
 function CreateProjectForm({ onDone }: { onDone: () => void }) {
+  const { t } = usePrefs()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const mutation = useMutation({
@@ -81,27 +98,31 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
       className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2"
     >
       <TextField
-        label="Name"
+        label={t('projects.name')}
         name="name"
         required
         pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
         maxLength={40}
         placeholder="shop"
-        hint="Lowercase letters, digits and dashes."
+        hint={t('projects.nameHint')}
       />
       <TextField
-        label="Display name"
+        label={t('projects.displayName')}
         name="display_name"
         required
         maxLength={100}
         placeholder="Online Shop"
       />
       <div className="sm:col-span-2">
-        <TextField label="Description" name="description" placeholder="Optional" />
+        <TextField
+          label={t('projects.description')}
+          name="description"
+          placeholder={t('projects.optional')}
+        />
       </div>
       <div className="flex items-center gap-3 sm:col-span-2">
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Creating…' : 'Create project'}
+          {mutation.isPending ? t('ui.creating') : t('projects.create')}
         </Button>
         <ErrorNote error={mutation.error} />
       </div>

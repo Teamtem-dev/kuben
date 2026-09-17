@@ -3,12 +3,15 @@ import { getRouteApi } from '@tanstack/react-router'
 import { type FormEvent, useState } from 'react'
 import { Badge, Button, Card, ErrorNote, PageHeader, Select, TextField } from '../components/ui'
 import { inviteMember, membersQuery, removeMember, updateMember } from '../lib/api'
+import { fill } from '../lib/messages/pages'
+import { usePrefs } from '../lib/prefs'
 
 const route = getRouteApi('/_authed')
 const ROLES = ['viewer', 'developer', 'admin', 'owner'] as const
 
 export function TeamPage() {
   const { me } = route.useRouteContext()
+  const { t } = usePrefs()
   const { data: members } = useSuspenseQuery(membersQuery)
   const queryClient = useQueryClient()
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['members'] })
@@ -41,23 +44,26 @@ export function TeamPage() {
 
   return (
     <section className="space-y-6">
-      <PageHeader
-        title="Team"
-        subtitle="Roles are hierarchical: viewer < developer < admin < owner. Nobody can grant a role above their own."
-      />
+      <PageHeader title={t('nav.team')} subtitle={t('team.lead')} />
 
-      <Card title="Invite a member">
+      <Card title={t('team.invite')}>
         <form onSubmit={onInvite} className="grid gap-3 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
-          <TextField label="Email" name="email" type="email" required placeholder="carol@example.com" />
-          <Select label="Role" name="role" defaultValue="developer">
+          <TextField
+            label={t('login.email')}
+            name="email"
+            type="email"
+            required
+            placeholder="carol@example.com"
+          />
+          <Select label={t('team.role')} name="role" defaultValue="developer">
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {r}
+                {t(`team.role.${r}`)}
               </option>
             ))}
           </Select>
           <Button type="submit" disabled={invite.isPending}>
-            {invite.isPending ? 'Inviting…' : 'Invite'}
+            {invite.isPending ? t('team.inviting') : t('team.inviteButton')}
           </Button>
         </form>
         <div className="mt-3 space-y-3">
@@ -65,10 +71,13 @@ export function TeamPage() {
           {invited && (
             <div role="status" className="rounded-lg border border-ok/30 bg-ok/5 p-3 text-sm">
               <p>
-                Temporary password for <strong>{invited.email}</strong> — shown once. They must replace it at
-                first sign-in.
+                {t('team.tempPasswordFor')} <strong dir="ltr">{invited.email}</strong>{' '}
+                {t('team.tempPasswordNote')}
               </p>
-              <code className="mt-2 block select-all rounded bg-inset px-2 py-1 font-mono">
+              <code
+                dir="ltr"
+                className="mt-2 block select-all rounded bg-inset px-2 py-1 text-start font-mono"
+              >
                 {invited.password}
               </code>
             </div>
@@ -76,23 +85,24 @@ export function TeamPage() {
         </div>
       </Card>
 
-      <Card title={`Members (${members.length})`}>
+      <Card title={fill(t('team.members'), { count: members.length })}>
         <ErrorNote error={change.error ?? remove.error} />
         <ul className="divide-y divide-line-soft">
           {members.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <div className="min-w-0">
                 <p className="truncate font-medium text-sm">
-                  {m.display_name ?? m.email} {m.id === me.id && <Badge>you</Badge>}
+                  <span dir="auto">{m.display_name ?? m.email}</span>{' '}
+                  {m.id === me.id && <Badge>{t('team.you')}</Badge>}
                 </p>
                 <p className="truncate text-subtle text-xs">
-                  {m.email}
-                  {m.must_change_password && ' · invitation pending'}
+                  <span dir="ltr">{m.email}</span>
+                  {m.must_change_password && ` · ${t('team.invitationPending')}`}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <select
-                  aria-label={`Role of ${m.email}`}
+                  aria-label={fill(t('team.roleOf'), { email: m.email })}
                   value={m.role}
                   disabled={m.id === me.id || change.isPending}
                   onChange={(e) => change.mutate({ id: m.id, role: e.target.value })}
@@ -100,7 +110,7 @@ export function TeamPage() {
                 >
                   {ROLES.map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {t(`team.role.${r}`)}
                     </option>
                   ))}
                 </select>
@@ -109,7 +119,7 @@ export function TeamPage() {
                   disabled={m.id === me.id || remove.isPending}
                   onClick={() => remove.mutate(m.id)}
                 >
-                  Remove
+                  {t('ui.remove')}
                 </Button>
               </div>
             </li>

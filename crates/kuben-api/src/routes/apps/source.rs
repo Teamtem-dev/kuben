@@ -144,6 +144,7 @@ fn new_binding(body: &PutSource) -> Result<NewBinding, ApiError> {
                 .filter(|p| !p.is_root()),
         },
         image_repository: image_repository(&body.image_repository)?,
+        pull_request: None,
     })
 }
 
@@ -330,6 +331,16 @@ pub async fn put(
     github(&state)?;
     let new = new_binding(&body)?;
     let mut tenant = state.store.tenant(t.org).await?;
+    if tenant
+        .binding_of_target(t.target)
+        .await?
+        .is_some_and(|b| b.pull_request.is_some())
+    {
+        return Err(Error::Conflict(
+            "a preview's app follows its pull request; change the source environment's app instead".into(),
+        )
+        .into());
+    }
     let reference = format!("{project}/{environment}/{app}");
     let (binding, sync) = bind_and_sync(&mut tenant, &authz, (t.project, t.target), &new, reference).await?;
     tenant.commit().await?;

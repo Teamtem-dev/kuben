@@ -30,9 +30,12 @@ pub mod crud;
 pub mod deployments;
 pub mod doctor;
 pub mod domains;
+pub mod evidence;
 pub mod export;
+pub mod image_policy;
 pub mod jobs;
 pub mod logs;
+pub mod metrics;
 pub mod promote;
 pub mod releases;
 pub mod scans;
@@ -539,6 +542,7 @@ pub(crate) fn started(started: Started) -> ApiResult<()> {
         Started::SecretRevoked => Err(secret_revoked().into()),
         Started::VulnerabilityBlocked => Err(vulnerability_blocked().into()),
         Started::Frozen => Err(frozen().into()),
+        Started::Untrusted => Err(untrusted().into()),
         Started::KeyReused(_) => {
             Err(Error::Internal("a deployment without a key was a replay".into()).into())
         }
@@ -554,6 +558,11 @@ pub(crate) fn secret_revoked() -> Error {
 }
 
 /// A run refused because the environment is frozen.
+/// A run of an untrusted preview that would bind a secret (M5.1).
+pub(crate) fn untrusted() -> Error {
+    Error::Conflict("this preview comes from a fork: it cannot use secrets or registry logins".into())
+}
+
 pub(crate) fn frozen() -> Error {
     Error::Conflict(
         "the environment is frozen: only an emergency rollback passes until the freeze ends".into(),

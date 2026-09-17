@@ -71,15 +71,15 @@ const LOCK_TARGET: &str = "SELECT application_id, build_config_revision, deletin
      WHERE id = $1 AND org_id = $2 AND project_id = $3 FOR UPDATE";
 const BINDING_COLUMNS: &str = "b.id, b.org_id, b.project_id, b.application_id, b.target_id, \
      b.installation_id, b.repository, b.repository_id, b.branch, b.recipe::text AS recipe, \
-     b.image_repository, b.head_sha, b.head_epoch";
+     b.image_repository, b.head_sha, b.head_epoch, b.pull_request";
 const INSERT_BINDING: &str = "INSERT INTO source_bindings \
      (id, org_id, project_id, application_id, target_id, provider, installation_id, repository, \
-      branch, recipe, image_repository, created_at, updated_at) \
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $12)";
+      branch, recipe, image_repository, pull_request, created_at, updated_at) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $13, $12, $12)";
 const UPDATE_BINDING: &str = "UPDATE source_bindings \
      SET installation_id = $2, repository = $3, branch = $4, recipe = $5::jsonb, image_repository = $6, \
          repository_id = CASE WHEN repository = $3 THEN repository_id END, \
-         head_sha = NULL, updated_at = $7 \
+         head_sha = NULL, updated_at = $7, pull_request = $8 \
      WHERE id = $1";
 const RAISE_BUILD_CONFIG: &str =
     "UPDATE application_targets SET build_config_revision = build_config_revision + 1 WHERE id = $1";
@@ -145,6 +145,8 @@ pub struct NewBinding {
     pub recipe: BuildRecipe,
     /// Where builds push, without tag or digest.
     pub image_repository: String,
+    /// Follow this pull request's head instead of `branch` (a preview, M5.1).
+    pub pull_request: Option<u64>,
 }
 
 /// A target's Git source.
@@ -165,6 +167,8 @@ pub struct SourceBinding {
     /// The last head read from the provider, and the source epoch it got.
     pub head_sha: Option<CommitSha>,
     pub head_epoch: SourceEpoch,
+    /// The pull request a preview's binding follows (M5.1).
+    pub pull_request: Option<u64>,
 }
 
 /// The outcome of [`Tenant::bind_source`].
@@ -318,6 +322,7 @@ struct BindingRow {
     image_repository: String,
     head_sha: Option<String>,
     head_epoch: i64,
+    pull_request: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -405,6 +410,7 @@ impl TryFrom<BindingRow> for SourceBinding {
             image_repository: r.image_repository,
             head_sha: r.head_sha.map(|s| s.parse().map_err(decode)).transpose()?,
             head_epoch: SourceEpoch(counter(r.head_epoch)?),
+            pull_request: r.pull_request.map(counter).transpose()?,
         })
     }
 }
@@ -576,6 +582,7 @@ impl Tenant {
                 .bind(&recipe)
                 .bind(&new.image_repository)
                 .bind(now)
+                .bind(new.pull_request.map(signed).transpose()?)
                 .execute(&mut *self.tx)
                 .await?;
             return Ok(Bound::Created(id));
@@ -584,7 +591,8 @@ impl Tenant {
             && existing.repository == new.repository
             && existing.branch == new.branch
             && existing.recipe == new.recipe
-            && existing.image_repository == new.image_repository;
+            && existing.image_repository == new.image_repository
+            && existing.pull_request == new.pull_request;
         if same {
             return Ok(Bound::Unchanged(existing.id));
         }
@@ -596,6 +604,7 @@ impl Tenant {
             .bind(&recipe)
             .bind(&new.image_repository)
             .bind(now)
+            .bind(new.pull_request.map(signed).transpose()?)
             .execute(&mut *self.tx)
             .await?;
         sqlx::query(RAISE_BUILD_CONFIG)
@@ -641,7 +650,7 @@ impl Tenant {
         let sql = format!(
             "SELECT {BINDING_COLUMNS} FROM source_bindings b \
              WHERE b.provider = $1 AND b.installation_id = $2 AND b.repository = $3 AND b.branch = $4 \
-               AND b.org_id = $5 ORDER BY b.id"
+               AND b.org_id = $5 AND b.pull_request IS NULL ORDER BY b.id"
         );
         let rows: Vec<BindingRow> = sqlx::query_as(AssertSqlSafe(sql))
             .bind(GITHUB)
@@ -1190,6 +1199,7 @@ impl Tenant {
             Started::SecretRevoked => (None, "SecretRevoked".into(), None),
             Started::VulnerabilityBlocked => (None, "VulnerabilityBlocked".into(), None),
             Started::Frozen => (None, "EnvironmentFrozen".into(), None),
+            Started::Untrusted => (None, "UntrustedPreview".into(), None),
             Started::Replayed(_) | Started::KeyReused(_) => (None, "Replayed".into(), None),
         })
     }
@@ -1237,6 +1247,7 @@ mod tests {
             branch: "main".parse().expect("branch"),
             recipe: BuildRecipe::default(),
             image_repository: "registry.local/acme/shop".into(),
+            pull_request: None,
         }
     }
 

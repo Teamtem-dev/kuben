@@ -317,6 +317,10 @@ pub(crate) async fn store_revision(
     if e.deleting() {
         return Err(deleting().into());
     }
+    // No secret ever reaches code from outside the repository (M5.1).
+    if tenant.untrusted_environment(e.id()).await? {
+        return Err(super::apps::untrusted().into());
+    }
     let (_, actor) = request::actor(authz);
     let reserved = match tenant
         .reserve_secret_revision(e.project.id(), e.id(), new.name, new.kind, &actor)
@@ -342,16 +346,30 @@ pub(crate) async fn registry_login(
     e: &EnvScope,
     registry: &str,
 ) -> ApiResult<Option<RegistryLogin>> {
-    let Some(current) = tenant.registry_login(e.id(), registry).await? else {
+    if state.keyring.is_none() && tenant.registry_login(e.id(), registry).await?.is_none() {
+        return Ok(None);
+    }
+    Ok(open_registry_login(keyring(state)?, tenant, e.project.org, e.id(), registry).await?)
+}
+
+/// The login of `environment` (of `org`) for `registry`, opened.
+pub(crate) async fn open_registry_login(
+    keyring: &Keyring,
+    tenant: &mut Tenant,
+    org: kuben_core::ids::OrgId,
+    environment: kuben_core::ids::EnvironmentId,
+    registry: &str,
+) -> Result<Option<RegistryLogin>, Error> {
+    let Some(current) = tenant.registry_login(environment, registry).await? else {
         return Ok(None);
     };
-    let (org, id) = (e.project.org.to_string(), current.secret.to_string());
+    let (org, id) = (org.to_string(), current.secret.to_string());
     let who = Identity {
         org: &org,
         secret: &id,
         revision: current.revision,
     };
-    let values = keyring(state)?
+    let values = keyring
         .open_values(who, &current.sealed)
         .map_err(|err| Error::Internal(format!("opening a registry login failed: {err}")))?;
     Ok(RegistryLogin::from_values(&values))
@@ -445,6 +463,7 @@ async fn rotate(
             Started::SecretRevoked => skipped("another secret it references is revoked"),
             Started::VulnerabilityBlocked => skipped("the vulnerability gate refuses its release"),
             Started::Frozen => skipped("the environment is frozen"),
+            Started::Untrusted => skipped("an untrusted preview binds no secrets"),
             Started::NotFound | Started::Replayed(_) | Started::KeyReused(_) => {
                 skipped("the app changed meanwhile")
             }

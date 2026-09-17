@@ -1,0 +1,55 @@
+---
+title: Usage and the Doctor
+description: CPU and memory of your apps, and how the Doctor explains what stops an app, with evidence and confidence.
+sidebar:
+  order: 12
+---
+
+## CPU and memory
+
+When the cluster serves the Kubernetes Metrics API (metrics-server; k3s ships it), Kuben reads the usage of every app every 30 seconds.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://kuben.example.com/api/v1/projects/shop/environments/prod/apps/web/metrics?window=1h"
+```
+
+- **`window=1h`:** the samples of the last hour: CPU in millicores, memory in bytes, and the number of pods, summed over the app's pods.
+- **`window=7d`:** hourly averages and peaks for the last week.
+
+When there is nothing to show, the answer says `"available": false` and gives the `reason`. Usage is **never shown as zero** for lack of data. The reason may be:
+
+- the cluster has no Metrics API;
+- the server replica started a moment ago;
+- the app runs no pods.
+
+Limits keep this light:
+
+| Data | Kept |
+|---|---|
+| Live samples | 1 hour per app, at most 5,000 apps per server replica (the least recently seen app goes first) |
+| Hourly usage | 7 days (`retention.usage_days`) |
+
+## The Doctor's evidence graph
+
+An app's Doctor (`GET …/apps/{app}/doctor`, or **Open Doctor** in the console) still lists its checks. It also shows a **graph** of every layer between the app's source and a visitor, with what was observed at each one:
+
+```
+build → release → deployment → pods → endpoints ← service
+                                          ↓
+                           gateway →    route
+dns, gateway → tls
+```
+
+From the graph it draws **findings**, most important first:
+
+| Kind | Meaning | Confidence |
+|---|---|---|
+| `rootCause` | This layer fails and everything it depends on is fine. | high (medium without evidence) |
+| `possibleCause` | This layer fails, but a layer it depends on could not be observed. | low |
+| `symptom` | This layer fails because a layer it depends on fails. The finding names that layer. | medium |
+| `unknown` | Nothing fails, but some layer could not be observed. Unobserved is never "fine". | low |
+
+Each finding carries its evidence (what was seen), the related layers, and a suggested action.
+
+For example, a crash-looping pod shows up as a root cause at `pods`. The empty `endpoints` and the failing `route` are its symptoms, so you fix one thing, not three.

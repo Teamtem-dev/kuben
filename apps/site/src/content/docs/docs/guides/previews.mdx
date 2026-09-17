@@ -1,0 +1,67 @@
+---
+title: Preview environments
+description: Every pull request gets its own environment with its own URL, deleted when the pull request closes or its lifetime runs out.
+sidebar:
+  order: 9
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+When a project has previews turned on, every pull request to a repository its apps build from gets a **preview**: a separate environment with its own namespace and URL. It runs the pull request's newest commit.
+
+## Turn previews on
+
+Choose the **source environment**. A preview copies every app in it that builds from the pull request's repository.
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"enabled":true,"sourceEnvironment":"staging","ttlHours":72,"maxActive":10}' \
+  https://kuben.example.com/api/v1/projects/shop/previews/policy
+```
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `ttlHours` | 72 | The preview is deleted this long after its last commit (at most 30 days). |
+| `maxActive` | 10 | The most open previews per project. Beyond that, no new preview is created and a warning incident opens. |
+| `allowForks` | `false` | Whether pull requests from forks get a preview (see [Forks](#forks)). |
+
+The GitHub App needs **Pull requests: read** and must receive **Pull request** events.
+
+## What a preview is
+
+- **Name.** The environment is called `pr<number>-<epoch>`, for example `pr12-1`. It has its own namespace (`kb-shop-pr12-1`) and uses the generated hostnames, such as `web-shop-pr12-1.apps.example.com`.
+- **Apps.** Each app is a copy of its source app, built from the pull request's head. **Secret references and custom domains are not copied.** Set a preview's own secrets on its environment if it needs them.
+- **Policy.** The preview keeps the source environment's roles and vulnerability gate. It needs no approvals, so every push deploys.
+- **Updates.** New commits rebuild and redeploy the preview and restart its lifetime.
+- **Deletion.** The preview is deleted when:
+  - the pull request is closed or merged;
+  - its lifetime runs out;
+  - someone destroys it.
+
+  Kuben also checks with GitHub every half hour, so a missed `closed` event still removes the preview. If GitHub's answer is unclear, the preview is kept.
+- **Reopening.** A reopened pull request gets a new epoch (`pr12-2`), with a new environment and namespace. An event older than the close never brings the old preview back.
+
+## Manage previews
+
+```bash
+# list (add ?all=true for closed ones)
+curl -H "Authorization: Bearer $TOKEN" https://kuben.example.com/api/v1/projects/shop/previews
+# more time; "keep": true keeps it past its expiry
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"hours":24}' https://kuben.example.com/api/v1/projects/shop/previews/pr12-1/extend
+# destroy now
+curl -X DELETE -H "Authorization: Bearer $TOKEN" https://kuben.example.com/api/v1/projects/shop/previews/pr12-1
+```
+
+The console lists a project's previews with their remaining time, and has the same actions.
+
+## Forks
+
+A pull request from a fork runs code from outside your repository's writers. Such a preview is created only when `allowForks` is on. It is **untrusted**:
+
+- It cannot bind any secret or registry login. Setting a secret on its environment is refused, and so is a deployment that would use one.
+- It is built from the base repository's `refs/pull/<n>/head`. The build runs in Kuben's isolated build pods, with no cluster credentials.
+
+<Aside type="caution">
+The build of a fork still pushes its image to your registry. Turn `allowForks` on only for repositories whose contributors you trust with that.
+</Aside>

@@ -100,8 +100,10 @@ for (const l of locales) {
         await mockApi(page)
         await page.goto('/projects/shop/prod/web/doctor')
         await expect(page.getByRole('heading', { name: new RegExp(l.doctor) })).toBeVisible()
-        await expect(page.getByText('no DNS record')).toBeVisible()
-        await expect(page.getByText('point the record at the Gateway', { exact: false })).toBeVisible()
+        await expect(page.getByText('no DNS record', { exact: true })).toBeVisible()
+        await expect(
+          page.getByText('point the record at the Gateway', { exact: false }).first(),
+        ).toBeVisible()
         await expectAccessible(page)
         expect(csp).toEqual([])
       })

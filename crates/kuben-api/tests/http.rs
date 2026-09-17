@@ -35,6 +35,7 @@ struct TestApp {
     projections: Arc<Projections>,
     org: OrgId,
     store: Store,
+    usage: Arc<kuben_platform::usage::UsageBuffer>,
 }
 
 /// The test app on a fresh PostgreSQL schema, or `None` (the test skips)
@@ -80,6 +81,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
 
     let health = Health::new();
     health.set_ready(true);
+    let usage = kuben_platform::usage::UsageBuffer::new();
     let projections = Arc::new(Projections::new());
     // CI trust with the fixture's keys, at a time its tokens are valid.
     let oidc = cfg.github_oidc_audience().map(|audience| {
@@ -101,6 +103,9 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     )
     .with_images(images())
     .with_github_oidc(oidc)
+    .with_github(Some(kuben_api::github::GithubApp::webhook_only(HOOK_SECRET)))
+    .with_dns(Arc::new(FakeDns::default()))
+    .with_usage(usage.clone())
     .with_sso(sso)
     .with_keyring(Arc::new(kuben_platform::secrets::Keyring::from_keys([(
         1, [7; 32],
@@ -110,6 +115,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
         projections,
         org: org.id,
         store,
+        usage,
     })
 }
 
@@ -139,6 +145,14 @@ impl ImageResolver for TestImages {
             }),
             _ => Err(ResolveError::Unauthorized(image.to_owned())),
         }
+    }
+
+    async fn list_tags(
+        &self,
+        repository: &str,
+        login: Option<&RegistryLogin>,
+    ) -> Result<Vec<String>, ResolveError> {
+        self.0.list_tags(repository, login).await
     }
 }
 
@@ -3006,6 +3020,13 @@ async fn m4_signed_webhooks_and_incidents() {
             .all(|d| d["status"] == "delivered"),
         "{deliveries}"
     );
+    let delivered = deliveries[0]["id"].as_str().expect("delivery id");
+    let retry = format!("{hooks}/{id}/deliveries/{delivered}/retry");
+    assert_eq!(
+        post_json(&app, &retry, &alice, json!({})).await.0,
+        StatusCode::NOT_FOUND,
+        "only failed deliveries are retried"
+    );
     incidents_are_handled(&app, &alice, &bob).await;
 }
 
@@ -3193,4 +3214,714 @@ async fn target_environment(app: &TestApp) -> kuben_core::ids::EnvironmentId {
         .find(|e| e.slug == "prod")
         .expect("prod")
         .id
+}
+
+/// The webhook secret of the test GitHub App.
+const HOOK_SECRET: &[u8] = b"hook-secret";
+const HEAD: &str = "89abcdef0123456789abcdef0123456789abcdef";
+
+/// POST a signed GitHub delivery.
+async fn github_delivery(
+    app: &TestApp,
+    event: &str,
+    body: &serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    use std::fmt::Write as _;
+    let bytes = body.to_string();
+    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, HOOK_SECRET);
+    let tag = ring::hmac::sign(&key, bytes.as_bytes());
+    let hex = tag.as_ref().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    let req = Request::post("/api/v1/webhooks/github")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("x-hub-signature-256", format!("sha256={hex}"))
+        .header("x-github-event", event)
+        .header("x-github-delivery", uuid::Uuid::now_v7().to_string())
+        .body(Body::from(bytes))
+        .expect("request");
+    send(&app.router, req).await
+}
+
+fn pull(action: &str, number: u64, head_repo: &str, updated_at: &str) -> serde_json::Value {
+    json!({
+        "action": action,
+        "number": number,
+        "pull_request": {
+            "number": number,
+            "state": if action == "closed" { "closed" } else { "open" },
+            "updated_at": updated_at,
+            "head": { "sha": HEAD, "ref": "feature", "repo": { "full_name": head_repo } }
+        },
+        "repository": { "id": 42, "full_name": "acme/shop" },
+        "installation": { "id": 77 }
+    })
+}
+
+/// The test app, built from GitHub: a linked installation and a binding.
+async fn git_app(app: &TestApp) {
+    let target = sql_app(app).await;
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    assert!(t.link_installation(77, "acme").await.expect("link"));
+    let project = t.projects().await.expect("projects")[0].id;
+    let config = json!({
+        "runtime": { "processes": { "web": { "port": 8080 } } },
+        "env": [{ "name": "DB", "fromSecret": { "name": "db", "key": "url" } }],
+        "domains": [{ "host": "shop.example.com" }]
+    });
+    t.create_config_revision(project, target, &config, "user:test")
+        .await
+        .expect("config")
+        .expect("target");
+    let binding = kuben_store::repo::NewBinding {
+        installation_id: 77,
+        repository: "acme/shop".parse().expect("repo"),
+        branch: "main".parse().expect("branch"),
+        recipe: kuben_core::source::BuildRecipe::default(),
+        image_repository: "registry.local/acme/shop".into(),
+        pull_request: None,
+    };
+    t.bind_source(project, target, &binding).await.expect("bind");
+    t.commit().await.expect("commit");
+}
+
+/// M5.1: pull requests open, follow, close and reopen previews; forks
+/// need the project's consent and never get secrets.
+#[tokio::test]
+async fn m5_previews_follow_pull_requests() {
+    let Some(app) = setup().await else { return };
+    git_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let policy = "/api/v1/projects/shop/previews/policy";
+    let settings = json!({ "enabled": true, "sourceEnvironment": "prod", "ttlHours": 2, "maxActive": 5 });
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        policy,
+        Auth::Cookie(&bob),
+        Some(settings.clone()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _, saved) = call(
+        &app.router,
+        "PUT",
+        policy,
+        Auth::Cookie(&alice),
+        Some(settings),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, saved["sourceEnvironment"].clone()),
+        (StatusCode::OK, json!("prod")),
+        "{saved}"
+    );
+
+    let (status, answer) = github_delivery(
+        &app,
+        "pull_request",
+        &pull("opened", 12, "acme/shop", "2026-09-17T10:00:00Z"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{answer}");
+    let previews = "/api/v1/projects/shop/previews";
+    let (_, listed) = send(&app.router, get(previews, &alice)).await;
+    assert_eq!(listed[0]["environment"], "pr12-1", "{listed}");
+    assert_eq!(
+        (listed[0]["trusted"].clone(), listed[0]["state"].clone()),
+        (json!(true), json!("active"))
+    );
+    assert!(listed[0]["remainingSeconds"].as_i64().is_some_and(|s| s > 7000));
+    let (_, apps) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/pr12-1/apps", &alice),
+    )
+    .await;
+    assert_eq!(apps.as_array().map(Vec::len), Some(1), "{apps}");
+    let (_, copied) = send(
+        &app.router,
+        get("/api/v1/projects/shop/environments/pr12-1/apps/api", &alice),
+    )
+    .await;
+    assert_eq!(copied["app"]["env"], json!([]), "no secret references: {copied}");
+    assert_eq!(copied["app"]["domains"], json!([]), "no custom domains");
+
+    let (_, answer) = github_delivery(
+        &app,
+        "pull_request",
+        &pull("synchronize", 12, "acme/shop", "2026-09-17T09:00:00Z"),
+    )
+    .await;
+    assert_eq!(
+        answer["outcome"], "previews",
+        "stale events are accepted but change nothing: {answer}"
+    );
+    let (_, answer) = github_delivery(
+        &app,
+        "pull_request",
+        &pull("opened", 13, "mallory/shop", "2026-09-17T10:00:00Z"),
+    )
+    .await;
+    assert_eq!(answer["outcome"], "previews");
+    let (_, listed) = send(&app.router, get(previews, &alice)).await;
+    assert_eq!(
+        listed.as_array().map(Vec::len),
+        Some(1),
+        "forks need consent: {listed}"
+    );
+
+    close_and_reopen(&app, &alice, previews).await;
+    forks_and_manual_actions(&app, &alice, policy, previews).await;
+}
+
+/// Closing ends a preview; a late event does not revive it; reopening makes a new one.
+async fn close_and_reopen(app: &TestApp, alice: &str, previews: &str) {
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("closed", 12, "acme/shop", "2026-09-17T11:00:00Z"),
+    )
+    .await;
+    let (_, listed) = send(&app.router, get(&format!("{previews}?all=true"), alice)).await;
+    assert_eq!(
+        (listed[0]["state"].clone(), listed[0]["closeReason"].clone()),
+        (json!("closed"), json!("closed"))
+    );
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("synchronize", 12, "acme/shop", "2026-09-17T10:30:00Z"),
+    )
+    .await;
+    let (_, active) = send(&app.router, get(previews, alice)).await;
+    assert_eq!(active, json!([]), "a late event does not bring it back");
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("reopened", 12, "acme/shop", "2026-09-17T12:00:00Z"),
+    )
+    .await;
+    let (_, active) = send(&app.router, get(previews, alice)).await;
+    assert_eq!(active[0]["environment"], "pr12-2", "a new epoch: {active}");
+}
+
+async fn forks_and_manual_actions(app: &TestApp, alice: &str, policy: &str, previews: &str) {
+    let settings = json!({ "enabled": true, "sourceEnvironment": "prod", "allowForks": true });
+    call(
+        &app.router,
+        "PUT",
+        policy,
+        Auth::Cookie(alice),
+        Some(settings),
+        None,
+    )
+    .await;
+    github_delivery(
+        app,
+        "pull_request",
+        &pull("opened", 13, "mallory/shop", "2026-09-17T10:00:00Z"),
+    )
+    .await;
+    let (_, active) = send(&app.router, get(previews, alice)).await;
+    let fork = active
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["pullRequest"] == 13))
+        .expect("fork preview")
+        .clone();
+    assert_eq!(
+        (fork["environment"].clone(), fork["trusted"].clone()),
+        (json!("pr13-1"), json!(false))
+    );
+    let secret = "/api/v1/projects/shop/environments/pr13-1/secrets/db";
+    let (status, _, body) = call(
+        &app.router,
+        "PUT",
+        secret,
+        Auth::Cookie(alice),
+        Some(json!({ "data": { "url": "x" } })),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "no secrets in a fork's preview: {body}"
+    );
+
+    let extend = format!("{previews}/pr13-1/extend");
+    let (status, extended) = post_json(app, &extend, alice, json!({ "hours": 5, "keep": true })).await;
+    assert_eq!(
+        (status, extended["autoDelete"].clone()),
+        (StatusCode::OK, json!(false)),
+        "{extended}"
+    );
+    assert!(extended["remainingSeconds"].as_i64() > fork["remainingSeconds"].as_i64());
+    assert_eq!(
+        post_json(app, &extend, alice, json!({ "hours": 0 })).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let destroy = format!("{previews}/pr13-1");
+    assert_eq!(
+        status_of(&app.router, "DELETE", &destroy, alice, None).await,
+        StatusCode::ACCEPTED
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &destroy, alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+    let (_, all) = send(&app.router, get(&format!("{previews}?all=true"), alice)).await;
+    let closed = all
+        .as_array()
+        .and_then(|a| a.iter().find(|p| p["environment"] == "pr13-1"))
+        .expect("closed");
+    assert_eq!(closed["closeReason"], "manual");
+}
+
+/// DNS for the tests: TXT answers from `TXT_VALUE`, and a provider whose
+/// token `good` holds the zone `example.com`.
+#[derive(Debug, Default)]
+struct FakeDns {
+    records: Arc<std::sync::Mutex<Vec<kuben_api::dns::ProviderRecord>>>,
+}
+
+/// The TXT value the fake resolver answers for every challenge name.
+static TXT_VALUE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+#[async_trait::async_trait]
+impl kuben_api::dns::DnsBackend for FakeDns {
+    async fn txt(&self, _name: &str) -> Result<Vec<String>, kuben_api::dns::DnsError> {
+        let value = TXT_VALUE.lock().expect("lock").clone();
+        Ok(if value.is_empty() { vec![] } else { vec![value] })
+    }
+
+    async fn ns(&self, _name: &str) -> Result<Vec<String>, kuben_api::dns::DnsError> {
+        Ok(vec!["ada.ns.cloudflare.com".into()])
+    }
+
+    fn provider(&self, kind: &str, token: &str) -> Option<Arc<dyn kuben_api::dns::DnsProvider>> {
+        (kind == "cloudflare").then(|| {
+            Arc::new(FakeProvider {
+                good: token == "good",
+                records: self.records.clone(),
+            }) as Arc<dyn kuben_api::dns::DnsProvider>
+        })
+    }
+}
+
+#[derive(Debug)]
+struct FakeProvider {
+    good: bool,
+    records: Arc<std::sync::Mutex<Vec<kuben_api::dns::ProviderRecord>>>,
+}
+
+#[async_trait::async_trait]
+impl kuben_api::dns::DnsProvider for FakeProvider {
+    async fn verify(&self) -> Result<(), kuben_api::dns::DnsError> {
+        if self.good {
+            Ok(())
+        } else {
+            Err(kuben_api::dns::DnsError::Refused("bad token".into()))
+        }
+    }
+
+    async fn zone_for(&self, name: &str) -> Result<Option<kuben_api::dns::Zone>, kuben_api::dns::DnsError> {
+        Ok(
+            (name == "example.com" || name.ends_with(".example.com")).then(|| kuben_api::dns::Zone {
+                id: "z1".into(),
+                name: "example.com".into(),
+                name_servers: vec![],
+            }),
+        )
+    }
+
+    async fn records(
+        &self,
+        _zone: &kuben_api::dns::Zone,
+        name: &str,
+    ) -> Result<Vec<kuben_api::dns::ProviderRecord>, kuben_api::dns::DnsError> {
+        let all = self.records.lock().expect("lock");
+        Ok(all.iter().filter(|r| r.name == name).cloned().collect())
+    }
+
+    async fn create(
+        &self,
+        _zone: &kuben_api::dns::Zone,
+        spec: &kuben_api::dns::RecordSpec,
+        tag: &str,
+    ) -> Result<kuben_api::dns::ProviderRecord, kuben_api::dns::DnsError> {
+        let mut all = self.records.lock().expect("lock");
+        let record = kuben_api::dns::ProviderRecord {
+            id: format!("r{}", all.len() + 1),
+            name: spec.name.clone(),
+            record_type: spec.record_type.clone(),
+            content: spec.content.clone(),
+            proxied: false,
+            comment: Some(tag.into()),
+        };
+        all.push(record.clone());
+        Ok(record)
+    }
+
+    async fn update(
+        &self,
+        zone: &kuben_api::dns::Zone,
+        id: &str,
+        spec: &kuben_api::dns::RecordSpec,
+        tag: &str,
+    ) -> Result<kuben_api::dns::ProviderRecord, kuben_api::dns::DnsError> {
+        self.delete(zone, id).await?;
+        self.create(zone, spec, tag).await
+    }
+
+    async fn delete(&self, _zone: &kuben_api::dns::Zone, id: &str) -> Result<(), kuben_api::dns::DnsError> {
+        self.records.lock().expect("lock").retain(|r| r.id != id);
+        Ok(())
+    }
+}
+
+/// M5.2: domains are claimed and verified by TXT or a provider, another
+/// organization's domain is refused, and an app's records are written once.
+#[tokio::test]
+async fn m5_domain_claims_and_dns_records() {
+    let Some(app) = setup_with(|cfg| cfg.domains.cname_target = Some("lb.example.net".into())).await else {
+        return;
+    };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let body = json!({ "domain": "Shop.Example.com." });
+    assert_eq!(
+        post_json(&app, "/api/v1/domains", &bob, body.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, claim) = post_json(&app, "/api/v1/domains", &alice, body.clone()).await;
+    assert_eq!(
+        (status, claim["domain"].clone()),
+        (StatusCode::CREATED, json!("shop.example.com")),
+        "{claim}"
+    );
+    assert_eq!(claim["challengeName"], "_kuben-challenge.shop.example.com");
+    assert_eq!(
+        post_json(&app, "/api/v1/domains", &alice, body).await.0,
+        StatusCode::CONFLICT
+    );
+    let verify = format!("/api/v1/domains/{}/verify", claim["id"].as_str().expect("id"));
+    let (_, pending) = post_json(&app, &verify, &alice, json!({})).await;
+    assert_eq!(pending["status"], "pending");
+    assert!(
+        pending["lastError"]
+            .as_str()
+            .is_some_and(|e| e.contains("no TXT record")),
+        "{pending}"
+    );
+    *TXT_VALUE.lock().expect("lock") = claim["challengeValue"].as_str().expect("value").to_owned();
+    let (_, verified) = post_json(&app, &verify, &alice, json!({})).await;
+    assert_eq!(
+        (verified["status"].clone(), verified["method"].clone()),
+        (json!("verified"), json!("txt"))
+    );
+    TXT_VALUE.lock().expect("lock").clear();
+
+    let providers = "/api/v1/dns-providers";
+    let bad = json!({ "name": "cf", "kind": "cloudflare", "token": "bad" });
+    assert_eq!(
+        post_json(&app, providers, &alice, bad).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let unknown = json!({ "name": "cf", "kind": "route53", "token": "good" });
+    assert_eq!(
+        post_json(&app, providers, &alice, unknown).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, _) = post_json(
+        &app,
+        providers,
+        &alice,
+        json!({ "name": "cf", "kind": "cloudflare", "token": "good" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, api_claim) = post_json(
+        &app,
+        "/api/v1/domains",
+        &alice,
+        json!({ "domain": "api.example.com" }),
+    )
+    .await;
+    let verify = format!("/api/v1/domains/{}/verify", api_claim["id"].as_str().expect("id"));
+    let (_, by_provider) = post_json(&app, &verify, &alice, json!({ "provider": "cf" })).await;
+    assert_eq!(by_provider["method"], "cloudflare", "{by_provider}");
+    app_records(&app, &alice, target).await;
+}
+
+async fn app_records(app: &TestApp, alice: &str, target: kuben_core::ids::TargetId) {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t.projects().await.expect("projects")[0].id;
+    let config = json!({ "runtime": { "processes": { "web": { "port": 8080 } } }, "domains": [{ "host": "shop.example.com" }] });
+    t.create_config_revision(project, target, &config, "user:test")
+        .await
+        .expect("config");
+    t.commit().await.expect("commit");
+    let dns = "/api/v1/projects/shop/environments/prod/apps/api/dns";
+    let (status, changes) = post_json(app, dns, alice, json!({ "provider": "cf" })).await;
+    assert_eq!(status, StatusCode::OK, "{changes}");
+    assert_eq!(
+        (
+            changes[0]["action"].clone(),
+            changes[0]["recordType"].clone(),
+            changes[0]["content"].clone()
+        ),
+        (json!("created"), json!("CNAME"), json!("lb.example.net"))
+    );
+    let (_, again) = post_json(app, dns, alice, json!({ "provider": "cf" })).await;
+    assert_eq!(again[0]["action"], "unchanged", "{again}");
+    let other = app.store.create_org("rival", "Rival").await.expect("org").id;
+    let mut t = app.store.tenant(other).await.expect("tenant");
+    let claim = uuid::Uuid::now_v7();
+    t.create_claim(claim, "rival.io", &"x".repeat(32), "user:r")
+        .await
+        .expect("claim");
+    t.verify_claim(claim, "txt", None).await.expect("verify");
+    t.commit().await.expect("commit");
+    let taken = json!({ "name": "web2", "image": "nginx:1.27", "port": 8080, "domains": ["www.rival.io"] });
+    let (status, body) = post_json(app, "/api/v1/projects/shop/environments/prod/apps", alice, taken).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "another organization's domain: {body}"
+    );
+    let (status, _) = post_json(app, "/api/v1/domains", alice, json!({ "domain": "rival.io" })).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
+/// M5.3: a published status page is public, cached, and leaks nothing
+/// internal.
+#[tokio::test]
+async fn m5_public_status_pages_show_only_public_facts() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let public = "/api/v1/public/status/shop-status";
+    let (status, _, _) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let incident = kuben_store::repo::NewIncident {
+        project: None,
+        environment: None,
+        target: Some(target),
+        kind: "deployment.failed".into(),
+        severity: "critical",
+        dedupe_key: "k".into(),
+        title: "The deployment of shop/prod/api failed".into(),
+        detail: Some("secret internal detail".into()),
+    };
+    t.open_incident(&incident).await.expect("incident");
+    t.commit().await.expect("commit");
+
+    let page = "/api/v1/projects/shop/status-page";
+    let body = json!({ "slug": "shop-status", "title": "Shop", "environments": ["prod"] });
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        page,
+        Auth::Cookie(&bob),
+        Some(body.clone()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let bad = json!({ "slug": "Shop Status", "title": "Shop", "environments": ["prod"] });
+    let (status, _, _) = call(&app.router, "PUT", page, Auth::Cookie(&alice), Some(bad), None).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let unknown = json!({ "slug": "shop-status", "title": "Shop", "environments": ["nope"] });
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        page,
+        Auth::Cookie(&alice),
+        Some(unknown),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _, saved) = call(&app.router, "PUT", page, Auth::Cookie(&alice), Some(body), None).await;
+    assert_eq!(
+        (status, saved["path"].clone()),
+        (StatusCode::OK, json!("/status/shop-status")),
+        "{saved}"
+    );
+
+    let (status, headers, shown) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
+    assert_eq!(status, StatusCode::OK, "{shown}");
+    assert_eq!(headers[header::CACHE_CONTROL], "public, max-age=15");
+    assert_eq!(shown["title"], "Shop");
+    assert_eq!(
+        shown["components"],
+        json!([{ "name": "API", "status": "degraded" }])
+    );
+    assert_eq!(shown["status"], "degraded");
+    assert_eq!(shown["incidents"][0]["severity"], "critical");
+    assert_eq!(shown["incidents"][0]["component"], "API");
+    let text = shown.to_string();
+    for leak in [
+        "secret internal detail",
+        "shop/prod/api",
+        "kb-shop-prod",
+        &target.to_string(),
+        "deployment.failed",
+    ] {
+        assert!(!text.contains(leak), "{leak} leaked: {text}");
+    }
+    let (status, _, _) = call(&app.router, "DELETE", page, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _, _) = call(&app.router, "GET", public, Auth::Anonymous, None, None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "taken down at once");
+}
+
+/// M5.4: an app follows a SemVer range of its repository; a new digest is
+/// deployed and waits for approval in production; the same digest is not
+/// deployed twice.
+#[tokio::test]
+async fn m5_image_policies_deploy_new_digests() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (status, _) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        POLICY,
+        Auth::Cookie(&alice),
+        Some(policy(1)),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let path = "/api/v1/projects/shop/environments/prod/apps/api/image-policy";
+    let policy = json!({ "repository": "nginx", "pattern": "semver:>=1.26", "intervalSecs": 300 });
+    let put = |cookie: &str, body: serde_json::Value| {
+        let cookie = cookie.to_owned();
+        let router = app.router.clone();
+        async move { call(&router, "PUT", path, Auth::Cookie(&cookie), Some(body), None).await }
+    };
+    assert_eq!(put(&bob, policy.clone()).await.0, StatusCode::FORBIDDEN);
+    let bad = json!({ "repository": "nginx", "pattern": "semver:nope" });
+    assert_eq!(put(&alice, bad).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let fast = json!({ "repository": "nginx", "pattern": "latest", "intervalSecs": 5 });
+    assert_eq!(put(&alice, fast).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _, saved) = put(&alice, policy.clone()).await;
+    assert_eq!(
+        (status, saved["repository"].clone()),
+        (StatusCode::OK, json!("docker.io/library/nginx")),
+        "{saved}"
+    );
+
+    let keyring = Arc::new(kuben_platform::secrets::Keyring::from_keys([(1, [7; 32])]));
+    let watcher = kuben_api::image_watch::Watcher::new(app.store.clone(), images(), Some(keyring));
+    assert_eq!(watcher.pass().await.expect("pass"), 1);
+    let (_, followed) = send(&app.router, get(path, &alice)).await;
+    assert_eq!(
+        (followed["lastTag"].clone(), followed["lastDigest"].clone()),
+        (json!("1.27"), json!(NGINX_127)),
+        "{followed}"
+    );
+    assert!(followed["lastRun"].is_string() && followed["lastError"].is_null());
+    let (_, runs) = send(&app.router, get(DEPLOYMENTS, &alice)).await;
+    let newest = &runs.as_array().expect("runs")[0];
+    assert_eq!(
+        newest["phase"], "awaitingApproval",
+        "production still needs an approval: {newest}"
+    );
+    assert_eq!(
+        newest["requested_by"],
+        target.to_string(),
+        "the policy asked: {newest}"
+    );
+    let count = runs.as_array().map(Vec::len);
+    assert_eq!(watcher.pass().await.expect("pass"), 0, "not due yet");
+    put(&alice, policy).await;
+    assert_eq!(watcher.pass().await.expect("pass"), 1);
+    let (_, again) = send(&app.router, get(DEPLOYMENTS, &alice)).await;
+    assert_eq!(
+        again.as_array().map(Vec::len),
+        count,
+        "the same digest is not deployed twice"
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", path, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        send(&app.router, get(path, &alice)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// M5.5: usage is shown when measured and reported unavailable otherwise,
+/// never as zero.
+#[tokio::test]
+async fn m5_metrics_are_never_invented() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let path = "/api/v1/projects/shop/environments/prod/apps/api/metrics";
+    let (status, empty) = send(&app.router, get(path, &alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (empty["available"].clone(), empty["points"].clone()),
+        (json!(false), json!([])),
+        "{empty}"
+    );
+    assert!(empty["reason"].as_str().is_some_and(|r| r.contains("no samples")));
+    let now = kuben_core::time::now_ms();
+    let key = kuben_platform::usage::SeriesKey {
+        namespace: "kb-shop-prod".into(),
+        app: "api".into(),
+        org: app.org.to_string(),
+    };
+    let sample = kuben_platform::usage::Sample {
+        at: now,
+        cpu_millis: 250,
+        memory_bytes: 64 << 20,
+        pods: 2,
+    };
+    app.usage.record(key, sample);
+    let (_, live) = send(&app.router, get(path, &alice)).await;
+    assert_eq!(live["available"], true, "{live}");
+    assert_eq!(
+        (
+            live["points"][0]["cpuMillis"].clone(),
+            live["points"][0]["pods"].clone()
+        ),
+        (json!(250), json!(2))
+    );
+
+    let week = format!("{path}?window=7d");
+    let (_, none) = send(&app.router, get(&week, &alice)).await;
+    assert_eq!(none["available"], false);
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let hour = kuben_platform::usage::hour_of(now) - 3_600_000;
+    t.keep_usage(target, (hour, 100, 400, 1_000, 2_000, 120))
+        .await
+        .expect("keep");
+    t.commit().await.expect("commit");
+    let (_, rolled) = send(&app.router, get(&week, &alice)).await;
+    assert_eq!(
+        (rolled["available"].clone(), rolled["points"][0]["cpuMax"].clone()),
+        (json!(true), json!(400)),
+        "{rolled}"
+    );
+    assert_eq!(
+        send(&app.router, get(&format!("{path}?window=2d"), &alice))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
 }

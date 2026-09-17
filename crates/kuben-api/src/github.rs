@@ -98,6 +98,15 @@ impl Signer for RsaSigner {
     }
 }
 
+/// A signer without a key.
+struct NoKey;
+
+impl Signer for NoKey {
+    fn sign(&self, _message: &[u8]) -> Result<Vec<u8>, String> {
+        Err("this App has no private key".into())
+    }
+}
+
 /// The DER inside a PEM block, and whether it is PKCS#8.
 fn pem_der(pem: &str) -> Result<(Vec<u8>, bool), String> {
     let (label, pkcs8) = if pem.contains("-----BEGIN RSA PRIVATE KEY-----") {
@@ -276,6 +285,14 @@ impl GithubApp {
         ))
     }
 
+    /// An App that only verifies webhook deliveries signed with `secret`:
+    /// every call to GitHub fails. For tests of the webhook paths.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn webhook_only(secret: &[u8]) -> Self {
+        Self::with_signer(0, Arc::new(NoKey), secret, &GitCfg::default())
+    }
+
     fn with_signer(app_id: u64, signer: Arc<dyn Signer>, secret: &[u8], cfg: &GitCfg) -> Self {
         let schemes = if cfg.github_api_url.starts_with("http://") {
             Schemes::Any
@@ -433,6 +450,79 @@ impl GithubApp {
     }
 }
 
+impl GithubApp {
+    /// The commit `git_ref` (below `refs/`) of `repository` points to.
+    async fn ref_head(
+        &self,
+        installation: u64,
+        repository: &RepoName,
+        git_ref: &str,
+        what: &str,
+    ) -> Result<Head, ProviderError> {
+        let token = self.metadata_token(installation, repository).await?;
+        let auth = format!("Bearer {}", token.token);
+        let repo_path = format!(
+            "/repos/{}/{}",
+            segment(repository.owner()),
+            segment(repository.name())
+        );
+        let (status, body) = self.call(Method::GET, &repo_path, &auth, None).await?;
+        let repo: RepositoryBody = parse(status, &body, repository.as_str())?;
+        let (status, body) = self
+            .call(
+                Method::GET,
+                &format!("{repo_path}/git/ref/{git_ref}"),
+                &auth,
+                None,
+            )
+            .await?;
+        let head: RefBody = parse(status, &body, &format!("{repository}@{what}"))?;
+        let commit = head
+            .object
+            .sha
+            .parse()
+            .map_err(|e: kuben_core::source::InvalidSource| ProviderError::Unavailable(e.to_string()))?;
+        Ok(Head {
+            commit,
+            repository_id: repo.id,
+        })
+    }
+
+    /// Whether pull request `number` of `repository` is open (M5.1). Needs
+    /// the App's "Pull requests: read" permission; without it the answer is
+    /// `Refused`, and nobody concludes the pull request is closed.
+    pub async fn pull_request_open(
+        &self,
+        installation: u64,
+        repository: &RepoName,
+        number: u64,
+    ) -> Result<bool, ProviderError> {
+        let token = self
+            .mint(
+                installation,
+                repository,
+                json!({ "pull_requests": "read", "metadata": "read" }),
+            )
+            .await?;
+        let auth = format!("Bearer {}", token.token);
+        let path = format!(
+            "/repos/{}/{}/pulls/{number}",
+            segment(repository.owner()),
+            segment(repository.name())
+        );
+        let outcome = self.call(Method::GET, &path, &auth, None).await;
+        let _ = self.revoke(&token).await;
+        let (status, body) = outcome?;
+        let pull: PullBody = parse(status, &body, &format!("{repository}#{number}"))?;
+        Ok(pull.state == "open")
+    }
+}
+
+#[derive(Deserialize)]
+struct PullBody {
+    state: String,
+}
+
 /// The JSON of a successful answer, or the matching error.
 fn parse<T: for<'de> Deserialize<'de>>(
     status: StatusCode,
@@ -460,39 +550,34 @@ impl SourceProvider for GithubApp {
         repository: &RepoName,
         branch: &BranchName,
     ) -> Result<Head, ProviderError> {
-        let token = self.metadata_token(installation, repository).await?;
-        let auth = format!("Bearer {}", token.token);
-        let repo_path = format!(
-            "/repos/{}/{}",
-            segment(repository.owner()),
-            segment(repository.name())
-        );
-        let (status, body) = self.call(Method::GET, &repo_path, &auth, None).await?;
-        let repo: RepositoryBody = parse(status, &body, repository.as_str())?;
-        let branch_path = branch
+        let path = branch
             .as_str()
             .split('/')
             .map(segment)
             .collect::<Vec<_>>()
             .join("/");
-        let (status, body) = self
-            .call(
-                Method::GET,
-                &format!("{repo_path}/git/ref/heads/{branch_path}"),
-                &auth,
-                None,
-            )
-            .await?;
-        let head: RefBody = parse(status, &body, &format!("{repository}@{branch}"))?;
-        let commit = head
-            .object
-            .sha
-            .parse()
-            .map_err(|e: kuben_core::source::InvalidSource| ProviderError::Unavailable(e.to_string()))?;
-        Ok(Head {
-            commit,
-            repository_id: repo.id,
-        })
+        self.ref_head(
+            installation,
+            repository,
+            &format!("heads/{path}"),
+            branch.as_str(),
+        )
+        .await
+    }
+
+    async fn pull_head(
+        &self,
+        installation: u64,
+        repository: &RepoName,
+        number: u64,
+    ) -> Result<Head, ProviderError> {
+        self.ref_head(
+            installation,
+            repository,
+            &format!("pull/{number}/head"),
+            &format!("#{number}"),
+        )
+        .await
     }
 
     async fn fetch_token(
