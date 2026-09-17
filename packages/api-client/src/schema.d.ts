@@ -185,6 +185,57 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's incidents, newest first. */
+        get: operations["listIncidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an open incident: someone is on it. */
+        post: operations["acknowledgeIncident"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve an open incident by hand (a success resolves it on its own). */
+        post: operations["resolveIncident"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -1284,6 +1335,75 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's webhook endpoints. */
+        get: operations["listWebhooks"];
+        put?: never;
+        /** Add a webhook endpoint; the answer holds its signing secret, once. */
+        post: operations["createWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disable a webhook endpoint for good. */
+        delete: operations["disableWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest deliveries to an endpoint. */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{id}/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a `ping` event to an endpoint. */
+        post: operations["pingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -1564,6 +1684,14 @@ export type components = {
              */
             tokenTtlSecs?: number | null;
         };
+        CreateEndpoint: {
+            /** @example ops-pager */
+            name: string;
+            /** @example https://hooks.example.com/kuben */
+            url: string;
+            /** @description Event types, or `*` for all. */
+            events: string[];
+        };
         CreateEnvironment: {
             /**
              * @description Short name, e.g. `prod` (the object is named `<project>-<name>`).
@@ -1656,6 +1784,20 @@ export type components = {
             comment?: string | null;
             /** Format: int64 */
             decidedAt: number;
+        };
+        DeliveryDto: {
+            /** Format: uuid */
+            id: string;
+            event: string;
+            /** @description `pending`, `delivered` or `failed`. */
+            status: string;
+            /** Format: int32 */
+            attempts: number;
+            /** Format: int32 */
+            lastStatus?: number | null;
+            lastError?: string | null;
+            createdAt: string;
+            finishedAt?: string | null;
         };
         /**
          * @description Why a run exists.
@@ -1771,6 +1913,23 @@ export type components = {
              */
             release?: string | null;
         };
+        EndpointDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            url: string;
+            events: string[];
+            createdBy: string;
+            createdAt: string;
+            disabledAt?: string | null;
+            /**
+             * Format: int32
+             * @description Deliveries given up in a row; the endpoint is disabled at 20.
+             */
+            failures: number;
+            /** @description The signing secret: shown once, when the endpoint is made. */
+            secret?: string | null;
+        };
         /** @enum {string} */
         EnvType: "standard" | "production" | "preview";
         /** @description Environment variable: a plain `value` or a `secret` reference. */
@@ -1849,6 +2008,29 @@ export type components = {
             scan?: null | components["schemas"]["ScanDto"];
             /** @description An SBOM can be downloaded. */
             sbom: boolean;
+        };
+        IncidentDto: {
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            /** @description `critical`, `warning` or `info`. */
+            severity: string;
+            title: string;
+            detail?: string | null;
+            /** Format: uuid */
+            project?: string | null;
+            /** Format: uuid */
+            environment?: string | null;
+            /** Format: uuid */
+            app?: string | null;
+            openedAt: string;
+            lastSeenAt: string;
+            /** Format: int64 */
+            occurrences: number;
+            acknowledgedAt?: string | null;
+            acknowledgedBy?: string | null;
+            resolvedAt?: string | null;
+            resolvedBy?: string | null;
         };
         InstallationDto: {
             /** Format: int64 */
@@ -2823,6 +3005,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthDetails"];
+                };
+            };
+        };
+    };
+    listIncidents: {
+        parameters: {
+            query?: {
+                /** @description Include resolved incidents. */
+                all?: boolean;
+                /** @description At most this many (default 100). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDto"][];
+                };
+            };
+        };
+    };
+    acknowledgeIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Incident id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Acknowledged */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resolveIncident: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Incident id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6244,6 +6508,161 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                 };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEndpoint"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EndpointDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    disableWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryDto"][];
+                };
+            };
+        };
+    };
+    pingWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Endpoint id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: {
                 headers: {

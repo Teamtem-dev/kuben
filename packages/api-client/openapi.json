@@ -507,6 +507,123 @@
         }
       }
     },
+    "/api/v1/incidents": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "The organization's incidents, newest first.",
+        "operationId": "listIncidents",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include resolved incidents.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "At most this many (default 100).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/incidents/{id}/acknowledge": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Acknowledge an open incident: someone is on it.",
+        "operationId": "acknowledgeIncident",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Incident id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Acknowledged"
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/incidents/{id}/resolve": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Resolve an open incident by hand (a success resolves it on its own).",
+        "operationId": "resolveIncident",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Incident id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Resolved"
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [
@@ -5866,6 +5983,207 @@
           }
         }
       }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "The organization's webhook endpoints.",
+        "operationId": "listWebhooks",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EndpointDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Add a webhook endpoint; the answer holds its signing secret, once.",
+        "operationId": "createWebhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEndpoint"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}": {
+      "delete": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Disable a webhook endpoint for good.",
+        "operationId": "disableWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Disabled"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "The newest deliveries to an endpoint.",
+        "operationId": "listWebhookDeliveries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/ping": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "summary": "Send a `ping` event to an endpoint.",
+        "operationId": "pingWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Endpoint id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6669,6 +6987,32 @@
         },
         "additionalProperties": false
       },
+      "CreateEndpoint": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "events"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "ops-pager"
+          },
+          "url": {
+            "type": "string",
+            "example": "https://hooks.example.com/kuben"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Event types, or `*` for all."
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateEnvironment": {
         "type": "object",
         "required": [
@@ -6892,6 +7236,55 @@
           "decidedAt": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "DeliveryDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "event",
+          "status",
+          "attempts",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending`, `delivered` or `failed`."
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastStatus": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -7168,6 +7561,60 @@
         },
         "additionalProperties": false
       },
+      "EndpointDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "createdBy",
+          "createdAt",
+          "failures"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "disabledAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Deliveries given up in a row; the endpoint is disabled at 20."
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The signing secret: shown once, when the endpoint is made."
+          }
+        }
+      },
       "EnvType": {
         "type": "string",
         "enum": [
@@ -7439,6 +7886,95 @@
           "sbom": {
             "type": "boolean",
             "description": "An SBOM can be downloaded."
+          }
+        }
+      },
+      "IncidentDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "severity",
+          "title",
+          "openedAt",
+          "lastSeenAt",
+          "occurrences"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "description": "`critical`, `warning` or `info`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "app": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "openedAt": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          },
+          "occurrences": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "acknowledgedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "acknowledgedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -9102,6 +9638,10 @@
     {
       "name": "security",
       "description": "Vulnerability exceptions"
+    },
+    {
+      "name": "incidents",
+      "description": "Incidents and signed webhooks"
     },
     {
       "name": "git",

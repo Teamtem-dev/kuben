@@ -42,10 +42,17 @@ const CLAIM: &str = "UPDATE operations \
                  FOR UPDATE SKIP LOCKED \
                  LIMIT 1) \
      RETURNING id, org_id, kind, attempt, fence";
-const FINISH: &str = "UPDATE operations \
-     SET phase = $3, done = TRUE, error_code = $4, lease_owner = NULL, lease_until = NULL, \
-         last_progress_at = kuben_now_ms() \
-     WHERE id = $1 AND fence = $2 AND NOT done";
+/// Settle the operation and leave a `<kind>.settled` message (M4.10) in the
+/// same statement.
+const FINISH: &str = "WITH settled AS (UPDATE operations \
+       SET phase = $3, done = TRUE, error_code = $4, lease_owner = NULL, lease_until = NULL, \
+           last_progress_at = kuben_now_ms() \
+       WHERE id = $1 AND fence = $2 AND NOT done \
+       RETURNING id, org_id, kind) \
+     INSERT INTO outbox (id, org_id, operation_id, topic, payload, created_at, available_at) \
+     SELECT gen_random_uuid(), org_id, id, kind || '.settled', \
+            jsonb_build_object('phase', $3::text, 'code', $4::text), kuben_now_ms(), kuben_now_ms() \
+     FROM settled";
 const RETRY: &str = "UPDATE operations \
      SET next_attempt_at = kuben_now_ms() + $3, error_code = $4, lease_owner = NULL, lease_until = NULL, \
          last_progress_at = kuben_now_ms() \
@@ -64,7 +71,7 @@ const TAKE_OUTBOX: &str = "UPDATE outbox SET available_at = kuben_now_ms() + $2,
                   ORDER BY available_at, id \
                   FOR UPDATE SKIP LOCKED \
                   LIMIT $1) \
-     RETURNING id, org_id, operation_id, topic, payload::text AS payload, attempts";
+     RETURNING id, org_id, operation_id, topic, payload::text AS payload, attempts, created_at";
 const OUTBOX_DELIVERED: &str =
     "UPDATE outbox SET delivered_at = kuben_now_ms() WHERE id = $1 AND delivered_at IS NULL";
 const INSERT_INBOX: &str = "INSERT INTO inbox (provider, delivery_id, org_id, body_sha256, receipt, received_at) \
@@ -132,6 +139,8 @@ pub struct OutboxMessage {
     pub topic: String,
     pub payload: serde_json::Value,
     pub attempts: i32,
+    /// When the message was written (Unix milliseconds).
+    pub created_at: i64,
 }
 
 /// The outcome of [`Store::receive`].
@@ -162,6 +171,7 @@ struct OutboxRow {
     topic: String,
     payload: String,
     attempts: i32,
+    created_at: i64,
 }
 
 fn millis(d: Duration) -> i64 {
@@ -383,6 +393,7 @@ impl Store {
                     topic: r.topic,
                     payload: serde_json::from_str(&r.payload).map_err(|e| sqlx::Error::Decode(e.into()))?,
                     attempts: r.attempts,
+                    created_at: r.created_at,
                 })
             })
             .collect()

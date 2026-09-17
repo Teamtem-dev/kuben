@@ -102,6 +102,13 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     tasks.extend(spawn_builds(&cfg, &store, cluster.as_ref(), github.clone(), &health, &shutdown).await?);
+    tasks.push(spawn_notifier(
+        &cfg,
+        &store,
+        (github.as_ref(), &keyring),
+        &health,
+        &shutdown,
+    ));
 
     if let Some(link) = agent_link {
         let (h, t) = (health.clone(), shutdown.child_token());
@@ -657,11 +664,73 @@ async fn watch_backups(cfg: Config, store: kuben_store::Store, health: Health, t
             ),
             Err(e) => Err(format!("cannot read the backups: {e}")),
         };
-        match state {
+        match &state {
             Ok(_) => health.ok("backups"),
-            Err(problem) => health.degraded("backups", &problem),
+            Err(problem) => health.degraded("backups", problem),
+        }
+        if let Err(e) = backup_incident(&cfg, &store, state.err()).await {
+            tracing::warn!(error = %e, "the backup incident was not updated");
         }
     }
+}
+
+/// Open an incident of the installation's organization while backups are
+/// stale (`problem`), and resolve it once they are not.
+async fn backup_incident(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    problem: Option<String>,
+) -> anyhow::Result<()> {
+    const KEY: &str = "backup:stale";
+    let Some(org) = store.installation_org(&cfg.bootstrap.org_slug).await? else {
+        return Ok(());
+    };
+    let mut tenant = store.tenant(org).await?;
+    match problem {
+        Some(detail) => {
+            let incident = kuben_store::repo::NewIncident {
+                project: None,
+                environment: None,
+                target: None,
+                kind: "backup.stale".into(),
+                severity: "critical",
+                dedupe_key: KEY.into(),
+                title: "Database backups are stale".into(),
+                detail: Some(detail),
+            };
+            tenant.open_incident(&incident).await?;
+        }
+        None => {
+            tenant.resolve_incident_key(KEY, "system:backups").await?;
+        }
+    }
+    tenant.commit().await?;
+    Ok(())
+}
+
+/// The notifier (M4.10): incidents, webhooks and commit statuses from the
+/// outbox. Every replica runs one; they share the work.
+fn spawn_notifier(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    (github, keyring): (
+        Option<&kuben_api::github::GithubApp>,
+        &Arc<kuben_platform::secrets::Keyring>,
+    ),
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    let notifier = kuben_api::notify::Notifier::new(
+        store.clone(),
+        keyring.clone(),
+        github.cloned().map(Arc::new),
+        cfg.notify.clone(),
+        cfg.server.public_url.clone(),
+    );
+    let (h, t) = (health.clone(), shutdown.child_token());
+    tokio::spawn(supervise("notifications", t, h.clone(), move |tok| {
+        kuben_api::notify::run(notifier.clone(), h.clone(), tok)
+    }))
 }
 
 async fn watchdog(health: Health, token: CancellationToken) {

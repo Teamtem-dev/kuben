@@ -9,6 +9,7 @@ pub mod controls;
 pub mod environments;
 pub mod git;
 pub mod health;
+pub mod incidents;
 pub mod members;
 pub mod policy;
 pub mod projects;

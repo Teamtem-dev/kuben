@@ -197,6 +197,15 @@ struct InstallationBody {
     suspended_at: Option<String>,
 }
 
+/// A commit status to report.
+#[derive(Clone, Copy, Debug)]
+pub struct CommitStatus<'a> {
+    pub state: &'a str,
+    pub context: &'a str,
+    pub description: &'a str,
+    pub target_url: Option<&'a str>,
+}
+
 /// An installation as GitHub describes it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Installation {
@@ -361,6 +370,44 @@ impl GithubApp {
             token: body.token,
             expires_at: expiry(&body.expires_at),
         })
+    }
+
+    /// Report `state` (`pending`, `success`, `failure` or `error`) for
+    /// `commit` of `repository` under `context` (M4.10). The App needs the
+    /// `statuses: write` permission.
+    pub async fn commit_status(
+        &self,
+        installation: u64,
+        repository: &RepoName,
+        commit: &str,
+        status: &CommitStatus<'_>,
+    ) -> Result<(), ProviderError> {
+        let token = self
+            .mint(installation, repository, json!({ "statuses": "write" }))
+            .await?;
+        let path = format!(
+            "/repos/{}/{}/statuses/{}",
+            segment(repository.owner()),
+            segment(repository.name()),
+            segment(commit)
+        );
+        let mut body = json!({
+            "state": status.state,
+            "context": status.context,
+            "description": status.description.chars().take(140).collect::<String>(),
+        });
+        if let Some(url) = status.target_url {
+            body["target_url"] = json!(url);
+        }
+        let (code, answer) = self
+            .call(
+                Method::POST,
+                &path,
+                &format!("Bearer {}", token.token),
+                Some(body),
+            )
+            .await?;
+        parse::<serde_json::Value>(code, &answer, &format!("the status of {repository}@{commit}")).map(|_| ())
     }
 
     async fn metadata_token(

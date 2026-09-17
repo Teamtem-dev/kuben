@@ -8,8 +8,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     auth,
     routes::{
-        access, apps, audit, ci, controls, environments, git, health, members, policy, projects, registries,
-        secrets, templates, tokens, vulnerabilities,
+        access, apps, audit, ci, controls, environments, git, health, incidents, members, policy, projects,
+        registries, secrets, templates, tokens, vulnerabilities,
     },
     state::ApiState,
 };
@@ -28,6 +28,7 @@ use crate::{
         (name = "apps", description = "Apps, rollouts, releases, logs, scheduled runs and promotion"),
         (name = "secrets", description = "Write-only environment secrets and registry logins"),
         (name = "security", description = "Vulnerability exceptions"),
+        (name = "incidents", description = "Incidents and signed webhooks"),
         (name = "git", description = "GitHub App installations for Git sources"),
         (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
@@ -97,6 +98,13 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(secrets::revoke))
         .routes(routes!(registries::list))
         .routes(routes!(registries::put, registries::delete))
+        .routes(routes!(incidents::list))
+        .routes(routes!(incidents::acknowledge))
+        .routes(routes!(incidents::resolve))
+        .routes(routes!(incidents::list_endpoints, incidents::create_endpoint))
+        .routes(routes!(incidents::disable_endpoint))
+        .routes(routes!(incidents::ping))
+        .routes(routes!(incidents::deliveries))
         .routes(routes!(vulnerabilities::list, vulnerabilities::create))
         .routes(routes!(vulnerabilities::revoke))
         .routes(routes!(templates::list))

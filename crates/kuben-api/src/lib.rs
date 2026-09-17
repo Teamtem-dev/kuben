@@ -13,6 +13,7 @@ pub mod client;
 pub mod error;
 pub mod github;
 pub mod host;
+pub mod notify;
 pub mod oci;
 pub mod oidc;
 pub mod openapi;

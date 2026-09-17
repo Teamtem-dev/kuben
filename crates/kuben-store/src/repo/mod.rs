@@ -15,6 +15,7 @@ mod deployments;
 mod installs;
 mod lifecycle;
 mod materialize;
+mod notify;
 mod operations;
 mod orgs;
 mod policies;
@@ -50,6 +51,9 @@ pub use lifecycle::{
     TARGET_DELETE,
 };
 pub use materialize::{Materialization, Materialized, RunPlan};
+pub use notify::{
+    DeliveryRecord, Endpoint, Incident, MAX_ENDPOINT_FAILURES, NewIncident, OperationContext, WebhookDelivery,
+};
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
 pub use policies::{ApprovalRecord, Decided, PolicyRevision, RunApproval};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};

@@ -43,6 +43,7 @@ pub struct Config {
     pub secrets: SecretsCfg,
     pub quota: QuotaCfg,
     pub backup: BackupCfg,
+    pub notify: NotifyCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -489,6 +490,17 @@ impl SsoCfg {
             require_verified_email: self.require_verified_email,
         })
     }
+}
+
+/// Webhooks and commit statuses (M4.10).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotifyCfg {
+    /// Deliver webhooks to private, loopback and link-local addresses too
+    /// (by default they are refused: an endpoint could reach inside).
+    pub allow_private_targets: bool,
+    /// Allow `http://` endpoints (by default only `https://`).
+    pub allow_http: bool,
 }
 
 /// Backups of the database (M4.7). `kuben backup` writes them (a systemd

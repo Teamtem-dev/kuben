@@ -2839,3 +2839,218 @@ async fn succeed(app: &TestApp, run: &serde_json::Value) -> uuid::Uuid {
     t.commit().await.expect("commit");
     *release.as_uuid()
 }
+
+/// A webhook receiver on loopback: every request (headers and body) goes
+/// to the channel and is answered with 204.
+async fn receiver() -> (String, tokio::sync::mpsc::UnboundedReceiver<(String, Vec<u8>)>) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let url = format!("http://{}/hook", listener.local_addr().expect("addr"));
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Ok((mut conn, _)) = listener.accept().await {
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            let (head, body_at) = loop {
+                let n = conn.read(&mut chunk).await.expect("read");
+                assert!(n > 0, "the request ended early");
+                buf.extend_from_slice(&chunk[..n]);
+                if let Some(at) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break (String::from_utf8_lossy(&buf[..at]).to_lowercase(), at + 4);
+                }
+            };
+            let length: usize = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            while buf.len() < body_at + length {
+                let n = conn.read(&mut chunk).await.expect("read");
+                assert!(n > 0, "the body ended early");
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            let body = buf[body_at..body_at + length].to_vec();
+            conn.write_all(b"HTTP/1.1 204 No Content\r\nconnection: close\r\ncontent-length: 0\r\n\r\n")
+                .await
+                .expect("write");
+            let _ = tx.send((head, body));
+        }
+    });
+    (url, rx)
+}
+
+/// The notifier the test app would run.
+fn notifier(app: &TestApp) -> kuben_api::notify::Notifier {
+    let cfg = kuben_core::config::NotifyCfg {
+        allow_private_targets: true,
+        allow_http: true,
+    };
+    kuben_api::notify::Notifier::new(
+        app.store.clone(),
+        Arc::new(kuben_platform::secrets::Keyring::from_keys([(1, [7; 32])])),
+        None,
+        cfg,
+        Some("https://kuben.example.com".into()),
+    )
+}
+
+/// Fail the deployment `run` started, as the materializer would.
+async fn fail_operation(app: &TestApp) {
+    let claim = app
+        .store
+        .claim_operation(
+            "test",
+            &[kuben_store::repo::RUN_KIND],
+            std::time::Duration::from_mins(1),
+        )
+        .await
+        .expect("claim")
+        .expect("an operation");
+    assert!(
+        app.store
+            .finish_operation(&claim, "failed", Some("RolloutFailed"))
+            .await
+            .expect("finish")
+    );
+}
+
+/// M4.10: webhooks are created by admins, signed, delivered and listed;
+/// a failed deployment opens an incident that can be acknowledged and
+/// resolved.
+#[tokio::test]
+async fn m4_signed_webhooks_and_incidents() {
+    let Some(app) = setup_with(|cfg| {
+        cfg.notify.allow_private_targets = true;
+        cfg.notify.allow_http = true;
+    })
+    .await
+    else {
+        return;
+    };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (url, mut received) = receiver().await;
+    let endpoint = json!({ "name": "pager", "url": url, "events": ["deployment.failed", "incident.opened"] });
+    let hooks = "/api/v1/webhooks";
+    assert_eq!(
+        post_json(&app, hooks, &bob, endpoint.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let unknown = json!({ "name": "x", "url": url, "events": ["nope"] });
+    assert_eq!(
+        post_json(&app, hooks, &alice, unknown).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let ftp = json!({ "name": "x", "url": "ftp://example.com/", "events": ["*"] });
+    assert_eq!(
+        post_json(&app, hooks, &alice, ftp).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, made) = post_json(&app, hooks, &alice, endpoint.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    assert_eq!(
+        post_json(&app, hooks, &alice, endpoint).await.0,
+        StatusCode::CONFLICT
+    );
+    let secret = made["secret"].as_str().expect("secret").to_owned();
+    assert!(secret.starts_with("whsec_"));
+    let (_, listed) = send(&app.router, get(hooks, &alice)).await;
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+    assert!(listed[0].get("secret").is_none(), "shown once");
+    let id = made["id"].as_str().expect("id");
+    let ping = format!("{hooks}/{id}/ping");
+    assert_eq!(
+        post_json(&app, &ping, &alice, json!({})).await.0,
+        StatusCode::ACCEPTED
+    );
+
+    let (status, _) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    fail_operation(&app).await;
+    let notifier = notifier(&app);
+    assert!(
+        notifier.consume().await.expect("consume") >= 2,
+        "accepted and settled"
+    );
+    assert_eq!(
+        notifier.deliver().await.expect("deliver"),
+        3,
+        "ping, failure, incident"
+    );
+    let mut events = Vec::new();
+    for _ in 0..3 {
+        let (head, body) = received.recv().await.expect("delivery");
+        let t: i64 = head
+            .lines()
+            .find_map(|l| l.strip_prefix("kuben-signature: t="))
+            .and_then(|v| v.split(',').next())
+            .and_then(|v| v.parse().ok())
+            .expect("signed");
+        let expected = kuben_api::notify::signature(secret.as_bytes(), t, &body).to_lowercase();
+        assert!(head.contains(&format!("kuben-signature: {expected}")), "{head}");
+        let event = head
+            .lines()
+            .find_map(|l| l.strip_prefix("kuben-event: "))
+            .expect("event");
+        events.push(event.to_owned());
+    }
+    events.sort();
+    assert_eq!(events, ["deployment.failed", "incident.opened", "ping"]);
+    let (_, deliveries) = send(&app.router, get(&format!("{hooks}/{id}/deliveries"), &alice)).await;
+    assert!(
+        deliveries
+            .as_array()
+            .expect("list")
+            .iter()
+            .all(|d| d["status"] == "delivered"),
+        "{deliveries}"
+    );
+    incidents_are_handled(&app, &alice, &bob).await;
+}
+
+/// The failed deployment's incident: listed, acknowledged and resolved.
+async fn incidents_are_handled(app: &TestApp, alice: &str, bob: &str) {
+    let (_, open) = send(&app.router, get("/api/v1/incidents", alice)).await;
+    let open = open.as_array().expect("list").clone();
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(
+        (
+            open[0]["kind"].clone(),
+            open[0]["severity"].clone(),
+            open[0]["detail"].clone()
+        ),
+        (
+            json!("deployment.failed"),
+            json!("critical"),
+            json!("RolloutFailed")
+        )
+    );
+    let incident = open[0]["id"].as_str().expect("id");
+    let ack = format!("/api/v1/incidents/{incident}/acknowledge");
+    assert_eq!(
+        post_json(app, &ack, bob, json!({})).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post_json(app, &ack, alice, json!({})).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let resolve = format!("/api/v1/incidents/{incident}/resolve");
+    assert_eq!(
+        post_json(app, &resolve, alice, json!({})).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        post_json(app, &resolve, alice, json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, open) = send(&app.router, get("/api/v1/incidents", alice)).await;
+    assert_eq!(open, json!([]));
+    let (_, all) = send(&app.router, get("/api/v1/incidents?all=true", alice)).await;
+    assert_eq!(
+        all[0]["acknowledgedBy"].as_str().map(|s| s.starts_with("user:")),
+        Some(true),
+        "{all}"
+    );
+}
