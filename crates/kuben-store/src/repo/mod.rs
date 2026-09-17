@@ -19,6 +19,7 @@ mod policies;
 mod product;
 mod releases;
 mod resolve;
+mod secrets;
 mod sessions;
 mod sso;
 mod throttle;
@@ -47,6 +48,10 @@ pub use policies::{ApprovalRecord, Decided, PolicyRevision, RunApproval};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};
+pub use secrets::{
+    BoundSecret, KeyringCheck, Reserved, Revoked, SealedBytes, SecretBinding, SecretDeleted,
+    SecretRevisionInfo, SecretSummary, StaleSeal,
+};
 pub use sessions::NewSession;
 pub use sso::{PendingSso, SsoSignIn};
 pub use throttle::ThrottleWindow;

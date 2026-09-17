@@ -81,6 +81,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(ci::revoke))
         .routes(routes!(secrets::list))
         .routes(routes!(secrets::put, secrets::delete))
+        .routes(routes!(secrets::revisions))
+        .routes(routes!(secrets::revoke))
         .routes(routes!(templates::list))
         .routes(routes!(templates::deploy))
         .routes(routes!(tokens::list, tokens::create))

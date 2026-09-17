@@ -167,6 +167,7 @@ impl Worker {
         self.ensure(Api::<Environment>::all(self.client.clone()), &environment, m.org)
             .await?;
         self.wait_namespace(&m.namespace, token).await?;
+        self.write_secrets(m).await?;
         self.orphan_app(m).await?;
         let mut tenant = self.store.tenant(m.org).await?;
         let plan = tenant
@@ -342,6 +343,7 @@ mod tests {
             render_plan: None,
             restarted_at: None,
             approval_expires_at: None,
+            secrets: Vec::new(),
         }
     }
 

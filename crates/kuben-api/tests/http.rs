@@ -100,7 +100,10 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     )
     .with_images(images())
     .with_github_oidc(oidc)
-    .with_sso(sso);
+    .with_sso(sso)
+    .with_keyring(Arc::new(kuben_platform::secrets::Keyring::from_keys([(
+        1, [7; 32],
+    )])));
     Some(TestApp {
         router: kuben_api::router(state),
         projections,
@@ -2252,4 +2255,146 @@ async fn m4_sso_refuses_everything_else() {
             "no session for {code}"
         );
     }
+}
+
+const SECRETS: &str = "/api/v1/projects/shop/environments/prod/secrets";
+
+/// A deploy of shop's app reading `DATABASE_URL` from secret `db`.
+async fn deploy_with_secret(app: &TestApp, cookie: &str, expected: u64) -> (StatusCode, serde_json::Value) {
+    let body = json!({
+        "image": format!("ghcr.io/acme/api@{DIGEST}"),
+        "config": {
+            "runtime": { "processes": { "web": { "port": 8080 } } },
+            "env": [{ "name": "DATABASE_URL", "fromSecret": { "name": "db", "key": "url" } }],
+        },
+        "expected_generation": expected,
+    });
+    let (status, _, run) = call(
+        &app.router,
+        "POST",
+        DEPLOYMENTS,
+        Auth::Cookie(cookie),
+        Some(body),
+        None,
+    )
+    .await;
+    (status, run)
+}
+
+async fn put_secret(app: &TestApp, cookie: &str, url: &str) -> (StatusCode, serde_json::Value) {
+    let body = json!({ "data": { "url": url } });
+    let (status, _, secret) = call(
+        &app.router,
+        "PUT",
+        &format!("{SECRETS}/db"),
+        Auth::Cookie(cookie),
+        Some(body),
+        None,
+    )
+    .await;
+    (status, secret)
+}
+
+async fn bound_revision(app: &TestApp, run: &serde_json::Value) -> Vec<u64> {
+    let run: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    t.run_secret_bindings(kuben_core::ids::DeploymentRunId::from_uuid(run))
+        .await
+        .expect("bindings")
+        .into_iter()
+        .map(|b| b.revision)
+        .collect()
+}
+
+/// M4.4: a secret is a series of encrypted revisions; a new value is rolled
+/// out to the apps that reference it, and a revoked one is never deployed.
+#[tokio::test]
+async fn m4_secret_values_are_revisions_rolled_out_to_their_apps() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+
+    let (status, first) = put_secret(&app, &alice, "postgres://one").await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(
+        (first["revision"].clone(), first["storage"].clone()),
+        (json!(1), json!("encrypted"))
+    );
+    assert!(first.get("rollouts").is_none(), "no app uses it yet");
+    assert_eq!(put_secret(&app, &bob, "x").await.0, StatusCode::FORBIDDEN);
+    let (_, _, listed) = call(&app.router, "GET", SECRETS, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(listed[0]["keys"], json!(["url"]));
+    assert!(
+        !listed.to_string().contains("postgres://"),
+        "values are never returned"
+    );
+
+    let (status, run) = deploy_with_secret(&app, &alice, 0).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(bound_revision(&app, &run).await, [1]);
+
+    let (status, second) = put_secret(&app, &alice, "postgres://two").await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(second["revision"], 2);
+    let rollout = &second["rollouts"][0];
+    assert_eq!(
+        (rollout["app"].clone(), rollout["skipped"].clone()),
+        (json!("api"), json!(null))
+    );
+    let rotation = json!({ "run": rollout["run"] });
+    assert_eq!(bound_revision(&app, &rotation).await, [2]);
+
+    let revisions = format!("{SECRETS}/db/revisions");
+    let (_, _, history) = call(&app.router, "GET", &revisions, Auth::Cookie(&alice), None, None).await;
+    let seen: Vec<_> = history
+        .as_array()
+        .expect("revisions")
+        .iter()
+        .map(|r| (r["revision"].clone(), r["current"].clone()))
+        .collect();
+    assert_eq!(seen, [(json!(2), json!(true)), (json!(1), json!(false))]);
+    assert_eq!(
+        status_of(&app.router, "DELETE", &format!("{SECRETS}/db"), &alice, None).await,
+        StatusCode::CONFLICT,
+        "the app references it"
+    );
+
+    let revoke = |n: u64| format!("{revisions}/{n}/revoke");
+    for (n, expected) in [
+        (2, StatusCode::NO_CONTENT),
+        (2, StatusCode::CONFLICT),
+        (9, StatusCode::NOT_FOUND),
+    ] {
+        assert_eq!(
+            status_of(&app.router, "POST", &revoke(n), &alice, None).await,
+            expected,
+            "revision {n}"
+        );
+    }
+    let (status, refused) = deploy_with_secret(&app, &alice, 2).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    let (status, third) = put_secret(&app, &alice, "postgres://three").await;
+    assert_eq!((status, third["revoked"].clone()), (StatusCode::OK, json!(false)));
+}
+
+/// M4.4: a production rotation waits for its approval like any change.
+#[tokio::test]
+async fn m4_production_rotations_wait_for_approval() {
+    let Some(app) = setup().await else { return };
+    let (alice, bob, _carol) = protected(&app).await;
+    put_secret(&app, &alice, "postgres://one").await;
+    let (status, run) = deploy_with_secret(&app, &alice, 0).await;
+    assert_eq!(
+        (status, run["phase"].clone()),
+        (StatusCode::ACCEPTED, json!("awaitingApproval"))
+    );
+    let (status, secret) = put_secret(&app, &alice, "postgres://two").await;
+    assert_eq!(status, StatusCode::OK, "{secret}");
+    assert_eq!(secret["rollouts"][0]["approvals_required"], 1);
+    let body = json!({ "data": { "url": "x" }, "rollout": false });
+    assert_eq!(
+        status_of(&app.router, "PUT", &format!("{SECRETS}/db"), &bob, Some(body)).await,
+        StatusCode::FORBIDDEN
+    );
 }

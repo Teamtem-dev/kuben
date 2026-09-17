@@ -311,6 +311,7 @@ pub async fn start(
         Started::NotFound => {
             return Err(Error::NotFound("that release or configuration of this app".into()).into());
         }
+        Started::SecretRevoked => return Err(super::secret_revoked().into()),
     };
     let location = format!(
         "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{}",

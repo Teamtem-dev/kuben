@@ -297,7 +297,12 @@ function Secrets({ project, environment }: { project: string; environment: strin
               <li key={s.name} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <span className="font-mono text-sm">{s.name}</span>
-                  <p className="truncate text-subtle text-xs">{s.keys.join(', ')}</p>
+                  <p className="truncate text-subtle text-xs">
+                    {s.keys.join(', ')}
+                    {s.revision != null && ` · revision ${s.revision}`}
+                    {s.storage === 'cluster' && ' · stored in the cluster'}
+                    {s.revoked && ' · revoked: set a new value before deploying'}
+                  </p>
                 </div>
                 <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(s.name)}>
                   Remove
@@ -323,7 +328,7 @@ function Secrets({ project, environment }: { project: string; environment: strin
               label="Keys"
               name="data"
               placeholder="url=postgres://…"
-              hint="One key=value per line. Saving replaces the whole secret."
+              hint="One key=value per line. Saving stores a new encrypted revision and rolls it out to the apps that use it."
             />
           </div>
           <div className="flex items-center gap-3 sm:col-span-3">

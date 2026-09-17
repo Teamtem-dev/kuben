@@ -843,11 +843,52 @@ export type paths = {
             cookie?: never;
         };
         get?: never;
-        /** Create or replace a secret. */
+        /**
+         * Set a secret's values: a new revision, rolled out unless `rollout` is
+         *     false.
+         */
         put: operations["putSecret"];
         post?: never;
-        /** Delete a secret created through Kuben. */
+        /** Delete a secret. Refused while an app of the environment references it. */
         delete: operations["deleteSecret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The revisions of an encrypted secret, newest first (no values). */
+        get: operations["listSecretRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions/{revision}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a revision for good: runs bound to it fail instead of delivering
+         *     it. Revoking the current revision blocks deployments until a new value is
+         *     set.
+         */
+        post: operations["revokeSecretRevision"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1674,10 +1715,12 @@ export type components = {
             role: string;
         };
         PutSecret: {
-            /** @description Key → UTF-8 value. Replaces the whole secret. */
+            /** @description Key → UTF-8 value. Replaces the whole secret with a new revision. */
             data: {
                 [key: string]: string;
             };
+            /** @description Roll the new value out to the apps that reference the secret. */
+            rollout?: boolean;
         };
         PutSource: {
             /**
@@ -1735,6 +1778,19 @@ export type components = {
              */
             revision: number;
         };
+        /** @description One app's rollout of a new secret value. */
+        RolloutDto: {
+            app: string;
+            /**
+             * Format: uuid
+             * @description The rotation run; `None` when the app could not take one now.
+             */
+            run?: string | null;
+            /** Format: int32 */
+            approvals_required: number;
+            /** @description Why there is no run. */
+            skipped?: string | null;
+        };
         RunJob: {
             /** @description Scheduled process to run (default: the first one). */
             process?: string | null;
@@ -1744,11 +1800,37 @@ export type components = {
             /** @description Key names only; values are never returned. */
             keys: string[];
             created_at?: string | null;
+            storage: components["schemas"]["SecretStorage"];
+            /**
+             * Format: int64
+             * @description The current revision of an encrypted secret.
+             */
+            revision?: number | null;
+            /** @description The current revision is revoked: set a new value before deploying. */
+            revoked: boolean;
+            updated_at?: string | null;
+            /** @description The runs that roll a new value out, after a change. */
+            rollouts?: components["schemas"]["RolloutDto"][];
         };
         SecretRef: {
             name: string;
             key: string;
         };
+        SecretRevisionDto: {
+            /** Format: int64 */
+            revision: number;
+            keys: string[];
+            current: boolean;
+            created_by: string;
+            created_at: string;
+            revoked_at?: string | null;
+            revoked_by?: string | null;
+        };
+        /**
+         * @description Where a secret's values are kept.
+         * @enum {string}
+         */
+        SecretStorage: "encrypted" | "cluster";
         SetupRequest: {
             /** @example ACME */
             org_name: string;
@@ -4376,14 +4458,6 @@ export interface operations {
                     "application/json": components["schemas"]["SecretDto"][];
                 };
             };
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
         };
     };
     putSecret: {
@@ -4414,7 +4488,15 @@ export interface operations {
                     "application/json": components["schemas"]["SecretDto"];
                 };
             };
-            /** @description A secret with this name exists and is not managed by Kuben */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The environment is being deleted */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4424,6 +4506,14 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4457,6 +4547,93 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An app references the secret */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listSecretRevisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Secret name */
+                secret: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretRevisionDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeSecretRevision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Secret name */
+                secret: string;
+                /** @description Revision */
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Revoked already */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -128,6 +128,9 @@ pub enum RunReason {
     /// A verified build of the target's current source head, deployed by the
     /// compare-and-set of [`TargetState::try_autodeploy`] (M3).
     Build,
+    /// The same release and configuration with the current revisions of the
+    /// secrets it references (M4.4).
+    Rotation,
 }
 
 impl RunReason {
@@ -141,6 +144,7 @@ impl RunReason {
             Self::Restart => ChangeKind::Restart,
             Self::Handover => ChangeKind::Handover,
             Self::Build => ChangeKind::Build,
+            Self::Rotation => ChangeKind::Rotation,
         }
     }
 
@@ -153,6 +157,7 @@ impl RunReason {
             Self::Restart => "restart",
             Self::Handover => "handover",
             Self::Build => "build",
+            Self::Rotation => "rotation",
         }
     }
 }
@@ -194,6 +199,9 @@ pub enum Started {
     Rejected(Reject),
     /// No such target, or the release, revision or plan is not its own.
     NotFound,
+    /// The current revision of a secret the configuration references is
+    /// revoked: a new value must be set first.
+    SecretRevoked,
 }
 
 /// The outcome of [`Store::advance_run`].
@@ -381,7 +389,8 @@ impl Tenant {
                 | RunReason::Promotion
                 | RunReason::Restart
                 | RunReason::Handover
-                | RunReason::Build => state.deploy_explicit(lifecycle, expected),
+                | RunReason::Build
+                | RunReason::Rotation => state.deploy_explicit(lifecycle, expected),
             },
         )
         .await
@@ -439,6 +448,10 @@ impl Tenant {
             Ok(generation) => generation,
             Err(reject) => return Ok(Started::Rejected(reject)),
         };
+        let secrets = self.wanted_secrets(req.config_revision, req.target).await?;
+        if secrets.iter().any(|s| s.revoked) {
+            return Ok(Started::SecretRevoked);
+        }
 
         let run = DeploymentRunId::new();
         let op = NewOperation {
@@ -466,6 +479,7 @@ impl Tenant {
         let approvals_required = self
             .record_run(req, row.application_id, run, operation, generation, state.policy)
             .await?;
+        self.bind_run_secrets(run, &secrets).await?;
         Ok(Started::Accepted {
             operation,
             run,

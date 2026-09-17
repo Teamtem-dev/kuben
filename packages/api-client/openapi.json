@@ -3781,16 +3781,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
           }
         }
       }
@@ -3800,7 +3790,7 @@
         "tags": [
           "secrets"
         ],
-        "summary": "Create or replace a secret.",
+        "summary": "Set a secret's values: a new revision, rolled out unless `rollout` is\nfalse.",
         "operationId": "putSecret",
         "parameters": [
           {
@@ -3852,8 +3842,18 @@
               }
             }
           },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "409": {
-            "description": "A secret with this name exists and is not managed by Kuben",
+            "description": "The environment is being deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -3871,6 +3871,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       },
@@ -3878,7 +3888,7 @@
         "tags": [
           "secrets"
         ],
-        "summary": "Delete a secret created through Kuben.",
+        "summary": "Delete a secret. Refused while an app of the environment references it.",
         "operationId": "deleteSecret",
         "parameters": [
           {
@@ -3915,6 +3925,153 @@
           },
           "404": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An app references the secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "The revisions of an encrypted secret, newest first (no values).",
+        "operationId": "listSecretRevisions",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "secret",
+            "in": "path",
+            "description": "Secret name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SecretRevisionDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}/revisions/{revision}/revoke": {
+      "post": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Revoke a revision for good: runs bound to it fail instead of delivering\nit. Revoking the current revision blocks deployments until a new value is\nset.",
+        "operationId": "revokeSecretRevision",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "secret",
+            "in": "path",
+            "description": "Secret name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "description": "Revision",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revoked already",
             "content": {
               "application/json": {
                 "schema": {
@@ -6387,15 +6544,20 @@
         "properties": {
           "data": {
             "type": "object",
-            "description": "Key → UTF-8 value. Replaces the whole secret.",
+            "description": "Key → UTF-8 value. Replaces the whole secret with a new revision.",
             "additionalProperties": {
               "type": "string"
             },
             "propertyNames": {
               "type": "string"
             }
+          },
+          "rollout": {
+            "type": "boolean",
+            "description": "Roll the new value out to the apps that reference the secret."
           }
-        }
+        },
+        "additionalProperties": false
       },
       "PutSource": {
         "type": "object",
@@ -6529,6 +6691,39 @@
           }
         }
       },
+      "RolloutDto": {
+        "type": "object",
+        "description": "One app's rollout of a new secret value.",
+        "required": [
+          "app",
+          "approvals_required"
+        ],
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "run": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The rotation run; `None` when the app could not take one now."
+          },
+          "approvals_required": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there is no run."
+          }
+        }
+      },
       "RunJob": {
         "type": "object",
         "properties": {
@@ -6545,7 +6740,9 @@
         "type": "object",
         "required": [
           "name",
-          "keys"
+          "keys",
+          "storage",
+          "revoked"
         ],
         "properties": {
           "name": {
@@ -6563,6 +6760,35 @@
               "string",
               "null"
             ]
+          },
+          "storage": {
+            "$ref": "#/components/schemas/SecretStorage"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The current revision of an encrypted secret.",
+            "minimum": 0
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "The current revision is revoked: set a new value before deploying."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rollouts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutDto"
+            },
+            "description": "The runs that roll a new value out, after a change."
           }
         }
       },
@@ -6580,6 +6806,58 @@
             "type": "string"
           }
         }
+      },
+      "SecretRevisionDto": {
+        "type": "object",
+        "required": [
+          "revision",
+          "keys",
+          "current",
+          "created_by",
+          "created_at"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SecretStorage": {
+        "type": "string",
+        "description": "Where a secret's values are kept.",
+        "enum": [
+          "encrypted",
+          "cluster"
+        ]
       },
       "SetupRequest": {
         "type": "object",

@@ -492,10 +492,19 @@ pub(crate) fn started(started: Started) -> ApiResult<()> {
         Started::Accepted { .. } | Started::Replayed(_) => Ok(()),
         Started::Rejected(reject) => Err(Error::Conflict(reject.to_string()).into()),
         Started::NotFound => Err(Error::NotFound("that release of this app".into()).into()),
+        Started::SecretRevoked => Err(secret_revoked().into()),
         Started::KeyReused(_) => {
             Err(Error::Internal("a deployment without a key was a replay".into()).into())
         }
     }
+}
+
+/// A run refused because a secret it references has a revoked current
+/// revision.
+pub(crate) fn secret_revoked() -> Error {
+    Error::Conflict(
+        "a secret this app references has its current revision revoked: set a new value first".into(),
+    )
 }
 
 /// Create the app `name` from `spec` in environment `e` (shared by

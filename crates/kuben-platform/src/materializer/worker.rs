@@ -168,6 +168,9 @@ pub struct Worker {
     /// The cluster's discovered capabilities; plans wait for them. Without a
     /// channel (tests), plans follow `KubenConfig` alone.
     facts: Option<Facts>,
+    /// Opens the secret revisions runs are bound to; runs bound to any
+    /// fail without it.
+    pub(super) keyring: Option<std::sync::Arc<crate::secrets::Keyring>>,
 }
 
 impl Debug for Worker {
@@ -205,6 +208,7 @@ impl Worker {
             deletion_check: DELETION_CHECK,
             agents: None,
             facts: None,
+            keyring: None,
         }
     }
 
@@ -219,6 +223,13 @@ impl Worker {
     #[must_use]
     pub fn with_agents(mut self, agents: std::sync::Arc<dyn super::agent::AgentDispatch>) -> Self {
         self.agents = Some(agents);
+        self
+    }
+
+    /// Open managed secret revisions with `keyring`.
+    #[must_use]
+    pub fn with_keyring(mut self, keyring: std::sync::Arc<crate::secrets::Keyring>) -> Self {
+        self.keyring = Some(keyring);
         self
     }
 
@@ -267,6 +278,12 @@ impl Worker {
             Ok(never) => match never {},
             Err(stop) => stop,
         };
+        if matches!(stop, Stop::Settled(RunPhase::Succeeded, _))
+            && !m.secrets.is_empty()
+            && let Err(e) = self.collect_secrets(&m).await
+        {
+            tracing::warn!(run = %m.run, error = %e, "unused secret revisions stay for now");
+        }
         match stop {
             Stop::Refused(code) => self.end(claim, &m, RunEvent::Failed, Some(code)).await,
             Stop::Superseded => self.end(claim, &m, RunEvent::Superseded, None).await,
@@ -368,6 +385,7 @@ impl Worker {
         self.ensure(Api::<Environment>::all(self.client.clone()), &environment, m.org)
             .await?;
         self.wait_namespace(&m.namespace, token).await?;
+        self.write_secrets(m).await?;
         let app = self.write_app(m, &rendered.app).await?;
         let (Some(uid), Some(generation)) = (app.metadata.uid.as_deref(), app.metadata.generation) else {
             return Err(Error::Incomplete(format!("App/{}", m.application_slug)).into());

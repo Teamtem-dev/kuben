@@ -78,6 +78,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
     let github = github_app(&cfg)?;
     let sso = sso_client(&cfg)?;
+    let keyring = secret_keyring(&cfg, &store).await?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -92,6 +93,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             agent_link
                 .as_ref()
                 .map(kuben_platform::agentlink::AgentLink::dispatch),
+            &keyring,
             &shutdown,
         )
     } else {
@@ -123,15 +125,8 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     }
 
     if cfg.has_role(Role::Api) {
-        let state = kuben_api::ApiState::new(
-            cfg.clone(),
-            store.clone(),
-            cluster.clone(),
-            projections.clone(),
-            health.clone(),
-            Arc::new(StaticPolicy),
-        );
-        let app = kuben_api::router(with_integrations(state, &cfg, github.clone(), sso.clone()));
+        let parts = (&store, cluster.as_ref(), &projections, &health);
+        let app = kuben_api::router(api_state(&cfg, parts, (github.clone(), sso, keyring)));
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -160,6 +155,22 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The keyring of managed secrets (M4.4), checked against the keys this
+/// installation has used; older revisions are resealed under its current
+/// key. A keyring that is not the installation's stops the server.
+async fn secret_keyring(
+    cfg: &Config,
+    store: &kuben_store::Store,
+) -> anyhow::Result<Arc<kuben_platform::secrets::Keyring>> {
+    let file = cfg.secret_keyring_file();
+    let keyring = kuben_platform::secrets::Keyring::load_or_create(&file).context("secret keyring")?;
+    kuben_platform::secrets::prepare(store, &keyring)
+        .await
+        .context("secret keyring")?;
+    tracing::info!(file = %file.display(), key_version = keyring.current(), "secret keyring ready");
+    Ok(Arc::new(keyring))
+}
+
 /// The GitHub App of Git sources (M3), when configured. A configured App
 /// whose key cannot be read stops the server instead of silently building
 /// nothing.
@@ -173,14 +184,33 @@ fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubAp
     Ok(Some(app))
 }
 
-/// The API state with the Git and CI integrations the configuration enables.
-fn with_integrations(
-    state: kuben_api::ApiState,
+/// The API state, with the Git, CI and single sign-on integrations the
+/// configuration enables and the secret keyring.
+fn api_state(
     cfg: &Config,
-    github: Option<kuben_api::github::GithubApp>,
-    sso: Option<Arc<kuben_api::sso::SsoClient>>,
+    (store, cluster, projections, health): (
+        &kuben_store::Store,
+        Option<&ClusterRegistry>,
+        &Arc<Projections>,
+        &Health,
+    ),
+    (github, sso, keyring): (
+        Option<kuben_api::github::GithubApp>,
+        Option<Arc<kuben_api::sso::SsoClient>>,
+        Arc<kuben_platform::secrets::Keyring>,
+    ),
 ) -> kuben_api::ApiState {
-    let mut state = state.with_github(github).with_github_oidc(github_oidc(cfg));
+    let mut state = kuben_api::ApiState::new(
+        cfg.clone(),
+        store.clone(),
+        cluster.cloned(),
+        projections.clone(),
+        health.clone(),
+        Arc::new(StaticPolicy),
+    )
+    .with_github(github)
+    .with_github_oidc(github_oidc(cfg))
+    .with_keyring(keyring);
     state.sso = sso;
     state
 }
@@ -345,6 +375,7 @@ fn spawn_cluster_tasks(
     health: &Health,
     election: Option<&Election>,
     agents: Option<Arc<dyn kuben_platform::materializer::AgentDispatch>>,
+    keyring: &Arc<kuben_platform::secrets::Keyring>,
     shutdown: &CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let mut tasks = Vec::new();
@@ -382,7 +413,8 @@ fn spawn_cluster_tasks(
         // resources (ADR-032).
         let mut worker =
             kuben_platform::materializer::Worker::new(store.clone(), registry.primary(), instance_identity())
-                .with_facts(facts.clone());
+                .with_facts(facts.clone())
+                .with_keyring(keyring.clone());
         if let Some(agents) = agents {
             // Targets delivered by their cluster's agent go through the hub.
             worker = worker.with_agents(agents);

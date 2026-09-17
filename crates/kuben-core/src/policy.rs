@@ -66,6 +66,9 @@ pub enum ChangeKind {
     Restart,
     /// The same release and configuration, delivered by the agent.
     Handover,
+    /// The same release and configuration with a secret's new revision: new
+    /// values reach production like any other change.
+    Rotation,
 }
 
 impl EnvironmentPolicy {
@@ -369,6 +372,7 @@ mod tests {
             ChangeKind::Rollback,
             ChangeKind::Promotion,
             ChangeKind::Build,
+            ChangeKind::Rotation,
         ] {
             assert_eq!(p.approvals_for(kind), 2, "{kind:?}");
         }

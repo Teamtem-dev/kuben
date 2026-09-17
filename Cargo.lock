@@ -2267,6 +2267,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "backon",
+ "base64 0.23.1",
  "dashmap",
  "futures",
  "insta",
@@ -2279,6 +2280,7 @@ dependencies = [
  "metrics",
  "proptest",
  "rcgen",
+ "ring",
  "rustls",
  "serde",
  "serde_json",
@@ -2290,6 +2292,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

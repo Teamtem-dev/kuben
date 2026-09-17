@@ -40,6 +40,8 @@ pub struct ApiState {
     pub github_oidc: Option<Arc<crate::oidc::GithubOidc>>,
     /// Single sign-on; `None` when it is not configured (M4.3).
     pub sso: Option<Arc<crate::sso::SsoClient>>,
+    /// Seals secret values; `None` refuses to store them (M4.4).
+    pub keyring: Option<Arc<kuben_platform::secrets::Keyring>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -84,6 +86,7 @@ impl ApiState {
             github: None,
             github_oidc: None,
             sso: None,
+            keyring: None,
         }
     }
 
@@ -91,6 +94,13 @@ impl ApiState {
     #[must_use]
     pub fn with_images(mut self, images: Arc<dyn ImageResolver>) -> Self {
         self.images = images;
+        self
+    }
+
+    /// Seal secret values with `keyring`.
+    #[must_use]
+    pub fn with_keyring(mut self, keyring: Arc<kuben_platform::secrets::Keyring>) -> Self {
+        self.keyring = Some(keyring);
         self
     }
 

@@ -10,6 +10,8 @@
 //!   `planned` to `succeeded` or `failed`.
 //! * [`lifecycle`] — writes projects and environments as soon as they exist,
 //!   and removes what is being deleted.
+//! * `secrets` — the immutable Secrets of the secret revisions a run is
+//!   bound to (M4.4).
 //! * [`drift`] — reports changes someone else made to a materialized App
 //!   object and writes it again.
 
@@ -19,6 +21,7 @@ pub mod fence;
 pub mod lifecycle;
 pub mod progress;
 pub mod render;
+mod secrets;
 pub mod worker;
 pub mod write;
 

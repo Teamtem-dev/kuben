@@ -341,7 +341,15 @@ fn app_spec(m: &Materialization) -> Result<AppSpec, RenderError> {
         "source".into(),
         json!({ "image": format!("{repository}@{}", digest.as_str()) }),
     );
-    serde_json::from_value(config).map_err(|e| invalid(e.to_string()))
+    let mut spec: AppSpec = serde_json::from_value(config).map_err(|e| invalid(e.to_string()))?;
+    // A managed secret is read from the immutable object of the revision the
+    // run is bound to; other names stay the cluster's own Secrets.
+    for reference in spec.env.iter_mut().filter_map(|e| e.from_secret.as_mut()) {
+        if let Some(bound) = m.secrets.iter().find(|b| b.name == reference.name) {
+            reference.name = crate::secrets::object_name(&bound.name, bound.revision);
+        }
+    }
+    Ok(spec)
 }
 
 #[cfg(test)]
@@ -361,6 +369,7 @@ mod tests {
             render_plan: None,
             restarted_at: None,
             approval_expires_at: None,
+            secrets: Vec::new(),
             cluster: kuben_core::ids::ClusterId::new(),
             delivery: kuben_store::repo::Delivery::Controller,
             org: OrgId::new(),
@@ -400,6 +409,32 @@ mod tests {
 
     fn with_config(config: Value) -> Materialization {
         Materialization { config, ..sample() }
+    }
+
+    #[test]
+    fn bound_secrets_are_read_from_their_revision_objects() {
+        let m = Materialization {
+            secrets: vec![kuben_store::repo::SecretBinding {
+                name: "db".into(),
+                secret: uuid::Uuid::now_v7(),
+                revision: 4,
+            }],
+            ..with_config(json!({
+                "runtime": { "processes": { "web": { "port": 8080 } } },
+                "env": [
+                    { "name": "DATABASE_URL", "fromSecret": { "name": "db", "key": "url" } },
+                    { "name": "TOKEN", "fromSecret": { "name": "legacy", "key": "token" } },
+                ],
+            }))
+        };
+        let app = render(&m).expect("render").app;
+        let names: Vec<_> = app
+            .spec
+            .env
+            .iter()
+            .filter_map(|e| e.from_secret.as_ref().map(|r| (r.name.as_str(), r.key.as_str())))
+            .collect();
+        assert_eq!(names, [("db.r4", "url"), ("legacy", "token")]);
     }
 
     #[test]

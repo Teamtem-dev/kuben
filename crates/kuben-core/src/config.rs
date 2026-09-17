@@ -40,6 +40,7 @@ pub struct Config {
     pub build: BuildCfg,
     pub ci: CiCfg,
     pub sso: SsoCfg,
+    pub secrets: SecretsCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -488,6 +489,18 @@ impl SsoCfg {
     }
 }
 
+/// Managed secrets (M4.4, ADR-030).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecretsCfg {
+    /// The keyring of key-encryption keys: `version:base64-key` lines, owner
+    /// readable only. Every replica must read the same file (mount it from a
+    /// Kubernetes Secret) and it must be backed up apart from the database.
+    /// Default: `secrets.keyring` in [`Config::state_dir`], created with one
+    /// key when missing.
+    pub keyring_file: Option<String>,
+}
+
 /// External CI trust (M4.2): GitHub Actions exchanges its OIDC token for a
 /// short-lived Kuben token under an organization's trust policy.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -711,6 +724,15 @@ impl Config {
             .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback())
     }
 
+    /// The keyring file of managed secrets.
+    #[must_use]
+    pub fn secret_keyring_file(&self) -> PathBuf {
+        match self.secrets.keyring_file.as_deref().filter(|f| !f.is_empty()) {
+            Some(file) => PathBuf::from(file),
+            None => self.state_dir().join("secrets.keyring"),
+        }
+    }
+
     /// Where files that belong to this installation go (the setup token, a
     /// generated initial admin password): `server.state_dir` when set. Else an
     /// existing `/data` (the container volume, and where binaries before 1.0.3
@@ -836,6 +858,18 @@ mod tests {
                 .find(|(name, _)| *name == key)
                 .map(|(_, value)| OsString::from(value))
         }
+    }
+
+    #[test]
+    fn the_keyring_lives_in_the_state_dir_unless_named() {
+        let mut cfg = Config::default();
+        cfg.server.state_dir = Some("/var/lib/kuben".into());
+        assert_eq!(
+            cfg.secret_keyring_file(),
+            PathBuf::from("/var/lib/kuben/secrets.keyring")
+        );
+        cfg.secrets.keyring_file = Some("/etc/kuben/keyring".into());
+        assert_eq!(cfg.secret_keyring_file(), PathBuf::from("/etc/kuben/keyring"));
     }
 
     #[test]

@@ -124,6 +124,8 @@ pub struct Materialization {
     pub restarted_at: Option<i64>,
     /// When a run waiting for approval is cancelled (Unix milliseconds).
     pub approval_expires_at: Option<i64>,
+    /// The secret revisions the run renders, by referenced name (M4.4).
+    pub secrets: Vec<super::SecretBinding>,
 }
 
 /// A run's frozen RenderPlan (ADR-026).
@@ -273,6 +275,7 @@ impl MaterializationRow {
             render_plan: self.render_plan_id.map(RenderPlanId::from_uuid),
             restarted_at: self.restarted_at,
             approval_expires_at: self.approval_expires_at,
+            secrets: Vec::new(),
         })
     }
 }
@@ -310,9 +313,14 @@ impl Tenant {
             .bind(self.org.to_string())
             .fetch_optional(&mut *self.tx)
             .await?;
-        Ok(row
+        let Some(mut m) = row
             .map(|r| r.into_materialization(self.org, operation))
-            .transpose()?)
+            .transpose()?
+        else {
+            return Ok(None);
+        };
+        m.secrets = self.run_secret_bindings(m.run).await?;
+        Ok(Some(m))
     }
 
     /// What the materializer last wrote for `target`, if anything.
