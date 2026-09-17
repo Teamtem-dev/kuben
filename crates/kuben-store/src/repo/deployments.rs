@@ -20,6 +20,7 @@ use kuben_core::{
         SourceEpoch, TargetState,
     },
     policy::ChangeKind,
+    scan::GateVerdict,
     time::now_ms,
 };
 use serde_json::{Value, json};
@@ -148,6 +149,14 @@ impl RunReason {
         }
     }
 
+    /// Whether the run may deliver a release the target does not run yet:
+    /// what the scan gate judges. Restarts, handovers and rotations keep the
+    /// release, and an emergency must not wait for a feed.
+    #[must_use]
+    pub const fn carries_new_code(self) -> bool {
+        !matches!(self, Self::Restart | Self::Handover | Self::Rotation)
+    }
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -202,6 +211,8 @@ pub enum Started {
     /// The current revision of a secret the configuration references is
     /// revoked: a new value must be set first.
     SecretRevoked,
+    /// The environment's scan gate refuses the release (M4.6).
+    VulnerabilityBlocked,
 }
 
 /// The outcome of [`Store::advance_run`].
@@ -453,6 +464,13 @@ impl Tenant {
             .await?;
         if secrets.iter().any(|s| s.revoked) {
             return Ok(Started::SecretRevoked);
+        }
+        if req.reason.carries_new_code()
+            && let Some(GateVerdict::Block(reasons)) =
+                self.scan_verdict(req.target, req.release, now_ms()).await?
+        {
+            tracing::info!(target = %req.target, release = %req.release, ?reasons, "the scan gate refused a run");
+            return Ok(Started::VulnerabilityBlocked);
         }
 
         let run = DeploymentRunId::new();

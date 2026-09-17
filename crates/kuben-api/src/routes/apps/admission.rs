@@ -12,7 +12,9 @@ use kube::api::ListParams;
 use kuben_core::{
     Error,
     capacity::{self, Estimate, Limits},
-    ids::{EnvironmentId, TargetId},
+    ids::{EnvironmentId, ReleaseId, TargetId},
+    scan::GateVerdict,
+    time::now_ms,
 };
 use kuben_crd::{App, AppSpec, KubenConfig, Quota};
 use kuben_platform::{
@@ -130,6 +132,24 @@ pub(crate) async fn admit(
             Estimate::UnknownConstraints(why) => vec![format!("scheduling is not estimated: {why}")],
         },
     )
+}
+
+/// The scan gate of `target`'s environment on `release` (M4.6): its
+/// warnings, or a refusal naming the findings.
+pub(crate) async fn scan_gate(
+    tenant: &mut Tenant,
+    target: TargetId,
+    release: ReleaseId,
+) -> ApiResult<Vec<String>> {
+    match tenant.scan_verdict(target, release, now_ms()).await? {
+        None | Some(GateVerdict::Pass) => Ok(Vec::new()),
+        Some(GateVerdict::Warn(reasons)) => Ok(reasons),
+        Some(GateVerdict::Block(reasons)) => Err(Error::Conflict(format!(
+            "the environment's vulnerability gate refuses this release: {}",
+            reasons.join("; ")
+        ))
+        .into()),
+    }
 }
 
 /// Refuse a new environment beyond the organization's quota.

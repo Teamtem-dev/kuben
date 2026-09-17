@@ -18,3 +18,4 @@ pub mod secrets;
 pub mod templates;
 pub mod tokens;
 pub mod validate;
+pub mod vulnerabilities;

@@ -151,6 +151,14 @@ jobs:
       - name: Scan (Trivy)
         if: contains(matrix.target, 'linux')
         run: scripts/scan-binary.sh "target/$TARGET/release/kuben"
+      # The bundle's SBOM (CycloneDX), from the crate list cargo-auditable
+      # embedded: published and covered by checksums.txt and its signature.
+      - name: SBOM (Trivy)
+        if: contains(matrix.target, 'linux')
+        run: |
+          mkdir -p dist sbom
+          cp "target/$TARGET/release/kuben" "target/$TARGET/release/kuben-agent" sbom/
+          trivy rootfs --quiet --format cyclonedx --output "dist/kuben-${TARGET}.cdx.json" sbom
       - name: Smoke test
         if: matrix.smoke
         run: target/$TARGET/release/kuben --version
@@ -200,7 +208,7 @@ jobs:
         run: |
           cp ../install.sh ../bundle.lock.json .
           for f in *.tar.gz *.zip; do sha256sum -- "$f" >"$f.sha256"; done
-          sha256sum -- *.tar.gz *.zip install.sh bundle.lock.json >checksums.txt
+          sha256sum -- *.tar.gz *.zip *.cdx.json install.sh bundle.lock.json >checksums.txt
           cat checksums.txt
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

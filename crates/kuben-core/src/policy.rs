@@ -15,7 +15,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::perm::{Perm, Role};
+use crate::{
+    perm::{Perm, Role},
+    scan::ScanGate,
+};
 
 /// Most approvals a policy may require.
 pub const MAX_APPROVALS: u8 = 5;
@@ -38,6 +41,8 @@ pub enum PolicyError {
     ApproveRole(Role),
     #[error("approvals must wait between {MIN_APPROVAL_TTL_SECS} and {MAX_APPROVAL_TTL_SECS} seconds")]
     ApprovalTtl,
+    #[error("the scan gate counts `high` or `critical` findings, with a maximum age of an hour to 90 days")]
+    ScanGate,
 }
 
 /// One revision of an environment's policy.
@@ -52,6 +57,9 @@ pub struct EnvironmentPolicy {
     pub approve_role: Role,
     /// How long a change waits for its approvals before it is cancelled.
     pub approval_ttl_secs: u32,
+    /// What vulnerability findings a deployment may carry (M4.6).
+    #[serde(default)]
+    pub scan: ScanGate,
 }
 
 /// What a deployment run changes, as far as approval is concerned.
@@ -80,14 +88,17 @@ impl EnvironmentPolicy {
             deploy_role: Role::Developer,
             approve_role: Role::Admin,
             approval_ttl_secs: DEFAULT_APPROVAL_TTL_SECS,
+            scan: ScanGate::off(),
         }
     }
 
-    /// One approval by an admin who did not ask for the change.
+    /// One approval by an admin who did not ask for the change; known
+    /// critical findings are refused.
     #[must_use]
     pub const fn production() -> Self {
         Self {
             required_approvals: 1,
+            scan: ScanGate::production(),
             ..Self::open()
         }
     }
@@ -114,6 +125,9 @@ impl EnvironmentPolicy {
         }
         if !(MIN_APPROVAL_TTL_SECS..=MAX_APPROVAL_TTL_SECS).contains(&self.approval_ttl_secs) {
             return Err(PolicyError::ApprovalTtl);
+        }
+        if !self.scan.is_valid() {
+            return Err(PolicyError::ScanGate);
         }
         Ok(())
     }
@@ -145,11 +159,12 @@ impl EnvironmentPolicy {
     /// Whether `self` protects less than `current` in any respect. Weakening
     /// production protection is an owner's decision.
     #[must_use]
-    pub const fn weakens(&self, current: &Self) -> bool {
+    pub fn weakens(&self, current: &Self) -> bool {
         self.required_approvals < current.required_approvals
             || self.deploy_role.rank() < current.deploy_role.rank()
             || self.approve_role.rank() < current.approve_role.rank()
             || self.approval_ttl_secs > current.approval_ttl_secs
+            || self.scan.weakens(&current.scan)
     }
 }
 

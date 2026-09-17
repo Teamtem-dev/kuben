@@ -6,10 +6,14 @@
 //! and no service-account token, and succeeds only when an
 //! [`OutputVerifier`] finds the reported digest in the registry. The traits
 //! are the failure boundary to the outside world; their HTTP
-//! implementations live with the API's transport.
+//! implementations live with the API's transport. After the build, the pod
+//! writes the image's SBOM and scans it ([`evidence`], M4.6); the scan is
+//! recorded before the attempt completes, so the scan gate judges it.
 
+pub mod evidence;
 pub mod job;
 pub mod observe;
+pub mod rescan;
 #[cfg(test)]
 mod scenarios;
 pub mod steps;

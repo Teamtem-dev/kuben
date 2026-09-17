@@ -263,7 +263,7 @@ pub async fn start(
 
     let mut tenant = state.store.tenant(t.org).await?;
     super::approvals::ensure_may_deploy(&mut tenant, &authz, t.target, &t.chain()).await?;
-    let warnings = match &body.config {
+    let mut warnings = match &body.config {
         // Without a new configuration the resources do not change.
         None => Vec::new(),
         Some(config) => {
@@ -278,6 +278,10 @@ pub async fn start(
         }
     };
     let release = release_for(&mut tenant, &t, &body, &actor).await?;
+    let reason: RunReason = body.reason.into();
+    if reason.carries_new_code() {
+        warnings.extend(super::admission::scan_gate(&mut tenant, t.target, release).await?);
+    }
     let config_revision = config_revision_for(&mut tenant, &t, body.config.as_ref(), &actor).await?;
     let lifecycle_uid = tenant
         .target_state(t.target)
@@ -292,7 +296,7 @@ pub async fn start(
         render_plan: None,
         expected_generation: Generation(body.expected_generation),
         lifecycle_uid,
-        reason: body.reason.into(),
+        reason,
         requested_by: actor.clone(),
         input_hash,
     };
@@ -330,6 +334,7 @@ pub async fn start(
             return Err(Error::NotFound("that release or configuration of this app".into()).into());
         }
         Started::SecretRevoked => return Err(super::secret_revoked().into()),
+        Started::VulnerabilityBlocked => return Err(super::vulnerability_blocked().into()),
     };
     let location = format!(
         "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{}",

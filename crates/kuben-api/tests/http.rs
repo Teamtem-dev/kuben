@@ -2610,3 +2610,87 @@ async fn m4_quotas_bound_what_apps_may_request() {
         );
     }
 }
+
+/// M4.6: the environment's scan gate refuses a release with an open
+/// critical finding until an owned, expiring exception covers it.
+#[tokio::test]
+async fn m4_the_scan_gate_refuses_known_critical_findings() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let gate = json!({ "requiredApprovals": 0, "deployRole": "developer", "approveRole": "admin",
+        "scan": { "mode": "block", "severity": "critical" } });
+    let (status, _, policy) = call(&app.router, "PUT", POLICY, Auth::Cookie(&alice), Some(gate), None).await;
+    assert_eq!(status, StatusCode::OK, "{policy}");
+    assert_eq!(policy["scan"]["mode"], "block");
+    {
+        let mut t = app.store.tenant(app.org).await.expect("tenant");
+        let scan = kuben_store::repo::NewScan {
+            repository: "ghcr.io/acme/api".into(),
+            digest: DIGEST.into(),
+            summary: kuben_core::scan::ScanSummary {
+                status: kuben_core::scan::ScanStatus::Ok,
+                scanner: "trivy 0.74.0".into(),
+                db_updated_at: None,
+                counts: kuben_core::scan::Counts {
+                    critical: 1,
+                    ..Default::default()
+                },
+                findings: vec![(kuben_core::scan::Severity::Critical, "CVE-2026-7".into())],
+                scanned_at: kuben_core::time::now_ms(),
+            },
+            detail: None,
+            build_attempt: None,
+        };
+        t.record_scan(&scan).await.expect("scan");
+        t.commit().await.expect("commit");
+    }
+    let (status, refused) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(refused.to_string().contains("CVE-2026-7"), "{refused}");
+
+    let exceptions = "/api/v1/vulnerability-exceptions";
+    let grant = json!({ "vulnerability": "CVE-2026-7", "reason": "not reachable", "owner": "platform", "days": 30, "project": "shop" });
+    assert_eq!(
+        status_of(&app.router, "POST", exceptions, &bob, Some(grant.clone())).await,
+        StatusCode::FORBIDDEN
+    );
+    let (status, _, granted) = call(
+        &app.router,
+        "POST",
+        exceptions,
+        Auth::Cookie(&alice),
+        Some(grant),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{granted}");
+    assert_eq!(granted["active"], true);
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+
+    let (_, _, scans) = call(
+        &app.router,
+        "GET",
+        "/api/v1/projects/shop/environments/prod/apps/api/scans",
+        Auth::Cookie(&bob),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(scans["gate"], "pass", "{scans}");
+    assert_eq!(scans["images"][0]["scan"]["critical"], 1);
+    assert_eq!(scans["images"][0]["sbom"], false);
+    let revoke = format!("{exceptions}/{}", granted["id"].as_str().expect("id"));
+    assert_eq!(
+        status_of(&app.router, "DELETE", &revoke, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &revoke, &alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+    let (_, _, listed) = call(&app.router, "GET", exceptions, Auth::Cookie(&bob), None, None).await;
+    assert_eq!(listed, json!([]), "revoked exceptions are not in force");
+}

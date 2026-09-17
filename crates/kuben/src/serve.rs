@@ -266,16 +266,16 @@ async fn spawn_builds(
     github: Option<kuben_api::github::GithubApp>,
     health: &Health,
     shutdown: &CancellationToken,
-) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+) -> anyhow::Result<Vec<tokio::task::JoinHandle<()>>> {
     let build = &cfg.build;
     let (true, true, Some(registry)) = (build.enabled, cfg.has_role(Role::Controller), cluster) else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     let Some(github) = github else {
         tracing::warn!(
             "build.enabled is set, but Git sources are not configured (git.github_app_id): no builds run"
         );
-        return Ok(None);
+        return Ok(Vec::new());
     };
     for image in build.unpinned_images() {
         tracing::warn!(%image, "a build image is not pinned by digest; pin it as image@sha256:… in production");
@@ -301,6 +301,21 @@ async fn spawn_builds(
         total: build.max_concurrent,
         per_org: build.max_concurrent_per_org,
     };
+    let mut tasks = Vec::new();
+    if settings.scanner_image.is_some() {
+        let rescanner = kuben_platform::build::rescan::Rescanner::new(
+            store.clone(),
+            registry.primary(),
+            settings.clone(),
+            Duration::from_secs(u64::from(build.rescan_hours.max(1)) * 3600),
+        );
+        let (h, t) = (health.clone(), shutdown.child_token());
+        tasks.push(tokio::spawn(supervise("rescans", t, h.clone(), move |tok| {
+            kuben_platform::build::rescan::run(rescanner.clone(), h.clone(), tok)
+        })));
+    } else {
+        tracing::warn!("build.scanner_image is empty: images are not scanned and scans are unavailable");
+    }
     let worker = kuben_platform::build::BuildWorker::new(
         store.clone(),
         registry.primary(),
@@ -312,12 +327,10 @@ async fn spawn_builds(
     );
     tracing::info!(%namespace, max_concurrent = build.max_concurrent, "build worker ready");
     let (h, t) = (health.clone(), shutdown.child_token());
-    Ok(Some(tokio::spawn(supervise(
-        "builds",
-        t,
-        h.clone(),
-        move |tok| kuben_platform::build::run(worker.clone(), h.clone(), tok),
-    ))))
+    tasks.push(tokio::spawn(supervise("builds", t, h.clone(), move |tok| {
+        kuben_platform::build::run(worker.clone(), h.clone(), tok)
+    })));
+    Ok(tasks)
 }
 
 async fn ensure_build_namespace(client: kube::Client, name: &str) -> anyhow::Result<()> {

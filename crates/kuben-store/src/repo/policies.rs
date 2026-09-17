@@ -10,6 +10,7 @@ use kuben_core::{
     ops::{RunEvent, RunPhase},
     perm::Role,
     policy::{ApprovalError, Decision, EnvironmentPolicy, Pending, Tally, decide},
+    scan::{GateMode, ScanGate, Severity},
     time::now_ms,
 };
 use uuid::Uuid;
@@ -18,15 +19,15 @@ use super::{Tenant, product::counter};
 use crate::StoreError;
 
 const POLICY_COLUMNS: &str = "revision, required_approvals, deploy_role, approve_role, approval_ttl_secs, \
-     created_by, created_at";
+     created_by, created_at, scan_mode, scan_severity, scan_require, scan_max_age_secs";
 const LOCK_ENVIRONMENT: &str = "SELECT id FROM environments \
      WHERE id = $1 AND org_id = $2 AND project_id = $3 FOR UPDATE";
 const NEXT_REVISION: &str = "SELECT COALESCE(max(revision), 0) + 1 FROM environment_policies \
      WHERE environment_id = $1 AND org_id = $2";
 const INSERT_POLICY: &str = "INSERT INTO environment_policies \
      (org_id, project_id, environment_id, revision, required_approvals, deploy_role, approve_role, \
-      approval_ttl_secs, created_by, created_at) \
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
+      approval_ttl_secs, created_by, created_at, scan_mode, scan_severity, scan_require, scan_max_age_secs) \
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)";
 const LOCK_RUN: &str = "SELECT phase, requested_by, approvals_required, approval_expires_at, \
      approval_plan_hash, operation_id FROM deployment_runs \
      WHERE id = $1 AND target_id = $2 AND org_id = $3 FOR UPDATE";
@@ -60,6 +61,10 @@ struct PolicyRow {
     approval_ttl_secs: i32,
     created_by: String,
     created_at: i64,
+    scan_mode: String,
+    scan_severity: String,
+    scan_require: bool,
+    scan_max_age_secs: i32,
 }
 
 fn role(value: &str) -> Result<Role, sqlx::Error> {
@@ -83,6 +88,16 @@ impl TryFrom<PolicyRow> for PolicyRevision {
                 deploy_role: role(&r.deploy_role)?,
                 approve_role: role(&r.approve_role)?,
                 approval_ttl_secs: u32::try_from(r.approval_ttl_secs).map_err(decode)?,
+                scan: ScanGate {
+                    mode: GateMode::parse(&r.scan_mode).ok_or_else(|| {
+                        sqlx::Error::Decode(format!("unknown scan mode {:?}", r.scan_mode).into())
+                    })?,
+                    severity: Severity::parse(&r.scan_severity).ok_or_else(|| {
+                        sqlx::Error::Decode(format!("unknown severity {:?}", r.scan_severity).into())
+                    })?,
+                    require_scan: r.scan_require,
+                    max_age_secs: u32::try_from(r.scan_max_age_secs).map_err(decode)?,
+                },
             },
             created_by: r.created_by,
             created_at: r.created_at,
@@ -246,6 +261,10 @@ impl Tenant {
             .bind(i32::try_from(policy.approval_ttl_secs).map_err(|e| sqlx::Error::Encode(e.into()))?)
             .bind(created_by)
             .bind(now_ms())
+            .bind(policy.scan.mode.as_str())
+            .bind(policy.scan.severity.as_str())
+            .bind(policy.scan.require_scan)
+            .bind(i32::try_from(policy.scan.max_age_secs).map_err(|e| sqlx::Error::Encode(e.into()))?)
             .execute(&mut *self.tx)
             .await?;
         Ok(Some(counter(revision)?))

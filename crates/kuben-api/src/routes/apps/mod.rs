@@ -33,6 +33,7 @@ pub mod jobs;
 pub mod logs;
 pub mod promote;
 pub mod releases;
+pub mod scans;
 pub mod source;
 pub mod spec;
 
@@ -495,6 +496,11 @@ pub(crate) async fn deploy(
             tenant.create_release(change.project, &release).await?.0
         }
     };
+    if change.reason.carries_new_code() {
+        for warning in admission::scan_gate(tenant, change.target, release).await? {
+            tracing::info!(target = %change.reference, %warning, "deployed with a vulnerability warning");
+        }
+    }
     let lifecycle_uid = tenant
         .target_state(change.target)
         .await?
@@ -524,6 +530,7 @@ pub(crate) fn started(started: Started) -> ApiResult<()> {
         Started::Rejected(reject) => Err(Error::Conflict(reject.to_string()).into()),
         Started::NotFound => Err(Error::NotFound("that release of this app".into()).into()),
         Started::SecretRevoked => Err(secret_revoked().into()),
+        Started::VulnerabilityBlocked => Err(vulnerability_blocked().into()),
         Started::KeyReused(_) => {
             Err(Error::Internal("a deployment without a key was a replay".into()).into())
         }
@@ -536,6 +543,11 @@ pub(crate) fn secret_revoked() -> Error {
     Error::Conflict(
         "a secret this app references has its current revision revoked: set a new value first".into(),
     )
+}
+
+/// A run refused by the environment's vulnerability gate.
+pub(crate) fn vulnerability_blocked() -> Error {
+    Error::Conflict("the environment's vulnerability gate refuses this release".into())
 }
 
 /// Create the app `name` from `spec` in environment `e` (shared by

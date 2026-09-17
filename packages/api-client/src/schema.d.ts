@@ -723,6 +723,43 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/sbom/{digest}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The CycloneDX SBOM of one image of the app's current release
+         *     (gzip-encoded JSON).
+         */
+        get: operations["getAppSbom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The scans of the app's current release and the gate's verdict. */
+        get: operations["getAppScans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/source": {
         parameters: {
             query?: never;
@@ -1051,6 +1088,41 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vulnerability-exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's vulnerability exceptions in force (or all). */
+        get: operations["listVulnerabilityExceptions"];
+        put?: never;
+        /** Let one finding pass the scan gates for a while. */
+        post: operations["createVulnerabilityException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vulnerability-exceptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an exception for good. */
+        delete: operations["revokeVulnerabilityException"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -1098,6 +1170,14 @@ export type components = {
             last_seen?: string | null;
             /** @description The component that reported it. */
             source?: string | null;
+        };
+        AppScansDto: {
+            /** Format: uuid */
+            release?: string | null;
+            /** @description `pass`, `warn` or `block`: what the environment's gate says now. */
+            gate: string;
+            reasons: string[];
+            images: components["schemas"]["ImageScanDto"][];
         };
         ApprovalDto: {
             /** Format: uuid */
@@ -1330,6 +1410,27 @@ export type components = {
             env_type?: components["schemas"]["EnvType"];
             quota?: null | components["schemas"]["QuotaInput"];
         };
+        CreateException: {
+            /**
+             * @description The finding's id, e.g. `CVE-2026-12345` or `GHSA-xxxx-xxxx-xxxx`.
+             * @example CVE-2026-12345
+             */
+            vulnerability: string;
+            reason: string;
+            /**
+             * @description Who answers for it: a person or a team.
+             * @example platform-team@example.com
+             */
+            owner: string;
+            /**
+             * Format: int32
+             * @description 1 to 90 days.
+             * @example 30
+             */
+            days: number;
+            /** @description Limit it to one project; every project when omitted. */
+            project?: string | null;
+        };
         CreateProject: {
             /**
              * @description DNS label, e.g. `shop` (at most 40 characters).
@@ -1515,6 +1616,21 @@ export type components = {
             deletion_scheduled_at?: string | null;
             created_at?: string | null;
         };
+        ExceptionDto: {
+            /** Format: uuid */
+            id: string;
+            vulnerability: string;
+            /** Format: uuid */
+            project?: string | null;
+            reason: string;
+            owner: string;
+            createdBy: string;
+            createdAt: string;
+            expiresAt: string;
+            revokedAt?: string | null;
+            /** @description In force now. */
+            active: boolean;
+        };
         /** @description How an app is reached through the gateway. */
         ExposureDto: {
             /**
@@ -1545,6 +1661,12 @@ export type components = {
             /** @description For `auto` hosts with a certificate of their own: whether it is issued. */
             certificate_ready?: boolean | null;
             certificate_message?: string | null;
+        };
+        ImageScanDto: {
+            digest: string;
+            scan?: null | components["schemas"]["ScanDto"];
+            /** @description An SBOM can be downloaded. */
+            sbom: boolean;
         };
         InstallationDto: {
             /** Format: int64 */
@@ -1653,6 +1775,7 @@ export type components = {
             approveRole: string;
             /** Format: int32 */
             approvalTtlSecs: number;
+            scan: components["schemas"]["ScanGateDto"];
             updatedBy?: string | null;
             /** Format: int64 */
             updatedAt?: number | null;
@@ -1746,6 +1869,7 @@ export type components = {
              * @example 604800
              */
             approvalTtlSecs?: number;
+            scan?: null | components["schemas"]["ScanGateDto"];
         };
         PutRegistryLogin: {
             /** @description `ghcr.io`, `docker.io`, `registry.example.com:5000`. */
@@ -1854,6 +1978,50 @@ export type components = {
         RunJob: {
             /** @description Scheduled process to run (default: the first one). */
             process?: string | null;
+        };
+        ScanDto: {
+            /**
+             * @description `ok`, or `unavailable` when the scanner, its feed or the image was
+             *     not reachable (never "clean").
+             */
+            status: string;
+            scanner: string;
+            /** @description When the vulnerability database was built. */
+            databaseUpdatedAt?: string | null;
+            scannedAt: string;
+            /** Format: int32 */
+            critical: number;
+            /** Format: int32 */
+            high: number;
+            /** Format: int32 */
+            medium: number;
+            /** Format: int32 */
+            low: number;
+            /** Format: int32 */
+            unknown: number;
+            /** @description `severity:id` of the most severe findings. */
+            findings: string[];
+        };
+        /** @description What vulnerability findings a deployment may carry. */
+        ScanGateDto: {
+            /**
+             * @description `off`, `warn` or `block`.
+             * @example block
+             */
+            mode: string;
+            /**
+             * @description Findings at or above this severity count: `high` or `critical`.
+             * @example critical
+             */
+            severity: string;
+            /** @description An image without a fresh successful scan counts as a finding. */
+            requireScan?: boolean;
+            /**
+             * Format: int32
+             * @description A scan older than this no longer counts (1 hour – 90 days).
+             * @example 604800
+             */
+            maxAgeSecs?: number;
         };
         SecretDto: {
             name: string;
@@ -4105,6 +4273,77 @@ export interface operations {
             };
         };
     };
+    getAppSbom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Image digest (`sha256:…`) */
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CycloneDX JSON, `Content-Encoding: gzip` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.cyclonedx+json": unknown;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppScans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppScansDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppSource: {
         parameters: {
             query?: never;
@@ -5197,6 +5436,120 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listVulnerabilityExceptions: {
+        parameters: {
+            query?: {
+                /** @description Include expired and revoked exceptions. */
+                all?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createVulnerabilityException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateException"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeVulnerabilityException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exception id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
             };
             404: {
                 headers: {

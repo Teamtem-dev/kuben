@@ -3127,6 +3127,131 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/sbom/{digest}": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The CycloneDX SBOM of one image of the app's current release\n(gzip-encoded JSON).",
+        "operationId": "getAppSbom",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "digest",
+            "in": "path",
+            "description": "Image digest (`sha256:…`)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CycloneDX JSON, `Content-Encoding: gzip`",
+            "content": {
+              "application/vnd.cyclonedx+json": {}
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/scans": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The scans of the app's current release and the gate's verdict.",
+        "operationId": "getAppScans",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppScansDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/source": {
       "get": {
         "tags": [
@@ -4797,6 +4922,156 @@
           }
         }
       }
+    },
+    "/api/v1/vulnerability-exceptions": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "The organization's vulnerability exceptions in force (or all).",
+        "operationId": "listVulnerabilityExceptions",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include expired and revoked exceptions.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExceptionDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Let one finding pass the scan gates for a while.",
+        "operationId": "createVulnerabilityException",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateException"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vulnerability-exceptions/{id}": {
+      "delete": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Revoke an exception for good.",
+        "operationId": "revokeVulnerabilityException",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Exception id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4979,6 +5254,39 @@
               "null"
             ],
             "description": "The component that reported it."
+          }
+        }
+      },
+      "AppScansDto": {
+        "type": "object",
+        "required": [
+          "gate",
+          "reasons",
+          "images"
+        ],
+        "properties": {
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "gate": {
+            "type": "string",
+            "description": "`pass`, `warn` or `block`: what the environment's gate says now."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageScanDto"
+            }
           }
         }
       },
@@ -5586,6 +5894,45 @@
           }
         }
       },
+      "CreateException": {
+        "type": "object",
+        "required": [
+          "vulnerability",
+          "reason",
+          "owner",
+          "days"
+        ],
+        "properties": {
+          "vulnerability": {
+            "type": "string",
+            "description": "The finding's id, e.g. `CVE-2026-12345` or `GHSA-xxxx-xxxx-xxxx`.",
+            "example": "CVE-2026-12345"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "description": "Who answers for it: a person or a team.",
+            "example": "platform-team@example.com"
+          },
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "description": "1 to 90 days.",
+            "example": 30,
+            "minimum": 0
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Limit it to one project; every project when omitted."
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateProject": {
         "type": "object",
         "required": [
@@ -6069,6 +6416,60 @@
           }
         }
       },
+      "ExceptionDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "vulnerability",
+          "reason",
+          "owner",
+          "createdBy",
+          "createdAt",
+          "expiresAt",
+          "active"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vulnerability": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": "boolean",
+            "description": "In force now."
+          }
+        }
+      },
       "ExposureDto": {
         "type": "object",
         "description": "How an app is reached through the gateway.",
@@ -6158,6 +6559,33 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ImageScanDto": {
+        "type": "object",
+        "required": [
+          "digest",
+          "sbom"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "scan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScanDto",
+                "description": "The newest scan; `None` when the image was never scanned."
+              }
+            ]
+          },
+          "sbom": {
+            "type": "boolean",
+            "description": "An SBOM can be downloaded."
           }
         }
       },
@@ -6452,7 +6880,8 @@
           "requiredApprovals",
           "deployRole",
           "approveRole",
-          "approvalTtlSecs"
+          "approvalTtlSecs",
+          "scan"
         ],
         "properties": {
           "revision": {
@@ -6476,6 +6905,9 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "scan": {
+            "$ref": "#/components/schemas/ScanGateDto"
           },
           "updatedBy": {
             "type": [
@@ -6730,6 +7162,17 @@
             "description": "How long a deployment waits for approvals (300 s – 30 days).",
             "example": 604800,
             "minimum": 0
+          },
+          "scan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScanGateDto",
+                "description": "The vulnerability gate; the current one is kept when omitted."
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -7000,6 +7443,103 @@
             "description": "Scheduled process to run (default: the first one)."
           }
         }
+      },
+      "ScanDto": {
+        "type": "object",
+        "required": [
+          "status",
+          "scanner",
+          "scannedAt",
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "unknown",
+          "findings"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "`ok`, or `unavailable` when the scanner, its feed or the image was\nnot reachable (never \"clean\")."
+          },
+          "scanner": {
+            "type": "string"
+          },
+          "databaseUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the vulnerability database was built."
+          },
+          "scannedAt": {
+            "type": "string"
+          },
+          "critical": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "high": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "medium": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "low": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unknown": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`severity:id` of the most severe findings."
+          }
+        }
+      },
+      "ScanGateDto": {
+        "type": "object",
+        "description": "What vulnerability findings a deployment may carry.",
+        "required": [
+          "mode",
+          "severity"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "`off`, `warn` or `block`.",
+            "example": "block"
+          },
+          "severity": {
+            "type": "string",
+            "description": "Findings at or above this severity count: `high` or `critical`.",
+            "example": "critical"
+          },
+          "requireScan": {
+            "type": "boolean",
+            "description": "An image without a fresh successful scan counts as a finding."
+          },
+          "maxAgeSecs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "A scan older than this no longer counts (1 hour – 90 days).",
+            "example": 604800,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "SecretDto": {
         "type": "object",
@@ -7618,7 +8158,11 @@
     },
     {
       "name": "secrets",
-      "description": "Write-only environment secrets"
+      "description": "Write-only environment secrets and registry logins"
+    },
+    {
+      "name": "security",
+      "description": "Vulnerability exceptions"
     },
     {
       "name": "git",

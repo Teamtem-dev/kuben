@@ -9,7 +9,7 @@ use crate::{
     auth,
     routes::{
         access, apps, audit, ci, environments, git, health, members, policy, projects, registries, secrets,
-        templates, tokens,
+        templates, tokens, vulnerabilities,
     },
     state::ApiState,
 };
@@ -26,7 +26,8 @@ use crate::{
         (name = "projects", description = "Projects"),
         (name = "environments", description = "Environments (one namespace each)"),
         (name = "apps", description = "Apps, rollouts, releases, logs, scheduled runs and promotion"),
-        (name = "secrets", description = "Write-only environment secrets"),
+        (name = "secrets", description = "Write-only environment secrets and registry logins"),
+        (name = "security", description = "Vulnerability exceptions"),
         (name = "git", description = "GitHub App installations for Git sources"),
         (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
@@ -63,6 +64,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::promote::promote))
         .routes(routes!(apps::deployments::start, apps::deployments::list))
         .routes(routes!(apps::deployments::get))
+        .routes(routes!(apps::scans::get))
+        .routes(routes!(apps::scans::sbom))
         .routes(routes!(apps::approvals::get))
         .routes(routes!(apps::approvals::approve))
         .routes(routes!(apps::approvals::reject))
@@ -85,6 +88,8 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(secrets::revoke))
         .routes(routes!(registries::list))
         .routes(routes!(registries::put, registries::delete))
+        .routes(routes!(vulnerabilities::list, vulnerabilities::create))
+        .routes(routes!(vulnerabilities::revoke))
         .routes(routes!(templates::list))
         .routes(routes!(templates::deploy))
         .routes(routes!(tokens::list, tokens::create))

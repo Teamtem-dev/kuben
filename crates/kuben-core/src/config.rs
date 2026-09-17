@@ -617,6 +617,13 @@ pub struct BuildCfg {
     pub registry_auth_file: Option<String>,
     /// Node selector `key=value` of the build pool; required when set.
     pub node_pool: Option<String>,
+    /// Trivy image that writes the SBOM of every built image and scans it
+    /// (M4.6); empty disables scanning, and scans are then unavailable.
+    pub scanner_image: String,
+    /// Memory request and limit of the scan container.
+    pub scanner_memory: String,
+    /// Rescan the images apps run when their newest scan is older than this.
+    pub rescan_hours: u32,
 }
 
 impl BuildCfg {
@@ -628,6 +635,7 @@ impl BuildCfg {
             Some(self.fetch_image.as_str()),
             self.railpack_image.as_deref(),
             self.railpack_frontend.as_deref(),
+            Some(self.scanner_image.as_str()),
         ]
         .into_iter()
         .flatten()
@@ -643,6 +651,9 @@ impl Default for BuildCfg {
             namespace: None,
             buildkit_image: "moby/buildkit:v0.33.0-rootless".into(),
             fetch_image: "alpine/git:2.49.1".into(),
+            scanner_image: "aquasec/trivy:0.74.0".into(),
+            scanner_memory: "1Gi".into(),
+            rescan_hours: 24,
             railpack_frontend: None,
             railpack_image: None,
             cpu_request: "500m".into(),
@@ -862,9 +873,10 @@ mod tests {
     #[test]
     fn unpinned_build_images_are_reported() {
         let mut build = BuildCfg::default();
-        assert_eq!(build.unpinned_images().len(), 2, "the tag-pinned defaults");
+        assert_eq!(build.unpinned_images().len(), 3, "the tag-pinned defaults");
         build.buildkit_image = format!("moby/buildkit@sha256:{}", "a".repeat(64));
         build.fetch_image = format!("alpine/git@sha256:{}", "b".repeat(64));
+        build.scanner_image = format!("aquasec/trivy@sha256:{}", "c".repeat(64));
         assert!(build.unpinned_images().is_empty());
         build.railpack_frontend = Some("ghcr.io/railwayapp/railpack-frontend".into());
         assert_eq!(

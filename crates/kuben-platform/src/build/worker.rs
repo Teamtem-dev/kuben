@@ -35,7 +35,7 @@ use kuben_crd::BuildRun;
 use kuben_store::{
     Store, StoreError,
     repo::{
-        BUILD_KIND, BuildAdvance, BuildAttempt, BuildProgress, Claim, Completed, HeadObserved,
+        BUILD_KIND, BuildAdvance, BuildAttempt, BuildProgress, Claim, Completed, HeadObserved, NewScan,
         SOURCE_SYNC_KIND, SlotLimits, Tenant,
     },
 };
@@ -43,7 +43,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    FetchToken, OutputVerifier, ProviderError, SourceProvider, VerifyError,
+    FetchToken, OutputVerifier, ProviderError, SourceProvider, VerifyError, evidence,
     job::{self, ATTEMPT_LABEL, BuildSettings},
     observe,
     steps::{self, Next, Plan},
@@ -518,6 +518,9 @@ impl BuildWorker {
             }
             Err(VerifyError::Unavailable(why)) => return Outcome::Retry("RegistryUnavailable", why),
         }
+        if let Err(o) = self.record_scan(claim, attempt, digest).await {
+            return o;
+        }
         let completed = async {
             let mut t = self.store.tenant(claim.org).await?;
             let done = t.complete_build(claim, attempt, digest).await?;
@@ -548,6 +551,49 @@ impl BuildWorker {
                     .await
             }
         }
+    }
+
+    /// Keep the scan and SBOM the pod left for `digest` (M4.6), before the
+    /// attempt completes and the scan gate judges its release. A scan that
+    /// did not run is recorded as unavailable.
+    async fn record_scan(
+        &self,
+        claim: &Claim,
+        attempt: &BuildAttempt,
+        digest: &Digest,
+    ) -> Result<(), Outcome> {
+        let (report, sbom) = if self.settings.scanner_image.is_some() {
+            let selector = format!("{ATTEMPT_LABEL}={}", attempt.id);
+            evidence::collect(&self.api::<Pod>(), &selector).await?
+        } else {
+            (
+                kuben_core::scan::ScanReport::unavailable("scanning is not configured (build.scanner_image)"),
+                None,
+            )
+        };
+        let scan = NewScan {
+            repository: attempt.image_repository.clone(),
+            digest: digest.as_str().to_owned(),
+            summary: evidence::summary_of(&report, now_ms()),
+            detail: report.detail.as_deref().map(|d| d.chars().take(2048).collect()),
+            build_attempt: Some(attempt.id),
+        };
+        let recorded = async {
+            let mut t = self.store.tenant(claim.org).await?;
+            t.record_scan(&scan).await?;
+            if let Some(sbom) = &sbom {
+                t.put_sbom(digest.as_str(), sbom).await?;
+            }
+            t.commit().await
+        };
+        recorded.await?;
+        let counts = scan.summary.counts;
+        tracing::info!(
+            build = %attempt.id, %digest, status = scan.summary.status.as_str(),
+            critical = counts.critical, high = counts.high, sbom = sbom.is_some(),
+            "image scanned"
+        );
+        Ok(())
     }
 
     /// Fail the attempt with `code`, queue a retry for a lost worker, and
