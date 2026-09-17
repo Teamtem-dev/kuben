@@ -734,7 +734,7 @@ mod tests {
             again.iter().map(|d| (d.id, d.attempts)).collect::<Vec<_>>(),
             [(taken[0].id, 1)]
         );
-        for d in &taken {
+        for d in &taken[1..] {
             store
                 .delivery_failed(d.id, Some(500), "boom", None)
                 .await

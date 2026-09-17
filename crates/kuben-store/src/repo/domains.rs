@@ -402,11 +402,6 @@ mod tests {
         t.create_claim(claim_a, "example.com", TOKEN, "u")
             .await
             .expect("claim");
-        let twice = t.create_claim(Uuid::now_v7(), "example.com", TOKEN, "u").await;
-        assert!(
-            twice.is_err_and(|e| e.is_unique_violation()),
-            "one open claim per domain"
-        );
         assert_eq!(
             t.verify_claim(claim_a, "txt", None).await.expect("verify"),
             Verified::Verified
@@ -416,6 +411,13 @@ mod tests {
             Verified::NotPending
         );
         t.commit().await.expect("commit");
+
+        let mut t = store.tenant(a).await.expect("tenant");
+        let twice = t.create_claim(Uuid::now_v7(), "example.com", TOKEN, "u").await;
+        assert!(
+            twice.is_err_and(|e| e.is_unique_violation()),
+            "one open claim per domain"
+        );
 
         let mut t = store.tenant(b).await.expect("tenant");
         t.create_claim(claim_b, "shop.example.com", TOKEN, "u")

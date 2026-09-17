@@ -3794,6 +3794,16 @@ async fn m5_image_policies_deploy_new_digests() {
     let bob = login(&app.router, "bob@example.com").await;
     let (status, _) = send(&app.router, deploy(&alice, 0, None)).await;
     assert_eq!(status, StatusCode::ACCEPTED);
+    let (status, _, _) = call(
+        &app.router,
+        "PUT",
+        POLICY,
+        Auth::Cookie(&alice),
+        Some(policy(1)),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
     let path = "/api/v1/projects/shop/environments/prod/apps/api/image-policy";
     let policy = json!({ "repository": "nginx", "pattern": "semver:>=1.26", "intervalSecs": 300 });
     let put = |cookie: &str, body: serde_json::Value| {
