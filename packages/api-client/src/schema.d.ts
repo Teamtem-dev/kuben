@@ -392,6 +392,60 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The approval state of a deployment run. */
+        get: operations["getDeploymentApproval"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a deployment waiting for approval. Enough approvals release it to
+         *     the cluster at once.
+         */
+        post: operations["approveDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{run}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a deployment waiting for approval; it is cancelled. */
+        post: operations["rejectDeployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/doctor": {
         parameters: {
             query?: never;
@@ -619,6 +673,62 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Members with a role on this environment. */
+        get: operations["listEnvironmentMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/members/{member}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Give an organization member a role on this environment, or change it. */
+        put: operations["putEnvironmentMember"];
+        post?: never;
+        /** Remove a member's role on this environment. */
+        delete: operations["removeEnvironmentMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The environment's protection policy. */
+        get: operations["getEnvironmentPolicy"];
+        /**
+         * Change the environment's protection policy. Stricter policies need
+         *     `env-write`; anything weaker needs an owner.
+         */
+        put: operations["putEnvironmentPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/secrets": {
         parameters: {
             query?: never;
@@ -666,6 +776,41 @@ export type paths = {
         /** Deploy a template into an environment. */
         post: operations["deployTemplate"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Members with a role on this project. */
+        get: operations["listProjectMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/members/{member}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Give an organization member a role on this project, or change it. */
+        put: operations["putProjectMember"];
+        post?: never;
+        /** Remove a member's role on this project; their organization role stays. */
+        delete: operations["removeProjectMember"];
         options?: never;
         head?: never;
         patch?: never;
@@ -788,6 +933,30 @@ export type components = {
             last_seen?: string | null;
             /** @description The component that reported it. */
             source?: string | null;
+        };
+        ApprovalDto: {
+            /** Format: uuid */
+            run: string;
+            phase: string;
+            /** @description Email of whoever asked for the deployment. */
+            requestedBy: string;
+            /**
+             * Format: int32
+             * @description Distinct approvals needed; 0 when the run needs none.
+             */
+            required: number;
+            /** Format: int32 */
+            approved: number;
+            /**
+             * Format: int64
+             * @description When the run is cancelled unless approved (Unix milliseconds).
+             */
+            expiresAt?: number | null;
+            /** @description What an approver confirms: send it back with the decision. */
+            planHash?: string | null;
+            /** @description Whether the caller may decide on this run now. */
+            canDecide: boolean;
+            decisions: components["schemas"]["DecisionDto"][];
         };
         AuditEventDto: {
             /** Format: int64 */
@@ -968,6 +1137,21 @@ export type components = {
             token: string;
             info: components["schemas"]["TokenDto"];
         };
+        DecideRequest: {
+            /** @description The plan hash shown with the deployment (hex). */
+            planHash: string;
+            /** @description Why, for the record; at most 1024 characters. */
+            comment?: string | null;
+        };
+        DecisionDto: {
+            /** @description Email of whoever decided. */
+            approver: string;
+            /** @description `approved` or `rejected`. */
+            decision: string;
+            comment?: string | null;
+            /** Format: int64 */
+            decidedAt: number;
+        };
         /**
          * @description Why a run exists.
          * @enum {string}
@@ -999,10 +1183,22 @@ export type components = {
              */
             generation: number;
             /**
-             * @description `planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,
-             *     `succeeded`, `failed`, `superseded`, …
+             * @description `planned`, `awaitingApproval`, `pendingDelivery`, `acceptedByCluster`,
+             *     `applying`, `succeeded`, `failed`, `superseded`, `cancelled`, …
              */
             phase: string;
+            /**
+             * Format: int32
+             * @description Distinct approvals the environment's policy requires before delivery.
+             */
+            approvals_required?: number;
+            /**
+             * Format: int64
+             * @description When a run waiting for approval is cancelled (Unix milliseconds).
+             */
+            approval_expires_at?: number | null;
+            /** @description The hash approvers confirm (hex), when approvals are required. */
+            plan_hash?: string | null;
         };
         /** @description A deployment run with how it went. */
         DeploymentSummary: {
@@ -1208,6 +1404,22 @@ export type components = {
             /** @description Why no logs could be read (e.g. the container is still starting). */
             error?: string | null;
         };
+        PolicyDto: {
+            /**
+             * Format: int64
+             * @description 0 when the environment has no policy of its own yet.
+             */
+            revision: number;
+            /** Format: int32 */
+            requiredApprovals: number;
+            deployRole: string;
+            approveRole: string;
+            /** Format: int32 */
+            approvalTtlSecs: number;
+            updatedBy?: string | null;
+            /** Format: int64 */
+            updatedAt?: number | null;
+        };
         /** @description Problem Details body. */
         Problem: {
             /**
@@ -1274,6 +1486,37 @@ export type components = {
         };
         /** @enum {string} */
         ProtocolDto: "http" | "tcp";
+        PutPolicy: {
+            /**
+             * Format: int32
+             * @description Distinct approvers a deployment needs (0–5).
+             * @example 1
+             */
+            requiredApprovals: number;
+            /**
+             * @description The weakest role that may deploy: `developer`, `admin` or `owner`.
+             * @example developer
+             */
+            deployRole: string;
+            /**
+             * @description The weakest role that may approve: `admin` or `owner`.
+             * @example admin
+             */
+            approveRole: string;
+            /**
+             * Format: int32
+             * @description How long a deployment waits for approvals (300 s – 30 days).
+             * @example 604800
+             */
+            approvalTtlSecs?: number;
+        };
+        PutScopedRole: {
+            /**
+             * @description `viewer`, `developer`, `admin` or `owner`.
+             * @example developer
+             */
+            role: string;
+        };
         PutSecret: {
             /** @description Key → UTF-8 value. Replaces the whole secret. */
             data: {
@@ -2745,6 +2988,180 @@ export interface operations {
             };
         };
     };
+    getDeploymentApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approveDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+            /** @description Not an approver here, an API token, or the requester */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not waiting, expired, already decided, or a changed plan */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    rejectDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Deployment run id */
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppDoctor: {
         parameters: {
             query?: never;
@@ -3330,6 +3747,250 @@ export interface operations {
             };
         };
     };
+    listEnvironmentMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putEnvironmentMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutScopedRole"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeEnvironmentMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getEnvironmentPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putEnvironmentPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutPolicy"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDto"];
+                };
+            };
+            /** @description Weakening needs an owner; tokens cannot change policies */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listSecrets: {
         parameters: {
             query?: never;
@@ -3487,6 +4148,153 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listProjectMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutScopedRole"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberDto"];
+                };
+            };
+            /** @description Above your own role, or an API token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a member of the organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeProjectMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description User id */
+                member: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

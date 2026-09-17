@@ -360,6 +360,7 @@ mod tests {
         Materialization {
             render_plan: None,
             restarted_at: None,
+            approval_expires_at: None,
             cluster: kuben_core::ids::ClusterId::new(),
             delivery: kuben_store::repo::Delivery::Controller,
             org: OrgId::new(),

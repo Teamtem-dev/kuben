@@ -341,6 +341,7 @@ mod tests {
             config: json!({}),
             render_plan: None,
             restarted_at: None,
+            approval_expires_at: None,
         }
     }
 

@@ -212,6 +212,7 @@ pub async fn update(
         expected: a.app.desired_generation,
         reason: RunReason::Deploy,
         reference: format!("{project}/{environment}/{app}"),
+        chain: a.chain(),
     };
     deploy(&mut tenant, &authz, change).await?;
     let record = tenant
@@ -318,6 +319,7 @@ pub async fn restart(
             format!("{project}/{environment}/{app}"),
         );
         let mut tenant = state.store.tenant(a.env.project.org).await?;
+        super::approvals::ensure_may_deploy(&mut tenant, &authz, a.app.target, &a.chain()).await?;
         started(tenant.start_deployment(&run, audit, None).await?)?;
         tenant.commit().await?;
         return Ok(StatusCode::ACCEPTED);
@@ -370,6 +372,7 @@ pub async fn hand_over(
     }
     let run = rerun(&a, &authz, RunReason::Handover, &app)?;
     let mut tenant = state.store.tenant(a.env.project.org).await?;
+    super::approvals::ensure_may_deploy(&mut tenant, &authz, a.app.target, &a.chain()).await?;
     if !tenant.hand_over_to_agent(a.app.target).await? {
         return Err(Error::Conflict(format!(
             "the cluster of app `{app}` has no linked agent that carries applications"

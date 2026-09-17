@@ -22,6 +22,7 @@
 //! the agent's last report, from SQL). An image given as a tag is resolved to a
 //! digest at its registry first (option A).
 
+pub mod approvals;
 pub mod builds;
 pub mod crud;
 pub mod deployments;
@@ -433,11 +434,14 @@ pub(crate) struct Change<'a> {
     pub reason: RunReason,
     /// `project/environment/app`, for the audit record.
     pub reference: String,
+    /// Where the change lands, for the environment's deploy role.
+    pub chain: kuben_core::authz::ScopeChain,
 }
 
 /// Record `change` as the app's newest configuration and start a deployment
 /// run of it, in `tenant`'s transaction.
 pub(crate) async fn deploy(tenant: &mut Tenant, authz: &Authz, change: Change<'_>) -> ApiResult<()> {
+    approvals::ensure_may_deploy(tenant, authz, change.target, &change.chain).await?;
     let (_, actor) = request::actor(authz);
     let config = config_of(change.spec)?;
     let missing = || Error::NotFound("the app".into());
@@ -542,6 +546,7 @@ pub(crate) async fn create_app(
         expected: Generation(0),
         reason: RunReason::Deploy,
         reference: format!("{}/{}/{name}", e.project.slug(), e.short_name()),
+        chain: e.chain(),
     };
     deploy(&mut tenant, authz, change).await?;
     let record = tenant

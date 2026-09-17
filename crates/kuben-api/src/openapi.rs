@@ -7,7 +7,9 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     auth,
-    routes::{apps, audit, environments, git, health, members, projects, secrets, templates, tokens},
+    routes::{
+        access, apps, audit, environments, git, health, members, policy, projects, secrets, templates, tokens,
+    },
     state::ApiState,
 };
 
@@ -59,6 +61,14 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::promote::promote))
         .routes(routes!(apps::deployments::start, apps::deployments::list))
         .routes(routes!(apps::deployments::get))
+        .routes(routes!(apps::approvals::get))
+        .routes(routes!(apps::approvals::approve))
+        .routes(routes!(apps::approvals::reject))
+        .routes(routes!(policy::get, policy::put))
+        .routes(routes!(access::list_project))
+        .routes(routes!(access::put_project, access::remove_project))
+        .routes(routes!(access::list_environment))
+        .routes(routes!(access::put_environment, access::remove_environment))
         .routes(routes!(apps::source::get, apps::source::put))
         .routes(routes!(apps::source::sync))
         .routes(routes!(apps::builds::list))
@@ -123,6 +133,14 @@ mod tests {
             &format!("{app}/builds/{{build}}"),
             &format!("{app}/builds/{{build}}/cancel"),
             "/api/v1/git/installations",
+            &format!("{app}/deployments/{{run}}/approval"),
+            &format!("{app}/deployments/{{run}}/approve"),
+            &format!("{app}/deployments/{{run}}/reject"),
+            "/api/v1/projects/{project}/environments/{environment}/policy",
+            "/api/v1/projects/{project}/members",
+            "/api/v1/projects/{project}/members/{member}",
+            "/api/v1/projects/{project}/environments/{environment}/members",
+            "/api/v1/projects/{project}/environments/{environment}/members/{member}",
             "/api/v1/projects/{project}/environments/{environment}/secrets",
             "/api/v1/projects/{project}/environments/{environment}/secrets/{secret}",
             "/api/v1/projects/{project}/environments/{environment}/templates/{template}",

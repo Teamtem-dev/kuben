@@ -25,7 +25,7 @@ use super::{Claim, Tenant, product::counter};
 use crate::{Store, StoreError};
 
 const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.lifecycle_uid, r.render_plan_id, \
-     r.restarted_at, \
+     r.restarted_at, r.approval_expires_at, \
      pr.id AS project_id, pr.slug AS project_slug, pr.name AS project_name, \
      pr.description AS project_description, \
      e.id AS environment_id, e.slug AS environment_slug, e.name AS environment_name, e.protected, \
@@ -122,6 +122,8 @@ pub struct Materialization {
     /// The restart stamp the run renders with (Unix milliseconds): the time
     /// of the target's latest restart run, if it had one.
     pub restarted_at: Option<i64>,
+    /// When a run waiting for approval is cancelled (Unix milliseconds).
+    pub approval_expires_at: Option<i64>,
 }
 
 /// A run's frozen RenderPlan (ADR-026).
@@ -159,6 +161,7 @@ struct MaterializationRow {
     lifecycle_uid: Uuid,
     render_plan_id: Option<Uuid>,
     restarted_at: Option<i64>,
+    approval_expires_at: Option<i64>,
     project_id: Uuid,
     project_slug: String,
     project_name: String,
@@ -269,6 +272,7 @@ impl MaterializationRow {
             config: json(&self.config)?,
             render_plan: self.render_plan_id.map(RenderPlanId::from_uuid),
             restarted_at: self.restarted_at,
+            approval_expires_at: self.approval_expires_at,
         })
     }
 }

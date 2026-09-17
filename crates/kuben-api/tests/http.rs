@@ -1583,3 +1583,261 @@ async fn deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql() {
         "the first deploy brings its configuration"
     );
 }
+
+/// A user with `role` in the organization, signed in: their cookie and id.
+async fn member(app: &TestApp, email: &str, role: Role) -> (String, String) {
+    let hasher = kuben_api::auth::password::Hasher::insecure_for_tests();
+    let user = app
+        .store
+        .create_user(email, None, Some(&hasher.hash("hunter22").expect("hash")))
+        .await
+        .expect("user");
+    app.store.add_membership(app.org, user.id).await.expect("member");
+    app.store
+        .bind_org_role(app.org, user.id, role)
+        .await
+        .expect("bind");
+    (login(&app.router, email).await, user.id.to_string())
+}
+
+const POLICY: &str = "/api/v1/projects/shop/environments/prod/policy";
+
+fn policy(approvals: u8) -> serde_json::Value {
+    json!({ "requiredApprovals": approvals, "deployRole": "developer", "approveRole": "admin" })
+}
+
+/// Shop's production app with a policy of one approval set by carol (an
+/// admin): the router and the cookies of alice (owner), bob (viewer) and
+/// carol.
+async fn protected(app: &TestApp) -> (String, String, String) {
+    sql_app(app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (carol, _) = member(app, "carol@example.com", Role::Admin).await;
+    let (status, _, open) = call(&app.router, "GET", POLICY, Auth::Cookie(&alice), None, None).await;
+    assert_eq!((status, open["revision"].clone()), (StatusCode::OK, json!(0)));
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &bob, Some(policy(1))).await,
+        StatusCode::FORBIDDEN,
+        "viewers cannot change protection"
+    );
+    let (status, _, set) = call(
+        &app.router,
+        "PUT",
+        POLICY,
+        Auth::Cookie(&carol),
+        Some(policy(1)),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, set["revision"].clone()),
+        (StatusCode::OK, json!(1)),
+        "{set}"
+    );
+    (alice, bob, carol)
+}
+
+/// M4.1: policies are validated and weakening protection takes an owner.
+#[tokio::test]
+async fn m4_weakening_protection_takes_an_owner() {
+    let Some(app) = setup().await else { return };
+    let (alice, _, carol) = protected(&app).await;
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &carol, Some(policy(9))).await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &carol, Some(policy(2))).await,
+        StatusCode::OK,
+        "stricter is an admin's call"
+    );
+    assert_eq!(
+        status_of(&app.router, "PUT", POLICY, &carol, Some(policy(0))).await,
+        StatusCode::FORBIDDEN,
+        "weaker is an owner's"
+    );
+    let (status, _, open) = call(
+        &app.router,
+        "PUT",
+        POLICY,
+        Auth::Cookie(&alice),
+        Some(policy(0)),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, open["revision"].clone()),
+        (StatusCode::OK, json!(3)),
+        "{open}"
+    );
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(
+        (run["phase"].clone(), run["approvals_required"].clone()),
+        (json!("planned"), json!(0))
+    );
+}
+
+/// M4.1: a protected deployment waits for someone else with the approve
+/// role, who confirms the plan they were shown.
+#[tokio::test]
+async fn m4_protected_deploys_wait_for_another_approver() {
+    let Some(app) = setup().await else { return };
+    let (alice, bob, carol) = protected(&app).await;
+    let (status, run) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{run}");
+    assert_eq!(run["phase"], "awaitingApproval");
+    assert_eq!(run["approvals_required"], 1);
+    let hash = run["plan_hash"].as_str().expect("plan hash").to_owned();
+    let base = format!("{DEPLOYMENTS}/{}", run["run"].as_str().expect("run"));
+    let decide = |hash: &str| Some(json!({ "planHash": hash, "comment": "ship it" }));
+    let approve = format!("{base}/approve");
+
+    for (who, why) in [
+        (&alice, "the requester never approves"),
+        (&bob, "viewers cannot approve"),
+    ] {
+        assert_eq!(
+            status_of(&app.router, "POST", &approve, who, decide(&hash)).await,
+            StatusCode::FORBIDDEN,
+            "{why}"
+        );
+    }
+    let (_, _, seen) = call(
+        &app.router,
+        "GET",
+        &format!("{base}/approval"),
+        Auth::Cookie(&carol),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (seen["canDecide"].clone(), seen["requestedBy"].clone()),
+        (json!(true), json!("alice@example.com"))
+    );
+    assert_eq!(
+        status_of(&app.router, "POST", &approve, &carol, decide("00")).await,
+        StatusCode::CONFLICT,
+        "a plan other than the one shown"
+    );
+    let (status, _, approved) = call(
+        &app.router,
+        "POST",
+        &approve,
+        Auth::Cookie(&carol),
+        decide(&hash),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{approved}");
+    assert_eq!(approved["phase"], "pendingDelivery");
+    assert_eq!(approved["decisions"][0]["approver"], "carol@example.com");
+    assert_eq!(
+        status_of(
+            &app.router,
+            "POST",
+            &format!("{base}/reject"),
+            &carol,
+            decide(&hash)
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "decided already"
+    );
+}
+
+/// M4.1: roles on one project, granted without escalation; removing a member
+/// from the organization takes them away.
+#[tokio::test]
+async fn m4_project_roles_are_granted_without_escalation() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let (carol, carol_id) = member(&app, "carol@example.com", Role::Admin).await;
+    let (dave, dave_id) = member(&app, "dave@example.com", Role::Viewer).await;
+    let members = "/api/v1/projects/shop/members";
+    let dave_path = format!("{members}/{dave_id}");
+
+    let (status, _) = send(&app.router, deploy(&dave, 0, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a viewer cannot deploy");
+
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &dave_path,
+            &carol,
+            Some(json!({ "role": "owner" }))
+        )
+        .await,
+        StatusCode::FORBIDDEN,
+        "an admin cannot grant owner"
+    );
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{members}/{carol_id}"),
+            &carol,
+            Some(json!({ "role": "viewer" }))
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "nobody changes their own role"
+    );
+    let (status, _, granted) = call(
+        &app.router,
+        "PUT",
+        &dave_path,
+        Auth::Cookie(&carol),
+        Some(json!({ "role": "developer" })),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, granted["role"].clone()),
+        (StatusCode::OK, json!("developer")),
+        "{granted}"
+    );
+    let (_, _, listed) = call(&app.router, "GET", members, Auth::Cookie(&dave), None, None).await;
+    assert_eq!(listed.as_array().map(Vec::len), Some(1), "{listed}");
+
+    let (status, run) = send(&app.router, deploy(&dave, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "a project developer deploys: {run}");
+
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{members}/{}", uuid::Uuid::now_v7()),
+            &alice,
+            Some(json!({ "role": "viewer" }))
+        )
+        .await,
+        StatusCode::NOT_FOUND,
+        "not a member of the organization"
+    );
+    assert_eq!(
+        status_of(
+            &app.router,
+            "DELETE",
+            &format!("/api/v1/members/{dave_id}"),
+            &alice,
+            None
+        )
+        .await,
+        StatusCode::NO_CONTENT
+    );
+    let (status, _) = send(&app.router, deploy(&dave, 1, None)).await;
+    assert!(
+        matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN),
+        "removed members lose every role: {status}"
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &dave_path, &alice, None).await,
+        StatusCode::NOT_FOUND,
+        "the project role went with the membership"
+    );
+}

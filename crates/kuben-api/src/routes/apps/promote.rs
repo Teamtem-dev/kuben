@@ -268,6 +268,7 @@ pub async fn promote(
         expected,
         reason: RunReason::Promotion,
         reference: format!("{project}/{}/{app}", target.short_name()),
+        chain: target.chain(),
     };
     deploy(&mut tenant, &authz, change).await?;
     let record = tenant

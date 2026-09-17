@@ -190,6 +190,7 @@ pub async fn rollback(
         expected: a.app.desired_generation,
         reason: RunReason::Rollback,
         reference: format!("{project}/{environment}/{app}"),
+        chain: a.chain(),
     };
     deploy(&mut tenant, &authz, change).await?;
     let record = tenant

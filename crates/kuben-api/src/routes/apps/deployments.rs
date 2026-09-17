@@ -89,9 +89,18 @@ pub struct DeploymentDto {
     pub operation: Uuid,
     /// The target generation this run owns.
     pub generation: u64,
-    /// `planned`, `pendingDelivery`, `acceptedByCluster`, `applying`,
-    /// `succeeded`, `failed`, `superseded`, …
+    /// `planned`, `awaitingApproval`, `pendingDelivery`, `acceptedByCluster`,
+    /// `applying`, `succeeded`, `failed`, `superseded`, `cancelled`, …
     pub phase: String,
+    /// Distinct approvals the environment's policy requires before delivery.
+    #[serde(default)]
+    pub approvals_required: u8,
+    /// When a run waiting for approval is cancelled (Unix milliseconds).
+    #[serde(default)]
+    pub approval_expires_at: Option<i64>,
+    /// The hash approvers confirm (hex), when approvals are required.
+    #[serde(default)]
+    pub plan_hash: Option<String>,
 }
 
 impl From<RunSummary> for DeploymentDto {
@@ -101,6 +110,9 @@ impl From<RunSummary> for DeploymentDto {
             operation: *s.operation.as_uuid(),
             generation: s.generation.0,
             phase: s.phase.as_str().to_owned(),
+            approvals_required: s.approvals_required,
+            approval_expires_at: s.approval_expires_at,
+            plan_hash: s.plan_hash.as_ref().map(|h| kuben_core::policy::hex(h)),
         }
     }
 }
@@ -246,6 +258,7 @@ pub async fn start(
     let input_hash = Sha256::digest(&canonical).to_vec();
 
     let mut tenant = state.store.tenant(t.org).await?;
+    super::approvals::ensure_may_deploy(&mut tenant, &authz, t.target, &t.chain()).await?;
     let release = release_for(&mut tenant, &t, &body, &actor).await?;
     let config_revision = config_revision_for(&mut tenant, &t, body.config.as_ref(), &actor).await?;
     let lifecycle_uid = tenant

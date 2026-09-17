@@ -8,7 +8,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use kuben_core::{Error, perm::Perm};
+use kuben_core::{Error, perm::Perm, policy::EnvironmentPolicy};
 use kuben_crd::Quota;
 use kuben_platform::{controller::resources::namespace_name, projection::EnvironmentView};
 use kuben_store::repo::{ENVIRONMENT_APPLY, ENVIRONMENT_DELETE, EnvironmentKind, EnvironmentRecord, Subject};
@@ -243,6 +243,13 @@ pub async fn create(
         .create_placement(p.id(), id, cluster, &namespace)
         .await
         .map_err(|e| request::duplicate(e, &what))?;
+    // Protection is recorded, never inferred later: production starts with
+    // one approval by someone other than the requester (M4.1).
+    let policy = EnvironmentPolicy::initial(body.env_type == EnvType::Production);
+    tenant
+        .set_environment_policy(p.id(), id, &policy, &actor)
+        .await?
+        .ok_or_else(taken)?;
     tenant
         .request(
             ENVIRONMENT_APPLY,

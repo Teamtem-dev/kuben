@@ -19,6 +19,7 @@ use kuben_core::{
         AutodeployRequest, DeployPolicy, Generation, IllegalTransition, Reject, RunEvent, RunPhase,
         SourceEpoch, TargetState,
     },
+    policy::ChangeKind,
     time::now_ms,
 };
 use serde_json::{Value, json};
@@ -70,13 +71,23 @@ const PLAN_OF_ORG: &str = "SELECT EXISTS (SELECT 1 FROM render_plans WHERE id = 
 const RAISE_GENERATION: &str = "UPDATE application_targets SET desired_generation = $3, deploy_policy = $4 \
      WHERE id = $1 AND desired_generation = $2";
 const SUPERSEDE_OLDER: &str = "UPDATE deployment_runs SET phase = 'superseded', updated_at = $3 \
-     WHERE target_id = $1 AND generation < $2 AND phase <> ALL($4)";
+     WHERE target_id = $1 AND generation < $2 AND phase <> ALL($4) RETURNING operation_id";
+/// Superseded runs settle at once, even when parked for an approval.
+const WAKE_SUPERSEDED: &str = "UPDATE operations SET next_attempt_at = kuben_now_ms() \
+     WHERE id = ANY($1) AND NOT done AND next_attempt_at > kuben_now_ms()";
 const INSERT_RUN: &str = "INSERT INTO deployment_runs \
      (id, org_id, project_id, application_id, target_id, release_id, config_revision_id, render_plan_id, \
-      generation, lifecycle_uid, reason, requested_by, operation_id, created_at, updated_at, restarted_at) \
+      generation, lifecycle_uid, reason, requested_by, operation_id, created_at, updated_at, restarted_at, \
+      approvals_required, approval_expires_at, policy_revision, approval_plan_hash) \
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, \
        CASE WHEN $11 = 'restart' THEN $14 ELSE (SELECT d.restarted_at FROM deployment_runs d \
-         WHERE d.target_id = $5 AND d.org_id = $2 ORDER BY d.generation DESC LIMIT 1) END)";
+         WHERE d.target_id = $5 AND d.org_id = $2 ORDER BY d.generation DESC LIMIT 1) END, \
+       $15, $16, $17, \
+       CASE WHEN $15 > 0 THEN sha256(convert_to(concat_ws('/', $1::text, $5::text, $6::text, $7::text, \
+         $9::text, $10::text, $11::text), 'UTF8')) END)";
+const AWAIT_APPROVAL: &str =
+    "UPDATE deployment_runs SET phase = $2, updated_at = $3 WHERE id = $1 AND phase = $4";
+const PARK_OPERATION: &str = "UPDATE operations SET next_attempt_at = $2 WHERE id = $1 AND NOT done";
 const SELECT_RUN: &str = "SELECT phase, generation FROM deployment_runs WHERE id = $1 AND org_id = $2";
 const LOCK_RUN_UNDER_FENCE: &str = "SELECT r.phase FROM deployment_runs r \
      JOIN operations o ON o.id = r.operation_id \
@@ -120,6 +131,19 @@ pub enum RunReason {
 }
 
 impl RunReason {
+    /// What the run changes, for the environment's approval rules.
+    #[must_use]
+    pub const fn change_kind(self) -> ChangeKind {
+        match self {
+            Self::Deploy => ChangeKind::Deploy,
+            Self::Rollback => ChangeKind::Rollback,
+            Self::Promotion => ChangeKind::Promotion,
+            Self::Restart => ChangeKind::Restart,
+            Self::Handover => ChangeKind::Handover,
+            Self::Build => ChangeKind::Build,
+        }
+    }
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -158,6 +182,9 @@ pub enum Started {
         operation: OperationId,
         run: DeploymentRunId,
         generation: Generation,
+        /// Approvals the environment's policy requires before delivery; the
+        /// run waits in `awaitingApproval` when this is not zero.
+        approvals_required: u8,
     },
     /// The same key and request were accepted before.
     Replayed(OperationId),
@@ -436,12 +463,14 @@ impl Tenant {
             Accepted::Replayed(id) => return Ok(Started::Replayed(id)),
             Accepted::KeyReused(id) => return Ok(Started::KeyReused(id)),
         };
-        self.record_run(req, row.application_id, run, operation, generation, state.policy)
+        let approvals_required = self
+            .record_run(req, row.application_id, run, operation, generation, state.policy)
             .await?;
         Ok(Started::Accepted {
             operation,
             run,
             generation,
+            approvals_required,
         })
     }
 
@@ -474,7 +503,10 @@ impl Tenant {
     }
 
     /// Raise the target's generation, supersede its older unsettled runs and
-    /// insert the accepted run.
+    /// insert the accepted run under the environment's policy: a run that
+    /// needs approvals waits in `awaitingApproval`, its operation parked
+    /// until the approval window closes (a decision wakes it). The approvals
+    /// required.
     async fn record_run(
         &mut self,
         req: &StartDeployment,
@@ -483,7 +515,11 @@ impl Tenant {
         operation: OperationId,
         generation: Generation,
         policy: DeployPolicy,
-    ) -> Result<(), StoreError> {
+    ) -> Result<u8, StoreError> {
+        let revision = self.policy_of_target(req.target).await?;
+        let approvals = revision
+            .as_ref()
+            .map_or(0, |r| r.policy.approvals_for(req.reason.change_kind()));
         let raised = sqlx::query(RAISE_GENERATION)
             .bind(*req.target.as_uuid())
             .bind(signed(req.expected_generation.0)?)
@@ -497,18 +533,28 @@ impl Tenant {
             return Err(sqlx::Error::RowNotFound.into());
         }
         let now = now_ms();
+        let expires_at = revision
+            .as_ref()
+            .filter(|_| approvals > 0)
+            .map(|r| now.saturating_add(i64::from(r.policy.approval_ttl_secs) * 1000));
         let settled: Vec<String> = RunPhase::ALL
             .into_iter()
             .filter(|p| p.is_final())
             .map(|p| p.as_str().to_owned())
             .collect();
-        sqlx::query(SUPERSEDE_OLDER)
+        let superseded: Vec<Uuid> = sqlx::query_scalar(SUPERSEDE_OLDER)
             .bind(*req.target.as_uuid())
             .bind(signed(generation.0)?)
             .bind(now)
             .bind(settled)
-            .execute(&mut *self.tx)
+            .fetch_all(&mut *self.tx)
             .await?;
+        if !superseded.is_empty() {
+            sqlx::query(WAKE_SUPERSEDED)
+                .bind(superseded)
+                .execute(&mut *self.tx)
+                .await?;
+        }
         sqlx::query(INSERT_RUN)
             .bind(*run.as_uuid())
             .bind(self.org.to_string())
@@ -524,9 +570,29 @@ impl Tenant {
             .bind(&req.requested_by)
             .bind(*operation.as_uuid())
             .bind(now)
+            .bind(i16::from(approvals))
+            .bind(expires_at)
+            .bind(revision.as_ref().map(|r| signed(r.revision)).transpose()?)
             .execute(&mut *self.tx)
             .await?;
-        Ok(())
+        if let Some(expires_at) = expires_at {
+            let waiting = RunPhase::Planned
+                .apply(RunEvent::RequireApproval)
+                .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+            sqlx::query(AWAIT_APPROVAL)
+                .bind(*run.as_uuid())
+                .bind(waiting.as_str())
+                .bind(now)
+                .bind(RunPhase::Planned.as_str())
+                .execute(&mut *self.tx)
+                .await?;
+            sqlx::query(PARK_OPERATION)
+                .bind(*operation.as_uuid())
+                .bind(expires_at)
+                .execute(&mut *self.tx)
+                .await?;
+        }
+        Ok(approvals)
     }
 
     /// The release belongs to the target's application, the revision to the
@@ -577,9 +643,11 @@ impl Tenant {
 
 const LATEST_CONFIG_REVISION: &str = "SELECT id FROM target_config_revisions \
      WHERE target_id = $1 AND org_id = $2 ORDER BY revision DESC LIMIT 1";
-const RUN_OF_TARGET: &str = "SELECT id, operation_id, generation, phase FROM deployment_runs \
+const RUN_OF_TARGET: &str = "SELECT id, operation_id, generation, phase, approvals_required, \
+     approval_expires_at, approval_plan_hash FROM deployment_runs \
      WHERE id = $1 AND target_id = $2 AND org_id = $3";
-const RUN_OF_OPERATION: &str = "SELECT id, operation_id, generation, phase FROM deployment_runs \
+const RUN_OF_OPERATION: &str = "SELECT id, operation_id, generation, phase, approvals_required, \
+     approval_expires_at, approval_plan_hash FROM deployment_runs \
      WHERE operation_id = $1 AND org_id = $2";
 
 /// A deployment run as the API shows it.
@@ -589,16 +657,40 @@ pub struct RunSummary {
     pub operation: OperationId,
     pub generation: Generation,
     pub phase: RunPhase,
+    /// Approvals the run needs before delivery (M4.1).
+    pub approvals_required: u8,
+    /// When a run waiting for approval is cancelled.
+    pub approval_expires_at: Option<i64>,
+    /// What approvers confirm they saw: sha-256 of the run's inputs.
+    pub plan_hash: Option<[u8; 32]>,
 }
 
-fn run_summary(
-    (run, operation, generation, phase): (Uuid, Uuid, i64, String),
-) -> Result<RunSummary, sqlx::Error> {
+#[derive(sqlx::FromRow)]
+struct SummaryRow {
+    id: Uuid,
+    operation_id: Uuid,
+    generation: i64,
+    phase: String,
+    approvals_required: i16,
+    approval_expires_at: Option<i64>,
+    approval_plan_hash: Option<Vec<u8>>,
+}
+
+fn run_summary(r: SummaryRow) -> Result<RunSummary, sqlx::Error> {
+    let decode = |e: std::num::TryFromIntError| sqlx::Error::Decode(e.into());
     Ok(RunSummary {
-        run: DeploymentRunId::from_uuid(run),
-        operation: OperationId::from_uuid(operation),
-        generation: Generation(counter(generation)?),
-        phase: parse_phase(&phase)?,
+        run: DeploymentRunId::from_uuid(r.id),
+        operation: OperationId::from_uuid(r.operation_id),
+        generation: Generation(counter(r.generation)?),
+        phase: parse_phase(&r.phase)?,
+        approvals_required: u8::try_from(r.approvals_required).map_err(decode)?,
+        approval_expires_at: r.approval_expires_at,
+        plan_hash: r
+            .approval_plan_hash
+            .map(|h| {
+                <[u8; 32]>::try_from(h).map_err(|_| sqlx::Error::Decode("a plan hash is 32 bytes".into()))
+            })
+            .transpose()?,
     })
 }
 
@@ -622,7 +714,7 @@ impl Tenant {
         target: TargetId,
         run: DeploymentRunId,
     ) -> Result<Option<RunSummary>, StoreError> {
-        let row: Option<(Uuid, Uuid, i64, String)> = sqlx::query_as(RUN_OF_TARGET)
+        let row: Option<SummaryRow> = sqlx::query_as(RUN_OF_TARGET)
             .bind(*run.as_uuid())
             .bind(*target.as_uuid())
             .bind(self.org.to_string())
@@ -637,7 +729,7 @@ impl Tenant {
         &mut self,
         operation: OperationId,
     ) -> Result<Option<RunSummary>, StoreError> {
-        let row: Option<(Uuid, Uuid, i64, String)> = sqlx::query_as(RUN_OF_OPERATION)
+        let row: Option<SummaryRow> = sqlx::query_as(RUN_OF_OPERATION)
             .bind(*operation.as_uuid())
             .bind(self.org.to_string())
             .fetch_optional(&mut *self.tx)

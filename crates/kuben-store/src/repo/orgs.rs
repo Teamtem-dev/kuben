@@ -60,6 +60,21 @@ const UPDATE_ORG_ROLE: &str = "UPDATE role_bindings SET role = $3 \
 const DELETE_USER_BINDINGS: &str =
     "DELETE FROM role_bindings WHERE org_id = $1 AND subject_kind = 'user' AND subject_id = $2";
 const DELETE_MEMBERSHIP: &str = "DELETE FROM memberships WHERE org_id = $1 AND user_id = $2";
+const REVOKE_USER_TOKENS: &str = "UPDATE api_tokens SET revoked_at = $3 \
+     WHERE org_id = $1 AND owner_user_id = $2 AND revoked_at IS NULL";
+const UPSERT_SCOPED_BINDING: &str = "INSERT INTO role_bindings \
+     (id, org_id, subject_kind, subject_id, role, scope_kind, scope_uid, created_at) \
+     SELECT $1, $2, 'user', $3, $4, $5, $6, $7 \
+     WHERE EXISTS (SELECT 1 FROM memberships WHERE org_id = $2 AND user_id = $3) \
+     ON CONFLICT (org_id, subject_kind, subject_id, scope_kind, (COALESCE(scope_uid, ''))) \
+     DO UPDATE SET role = EXCLUDED.role";
+const DELETE_SCOPED_BINDING: &str = "DELETE FROM role_bindings \
+     WHERE org_id = $1 AND subject_kind = 'user' AND subject_id = $2 AND scope_kind = $3 AND scope_uid = $4";
+const SELECT_SCOPED_MEMBERS: &str = "SELECT u.id AS id, u.email AS email, u.display_name AS display_name, \
+     u.is_active AS is_active, u.must_change_password AS must_change_password, u.created_at AS created_at, \
+     rb.role AS role FROM role_bindings rb JOIN users u ON u.id = rb.subject_id \
+     WHERE rb.org_id = $1 AND rb.subject_kind = 'user' AND rb.scope_kind = $2 AND rb.scope_uid = $3 \
+     ORDER BY u.email";
 const COUNT_OWNERS: &str = "SELECT COUNT(*) FROM role_bindings \
      WHERE org_id = $1 AND subject_kind = 'user' AND scope_kind = 'org' AND role = 'owner'";
 
@@ -167,24 +182,71 @@ impl Store {
             .bind(org.to_string())
             .fetch_all(self.pool())
             .await?;
-        rows.into_iter()
-            .map(|r| {
-                Ok(Member {
-                    role: parse_role(&r.role)?,
-                    user: User {
-                        id: r
-                            .id
-                            .parse()
-                            .map_err(|e: uuid::Error| sqlx::Error::Decode(e.into()))?,
-                        email: r.email,
-                        display_name: r.display_name,
-                        is_active: r.is_active,
-                        must_change_password: r.must_change_password,
-                        created_at: r.created_at,
-                    },
-                })
-            })
-            .collect()
+        members(rows)
+    }
+
+    /// Bind `role` for `user` on one project or environment (M4.1), or
+    /// change the role bound there. False when `user` is not a member of
+    /// `org`: a scoped role never makes anyone a member.
+    pub async fn bind_scoped_role(
+        &self,
+        org: OrgId,
+        user: UserId,
+        scope: ScopeKind,
+        node: uuid::Uuid,
+        role: Role,
+    ) -> Result<bool, StoreError> {
+        if scope == ScopeKind::Org {
+            return Err(sqlx::Error::Protocol("an org role is not scoped".into()).into());
+        }
+        let rows = sqlx::query(UPSERT_SCOPED_BINDING)
+            .bind(uuid::Uuid::now_v7().to_string())
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .bind(role.to_string())
+            .bind(scope.as_str())
+            .bind(node.to_string())
+            .bind(now_ms())
+            .execute(self.pool())
+            .await?
+            .rows_affected();
+        Ok(rows == 1)
+    }
+
+    /// Remove `user`'s role on one project or environment. False when there
+    /// was none.
+    pub async fn unbind_scoped_role(
+        &self,
+        org: OrgId,
+        user: UserId,
+        scope: ScopeKind,
+        node: uuid::Uuid,
+    ) -> Result<bool, StoreError> {
+        let rows = sqlx::query(DELETE_SCOPED_BINDING)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .bind(scope.as_str())
+            .bind(node.to_string())
+            .execute(self.pool())
+            .await?
+            .rows_affected();
+        Ok(rows > 0)
+    }
+
+    /// Members with a role bound on one project or environment, by email.
+    pub async fn scoped_members(
+        &self,
+        org: OrgId,
+        scope: ScopeKind,
+        node: uuid::Uuid,
+    ) -> Result<Vec<Member>, StoreError> {
+        let rows: Vec<MemberRow> = sqlx::query_as(SELECT_SCOPED_MEMBERS)
+            .bind(org.to_string())
+            .bind(scope.as_str())
+            .bind(node.to_string())
+            .fetch_all(self.pool())
+            .await?;
+        members(rows)
     }
 
     /// Change a member's org-level role (creates the binding if missing).
@@ -202,9 +264,17 @@ impl Store {
         Ok(())
     }
 
-    /// Remove every binding and the membership of `user` in `org`, atomically.
+    /// Remove every binding and the membership of `user` in `org` and revoke
+    /// their API tokens of `org`, atomically (S04): nothing they held there
+    /// keeps working after the commit.
     pub async fn remove_member(&self, org: OrgId, user: UserId) -> Result<(), StoreError> {
         let mut tx = self.pool().begin().await?;
+        sqlx::query(REVOKE_USER_TOKENS)
+            .bind(org.to_string())
+            .bind(user.to_string())
+            .bind(now_ms())
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(DELETE_USER_BINDINGS)
             .bind(org.to_string())
             .bind(user.to_string())
@@ -226,4 +296,25 @@ impl Store {
             .await?;
         Ok(n)
     }
+}
+
+fn members(rows: Vec<MemberRow>) -> Result<Vec<Member>, StoreError> {
+    rows.into_iter()
+        .map(|r| {
+            Ok(Member {
+                role: parse_role(&r.role)?,
+                user: User {
+                    id: r
+                        .id
+                        .parse()
+                        .map_err(|e: uuid::Error| sqlx::Error::Decode(e.into()))?,
+                    email: r.email,
+                    display_name: r.display_name,
+                    is_active: r.is_active,
+                    must_change_password: r.must_change_password,
+                    created_at: r.created_at,
+                },
+            })
+        })
+        .collect()
 }

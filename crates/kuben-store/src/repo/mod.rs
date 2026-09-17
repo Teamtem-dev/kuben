@@ -14,6 +14,7 @@ mod lifecycle;
 mod materialize;
 mod operations;
 mod orgs;
+mod policies;
 mod product;
 mod releases;
 mod resolve;
@@ -39,6 +40,7 @@ pub use lifecycle::{
 };
 pub use materialize::{Materialization, Materialized, RunPlan};
 pub use operations::{Accepted, Claim, IdempotencyKey, NewOperation, OutboxMessage, Received};
+pub use policies::{ApprovalRecord, Decided, PolicyRevision, RunApproval};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};

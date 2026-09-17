@@ -51,6 +51,18 @@ impl PolicyEngine for StaticPolicy {
     }
 }
 
+/// The strongest role `subject` holds on any node of `chain`, if any: what
+/// an environment policy compares with its deploy and approve roles.
+#[must_use]
+pub fn effective_role(subject: &Subject, chain: &ScopeChain) -> Option<Role> {
+    subject
+        .bindings
+        .iter()
+        .filter(|b| chain.contains(&b.scope))
+        .map(|b| b.role)
+        .max_by_key(|r| r.rank())
+}
+
 /// Leader election abstraction. `--roles=all` uses [`NoopLeader`]; HA mode
 /// uses a Kubernetes Lease (phase 3).
 #[async_trait]
@@ -104,6 +116,35 @@ mod tests {
         let chain = ScopeChain::project(org, project);
         let proof = StaticPolicy.check(&s, Perm::AppDeploy, &chain).expect("allowed");
         assert_eq!(proof.scope(), &ScopeRef::Project(project));
+    }
+
+    #[test]
+    fn the_strongest_role_on_the_chain_counts() {
+        let org = OrgId::new();
+        let (project, other) = (Uuid::now_v7(), Uuid::now_v7());
+        let s = Subject {
+            user: UserId::new(),
+            bindings: vec![
+                Binding {
+                    scope: ScopeRef::Org(org),
+                    role: Role::Viewer,
+                },
+                Binding {
+                    scope: ScopeRef::Project(project),
+                    role: Role::Admin,
+                },
+                Binding {
+                    scope: ScopeRef::Project(other),
+                    role: Role::Owner,
+                },
+            ],
+        };
+        assert_eq!(
+            effective_role(&s, &ScopeChain::project(org, project)),
+            Some(Role::Admin)
+        );
+        assert_eq!(effective_role(&s, &ScopeChain::org(org)), Some(Role::Viewer));
+        assert_eq!(effective_role(&s, &ScopeChain::org(OrgId::new())), None);
     }
 
     #[test]

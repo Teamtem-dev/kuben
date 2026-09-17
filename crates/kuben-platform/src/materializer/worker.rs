@@ -52,6 +52,8 @@ const POLL: Duration = Duration::from_secs(3);
 /// How long delivery waits for the environment controller's namespace.
 const NAMESPACE_WAIT: Duration = Duration::from_mins(1);
 const VERIFY_DEADLINE: Duration = Duration::from_mins(15);
+/// Longest sleep of a run waiting for approval.
+const APPROVAL_RECHECK: Duration = Duration::from_hours(1);
 /// How long an environment deletion waits before it checks again.
 const DELETION_CHECK: Duration = Duration::from_secs(20);
 /// Claims of one deployment operation before its run fails for good.
@@ -320,6 +322,9 @@ impl Worker {
         if m.deleting {
             return Err(refused("TargetDeleting"));
         }
+        if m.phase == RunPhase::AwaitingApproval {
+            return Err(self.await_approval(claim, m).await);
+        }
         if m.delivery == kuben_store::repo::Delivery::Agent {
             return self.drive_agent(claim, m, token).await;
         }
@@ -566,9 +571,52 @@ impl Worker {
     }
 }
 
+impl Worker {
+    /// A run waiting for approval (M4.1): cancelled once its window has
+    /// closed, otherwise looked at again then. A decision wakes it sooner.
+    async fn await_approval(&self, claim: &Claim, m: &Materialization) -> Stop {
+        match approval_wait(m.approval_expires_at, kuben_core::time::now_ms()) {
+            Some(wait) => Stop::Wait(wait, "AwaitingApproval"),
+            None => match self.advance(claim, m, RunEvent::Rejected).await {
+                Ok(phase) => Stop::Settled(phase, Some("ApprovalExpired".into())),
+                Err(stop) => stop,
+            },
+        }
+    }
+}
+
+/// How long a run waiting for approval sleeps at `now`: until its window
+/// closes, at most an hour, at least one poll. `None` once it has closed or
+/// when the run has no window.
+fn approval_wait(expires_at: Option<i64>, now: i64) -> Option<Duration> {
+    let left = expires_at?.checked_sub(now).filter(|ms| *ms > 0)?;
+    let left = Duration::from_millis(u64::try_from(left).ok()?);
+    Some(left.clamp(POLL, APPROVAL_RECHECK))
+}
+
 pub(super) async fn pause(token: &CancellationToken) -> Result<(), Stop> {
     tokio::select! {
         () = token.cancelled() => Err(Stop::Shutdown),
         () = tokio::time::sleep(POLL) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_wait_for_approval_until_their_window_closes() {
+        assert_eq!(approval_wait(None, 0), None, "no window: nothing to wait for");
+        assert_eq!(approval_wait(Some(1_000), 1_000), None, "closed");
+        assert_eq!(approval_wait(Some(1_000), 2_000), None, "closed long ago");
+        assert_eq!(approval_wait(Some(1_001), 1_000), Some(POLL), "at least one poll");
+        assert_eq!(approval_wait(Some(60_000), 0), Some(Duration::from_mins(1)));
+        assert_eq!(
+            approval_wait(Some(i64::MAX), 0),
+            Some(APPROVAL_RECHECK),
+            "at most an hour"
+        );
+        assert_eq!(approval_wait(Some(i64::MAX), i64::MIN), None, "no overflow");
     }
 }
