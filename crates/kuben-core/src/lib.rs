@@ -10,6 +10,7 @@ pub mod ids;
 pub mod model;
 pub mod ops;
 pub mod perm;
+pub mod source;
 pub mod time;
 pub mod traits;
 

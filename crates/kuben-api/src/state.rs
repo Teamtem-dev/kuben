@@ -34,6 +34,8 @@ pub struct ApiState {
     pub images: Arc<dyn ImageResolver>,
     /// Followed logs open on this replica (M2.12).
     pub log_streams: Arc<crate::routes::apps::logs::LogStreams>,
+    /// The GitHub App; `None` when Git sources are not configured (M3).
+    pub github: Option<Arc<crate::github::GithubApp>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -75,6 +77,7 @@ impl ApiState {
             setup_lock: Arc::default(),
             images: Arc::new(RegistryResolver::new()),
             log_streams: Arc::default(),
+            github: None,
         }
     }
 
@@ -82,6 +85,13 @@ impl ApiState {
     #[must_use]
     pub fn with_images(mut self, images: Arc<dyn ImageResolver>) -> Self {
         self.images = images;
+        self
+    }
+
+    /// Serve Git sources and the webhook of `app`, when there is one.
+    #[must_use]
+    pub fn with_github(mut self, app: Option<crate::github::GithubApp>) -> Self {
+        self.github = app.map(Arc::new);
         self
     }
 }

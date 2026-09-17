@@ -4,6 +4,7 @@
 pub mod apps;
 pub mod audit;
 pub mod environments;
+pub mod git;
 pub mod health;
 pub mod members;
 pub mod projects;

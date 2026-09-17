@@ -36,6 +36,8 @@ pub struct Config {
     pub telemetry: TelemetryCfg,
     pub bootstrap: BootstrapCfg,
     pub agent: AgentCfg,
+    pub git: GitCfg,
+    pub build: BuildCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -364,6 +366,132 @@ impl Default for AgentCfg {
     }
 }
 
+/// Git providers (M3): the GitHub App Kuben acts as.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GitCfg {
+    /// The GitHub App's numeric id; unset, Git sources are off.
+    pub github_app_id: Option<u64>,
+    /// PEM file of the App's private key (PKCS#1 or PKCS#8 RSA).
+    pub github_private_key_file: Option<String>,
+    /// The secret GitHub signs webhook deliveries with.
+    pub github_webhook_secret: Option<String>,
+    /// The REST API root, for GitHub Enterprise Server.
+    pub github_api_url: String,
+    /// Where build pods clone from.
+    pub github_clone_url: String,
+}
+
+impl Default for GitCfg {
+    fn default() -> Self {
+        Self {
+            github_app_id: None,
+            github_private_key_file: None,
+            github_webhook_secret: None,
+            github_api_url: "https://api.github.com".into(),
+            github_clone_url: "https://github.com".into(),
+        }
+    }
+}
+
+impl GitCfg {
+    /// Whether the GitHub App is configured completely.
+    #[must_use]
+    pub fn github_enabled(&self) -> bool {
+        self.github_app_id.is_some()
+            && self
+                .github_private_key_file
+                .as_deref()
+                .is_some_and(|f| !f.is_empty())
+            && self
+                .github_webhook_secret
+                .as_deref()
+                .is_some_and(|s| !s.is_empty())
+    }
+}
+
+/// Isolated builds (ADR-028): one rootless BuildKit Job per attempt.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BuildCfg {
+    /// Run the build worker.
+    pub enabled: bool,
+    /// Namespace of build Jobs; default: Kuben's own, else `kuben-builds`.
+    pub namespace: Option<String>,
+    /// Rootless BuildKit image. The defaults are pinned by tag; production
+    /// pins every build image by digest (`image@sha256:…`), and the build
+    /// worker warns at start about any image that is not.
+    pub buildkit_image: String,
+    /// Image with `git` that fetches the source.
+    pub fetch_image: String,
+    /// Railpack's BuildKit frontend image; with `railpack_image`, enables
+    /// Railpack builds. Unset, only Dockerfile builds run.
+    pub railpack_frontend: Option<String>,
+    /// Image with `sh` and the `railpack` CLI that writes the build plan;
+    /// unset, only Dockerfile builds run.
+    pub railpack_image: Option<String>,
+    pub cpu_request: String,
+    pub cpu_limit: String,
+    /// Memory request and limit are equal (ADR-028).
+    pub memory: String,
+    pub ephemeral_storage: String,
+    /// Hard deadline of one attempt.
+    pub deadline_secs: u64,
+    /// Builds at once, over all organizations; 0 disables building.
+    pub max_concurrent: u32,
+    pub max_concurrent_per_org: u32,
+    /// A `kubernetes.io/dockerconfigjson` Secret in the build namespace with
+    /// push access to the image repositories; unset for an open registry.
+    pub push_secret: Option<String>,
+    /// Push over plain HTTP (an in-cluster registry without TLS).
+    pub insecure_registry: bool,
+    /// Registry credentials the verifier uses (`user:password`), if any.
+    pub registry_auth_file: Option<String>,
+    /// Node selector `key=value` of the build pool; required when set.
+    pub node_pool: Option<String>,
+}
+
+impl BuildCfg {
+    /// The build images that are not pinned by digest.
+    #[must_use]
+    pub fn unpinned_images(&self) -> Vec<&str> {
+        [
+            Some(self.buildkit_image.as_str()),
+            Some(self.fetch_image.as_str()),
+            self.railpack_image.as_deref(),
+            self.railpack_frontend.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|image| !image.is_empty() && !image.contains("@sha256:"))
+        .collect()
+    }
+}
+
+impl Default for BuildCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            namespace: None,
+            buildkit_image: "moby/buildkit:v0.33.0-rootless".into(),
+            fetch_image: "alpine/git:2.49.1".into(),
+            railpack_frontend: None,
+            railpack_image: None,
+            cpu_request: "500m".into(),
+            cpu_limit: "2".into(),
+            memory: "2Gi".into(),
+            ephemeral_storage: "10Gi".into(),
+            deadline_secs: 1800,
+            max_concurrent: 2,
+            max_concurrent_per_org: 1,
+            push_secret: None,
+            insecure_registry: false,
+            registry_auth_file: None,
+            node_pool: None,
+        }
+    }
+}
+
 impl Config {
     /// Load configuration using the documented precedence.
     #[allow(clippy::result_large_err)] // figment::Error is large by design; load runs once at startup
@@ -521,6 +649,36 @@ mod tests {
             "PostgreSQL has no default URL (ADR-025)"
         );
         assert!(cfg.agent.bind.is_none(), "AgentLink is off unless configured");
+        assert!(!cfg.build.enabled, "builds are off unless configured");
+        assert!(!cfg.git.github_enabled());
+    }
+
+    #[test]
+    fn unpinned_build_images_are_reported() {
+        let mut build = BuildCfg::default();
+        assert_eq!(build.unpinned_images().len(), 2, "the tag-pinned defaults");
+        build.buildkit_image = format!("moby/buildkit@sha256:{}", "a".repeat(64));
+        build.fetch_image = format!("alpine/git@sha256:{}", "b".repeat(64));
+        assert!(build.unpinned_images().is_empty());
+        build.railpack_frontend = Some("ghcr.io/railwayapp/railpack-frontend".into());
+        assert_eq!(
+            build.unpinned_images(),
+            vec!["ghcr.io/railwayapp/railpack-frontend"]
+        );
+    }
+
+    #[test]
+    fn the_github_app_needs_all_three_settings() {
+        let mut git = GitCfg {
+            github_app_id: Some(1),
+            github_private_key_file: Some("/etc/kuben/github.pem".into()),
+            ..GitCfg::default()
+        };
+        assert!(!git.github_enabled(), "no webhook secret");
+        git.github_webhook_secret = Some("s3cret".into());
+        assert!(git.github_enabled());
+        git.github_private_key_file = Some(String::new());
+        assert!(!git.github_enabled());
     }
 
     fn env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {

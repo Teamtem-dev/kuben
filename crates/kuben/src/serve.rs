@@ -76,6 +76,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     // AgentLink: the hub's endpoint for cluster agents (ADR-027). It needs no
     // kubeconfig of its own; the materializer hands it envelopes.
     let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
+    let github = github_app(&cfg)?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -103,6 +104,8 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
         tasks.push(spawn_local_agent(&cfg, &store, registry, &health, &shutdown));
     }
 
+    tasks.extend(spawn_builds(&cfg, &store, cluster.as_ref(), github.clone(), &health, &shutdown).await?);
+
     if let Some(link) = agent_link {
         let (h, t) = (health.clone(), shutdown.child_token());
         tasks.push(tokio::spawn(supervise("agentlink", t, h, move |tok| {
@@ -127,7 +130,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             health.clone(),
             Arc::new(StaticPolicy),
         );
-        let app = kuben_api::router(state);
+        let app = kuben_api::router(state.with_github(github.clone()));
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -154,6 +157,114 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     store.close().await?;
     tracing::info!("bye");
     Ok(())
+}
+
+/// The GitHub App of Git sources (M3), when configured. A configured App
+/// whose key cannot be read stops the server instead of silently building
+/// nothing.
+fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubApp>> {
+    let git = &cfg.git;
+    if git.github_app_id.is_none() && git.github_private_key_file.is_none() {
+        return Ok(None);
+    }
+    let app = kuben_api::github::GithubApp::from_config(git).context("Git sources")?;
+    tracing::info!(api = %git.github_api_url, "GitHub App ready for Git sources");
+    Ok(Some(app))
+}
+
+/// Namespace of build Jobs unless `build.namespace` names one: never Kuben's
+/// own, whose Secrets build pods must not share.
+const BUILD_NAMESPACE: &str = "kuben-builds";
+
+/// The build worker (M3, ADR-028), when builds are enabled and the GitHub App
+/// is configured. Its namespace is created when missing; rootless BuildKit
+/// needs the `privileged` Pod Security level there (for its own seccomp and
+/// AppArmor profile, never a privileged container).
+async fn spawn_builds(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    cluster: Option<&ClusterRegistry>,
+    github: Option<kuben_api::github::GithubApp>,
+    health: &Health,
+    shutdown: &CancellationToken,
+) -> anyhow::Result<Option<tokio::task::JoinHandle<()>>> {
+    let build = &cfg.build;
+    let (true, true, Some(registry)) = (build.enabled, cfg.has_role(Role::Controller), cluster) else {
+        return Ok(None);
+    };
+    let Some(github) = github else {
+        tracing::warn!(
+            "build.enabled is set, but Git sources are not configured (git.github_app_id): no builds run"
+        );
+        return Ok(None);
+    };
+    for image in build.unpinned_images() {
+        tracing::warn!(%image, "a build image is not pinned by digest; pin it as image@sha256:… in production");
+    }
+    let namespace = build
+        .namespace
+        .clone()
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| BUILD_NAMESPACE.to_owned());
+    ensure_build_namespace(registry.primary(), &namespace)
+        .await
+        .with_context(|| format!("preparing the build namespace {namespace}"))?;
+    let credentials = match build.registry_auth_file.as_deref().filter(|f| !f.is_empty()) {
+        Some(file) => Some(
+            std::fs::read_to_string(file)
+                .with_context(|| format!("reading build.registry_auth_file {file}"))?,
+        ),
+        None => None,
+    };
+    let verifier = kuben_api::oci::RegistryVerifier::new(build.insecure_registry, credentials.as_deref());
+    let settings = kuben_platform::build::job::BuildSettings::from_config(build, namespace.clone());
+    let limits = kuben_store::repo::SlotLimits {
+        total: build.max_concurrent,
+        per_org: build.max_concurrent_per_org,
+    };
+    let worker = kuben_platform::build::BuildWorker::new(
+        store.clone(),
+        registry.primary(),
+        instance_identity(),
+        Arc::new(github),
+        Arc::new(verifier),
+        settings,
+        limits,
+    );
+    tracing::info!(%namespace, max_concurrent = build.max_concurrent, "build worker ready");
+    let (h, t) = (health.clone(), shutdown.child_token());
+    Ok(Some(tokio::spawn(supervise(
+        "builds",
+        t,
+        h.clone(),
+        move |tok| kuben_platform::build::run(worker.clone(), h.clone(), tok),
+    ))))
+}
+
+async fn ensure_build_namespace(client: kube::Client, name: &str) -> anyhow::Result<()> {
+    use k8s_openapi::api::core::v1::Namespace;
+    let namespaces: kube::Api<Namespace> = kube::Api::all(client);
+    if namespaces.get_opt(name).await?.is_some() {
+        return Ok(());
+    }
+    let namespace: Namespace = serde_json::from_value(serde_json::json!({
+        "metadata": {
+            "name": name,
+            "labels": {
+                "app.kubernetes.io/managed-by": "kuben",
+                "pod-security.kubernetes.io/enforce": "privileged",
+                "pod-security.kubernetes.io/warn": "baseline",
+            },
+        },
+    }))?;
+    match namespaces
+        .create(&kube::api::PostParams::default(), &namespace)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(kube::Error::Api(s)) if s.code == 409 => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// What runs on one replica at a time: the controllers and the materializer's
