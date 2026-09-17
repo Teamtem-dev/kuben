@@ -122,101 +122,117 @@ pub fn verify_rs256(token: &str, jwks: &Jwks) -> Result<Vec<u8>, OidcError> {
     part(body)
 }
 
+/// Reads a small JSON document over HTTPS: the seam tests replace.
+#[async_trait::async_trait]
+pub trait HttpGet: Send + Sync {
+    /// The body of `url` if it answers `200`, at most `limit` bytes.
+    async fn get(&self, url: &str, limit: usize) -> Result<Bytes, String>;
+}
+
+/// [`HttpGet`] over the outgoing transport (system roots, proxies).
+#[derive(Clone, Debug)]
+pub struct HttpsGet(Transport);
+
+impl Default for HttpsGet {
+    fn default() -> Self {
+        Self(Transport::new(Schemes::HttpsOnly, TIMEOUT))
+    }
+}
+
+impl HttpsGet {
+    /// The transport, for callers that also post.
+    #[must_use]
+    pub const fn transport(&self) -> &Transport {
+        &self.0
+    }
+}
+
+#[async_trait::async_trait]
+impl HttpGet for HttpsGet {
+    async fn get(&self, url: &str, limit: usize) -> Result<Bytes, String> {
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(url)
+            .header(header::ACCEPT, "application/json")
+            .header(header::USER_AGENT, concat!("kuben/", env!("CARGO_PKG_VERSION")))
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| e.to_string())?;
+        let response = self.0.send(request).await?;
+        let (parts, body) = response.into_parts();
+        if parts.status != StatusCode::OK {
+            return Err(format!("HTTP {}", parts.status));
+        }
+        Ok(tokio::time::timeout(TIMEOUT, Limited::new(body, limit).collect())
+            .await
+            .map_err(|_| "timed out".to_owned())?
+            .map_err(|e| chain(&*e))?
+            .to_bytes())
+    }
+}
+
 struct Keys {
     jwks: Jwks,
     fetched: Option<Instant>,
 }
 
-/// Verifies GitHub Actions OIDC tokens for one issuer and audience.
-pub struct GithubOidc {
-    issuer: String,
-    audience: String,
-    jwks_url: String,
-    transport: Transport,
+/// The signing keys of one issuer, read from its JWKS URL and cached.
+pub struct KeyCache {
+    url: String,
+    http: std::sync::Arc<dyn HttpGet>,
     keys: RwLock<Keys>,
-    /// Keys given up front (tests): never fetched.
+    /// Keys given up front: never fetched.
     fixed: bool,
-    /// Unix seconds now.
-    clock: fn() -> i64,
 }
 
-fn system_clock() -> i64 {
-    kuben_core::time::now_ms() / 1000
-}
-
-impl fmt::Debug for GithubOidc {
+impl fmt::Debug for KeyCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GithubOidc")
-            .field("issuer", &self.issuer)
-            .field("audience", &self.audience)
+        f.debug_struct("KeyCache")
+            .field("url", &self.url)
+            .field("fixed", &self.fixed)
             .finish_non_exhaustive()
     }
 }
 
-impl GithubOidc {
-    /// A verifier that reads the keys of `issuer` from its JWKS URL.
+impl KeyCache {
+    /// Keys read from `url` through `http`.
     #[must_use]
-    pub fn new(issuer: &str, audience: &str) -> Self {
-        let issuer = issuer.trim_end_matches('/').to_owned();
+    pub fn new(url: impl Into<String>, http: std::sync::Arc<dyn HttpGet>) -> Self {
         Self {
-            jwks_url: format!("{issuer}/.well-known/jwks"),
-            issuer,
-            audience: audience.to_owned(),
-            transport: Transport::new(Schemes::HttpsOnly, TIMEOUT),
+            url: url.into(),
+            http,
             keys: RwLock::new(Keys {
                 jwks: Jwks::default(),
                 fetched: None,
             }),
             fixed: false,
-            clock: system_clock,
         }
     }
 
-    /// The same verifier reading the time from `clock` (tests).
+    /// Exactly `jwks`, never fetched (tests, air-gapped installs).
     #[must_use]
-    pub fn with_clock(mut self, clock: fn() -> i64) -> Self {
-        self.clock = clock;
-        self
-    }
-
-    /// A verifier with fixed keys, for tests and air-gapped installs.
-    #[must_use]
-    pub fn with_keys(issuer: &str, audience: &str, jwks: Jwks) -> Self {
+    pub fn fixed(jwks: Jwks) -> Self {
         Self {
             keys: RwLock::new(Keys {
                 jwks,
                 fetched: Some(Instant::now()),
             }),
             fixed: true,
-            ..Self::new(issuer, audience)
+            ..Self::new(String::new(), std::sync::Arc::new(HttpsGet::default()))
         }
     }
 
     #[must_use]
-    pub fn issuer(&self) -> &str {
-        &self.issuer
+    pub fn url(&self) -> &str {
+        &self.url
     }
 
     async fn fetch(&self) -> Result<Jwks, OidcError> {
-        let unavailable = |e: String| OidcError::Unavailable(e);
-        let request = Request::builder()
-            .method(Method::GET)
-            .uri(&self.jwks_url)
-            .header(header::ACCEPT, "application/json")
-            .header(header::USER_AGENT, concat!("kuben/", env!("CARGO_PKG_VERSION")))
-            .body(Full::new(Bytes::new()))
-            .map_err(|e| unavailable(e.to_string()))?;
-        let response = self.transport.send(request).await.map_err(unavailable)?;
-        let (parts, body) = response.into_parts();
-        if parts.status != StatusCode::OK {
-            return Err(unavailable(format!("HTTP {}", parts.status)));
-        }
-        let body = tokio::time::timeout(TIMEOUT, Limited::new(body, MAX_JWKS).collect())
+        let body = self
+            .http
+            .get(&self.url, MAX_JWKS)
             .await
-            .map_err(|_| unavailable("timed out".into()))?
-            .map_err(|e| unavailable(chain(&*e)))?
-            .to_bytes();
-        serde_json::from_slice(&body).map_err(|e| unavailable(e.to_string()))
+            .map_err(OidcError::Unavailable)?;
+        serde_json::from_slice(&body).map_err(|e| OidcError::Unavailable(e.to_string()))
     }
 
     /// The current keys; fetched when stale, or when `unknown_key` and the
@@ -246,6 +262,75 @@ impl GithubOidc {
         }
     }
 
+    /// The payload of `token` if one of the issuer's keys signed it; an
+    /// unknown key refreshes the keys once.
+    pub async fn verify(&self, token: &str) -> Result<Vec<u8>, OidcError> {
+        match verify_rs256(token, &self.keys(false).await?) {
+            Err(OidcError::UnknownKey) if !self.fixed => verify_rs256(token, &self.keys(true).await?),
+            other => other,
+        }
+    }
+}
+
+fn system_clock() -> i64 {
+    kuben_core::time::now_ms() / 1000
+}
+
+/// Verifies GitHub Actions OIDC tokens for one issuer and audience.
+pub struct GithubOidc {
+    issuer: String,
+    audience: String,
+    keys: KeyCache,
+    /// Unix seconds now.
+    clock: fn() -> i64,
+}
+
+impl fmt::Debug for GithubOidc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GithubOidc")
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .finish_non_exhaustive()
+    }
+}
+
+impl GithubOidc {
+    /// A verifier that reads the keys of `issuer` from its JWKS URL.
+    #[must_use]
+    pub fn new(issuer: &str, audience: &str) -> Self {
+        let issuer = issuer.trim_end_matches('/').to_owned();
+        Self {
+            keys: KeyCache::new(
+                format!("{issuer}/.well-known/jwks"),
+                std::sync::Arc::new(HttpsGet::default()),
+            ),
+            issuer,
+            audience: audience.to_owned(),
+            clock: system_clock,
+        }
+    }
+
+    /// A verifier with fixed keys, for tests and air-gapped installs.
+    #[must_use]
+    pub fn with_keys(issuer: &str, audience: &str, jwks: Jwks) -> Self {
+        Self {
+            keys: KeyCache::fixed(jwks),
+            ..Self::new(issuer, audience)
+        }
+    }
+
+    /// The same verifier reading the time from `clock` (tests).
+    #[must_use]
+    pub fn with_clock(mut self, clock: fn() -> i64) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    #[must_use]
+    pub fn issuer(&self) -> &str {
+        &self.issuer
+    }
+
     /// The claims of `token`, if it is a valid token of this issuer for this
     /// audience now.
     pub async fn verify(&self, token: &str) -> Result<GithubClaims, OidcError> {
@@ -254,11 +339,7 @@ impl GithubOidc {
 
     /// The claims of `token` at `now` (Unix seconds).
     pub async fn verify_at(&self, token: &str, now: i64) -> Result<GithubClaims, OidcError> {
-        let jwks = self.keys(false).await?;
-        let payload = match verify_rs256(token, &jwks) {
-            Err(OidcError::UnknownKey) if !self.fixed => verify_rs256(token, &self.keys(true).await?)?,
-            other => other?,
-        };
+        let payload = self.keys.verify(token).await?;
         let claims: GithubClaims = serde_json::from_slice(&payload).map_err(|_| OidcError::Malformed)?;
         claims
             .check(&self.issuer, &self.audience, now)
@@ -376,7 +457,7 @@ pub(crate) mod tests {
     fn the_jwks_url_comes_from_the_issuer() {
         let v = GithubOidc::new("https://token.actions.githubusercontent.com/", AUDIENCE);
         assert_eq!(
-            v.jwks_url,
+            v.keys.url(),
             "https://token.actions.githubusercontent.com/.well-known/jwks"
         );
         assert_eq!(v.issuer(), GITHUB_ACTIONS_ISSUER);

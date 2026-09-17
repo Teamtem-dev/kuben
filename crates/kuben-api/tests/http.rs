@@ -84,6 +84,12 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     let oidc = cfg.github_oidc_audience().map(|audience| {
         GithubOidc::with_keys(&cfg.ci.github_oidc_issuer, &audience, ci_fixture().0).with_clock(|| CI_NOW)
     });
+    let sso = cfg.sso.enabled.then(|| {
+        let jwks = serde_json::from_value(sso_fixture()["jwks"].clone()).expect("jwks");
+        kuben_api::sso::SsoClient::from_config(&cfg.sso, cfg.server.public_url.as_deref(), "acme")
+            .expect("sso")
+            .with_provider(Arc::new(FakeIdp), jwks, || CI_NOW)
+    });
     let state = ApiState::new(
         cfg,
         store.clone(),
@@ -93,7 +99,8 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
         Arc::new(StaticPolicy),
     )
     .with_images(images())
-    .with_github_oidc(oidc);
+    .with_github_oidc(oidc)
+    .with_sso(sso);
     Some(TestApp {
         router: kuben_api::router(state),
         projections,
@@ -2029,4 +2036,220 @@ async fn m4_trusted_ci_gets_a_scoped_token_once() {
     )
     .await;
     assert!(listed[0]["revokedAt"].is_i64(), "{listed}");
+}
+
+/// Signed ID tokens of a test identity provider (M4.3).
+const SSO_FIXTURE: &str = include_str!("../src/testdata/sso-oidc.json");
+
+fn sso_fixture() -> serde_json::Value {
+    serde_json::from_str(SSO_FIXTURE).expect("fixture")
+}
+
+/// An identity provider answering from memory: the token endpoint hands out
+/// the fixture ID token named by the code.
+struct FakeIdp;
+
+#[async_trait::async_trait]
+impl kuben_api::oidc::HttpGet for FakeIdp {
+    async fn get(&self, _url: &str, _limit: usize) -> Result<bytes::Bytes, String> {
+        Ok(json!({
+            "issuer": "https://idp.example.com",
+            "authorization_endpoint": "https://idp.example.com/authorize",
+            "token_endpoint": "https://idp.example.com/token",
+            "jwks_uri": "https://idp.example.com/jwks",
+        })
+        .to_string()
+        .into())
+    }
+}
+
+#[async_trait::async_trait]
+impl kuben_api::sso::IdentityProvider for FakeIdp {
+    async fn post_form(
+        &self,
+        _url: &str,
+        form: &str,
+        _basic: &str,
+    ) -> Result<(StatusCode, bytes::Bytes), String> {
+        let code = form
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("code="))
+            .unwrap_or_default();
+        Ok(match sso_fixture()["tokens"][code].as_str() {
+            Some(token) => (StatusCode::OK, json!({ "id_token": token }).to_string().into()),
+            None => (StatusCode::BAD_REQUEST, "{}".into()),
+        })
+    }
+}
+
+async fn sso_app() -> Option<TestApp> {
+    setup_with(|cfg| {
+        cfg.server.public_url = Some("https://kuben.example.com".into());
+        cfg.sso.enabled = true;
+        cfg.sso.issuer = Some("https://idp.example.com".into());
+        cfg.sso.client_id = Some("kuben-console".into());
+        cfg.sso.client_secret = Some("s3cret".into());
+        cfg.sso.groups.insert("platform-admins".into(), "admin".into());
+        cfg.sso.groups.insert("devs".into(), "developer".into());
+        cfg.sso.allowed_domains = vec!["example.com".into()];
+    })
+    .await
+}
+
+/// A sign-in of this browser (state `state`) expecting `nonce`.
+async fn pending_sso(app: &TestApp, state: &str, nonce: &str) {
+    app.store
+        .begin_sso(
+            &kuben_api::auth::session::sha256(state.as_bytes()),
+            &kuben_store::repo::PendingSso {
+                nonce: nonce.into(),
+                verifier: "v".repeat(43),
+                return_to: "/projects".into(),
+            },
+            kuben_core::time::now_ms() + 600_000,
+        )
+        .await
+        .expect("begin");
+}
+
+/// The callback of a sign-in with `code`, from a browser holding `cookie`:
+/// where it redirects and the cookies it sets.
+async fn sso_callback(app: &TestApp, code: &str, state: &str, cookie: &str) -> (String, Vec<String>) {
+    let path = format!("/api/v1/auth/sso/callback?code={code}&state={state}");
+    let (status, headers, _) = call(&app.router, "GET", &path, Auth::Cookie(cookie), None, None).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let to = headers[header::LOCATION].to_str().expect("location").to_owned();
+    (to, set_cookies(&headers))
+}
+
+fn set_cookies(headers: &axum::http::HeaderMap) -> Vec<String> {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .filter_map(|v| v.split(';').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// M4.3: the sign-in page learns about SSO, and starting it redirects to
+/// the provider with a state bound to this browser.
+#[tokio::test]
+async fn m4_sso_start_binds_the_state_to_the_browser() {
+    let Some(app) = sso_app().await else { return };
+    let (status, _, info) = call(
+        &app.router,
+        "GET",
+        "/api/v1/auth/sso",
+        Auth::Anonymous,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, info["enabled"].clone()),
+        (StatusCode::OK, json!(true)),
+        "{info}"
+    );
+    let (status, headers, _) = call(
+        &app.router,
+        "GET",
+        "/api/v1/auth/sso/start?returnTo=//evil.example",
+        Auth::Anonymous,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let location = headers[header::LOCATION].to_str().expect("location");
+    assert!(
+        location.starts_with("https://idp.example.com/authorize?response_type=code"),
+        "{location}"
+    );
+    assert!(location.contains("code_challenge_method=S256"));
+    let state = location
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("state="))
+        .expect("state");
+    let cookie = set_cookies(&headers)
+        .into_iter()
+        .find(|c| c.starts_with("kuben_sso="))
+        .expect("state cookie");
+    assert_eq!(cookie, format!("kuben_sso={state}"));
+}
+
+/// M4.3 (S04): the provider's groups decide the role, and a sign-in works
+/// once.
+#[tokio::test]
+async fn m4_sso_signs_mapped_people_in_once() {
+    let Some(app) = sso_app().await else { return };
+    let state = "s".repeat(43);
+    let browser = format!("kuben_sso={state}");
+    pending_sso(&app, &state, "nonce-1").await;
+    let (to, cookies) = sso_callback(&app, "valid", &state, &browser).await;
+    assert_eq!(to, "/projects");
+    let session = cookies
+        .into_iter()
+        .find(|c| !c.starts_with("kuben_sso="))
+        .expect("session cookie");
+    let (status, _, me) = call(
+        &app.router,
+        "GET",
+        "/api/v1/me",
+        Auth::Cookie(&session),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        (status, me["email"].clone()),
+        (StatusCode::OK, json!("carol@example.com")),
+        "{me}"
+    );
+    let (_, _, members) = call(
+        &app.router,
+        "GET",
+        "/api/v1/members",
+        Auth::Cookie(&session),
+        None,
+        None,
+    )
+    .await;
+    let carol = members
+        .as_array()
+        .expect("members")
+        .iter()
+        .find(|m| m["email"] == "carol@example.com")
+        .cloned()
+        .expect("carol");
+    assert_eq!(carol["role"], "admin", "mapped from platform-admins");
+    let (to, _) = sso_callback(&app, "valid", &state, &browser).await;
+    assert_eq!(to, "/login?error=sso", "a state works once");
+}
+
+/// M4.3 (S04): another browser's state, another sign-in's nonce and people
+/// the policy refuses get nothing.
+#[tokio::test]
+async fn m4_sso_refuses_everything_else() {
+    let Some(app) = sso_app().await else { return };
+    let fresh = |n: usize| format!("{n:0>43}");
+    pending_sso(&app, &fresh(0), "nonce-1").await;
+    let (to, _) = sso_callback(&app, "valid", &fresh(0), "kuben_sso=other").await;
+    assert_eq!(to, "/login?error=sso", "another browser's cookie");
+    pending_sso(&app, &fresh(1), "another-nonce").await;
+    let (to, _) = sso_callback(&app, "valid", &fresh(1), &format!("kuben_sso={}", fresh(1))).await;
+    assert_eq!(to, "/login?error=sso", "a token of another sign-in");
+    for (n, code) in ["no_role", "outsider", "unverified", "wrong_aud", "nope"]
+        .into_iter()
+        .enumerate()
+    {
+        let state = fresh(n + 2);
+        pending_sso(&app, &state, "nonce-1").await;
+        let (to, cookies) = sso_callback(&app, code, &state, &format!("kuben_sso={state}")).await;
+        assert_eq!(to, "/login?error=sso", "{code}");
+        assert!(
+            cookies.iter().all(|c| c.starts_with("kuben_sso=")),
+            "no session for {code}"
+        );
+    }
 }

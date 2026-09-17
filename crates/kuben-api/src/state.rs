@@ -38,6 +38,8 @@ pub struct ApiState {
     pub github: Option<Arc<crate::github::GithubApp>>,
     /// Verifies GitHub Actions OIDC tokens; `None` when CI trust is off (M4.2).
     pub github_oidc: Option<Arc<crate::oidc::GithubOidc>>,
+    /// Single sign-on; `None` when it is not configured (M4.3).
+    pub sso: Option<Arc<crate::sso::SsoClient>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -81,6 +83,7 @@ impl ApiState {
             log_streams: Arc::default(),
             github: None,
             github_oidc: None,
+            sso: None,
         }
     }
 
@@ -88,6 +91,13 @@ impl ApiState {
     #[must_use]
     pub fn with_images(mut self, images: Arc<dyn ImageResolver>) -> Self {
         self.images = images;
+        self
+    }
+
+    /// Offer single sign-on through `client`, when set.
+    #[must_use]
+    pub fn with_sso(mut self, client: Option<crate::sso::SsoClient>) -> Self {
+        self.sso = client.map(Arc::new);
         self
     }
 

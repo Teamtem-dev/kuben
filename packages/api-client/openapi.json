@@ -127,6 +127,113 @@
         }
       }
     },
+    "/api/v1/auth/sso": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Whether single sign-on is offered, for the sign-in page.",
+        "operationId": "getSsoInfo",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/sso/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "The identity provider's answer: signs the person in and redirects.",
+        "operationId": "finishSso",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "Set by the provider when the person or the provider refused.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Signed in, or back to the sign-in page"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/sso/start": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start signing in: redirects to the identity provider.",
+        "operationId": "startSso",
+        "parameters": [
+          {
+            "name": "returnTo",
+            "in": "query",
+            "description": "A path on this site to return to after signing in.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "To the identity provider"
+          },
+          "404": {
+            "description": "Single sign-on is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ci/trust-policies": {
       "get": {
         "tags": [
@@ -6575,6 +6682,31 @@
               "null"
             ],
             "description": "The sync this change or request queued, if any."
+          }
+        }
+      },
+      "SsoInfo": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The sign-in button's label."
+          },
+          "startUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the button leads."
           }
         }
       },

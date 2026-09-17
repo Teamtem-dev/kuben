@@ -72,6 +72,13 @@ export const meQuery = queryOptions({
   staleTime: 60_000,
 })
 
+/** Whether single sign-on is offered, and where it starts. */
+export const ssoQuery = queryOptions({
+  queryKey: ['sso'],
+  queryFn: () => unwrap(api.GET('/api/v1/auth/sso')),
+  staleTime: 300_000,
+})
+
 export const login = (email: string, password: string) =>
   unwrap(api.POST('/api/v1/auth/login', { body: { email, password } }))
 

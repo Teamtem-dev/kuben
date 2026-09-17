@@ -18,6 +18,7 @@ pub mod oidc;
 pub mod openapi;
 pub mod routes;
 pub mod setup;
+pub mod sso;
 pub mod state;
 pub mod stream;
 pub mod transport;

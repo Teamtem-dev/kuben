@@ -58,6 +58,57 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether single sign-on is offered, for the sign-in page. */
+        get: operations["getSsoInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The identity provider's answer: signs the person in and redirects. */
+        get: operations["finishSso"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Start signing in: redirects to the identity provider. */
+        get: operations["startSso"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ci/trust-policies": {
         parameters: {
             query?: never;
@@ -1733,6 +1784,13 @@ export type components = {
             /** @description The sync this change or request queued, if any. */
             syncOperation?: string | null;
         };
+        SsoInfo: {
+            enabled: boolean;
+            /** @description The sign-in button's label. */
+            displayName?: string | null;
+            /** @description Where the button leads. */
+            startUrl?: string | null;
+        };
         StartDeploymentRequest: {
             /**
              * @description Image by digest: `registry/repository@sha256:…`. Give either `image`
@@ -1943,6 +2001,86 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getSsoInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoInfo"];
+                };
+            };
+        };
+    };
+    finishSso: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                /** @description Set by the provider when the person or the provider refused. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed in, or back to the sign-in page */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    startSso: {
+        parameters: {
+            query?: {
+                /** @description A path on this site to return to after signing in. */
+                returnTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description To the identity provider */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Single sign-on is not configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
             };
         };
     };

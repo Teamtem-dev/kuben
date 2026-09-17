@@ -77,6 +77,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     // kubeconfig of its own; the materializer hands it envelopes.
     let agent_link = agent_link(&cfg, &store, cluster.as_ref()).await?;
     let github = github_app(&cfg)?;
+    let sso = sso_client(&cfg)?;
 
     let projections = Arc::new(Projections::new());
     let mut tasks = if let Some(registry) = &cluster {
@@ -130,7 +131,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
             health.clone(),
             Arc::new(StaticPolicy),
         );
-        let app = kuben_api::router(with_integrations(state, &cfg, github.clone()));
+        let app = kuben_api::router(with_integrations(state, &cfg, github.clone(), sso.clone()));
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -177,8 +178,27 @@ fn with_integrations(
     state: kuben_api::ApiState,
     cfg: &Config,
     github: Option<kuben_api::github::GithubApp>,
+    sso: Option<Arc<kuben_api::sso::SsoClient>>,
 ) -> kuben_api::ApiState {
-    state.with_github(github).with_github_oidc(github_oidc(cfg))
+    let mut state = state.with_github(github).with_github_oidc(github_oidc(cfg));
+    state.sso = sso;
+    state
+}
+
+/// Single sign-on (M4.3), when enabled. A broken configuration stops the
+/// server instead of silently offering password sign-in only.
+fn sso_client(cfg: &Config) -> anyhow::Result<Option<Arc<kuben_api::sso::SsoClient>>> {
+    if !cfg.sso.enabled {
+        return Ok(None);
+    }
+    let client = kuben_api::sso::SsoClient::from_config(
+        &cfg.sso,
+        cfg.server.public_url.as_deref(),
+        &cfg.bootstrap.org_slug,
+    )
+    .context("single sign-on")?;
+    tracing::info!(issuer = %client.issuer(), org = %client.org_slug(), "single sign-on enabled");
+    Ok(Some(Arc::new(client)))
 }
 
 /// The GitHub Actions OIDC verifier (M4.2), when CI trust is on and its

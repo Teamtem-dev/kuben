@@ -1,15 +1,16 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useRouter } from '@tanstack/react-router'
 import { type FormEvent, useId } from 'react'
 import { AuthLayout, control } from '../components/ui'
-import { login, meQuery } from '../lib/api'
+import { login, meQuery, ssoQuery } from '../lib/api'
 import { usePrefs } from '../lib/prefs'
 import { problemMessage } from '../lib/problem'
 
 const route = getRouteApi('/login')
 
 export function LoginPage() {
-  const { redirect } = route.useSearch()
+  const { redirect, error } = route.useSearch()
+  const sso = useQuery(ssoQuery)
   const router = useRouter()
   const queryClient = useQueryClient()
   const emailId = useId()
@@ -69,6 +70,12 @@ export function LoginPage() {
           />
         </div>
 
+        {error === 'sso' && !mutation.isError && (
+          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-danger text-sm">
+            {t('login.ssoFailed')}
+          </p>
+        )}
+
         {mutation.isError && (
           <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-danger text-sm">
             {problemMessage(mutation.error)}
@@ -82,6 +89,18 @@ export function LoginPage() {
         >
           {mutation.isPending ? t('login.submitting') : t('login.submit')}
         </button>
+
+        {sso.data?.enabled && sso.data.startUrl && (
+          <>
+            <p className="text-center text-muted text-xs">{t('login.or')}</p>
+            <a
+              href={`${sso.data.startUrl}?returnTo=${encodeURIComponent(redirect ?? '/')}`}
+              className="block w-full rounded-lg border border-line px-3 py-2 text-center font-medium text-sm transition hover:bg-hover"
+            >
+              {t('login.sso')} {sso.data.displayName}
+            </a>
+          </>
+        )}
       </form>
     </AuthLayout>
   )

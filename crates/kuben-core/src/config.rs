@@ -39,6 +39,7 @@ pub struct Config {
     pub git: GitCfg,
     pub build: BuildCfg,
     pub ci: CiCfg,
+    pub sso: SsoCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -411,6 +412,82 @@ impl GitCfg {
     }
 }
 
+/// Single sign-on with an OpenID Connect provider (M4.3).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SsoCfg {
+    pub enabled: bool,
+    /// The provider's issuer URL; its discovery document names the rest.
+    pub issuer: Option<String>,
+    pub client_id: Option<String>,
+    /// A file holding the client secret (preferred), or the secret itself.
+    pub client_secret_file: Option<String>,
+    pub client_secret: Option<String>,
+    /// Shown on the sign-in button.
+    pub display_name: String,
+    pub scopes: Vec<String>,
+    /// The ID token claim that lists the person's groups.
+    pub group_claim: String,
+    /// Provider group → organization role (`viewer` … `owner`).
+    pub groups: std::collections::BTreeMap<String, String>,
+    /// The role of people in no mapped group; unset refuses them.
+    pub default_role: Option<String>,
+    /// Email domains allowed; empty for any.
+    pub allowed_domains: Vec<String>,
+    pub require_verified_email: bool,
+    /// The organization people join; default `bootstrap.org_slug`.
+    pub org: Option<String>,
+    /// Accounts linked to the provider cannot sign in with a password. Off by
+    /// default so a local owner keeps a way in while the provider is down.
+    pub disable_password_for_linked: bool,
+}
+
+impl Default for SsoCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            issuer: None,
+            client_id: None,
+            client_secret_file: None,
+            client_secret: None,
+            display_name: "Single sign-on".into(),
+            scopes: vec!["openid".into(), "email".into(), "profile".into()],
+            group_claim: "groups".into(),
+            groups: std::collections::BTreeMap::new(),
+            default_role: None,
+            allowed_domains: Vec::new(),
+            require_verified_email: true,
+            org: None,
+            disable_password_for_linked: false,
+        }
+    }
+}
+
+impl SsoCfg {
+    /// Who may sign in and as what, from this configuration.
+    ///
+    /// # Errors
+    ///
+    /// A role name that is not a role.
+    pub fn policy(&self) -> Result<crate::sso::SsoPolicy, crate::Error> {
+        let groups = self
+            .groups
+            .iter()
+            .map(|(group, role)| Ok((group.clone(), role.parse()?)))
+            .collect::<Result<_, crate::Error>>()?;
+        Ok(crate::sso::SsoPolicy {
+            groups,
+            default_role: self.default_role.as_deref().map(str::parse).transpose()?,
+            allowed_domains: self
+                .allowed_domains
+                .iter()
+                .map(|d| d.trim().trim_start_matches('@').to_ascii_lowercase())
+                .collect(),
+            require_verified_email: self.require_verified_email,
+        })
+    }
+}
+
 /// External CI trust (M4.2): GitHub Actions exchanges its OIDC token for a
 /// short-lived Kuben token under an organization's trust policy.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -694,6 +771,20 @@ mod tests {
         assert!(cfg.agent.bind.is_none(), "AgentLink is off unless configured");
         assert!(!cfg.build.enabled, "builds are off unless configured");
         assert!(!cfg.git.github_enabled());
+    }
+
+    #[test]
+    fn sso_mappings_become_a_policy() {
+        let mut sso = SsoCfg::default();
+        assert!(sso.require_verified_email && !sso.enabled);
+        sso.groups.insert("admins".into(), "admin".into());
+        sso.allowed_domains = vec!["@Example.com".into()];
+        let policy = sso.policy().expect("policy");
+        assert_eq!(policy.groups["admins"], crate::perm::Role::Admin);
+        assert_eq!(policy.allowed_domains, vec!["example.com".to_owned()]);
+        assert_eq!(policy.default_role, None);
+        sso.groups.insert("x".into(), "root".into());
+        assert!(sso.policy().is_err());
     }
 
     #[test]

@@ -83,8 +83,9 @@ const setupRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { redirect?: string; error?: 'sso' } => ({
     redirect: safeRedirect(search.redirect),
+    error: search.error === 'sso' ? 'sso' : undefined,
   }),
   beforeLoad: async ({ context }) => {
     if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
