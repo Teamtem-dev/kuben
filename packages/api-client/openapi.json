@@ -5810,6 +5810,13 @@
               "null"
             ],
             "description": "The hash approvers confirm (hex), when approvals are required."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What admission could not check, e.g. that the pods will be scheduled."
           }
         }
       },

@@ -70,9 +70,64 @@ pub struct ClusterFacts {
     /// What enforces NetworkPolicies (e.g. `cilium`, `k3s`), when found.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_policy: Option<String>,
+    /// The allocatable resources of the largest node pods may be scheduled
+    /// on (M4.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub largest_node: Option<NodeSize>,
     /// Probes that failed; what they would have found is unknown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unknown: Vec<String>,
+}
+
+/// A node's allocatable CPU and memory.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeSize {
+    pub cpu_millis: u64,
+    pub memory_bytes: u64,
+}
+
+impl ClusterFacts {
+    /// The largest schedulable node, for admission.
+    #[must_use]
+    pub fn node_capacity(&self) -> Option<kuben_core::capacity::NodeCapacity> {
+        self.largest_node.map(|n| kuben_core::capacity::NodeCapacity {
+            cpu_millis: n.cpu_millis,
+            memory_bytes: n.memory_bytes,
+        })
+    }
+}
+
+/// The largest allocatable CPU and the largest allocatable memory among the
+/// ready nodes without a scheduling taint: each an upper bound for one pod.
+/// `None` when no node is known to take pods.
+fn largest_node(nodes: &[Node]) -> Option<NodeSize> {
+    let schedulable = nodes.iter().filter(|n| {
+        let spec = n.spec.as_ref();
+        let cordoned = spec.and_then(|s| s.unschedulable).unwrap_or(false);
+        let tainted = spec.and_then(|s| s.taints.as_ref()).is_some_and(|t| {
+            t.iter()
+                .any(|t| t.effect == "NoSchedule" || t.effect == "NoExecute")
+        });
+        let ready = n
+            .status
+            .as_ref()
+            .and_then(|s| s.conditions.as_ref())
+            .is_some_and(|c| c.iter().any(|c| c.type_ == "Ready" && c.status == "True"));
+        ready && !cordoned && !tainted
+    });
+    schedulable
+        .filter_map(|n| {
+            let allocatable = n.status.as_ref()?.allocatable.as_ref()?;
+            Some(NodeSize {
+                cpu_millis: kuben_core::capacity::cpu_millis(&allocatable.get("cpu")?.0)?,
+                memory_bytes: kuben_core::capacity::bytes(&allocatable.get("memory")?.0)?,
+            })
+        })
+        .reduce(|a, b| NodeSize {
+            cpu_millis: a.cpu_millis.max(b.cpu_millis),
+            memory_bytes: a.memory_bytes.max(b.memory_bytes),
+        })
 }
 
 /// The installed Gateway API.
@@ -323,6 +378,7 @@ async fn workload_facts(client: &Client, facts: &mut ClusterFacts) {
     let nodes = timed(Api::<Node>::all(client.clone()).list(&ListParams::default())).await;
     match (daemonsets, nodes) {
         (Ok(daemonsets), Ok(nodes)) => {
+            facts.largest_node = largest_node(&nodes.items);
             let names: Vec<String> = daemonsets
                 .items
                 .into_iter()
@@ -486,6 +542,58 @@ mod tests {
         .expect("object");
         obj.data = data.clone();
         obj
+    }
+
+    fn node(cpu: &str, memory: &str, ready: bool, extra: &Value) -> Node {
+        let mut n = json!({
+            "metadata": { "name": "n" },
+            "status": {
+                "allocatable": { "cpu": cpu, "memory": memory },
+                "conditions": [{ "type": "Ready", "status": if ready { "True" } else { "False" } }],
+            },
+        });
+        if let (Some(n), Some(e)) = (n.as_object_mut(), extra.as_object()) {
+            n.extend(e.clone());
+        }
+        serde_json::from_value(n).expect("node")
+    }
+
+    #[test]
+    fn only_schedulable_nodes_bound_a_pod() {
+        let none = json!({});
+        let nodes = [
+            node("4", "8Gi", true, &none),
+            node("3500m", "16Gi", true, &none),
+            node("64", "512Gi", false, &none),
+            node("32", "128Gi", true, &json!({ "spec": { "unschedulable": true } })),
+            node(
+                "16",
+                "64Gi",
+                true,
+                &json!({ "spec": { "taints": [{ "key": "node-role.kubernetes.io/control-plane", "effect": "NoSchedule" }] } }),
+            ),
+            node(
+                "8",
+                "32Gi",
+                true,
+                &json!({ "spec": { "taints": [{ "key": "gpu", "effect": "PreferNoSchedule" }] } }),
+            ),
+        ];
+        assert_eq!(
+            largest_node(&nodes),
+            Some(NodeSize {
+                cpu_millis: 8000,
+                memory_bytes: 32 << 30
+            })
+        );
+        assert_eq!(largest_node(&nodes[2..4]), None);
+        let facts = ClusterFacts {
+            largest_node: largest_node(&nodes[..1]),
+            ..ClusterFacts::default()
+        };
+        assert_eq!(facts.node_capacity().map(|n| n.cpu_millis), Some(4000));
+        let json = serde_json::to_value(&facts).expect("json");
+        assert_eq!(json["largestNode"]["memoryBytes"], 8u64 << 30);
     }
 
     #[test]

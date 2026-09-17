@@ -126,7 +126,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     if cfg.has_role(Role::Api) {
         let parts = (&store, cluster.as_ref(), &projections, &health);
-        let app = kuben_api::router(api_state(&cfg, parts, (github.clone(), sso, keyring)));
+        let app = kuben_api::router(api_state(&cfg, parts, (github.clone(), sso, keyring))?);
         let listener = tokio::net::TcpListener::bind(&cfg.server.bind)
             .await
             .with_context(|| format!("cannot listen on {}", cfg.server.bind))?;
@@ -185,7 +185,8 @@ fn github_app(cfg: &Config) -> anyhow::Result<Option<kuben_api::github::GithubAp
 }
 
 /// The API state, with the Git, CI and single sign-on integrations the
-/// configuration enables and the secret keyring.
+/// configuration enables and the secret keyring. A quota that is not one
+/// stops the server instead of admitting everything.
 fn api_state(
     cfg: &Config,
     (store, cluster, projections, health): (
@@ -199,7 +200,8 @@ fn api_state(
         Option<Arc<kuben_api::sso::SsoClient>>,
         Arc<kuben_platform::secrets::Keyring>,
     ),
-) -> kuben_api::ApiState {
+) -> anyhow::Result<kuben_api::ApiState> {
+    cfg.quota.org_limits().map_err(anyhow::Error::msg)?;
     let mut state = kuben_api::ApiState::new(
         cfg.clone(),
         store.clone(),
@@ -212,7 +214,7 @@ fn api_state(
     .with_github_oidc(github_oidc(cfg))
     .with_keyring(keyring);
     state.sso = sso;
-    state
+    Ok(state)
 }
 
 /// Single sign-on (M4.3), when enabled. A broken configuration stops the

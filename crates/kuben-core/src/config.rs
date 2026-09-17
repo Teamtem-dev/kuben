@@ -41,6 +41,7 @@ pub struct Config {
     pub ci: CiCfg,
     pub sso: SsoCfg,
     pub secrets: SecretsCfg,
+    pub quota: QuotaCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -489,6 +490,40 @@ impl SsoCfg {
     }
 }
 
+/// What every organization of the installation may request at most (M4.5).
+/// Set by the operator; nobody raises it from the console. Unset is
+/// unlimited.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuotaCfg {
+    /// CPU requests of all apps of an organization at their peak, e.g. `32`.
+    pub org_cpu: Option<String>,
+    /// Memory requests of all apps of an organization at their peak, e.g. `64Gi`.
+    pub org_memory: Option<String>,
+    /// Pods of all apps of an organization at their peak.
+    pub org_pods: Option<u64>,
+    /// Live apps (application targets) per organization.
+    pub org_apps: Option<u64>,
+    /// Live environments per organization.
+    pub org_environments: Option<u64>,
+}
+
+impl QuotaCfg {
+    /// The organization limits, or why a quantity is not one.
+    pub fn org_limits(&self) -> Result<crate::capacity::Limits, String> {
+        let parse = |name: &str, value: Option<&String>, f: fn(&str) -> Option<u64>| {
+            value
+                .map(|v| f(v).ok_or_else(|| format!("quota.{name} `{v}` is not a quantity")))
+                .transpose()
+        };
+        Ok(crate::capacity::Limits {
+            cpu_millis: parse("org_cpu", self.org_cpu.as_ref(), crate::capacity::cpu_millis)?,
+            memory_bytes: parse("org_memory", self.org_memory.as_ref(), crate::capacity::bytes)?,
+            pods: self.org_pods,
+        })
+    }
+}
+
 /// Managed secrets (M4.4, ADR-030).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -858,6 +893,25 @@ mod tests {
                 .find(|(name, _)| *name == key)
                 .map(|(_, value)| OsString::from(value))
         }
+    }
+
+    #[test]
+    fn organization_quotas_are_quantities() {
+        let mut quota = QuotaCfg::default();
+        assert!(quota.org_limits().expect("limits").is_unlimited());
+        quota.org_cpu = Some("16".into());
+        quota.org_memory = Some("32Gi".into());
+        quota.org_pods = Some(100);
+        let limits = quota.org_limits().expect("limits");
+        assert_eq!(
+            (limits.cpu_millis, limits.memory_bytes, limits.pods),
+            (Some(16_000), Some(32 << 30), Some(100))
+        );
+        quota.org_memory = Some("lots".into());
+        assert_eq!(
+            quota.org_limits().map(|_| ()),
+            Err("quota.org_memory `lots` is not a quantity".into())
+        );
     }
 
     #[test]

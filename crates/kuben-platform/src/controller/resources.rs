@@ -28,6 +28,7 @@ use k8s_openapi::{
     },
 };
 use kube::ResourceExt;
+use kuben_core::capacity::{self, Demand};
 use kuben_crd::{
     App, Environment, EnvironmentType, GatewayPorts, KubenConfigSpec, Process, SizePreset, labels,
 };
@@ -755,6 +756,40 @@ fn preset<'a>(platform: &'a Platform, pname: &str, process: &Process) -> Result<
             process: pname.to_owned(),
             size: process.size.clone(),
         })
+}
+
+/// What an app may request at its peak, for admission (M4.5).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AppDemand {
+    /// Every long-running process at its maximum replicas, plus the surge
+    /// pod of a rolling update, and one pod of each scheduled process.
+    pub peak: Demand,
+    /// The requests of the app's largest pod: `(cpu millicores, bytes)`.
+    pub largest_pod: (u64, u64),
+}
+
+/// The peak requests of `app` with `platform`'s size presets.
+pub fn demand(app: &App, platform: &Platform) -> Result<AppDemand, BuildError> {
+    let surge = u64::from(app.spec.volumes.is_empty());
+    let mut out = AppDemand::default();
+    for (pname, process) in &app.spec.runtime.processes {
+        let preset = preset(platform, pname, process)?;
+        let invalid = || BuildError::UnknownSize {
+            process: pname.clone(),
+            size: process.size.clone(),
+        };
+        let cpu = capacity::cpu_millis(&preset.cpu_request).ok_or_else(invalid)?;
+        let memory = capacity::bytes(&preset.memory_request).ok_or_else(invalid)?;
+        let pods = if process.schedule.is_some() {
+            // `concurrencyPolicy: Forbid`: one run at a time.
+            1
+        } else {
+            u64::from(process.replicas.max.max(process.replicas.min)) + surge
+        };
+        out.peak = out.peak.plus(Demand::pods(pods, cpu, memory));
+        out.largest_pod = (out.largest_pod.0.max(cpu), out.largest_pod.1.max(memory));
+    }
+    Ok(out)
 }
 
 /// Autoscaling is on when `max > min`; then the HPA owns `replicas`.
@@ -1563,6 +1598,55 @@ mod tests {
             http_route(&a, &platform(), &o).expect("ok").is_none(),
             "tcp is never public"
         );
+    }
+
+    #[test]
+    fn the_peak_demand_counts_replicas_surge_and_one_run_per_schedule() {
+        let a = app(json!({
+            "source": { "image": "ghcr.io/acme/api:1.2.3" },
+            "runtime": { "processes": {
+                "web": { "port": 3000, "size": "medium", "replicas": { "min": 1, "max": 3 } },
+                "worker": { "size": "small" },
+                "report": { "command": ["bin/report"], "schedule": "0 3 * * *", "size": "nano" }
+            } }
+        }));
+        let d = demand(&a, &Platform::default()).expect("demand");
+        // web: (3 + 1) × 250m/512Mi; worker: (1 + 1) × 100m/128Mi; report: 50m/64Mi.
+        assert_eq!(d.peak.pods, 7);
+        assert_eq!(d.peak.cpu_millis, 4 * 250 + 2 * 100 + 50);
+        assert_eq!(d.peak.memory_bytes, (4 * 512 + 2 * 128 + 64) << 20);
+        assert_eq!(d.largest_pod, (250, 512 << 20));
+
+        let mut with_volume = a.clone();
+        with_volume.spec.runtime.processes.retain(|name, _| name == "web");
+        with_volume
+            .spec
+            .runtime
+            .processes
+            .get_mut("web")
+            .expect("web")
+            .replicas
+            .max = 1;
+        with_volume.spec.volumes = vec![kuben_crd::Volume {
+            name: "data".into(),
+            mount_path: "/data".into(),
+            size: "1Gi".into(),
+            storage_class: None,
+        }];
+        assert_eq!(
+            demand(&with_volume, &Platform::default())
+                .expect("demand")
+                .peak
+                .pods,
+            1,
+            "Recreate has no surge pod"
+        );
+        let mut unknown = a;
+        unknown.spec.runtime.processes.get_mut("web").expect("web").size = "huge".into();
+        assert!(matches!(
+            demand(&unknown, &Platform::default()),
+            Err(BuildError::UnknownSize { .. })
+        ));
     }
 
     #[test]

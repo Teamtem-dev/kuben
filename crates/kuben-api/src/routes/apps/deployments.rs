@@ -101,6 +101,9 @@ pub struct DeploymentDto {
     /// The hash approvers confirm (hex), when approvals are required.
     #[serde(default)]
     pub plan_hash: Option<String>,
+    /// What admission could not check, e.g. that the pods will be scheduled.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 impl From<RunSummary> for DeploymentDto {
@@ -113,6 +116,7 @@ impl From<RunSummary> for DeploymentDto {
             approvals_required: s.approvals_required,
             approval_expires_at: s.approval_expires_at,
             plan_hash: s.plan_hash.as_ref().map(|h| kuben_core::policy::hex(h)),
+            warnings: Vec::new(),
         }
     }
 }
@@ -259,6 +263,20 @@ pub async fn start(
 
     let mut tenant = state.store.tenant(t.org).await?;
     super::approvals::ensure_may_deploy(&mut tenant, &authz, t.target, &t.chain()).await?;
+    let warnings = match &body.config {
+        // Without a new configuration the resources do not change.
+        None => Vec::new(),
+        Some(config) => {
+            let spec = super::spec_of(Some(config.clone()), Some(super::admission::ANY_IMAGE))
+                .ok_or_else(|| Error::Validation("`config` is not an app configuration".into()))?;
+            let at = super::admission::Placement {
+                environment: t.environment,
+                quota: t.quota.as_ref(),
+                target: t.target,
+            };
+            super::admission::admit(&state, &mut tenant, at, &spec).await?
+        }
+    };
     let release = release_for(&mut tenant, &t, &body, &actor).await?;
     let config_revision = config_revision_for(&mut tenant, &t, body.config.as_ref(), &actor).await?;
     let lifecycle_uid = tenant
@@ -320,7 +338,10 @@ pub async fn start(
     Ok((
         StatusCode::ACCEPTED,
         [(header::LOCATION, location)],
-        Json(DeploymentDto::from(summary)),
+        Json(DeploymentDto {
+            warnings,
+            ..DeploymentDto::from(summary)
+        }),
     ))
 }
 

@@ -2547,3 +2547,66 @@ async fn m4_registry_logins_pull_private_images() {
         StatusCode::NOT_FOUND
     );
 }
+
+/// M4.5: an app's peak requests must fit its environment's quota, and the
+/// organization's apps and environments the installation's quota.
+#[tokio::test]
+async fn m4_quotas_bound_what_apps_may_request() {
+    let Some(app) = setup_with(|cfg| {
+        cfg.quota.org_apps = Some(2);
+        cfg.quota.org_environments = Some(2);
+    })
+    .await
+    else {
+        return;
+    };
+    let alice = login(&app.router, "alice@example.com").await;
+    let created = |status: StatusCode| status == StatusCode::CREATED;
+    let project = json!({ "name": "shop", "display_name": "Shop" });
+    assert!(created(
+        status_of(&app.router, "POST", "/api/v1/projects", &alice, Some(project)).await
+    ));
+    let environments = "/api/v1/projects/shop/environments";
+    for (body, expected) in [
+        (
+            json!({ "name": "tiny", "quota": { "cpu": "150m" } }),
+            StatusCode::CREATED,
+        ),
+        (
+            json!({ "name": "big", "quota": { "cpu": "1e3" } }),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (json!({ "name": "big" }), StatusCode::CREATED),
+        (json!({ "name": "third" }), StatusCode::CONFLICT),
+    ] {
+        let status = status_of(&app.router, "POST", environments, &alice, Some(body.clone())).await;
+        assert_eq!(status, expected, "{body}");
+    }
+    let web = |name: &str| json!({ "name": name, "image": "nginx:1.27", "port": 80 });
+    let (status, _, refused) = call(
+        &app.router,
+        "POST",
+        &format!("{environments}/tiny/apps"),
+        Auth::Cookie(&alice),
+        Some(web("web")),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(
+        refused.to_string().contains("200m CPU"),
+        "one replica and its surge pod: {refused}"
+    );
+    let big = format!("{environments}/big/apps");
+    for (name, expected) in [
+        ("web", StatusCode::CREATED),
+        ("api", StatusCode::CREATED),
+        ("third", StatusCode::CONFLICT),
+    ] {
+        assert_eq!(
+            status_of(&app.router, "POST", &big, &alice, Some(web(name))).await,
+            expected,
+            "{name}"
+        );
+    }
+}

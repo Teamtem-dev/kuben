@@ -1431,6 +1431,8 @@ export type components = {
             approval_expires_at?: number | null;
             /** @description The hash approvers confirm (hex), when approvals are required. */
             plan_hash?: string | null;
+            /** @description What admission could not check, e.g. that the pods will be scheduled. */
+            warnings?: string[];
         };
         /** @description A deployment run with how it went. */
         DeploymentSummary: {

@@ -22,6 +22,7 @@
 //! the agent's last report, from SQL). An image given as a tag is resolved to a
 //! digest at its registry first (option A).
 
+pub mod admission;
 pub mod approvals;
 pub mod builds;
 pub mod crud;
@@ -450,12 +451,28 @@ pub(crate) struct Change<'a> {
     pub reference: String,
     /// Where the change lands, for the environment's deploy role.
     pub chain: kuben_core::authz::ScopeChain,
+    /// The environment and its quota, for admission.
+    pub environment: (kuben_core::ids::EnvironmentId, Option<&'a Value>),
 }
 
 /// Record `change` as the app's newest configuration and start a deployment
 /// run of it, in `tenant`'s transaction.
-pub(crate) async fn deploy(tenant: &mut Tenant, authz: &Authz, change: Change<'_>) -> ApiResult<()> {
+pub(crate) async fn deploy(
+    state: &ApiState,
+    tenant: &mut Tenant,
+    authz: &Authz,
+    change: Change<'_>,
+) -> ApiResult<()> {
     approvals::ensure_may_deploy(tenant, authz, change.target, &change.chain).await?;
+    let (environment, quota) = change.environment;
+    let placement = admission::Placement {
+        environment,
+        quota,
+        target: change.target,
+    };
+    for warning in admission::admit(state, tenant, placement, change.spec).await? {
+        tracing::info!(target = %change.reference, %warning, "admitted with a warning");
+    }
     let (_, actor) = request::actor(authz);
     let config = config_of(change.spec)?;
     let missing = || Error::NotFound("the app".into());
@@ -570,8 +587,9 @@ pub(crate) async fn create_app(
         reason: RunReason::Deploy,
         reference: format!("{}/{}/{name}", e.project.slug(), e.short_name()),
         chain: e.chain(),
+        environment: (e.id(), e.env.quota.as_ref()),
     };
-    deploy(&mut tenant, authz, change).await?;
+    deploy(state, &mut tenant, authz, change).await?;
     let record = tenant
         .app(e.id(), name)
         .await?
