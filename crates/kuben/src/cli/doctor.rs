@@ -38,6 +38,71 @@ impl Report {
     }
 }
 
+/// The database server, point-in-time recovery and backups (M4.7).
+async fn database_checks(r: &mut Report, cfg: &Config, store: &kuben_store::Store) {
+    match store.database_facts().await {
+        Ok(facts) => {
+            let local = cfg.database.url.contains("@localhost")
+                || cfg.database.url.contains("@127.0.0.1")
+                || cfg.database.url.contains("host=/");
+            let level = if facts.major() < 15 || facts.in_recovery || (!facts.tls && !local) {
+                Level::Warn
+            } else {
+                Level::Ok
+            };
+            r.line(
+                level,
+                "database server",
+                format!(
+                    "PostgreSQL {}{}{}",
+                    facts.major(),
+                    if facts.tls {
+                        ", TLS"
+                    } else if local {
+                        ", local"
+                    } else {
+                        ", NOT encrypted: add sslmode=verify-full"
+                    },
+                    if facts.in_recovery {
+                        ", a read-only standby"
+                    } else {
+                        ""
+                    }
+                ),
+            );
+            if facts.archives_wal() {
+                r.line(
+                    Level::Ok,
+                    "point-in-time recovery",
+                    "WAL is archived (wal_level and archive_mode)",
+                );
+            } else {
+                r.line(
+                    Level::Warn,
+                    "point-in-time recovery",
+                    "WAL is not archived: recovery goes back to the newest backup only; archive WAL \
+                     (pgBackRest, WAL-G or your provider's PITR) for a smaller recovery point",
+                );
+            }
+        }
+        Err(e) => r.line(
+            Level::Warn,
+            "database server",
+            format!("cannot read its facts: {e}"),
+        ),
+    }
+    match store.last_backup().await {
+        Ok(last) => {
+            let at = last.as_ref().map(|b| b.finished_at);
+            match crate::cli::backup::freshness(at, kuben_core::time::now_ms(), cfg.backup.max_age_hours) {
+                Ok(msg) => r.line(Level::Ok, "backup", msg),
+                Err(msg) => r.line(Level::Warn, "backup", msg),
+            }
+        }
+        Err(e) => r.line(Level::Warn, "backup", format!("cannot read the backups: {e}")),
+    }
+}
+
 pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
     let mut r = Report { failed: false };
     println!("{}", crate::cli::version_string());
@@ -74,6 +139,7 @@ pub async fn run(cfg: Config, opts: DoctorOpts) -> anyhow::Result<()> {
                 Ok(None) => r.line(Level::Ok, "database role", "row-level security applies"),
                 Err(e) => r.line(Level::Warn, "database role", format!("cannot read the role: {e}")),
             }
+            database_checks(&mut r, &cfg, &store).await;
             let _ = store.close().await;
         }
         // The URL goes through `redact_credentials` like every line.

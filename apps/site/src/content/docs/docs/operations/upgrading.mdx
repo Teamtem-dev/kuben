@@ -41,7 +41,7 @@ sudo systemctl restart kuben
 `kuben migrate` applies pending migrations without starting the server, if you prefer to run them as a separate step.
 
 <Aside type="tip" title="Before upgrading">
-Take a [backup](/docs/operations/backup-restore/): `kuben backup` plus a `pg_dump` of the database. Read the [release notes](https://github.com/Teamtem-dev/kuben/releases) for anything marked as a breaking change.
+Take a [backup](/docs/operations/backup-restore/) with `kuben backup` and check it with `kuben restore --check`. Read the [release notes](https://github.com/Teamtem-dev/kuben/releases) for anything marked as a breaking change.
 </Aside>
 
 ## Versioning

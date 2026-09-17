@@ -44,6 +44,28 @@ pub struct Store {
 impl Store {
     /// Connect to PostgreSQL and run the embedded migrations.
     pub async fn connect(cfg: &DatabaseCfg) -> Result<Self, StoreError> {
+        Self::migrated(Self::pool_of(cfg).await?).await
+    }
+
+    /// Connect without migrating: for tools that must not change the
+    /// schema (a backup). The schema may be older than this binary's.
+    pub async fn connect_unmigrated(cfg: &DatabaseCfg) -> Result<Self, StoreError> {
+        Ok(Self {
+            pool: Self::pool_of(cfg).await?,
+        })
+    }
+
+    /// The newest migration this binary carries.
+    #[must_use]
+    pub fn latest_migration() -> i64 {
+        sqlx::migrate!("./migrations/postgres")
+            .iter()
+            .map(|m| m.version)
+            .max()
+            .unwrap_or(0)
+    }
+
+    async fn pool_of(cfg: &DatabaseCfg) -> Result<PgPool, StoreError> {
         let url = cfg.url.trim();
         if url.is_empty() {
             return Err(StoreError::NotConfigured);
@@ -54,12 +76,11 @@ impl Store {
         if !(url.starts_with("postgres:") || url.starts_with("postgresql:")) {
             return Err(StoreError::UnsupportedUrl(cfg.url.clone()));
         }
-        let pool = PgPoolOptions::new()
+        Ok(PgPoolOptions::new()
             .max_connections(cfg.max_connections.max(2))
             .acquire_timeout(Duration::from_secs(10))
             .connect(url)
-            .await?;
-        Self::migrated(pool).await
+            .await?)
     }
 
     /// Connect with explicit options (for example a `search_path` per test)

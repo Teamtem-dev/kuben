@@ -52,14 +52,7 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     tokio::spawn(watchdog(health.clone(), shutdown.child_token()));
 
     let store = kuben_store::Store::connect(&cfg.database).await?;
-    tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
-    if let Ok(Some(role)) = store.role_bypassing_row_security().await {
-        tracing::warn!(
-            %role,
-            "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
-        );
-    }
-    record_install_journal(&cfg, &store).await;
+    database_ready(&cfg, &store, &health, &shutdown).await;
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;
 
@@ -619,6 +612,57 @@ fn instance_identity() -> String {
 }
 
 /// Heartbeat for `/livez`: if the runtime is wedged this stops ticking.
+/// Log what the database is, record the install journal and watch the
+/// backups.
+async fn database_ready(
+    cfg: &Config,
+    store: &kuben_store::Store,
+    health: &Health,
+    shutdown: &CancellationToken,
+) {
+    tracing::info!(backend = store.backend(), url = %redact_credentials(&cfg.database.url), "database ready");
+    if let Ok(Some(role)) = store.role_bypassing_row_security().await {
+        tracing::warn!(
+            %role,
+            "the database role is a superuser or has BYPASSRLS: row-level security does not apply; connect as an ordinary role"
+        );
+    }
+    record_install_journal(cfg, store).await;
+    tokio::spawn(watch_backups(
+        cfg.clone(),
+        store.clone(),
+        health.clone(),
+        shutdown.child_token(),
+    ));
+}
+
+/// Report `backups` degraded while the newest good backup is older than
+/// `backup.max_age_hours` (M4.7): the alert an operator acts on.
+async fn watch_backups(cfg: Config, store: kuben_store::Store, health: Health, token: CancellationToken) {
+    if cfg.backup.max_age_hours == 0 {
+        return;
+    }
+    let mut tick = tokio::time::interval(Duration::from_mins(10));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            () = token.cancelled() => return,
+        }
+        let state = match store.last_backup().await {
+            Ok(last) => crate::cli::backup::freshness(
+                last.map(|b| b.finished_at),
+                kuben_core::time::now_ms(),
+                cfg.backup.max_age_hours,
+            ),
+            Err(e) => Err(format!("cannot read the backups: {e}")),
+        };
+        match state {
+            Ok(_) => health.ok("backups"),
+            Err(problem) => health.degraded("backups", &problem),
+        }
+    }
+}
+
 async fn watchdog(health: Health, token: CancellationToken) {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     loop {

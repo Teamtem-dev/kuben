@@ -20,6 +20,7 @@ fn main() -> anyhow::Result<()> {
     let quiet = matches!(
         args.command,
         cli::Command::Setup(_)
+            | cli::Command::CopySelf(_)
             | cli::Command::Status(_)
             | cli::Command::Login(_)
             | cli::Command::Apps(_)
@@ -37,6 +38,7 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         cli::Command::Setup(opts) => cli::setup::setup(&opts),
+        cli::Command::CopySelf(opts) => cli::copy_self(&opts),
         cli::Command::Status(opts) => match opts.app.clone() {
             None => cli::setup::status(),
             Some(app) => serve::block_on(&runtime, cli::client::status(opts, &app)),

@@ -1,75 +1,98 @@
 ---
 title: Backup and restore
-description: kuben backup exports every project, environment and app as YAML; PostgreSQL is backed up with pg_dump, app volumes with snapshots. What is deliberately not exported, and how restore re-links ownership.
+description: kuben backup writes the database and a checked manifest every night; kuben restore brings them back into an empty database, fences everything that happened after the backup and writes every app again. The secret keyring, point-in-time recovery and app volumes.
 sidebar:
   order: 4
 ---
 
 import { Aside } from '@astrojs/starlight/components'
 
-A Kuben installation is three kinds of state, backed up in three ways.
+Kuben keeps its whole desired state in PostgreSQL: projects, environments,
+apps, releases, runs, users, policies and encrypted secrets. The Kubernetes
+objects are rendered from it, so backing up the database backs up Kuben.
 
-| State | Where it lives | Back up with |
-|---|---|---|
-| Desired state: projects, environments, apps, releases | Kubernetes custom resources | `kuben backup` |
-| Identity and history: users, tokens, memberships, audit log | PostgreSQL | `pg_dump`, or a `VolumeSnapshot` of the PostgreSQL volume |
-| App data | PVCs in the environment namespaces | `VolumeSnapshot`s or Velero |
+| State | Back up with |
+|---|---|
+| The database | `kuben backup` (scheduled by `kuben setup` and the Helm chart) |
+| The secret keyring | Separately, once and after every key rotation |
+| App data (volumes) | `VolumeSnapshot`s or Velero, on the schedule your data needs |
 
-## Export the custom resources
+## Scheduled backups
 
-```bash
-kuben backup --out ./kuben-backup
-```
+`kuben setup` installs `kuben-backup.timer` (daily at about 03:17); the Helm
+chart runs the `…-backup` CronJob (`backup.schedule`) and writes to a kept
+volume. Both keep the newest `backup.keep` backups (default 7) under
+`backup.dir`. Each backup is a directory `kuben-<UTC time>` with:
 
-From inside the chart:
+- `database.dump`: a `pg_dump` custom archive of the database;
+- `manifest.json`: the Kuben version, the schema, the dump's size and
+  SHA-256, and the fingerprints of the secret keys it was sealed with.
 
-```bash
-kubectl -n kuben-system exec deploy/kuben -- /kuben backup --out /tmp/kuben-backup
-kubectl -n kuben-system cp kuben-0:/tmp/kuben-backup ./kuben-backup   # adjust the pod name
-```
+The server reports the subsystem `backups` as degraded, and `kuben doctor`
+warns, when the newest good backup is older than `backup.max_age_hours`
+(default 26). Every attempt, good or failed, is recorded in the database.
 
-The directory holds every `Project`, `Environment` and `App` as YAML, plus the `KubenConfig`.
-
-<Aside type="caution" title="Deliberately not exported">
-**Secret values** are never exported by Kuben. Back them up with your secret manager (Vault, SOPS) or a cluster backup tool such as Velero. **App volumes** are not included either: they are ordinary PVCs, kept when an app is deleted.
+<Aside type="caution" title="Copy backups off the host">
+A backup on the same disk or volume as the database does not survive the
+loss of that disk. Sync `backup.dir` (or the chart's backup volume) to object
+storage or another site.
 </Aside>
 
-## Back up the database
-
-With the chart's own PostgreSQL (for a release named `kuben`; otherwise replace `kuben` in the pod name with the release's fullname):
+## By hand
 
 ```bash
-kubectl -n kuben-system exec kuben-postgresql-0 -- pg_dump -U kuben -d kuben --format=custom > kuben.dump
+kuben backup                     # into backup.dir
+kuben backup --out /mnt/offsite  # anywhere else
 ```
 
-Restore the dump with `pg_restore`. A `VolumeSnapshot` of the volume `data-kuben-postgresql-0` works too.
+`kuben backup` needs PostgreSQL's client tools (`pg_dump`) at least as new as
+the server. It never changes the database schema.
 
-On a server set up by `kuben setup`:
+## The secret keyring
 
-```bash
-sudo -u postgres pg_dump --format=custom kuben > kuben.dump
-```
+Secret values are sealed with keys from the keyring (`secrets.keyring_file`,
+by default `secrets.keyring` in the state directory; in the chart the Secret
+`…-secrets-keyring`, kept on uninstall). The keyring never enters the
+database or its backups, so a stolen backup does not reveal secrets.
 
-With an external PostgreSQL, use that database's own backups.
+Back the keyring up separately. `kuben backup --include-keyring` copies it into
+the backup for convenience, and whoever holds such a backup can read every
+secret: encrypt it.
+
+## Point-in-time recovery
+
+`kuben backup` restores to the moment of the backup. For a smaller recovery
+point, archive PostgreSQL's WAL with pgBackRest, WAL-G or your provider's
+point-in-time recovery, and restore the database with that tool.
+`kuben doctor` tells whether WAL archiving is on. After such a restore, run
+the same fencing as `kuben restore` does (below) by restoring through it, or
+at least sign everyone out and revoke API tokens.
 
 ## Restore
 
 ```bash
-kuben restore --from ./kuben-backup
+kuben restore --from /backups/kuben-20260917T031700Z --check   # intact?
+kuben restore --from /backups/kuben-20260917T031700Z
 ```
 
-Restore does three things in order:
+The target database must be empty. A restore:
 
-1. Applies the CRDs first, so the objects have a schema to land in.
-2. Re-points old `ownerReference`s at the **new** `Project` uids. Without this the garbage collector would delete the restored environments and apps as orphans.
-3. Creates the namespaces immediately, so restored apps can be reconciled without waiting for the environment controller.
+1. checks the manifest and the dump's checksum, and that this Kuben is at
+   least as new as the backup;
+2. finds the keyring (the configured one, or the backup's, installed in its
+   place) and refuses keys that are not the backup's;
+3. loads the dump with `pg_restore` and applies newer migrations;
+4. **fences the time after the backup:** every session ends and every API
+   token is revoked (sign in again and issue new tokens), and every app's
+   generation jumps far ahead, so anything a cluster or agent saw after the
+   backup is outranked instead of mistaken for newer state;
+5. starts a run for every app, which writes it again, to the old cluster or
+   a new one.
 
-After a restore, the SQL side still references the old cluster objects by `uid`. Restore the database from the same point in time as the export, or accept that release history before the restore is not linked to the restored apps.
+It prints how much time lies between the backup and the restore: changes
+made in that window are not in the restored database.
 
-## A practical schedule
+## Before an upgrade
 
-- **Nightly:** `kuben backup` to object storage, and a `pg_dump` of the database (or a `VolumeSnapshot` of its volume).
-- **Before an upgrade:** the same, by hand. See [Upgrading](/docs/operations/upgrading/).
-- **App volumes:** on the schedule your data needs, with the snapshot tooling of your storage class.
-
-The export is plain YAML, so it also works as a change log: commit it to a repository and diff between days.
+Run `kuben backup` by hand and check it with `kuben restore --check`. See
+[Upgrading](/docs/operations/upgrading/).

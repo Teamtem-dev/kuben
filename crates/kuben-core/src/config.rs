@@ -42,6 +42,7 @@ pub struct Config {
     pub sso: SsoCfg,
     pub secrets: SecretsCfg,
     pub quota: QuotaCfg,
+    pub backup: BackupCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -490,6 +491,31 @@ impl SsoCfg {
     }
 }
 
+/// Backups of the database (M4.7). `kuben backup` writes them (a systemd
+/// timer or the chart's CronJob runs it); the server only watches their age.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BackupCfg {
+    /// Where backups go; default `backups` in [`Config::state_dir`]. Copy
+    /// them off this host: a backup on the same disk is no backup.
+    pub dir: Option<String>,
+    /// Backups kept in `dir`; older ones are removed after a good backup.
+    pub keep: u32,
+    /// The server reports itself degraded when the newest good backup is
+    /// older than this; 0 turns the check off.
+    pub max_age_hours: u32,
+}
+
+impl Default for BackupCfg {
+    fn default() -> Self {
+        Self {
+            dir: None,
+            keep: 7,
+            max_age_hours: 26,
+        }
+    }
+}
+
 /// What every organization of the installation may request at most (M4.5).
 /// Set by the operator; nobody raises it from the console. Unset is
 /// unlimited.
@@ -768,6 +794,15 @@ impl Config {
         let bind = &self.server.bind;
         bind.parse::<SocketAddr>()
             .map_or_else(|_| bind.starts_with("localhost:"), |addr| addr.ip().is_loopback())
+    }
+
+    /// Where backups go.
+    #[must_use]
+    pub fn backup_dir(&self) -> PathBuf {
+        match self.backup.dir.as_deref().filter(|d| !d.is_empty()) {
+            Some(dir) => PathBuf::from(dir),
+            None => self.state_dir().join("backups"),
+        }
     }
 
     /// The keyring file of managed secrets.

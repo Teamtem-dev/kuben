@@ -148,6 +148,30 @@ impl Keyring {
         })
     }
 
+    /// Read the keyring at `path`, which must exist and be private.
+    pub fn load(path: &Path) -> Result<Self, SecretError> {
+        let err = |reason: String| SecretError::Keyring {
+            path: path.to_owned(),
+            reason,
+        };
+        let text = Zeroizing::new(std::fs::read_to_string(path).map_err(|e| err(e.to_string()))?);
+        check_private(path).map_err(err)?;
+        Self::parse(&text).map_err(err)
+    }
+
+    /// Write `text`, a keyring, to `path` (mode 0600) when nothing is there.
+    pub fn install(path: &Path, text: &str) -> Result<Self, SecretError> {
+        let keyring = Self::parse(text).map_err(|reason| SecretError::Keyring {
+            path: path.to_owned(),
+            reason,
+        })?;
+        write_private(path, text.as_bytes()).map_err(|e| SecretError::Keyring {
+            path: path.to_owned(),
+            reason: e.to_string(),
+        })?;
+        Ok(keyring)
+    }
+
     /// Read the keyring at `path`, creating it with one fresh key (mode 0600)
     /// when it does not exist.
     pub fn load_or_create(path: &Path) -> Result<Self, SecretError> {
@@ -332,11 +356,12 @@ fn check_private(path: &Path) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .permissions()
         .mode();
-    // Group and other bits must all be clear.
-    let others = mode & 0o077;
-    if others != 0 {
+    // Nobody else may read it and no group may write it. Group read stays
+    // allowed: Kubernetes adds it to Secret volumes of pods with `fsGroup`.
+    let exposed = mode & 0o027;
+    if exposed != 0 {
         return Err(format!(
-            "the keyring is readable by others (mode {:o}); chmod 600 it",
+            "the keyring is readable by others or writable by its group (mode {:o}); chmod 600 it",
             mode & 0o777
         ));
     }
@@ -601,12 +626,34 @@ mod tests {
             use std::os::unix::fs::PermissionsExt as _;
             let mode = std::fs::metadata(&path).expect("meta").permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).expect("chmod");
+            assert!(
+                Keyring::load_or_create(&path).is_ok(),
+                "group read, as fsGroup makes it"
+            );
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
             assert!(matches!(
                 Keyring::load_or_create(&path),
                 Err(SecretError::Keyring { .. })
             ));
         }
+        std::fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn a_restored_keyring_is_installed_once_and_loaded() {
+        let dir = std::env::temp_dir().join(format!("kuben-keyring-{}", uuid::Uuid::now_v7()));
+        let path = dir.join("secrets.keyring");
+        assert!(Keyring::load(&path).is_err(), "missing");
+        let text = format!("1:{}\n", STANDARD.encode([5u8; KEY_LEN]));
+        let installed = Keyring::install(&path, &text).expect("install");
+        assert!(
+            Keyring::install(&path, &text).is_err(),
+            "never over an existing file"
+        );
+        assert!(Keyring::install(&dir.join("other"), "garbage").is_err());
+        let loaded = Keyring::load(&path).expect("load");
+        assert_eq!(loaded.fingerprints(), installed.fingerprints());
         std::fs::remove_dir_all(dir).expect("cleanup");
     }
 

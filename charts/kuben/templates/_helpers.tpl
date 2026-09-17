@@ -40,3 +40,32 @@ app.kubernetes.io/component: database
 {{- define "kuben.postgresql.image" -}}
 {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}{{ with .Values.postgresql.image.digest }}@{{ . }}{{ end }}
 {{- end -}}
+
+{{- /* The Secret with the managed-secret keyring. */ -}}
+{{- define "kuben.keyring.secret" -}}
+{{- .Values.secrets.existingKeyringSecret | default (printf "%s-secrets-keyring" (include "kuben.fullname" .)) -}}
+{{- end -}}
+
+{{- /* KUBEN_DATABASE__URL (and what it needs) for Kuben's containers. */ -}}
+{{- define "kuben.databaseEnv" -}}
+{{- if .Values.database.existingSecret }}
+- name: KUBEN_DATABASE__URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.database.existingSecret }}
+      key: url
+{{- else if .Values.database.url }}
+- name: KUBEN_DATABASE__URL
+  value: {{ .Values.database.url | quote }}
+{{- else }}
+# The chart's own PostgreSQL, as the ordinary role `kuben`; the password
+# stays in its Secret.
+- name: POSTGRES_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "kuben.postgresql.fullname" . }}
+      key: password
+- name: KUBEN_DATABASE__URL
+  value: "postgres://kuben:$(POSTGRES_PASSWORD)@{{ include "kuben.postgresql.fullname" . }}:5432/kuben"
+{{- end }}
+{{- end -}}

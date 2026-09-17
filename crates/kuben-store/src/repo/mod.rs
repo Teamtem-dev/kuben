@@ -5,6 +5,7 @@
 mod acceptance;
 mod agents;
 mod audit;
+mod backups;
 mod builds;
 mod capabilities;
 mod catalog;
@@ -32,6 +33,7 @@ pub use agents::{
     ClusterAgent, Delivery, RUNTIME_FEATURE, Redeemed, RuntimeObservation, TokenRedemption, TokenRefusal,
 };
 pub use audit::NewAudit;
+pub use backups::{BackupRecord, DatabaseFacts, LastBackup, RESTORE_GENERATION_JUMP, Restored};
 pub use builds::{
     BUILD_KIND, BUILD_PROCESS, Bound, BuildAdvance, BuildAttempt, BuildProgress, Completed, GITHUB,
     HeadObserved, MAX_BUILD_ATTEMPTS, NewBinding, SOURCE_SYNC_KIND, SlotLimits, SourceBinding, reject_code,

@@ -65,13 +65,36 @@ pub enum Command {
     Rollback(client::RollbackOpts),
     /// Remove the service installed by `kuben setup` (with --purge: everything).
     Uninstall(setup::UninstallOpts),
-    /// Export Projects, Environments and Apps (CRDs) to a directory (secret values are never exported).
+    /// Back up the database (and, if asked, the secret keyring) into a new
+    /// directory under `backup.dir`.
     Backup(BackupOpts),
-    /// Restore a backup created by `kuben backup`.
+    /// Restore a backup made by `kuben backup` into an empty database.
     Restore(RestoreOpts),
     /// Print version information; `--bundle` adds what a release installs
     /// besides Kuben, with its digests.
     Version(VersionOpts),
+    /// Copy this binary to a path (the chart's backup job runs it next to
+    /// PostgreSQL's client tools).
+    #[command(hide = true)]
+    CopySelf(CopySelfOpts),
+}
+
+#[derive(Debug, Args)]
+pub struct CopySelfOpts {
+    /// Where the copy goes (made executable).
+    pub to: std::path::PathBuf,
+}
+
+/// `kuben copy-self`.
+pub fn copy_self(opts: &CopySelfOpts) -> anyhow::Result<()> {
+    let me = std::env::current_exe()?;
+    std::fs::copy(&me, &opts.to)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&opts.to, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
 }
 
 /// Options of `kuben version`.
@@ -148,16 +171,29 @@ pub struct ResetAdminOpts {
 
 #[derive(Debug, Args)]
 pub struct BackupOpts {
-    /// Output directory (created if missing).
-    #[arg(long, default_value = "./kuben-backup")]
-    pub out: std::path::PathBuf,
+    /// Directory the backup is written under [default: `backup.dir`].
+    #[arg(long)]
+    pub out: Option<std::path::PathBuf>,
+    /// Also copy the secret keyring into the backup. Whoever holds such a
+    /// backup can read every secret: keep it encrypted.
+    #[arg(long)]
+    pub include_keyring: bool,
+    /// Backups kept under the directory [default: `backup.keep`].
+    #[arg(long)]
+    pub keep: Option<u32>,
+    /// Record the backup as scheduled (the timer and the CronJob set it).
+    #[arg(long, hide = true)]
+    pub scheduled: bool,
 }
 
 #[derive(Debug, Args)]
 pub struct RestoreOpts {
-    /// Directory produced by `kuben backup`.
+    /// A backup directory (`kuben-<time>`) made by `kuben backup`.
     #[arg(long)]
     pub from: std::path::PathBuf,
+    /// Only check that the backup is intact and restorable.
+    #[arg(long)]
+    pub check: bool,
 }
 
 impl Cli {

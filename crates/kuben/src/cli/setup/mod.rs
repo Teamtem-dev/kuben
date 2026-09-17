@@ -46,6 +46,10 @@ pub const CONFIG_DIR: &str = "/etc/kuben";
 pub const CONFIG_FILE: &str = "/etc/kuben/config.toml";
 pub const UNIT_FILE: &str = "/etc/systemd/system/kuben.service";
 const UNIT_NAME: &str = "kuben.service";
+/// The daily backup (M4.7): a oneshot service and its timer.
+const BACKUP_SERVICE: &str = "kuben-backup.service";
+const BACKUP_TIMER: &str = "kuben-backup.timer";
+const SYSTEMD_DIR: &str = "/etc/systemd/system";
 pub const K3S_KUBECONFIG: &str = "/etc/rancher/k3s/k3s.yaml";
 pub const K3S_UNINSTALL: &str = "/usr/local/bin/k3s-uninstall.sh";
 /// Written by setup before the install journal existed, when it installed
@@ -995,6 +999,54 @@ fn config_template(bind_host: &str, port: u16, public_url: &str, kubeconfig: &Pa
     )
 }
 
+/// Install and start the daily backup timer. Unit files someone else wrote
+/// are left alone.
+fn install_backup_timer(book: &mut Book) -> anyhow::Result<()> {
+    let mut changed = false;
+    for (name, desired) in [
+        (BACKUP_SERVICE, backup_service_template()),
+        (BACKUP_TIMER, backup_timer_template()),
+    ] {
+        let path = Path::new(SYSTEMD_DIR).join(name);
+        let current = std::fs::read_to_string(&path).ok();
+        if current.as_deref().is_some_and(|u| !u.starts_with(UNIT_MARKER))
+            && !book.journal().owns(Kind::SystemdUnit, name)
+        {
+            bail!(
+                "{} exists and was not written by kuben setup; move it aside",
+                path.display()
+            );
+        }
+        book.claim(Kind::SystemdUnit, name, true)?;
+        if current.as_deref() != Some(desired.as_str()) {
+            std::fs::write(&path, desired)?;
+            changed = true;
+        }
+    }
+    if changed {
+        run(&["systemctl", "daemon-reload"])?;
+    }
+    run(&["systemctl", "enable", "--now", "--quiet", BACKUP_TIMER])?;
+    Ok(())
+}
+
+/// Stop and remove the backup timer setup installed.
+fn remove_backup_timer(book: &mut Book) -> anyhow::Result<()> {
+    if !book.journal().owns(Kind::SystemdUnit, BACKUP_TIMER) {
+        return Ok(());
+    }
+    run(&["systemctl", "disable", "--now", "--quiet", BACKUP_TIMER]).ok();
+    for name in [BACKUP_TIMER, BACKUP_SERVICE] {
+        let path = Path::new(SYSTEMD_DIR).join(name);
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+        }
+        book.release(Kind::SystemdUnit, name)?;
+    }
+    run(&["systemctl", "daemon-reload"])?;
+    Ok(())
+}
+
 /// Install the unit and (re)start the service: only when its binary, unit
 /// or configuration changed, or it is not running. A unit file someone else
 /// wrote is never replaced.
@@ -1018,6 +1070,7 @@ fn start_service(ui: Ui, port: u16, changed: bool, book: &mut Book) -> anyhow::R
         run(&["systemctl", "daemon-reload"])?;
     }
     run(&["systemctl", "enable", "--quiet", "kuben"])?;
+    install_backup_timer(book)?;
     let restart = changed || unit_changed || !service_active();
     if !restart {
         step.done("running, unchanged");
@@ -1380,6 +1433,7 @@ pub fn uninstall(opts: &UninstallOpts) -> anyhow::Result<()> {
         }
     }
     let step = ui.step("Stopping kuben.service");
+    remove_backup_timer(&mut book)?;
     if Path::new(UNIT_FILE).exists() && owned.unit {
         run(&["systemctl", "disable", "--now", "--quiet", "kuben"]).ok();
         std::fs::remove_file(UNIT_FILE)?;
@@ -1576,6 +1630,44 @@ fn unit_template() -> String {
          \n\
          [Install]\n\
          WantedBy=multi-user.target\n"
+    )
+}
+
+fn backup_service_template() -> String {
+    format!(
+        "{UNIT_MARKER}; `kuben uninstall` removes it.\n\
+         [Unit]\n\
+         Description=Kuben database backup\n\
+         Documentation={DOCS}\n\
+         After=network-online.target postgresql.service\n\
+         \n\
+         [Service]\n\
+         Type=oneshot\n\
+         ExecStart={BIN} backup --scheduled\n\
+         User={USER}\n\
+         Group={USER}\n\
+         StateDirectory={USER}\n\
+         Nice=10\n\
+         IOSchedulingClass=idle\n\
+         NoNewPrivileges=true\n\
+         ProtectSystem=full\n\
+         PrivateTmp=true\n"
+    )
+}
+
+fn backup_timer_template() -> String {
+    format!(
+        "{UNIT_MARKER}; `kuben uninstall` removes it.\n\
+         [Unit]\n\
+         Description=Daily Kuben database backup\n\
+         \n\
+         [Timer]\n\
+         OnCalendar=*-*-* 03:17:00\n\
+         RandomizedDelaySec=15min\n\
+         Persistent=true\n\
+         \n\
+         [Install]\n\
+         WantedBy=timers.target\n"
     )
 }
 
@@ -1850,6 +1942,13 @@ mod tests {
         assert!(unit.contains("StateDirectory=kuben"));
         assert!(unit.contains("After=network-online.target k3s.service postgresql.service"));
         assert!(unit.contains("Wants=network-online.target postgresql.service"));
+        let backup = backup_service_template();
+        assert!(backup.starts_with(UNIT_MARKER));
+        assert!(backup.contains("ExecStart=/usr/local/bin/kuben backup --scheduled"));
+        assert!(backup.contains("Type=oneshot") && backup.contains("User=kuben"));
+        let timer = backup_timer_template();
+        assert!(timer.starts_with(UNIT_MARKER));
+        assert!(timer.contains("Persistent=true") && timer.contains("WantedBy=timers.target"));
     }
 
     #[test]
