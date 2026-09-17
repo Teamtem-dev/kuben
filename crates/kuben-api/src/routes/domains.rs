@@ -577,6 +577,21 @@ async fn apply_changes(
     Ok(out)
 }
 
+fn app_domain_hosts(app: &kuben_store::repo::AppRecord) -> Vec<String> {
+    desired_spec(app)
+        .map(|spec| spec.domains.into_iter().map(|d| d.host).collect())
+        .or_else(|| {
+            app.config.as_ref().and_then(|c| {
+                c.get("domains").and_then(|d| d.as_array()).map(|arr| {
+                    arr.iter()
+                        .filter_map(|d| d.get("host").and_then(|h| h.as_str()).map(ToOwned::to_owned))
+                        .collect()
+                })
+            })
+        })
+        .unwrap_or_default()
+}
+
 /// Write an app's DNS records: every custom domain the organization
 /// verified points at the Gateway (or `domains.cname_target`).
 #[utoipa::path(
@@ -600,9 +615,7 @@ pub async fn sync_app(
     let a = scope::app(&state, &authz, &project, &environment, &app).await?;
     let _proof = authz.require(&state, Perm::AppWrite, &a.chain())?;
     let org = a.env.project.org;
-    let hosts: Vec<String> = desired_spec(&a.app)
-        .map(|spec| spec.domains.into_iter().map(|d| d.host).collect())
-        .unwrap_or_default();
+    let hosts = app_domain_hosts(&a.app);
     let mut tenant = state.store.tenant(org).await?;
     let (provider_id, _, api) = provider(&state, &mut tenant, org, &body.provider).await?;
     let addresses = match state.cfg.domains.cname_target {
