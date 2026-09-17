@@ -265,6 +265,9 @@ impl Worker {
                 Heard::Accepted => phase = self.accepted(claim, m, phase).await?,
                 Heard::Nothing => {
                     if sent.is_none_or(|at| at.elapsed() >= RESEND) {
+                        if sent.is_none() {
+                            self.hold_if_paused(m).await?;
+                        }
                         if !agents.send(&cluster, apply.clone()).await {
                             return Err(Stop::Wait(AGENT_WAIT, "AgentUnavailable"));
                         }
@@ -344,6 +347,8 @@ mod tests {
             restarted_at: None,
             approval_expires_at: None,
             secrets: Vec::new(),
+            emergency: false,
+            paused: false,
         }
     }
 

@@ -294,6 +294,24 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/applications/{app}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who answers for an application (in every environment). */
+        get: operations["getApplicationOwner"];
+        /** Name who answers for an application. */
+        put: operations["putApplicationOwner"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments": {
         parameters: {
             query?: never;
@@ -573,6 +591,27 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/emergency-rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return an app to an earlier release now, past approvals, a freeze, the
+         *     scan gate and a pause. People with approval rights only; the reason is
+         *     kept.
+         */
+        post: operations["emergencyRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/events": {
         parameters: {
             query?: never;
@@ -635,6 +674,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hold an app's delivery: new runs are accepted and wait. */
+        post: operations["pauseApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/promote": {
         parameters: {
             query?: never;
@@ -680,6 +736,23 @@ export type paths = {
         put?: never;
         /** Rolling restart of every process (no spec change). */
         post: operations["restartApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume an app's delivery: its newest waiting run is written. */
+        post: operations["resumeApp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -794,6 +867,41 @@ export type paths = {
         /** Read the branch head from GitHub now and build it if it is new. */
         post: operations["syncAppSource"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/freezes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The environment's change freezes in force or to come. */
+        get: operations["listFreezes"];
+        put?: never;
+        /** Freeze an environment: new releases are refused until it ends. */
+        post: operations["createFreeze"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/freezes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Lift a freeze early. */
+        delete: operations["liftFreeze"];
         options?: never;
         head?: never;
         patch?: never;
@@ -966,6 +1074,41 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/silences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The environment's alert silences in force. */
+        get: operations["listSilences"];
+        put?: never;
+        /** Silence the alerts of an environment, or of one of its apps. */
+        post: operations["createSilence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/silences/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Lift a silence early. */
+        delete: operations["liftSilence"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/templates/{template}": {
         parameters: {
             query?: never;
@@ -1013,6 +1156,24 @@ export type paths = {
         post?: never;
         /** Remove a member's role on this project; their organization role stays. */
         delete: operations["removeProjectMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who answers for a project. */
+        get: operations["getProjectOwner"];
+        /** Name who answers for a project. */
+        put: operations["putProjectOwner"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1151,6 +1312,8 @@ export type components = {
             volumes: components["schemas"]["VolumeDto"][];
             created_at?: string | null;
             exposure?: null | components["schemas"]["ExposureDto"];
+            /** @description Why delivery is paused, while it is: new runs wait. */
+            paused?: string | null;
         };
         /** @description A Kubernetes event about one of the app's objects. */
         AppEvent: {
@@ -1465,6 +1628,15 @@ export type components = {
              */
             expires_in_days?: number | null;
         };
+        CreateWindow: {
+            reason: string;
+            /** @description RFC 3339; now when omitted (freezes only). */
+            startsAt?: string | null;
+            /** @description RFC 3339. */
+            endsAt: string;
+            /** @description Silences only: one app of the environment. */
+            app?: string | null;
+        };
         CreatedToken: {
             /** @description The token itself. Shown exactly once; only its hash is stored. */
             token: string;
@@ -1588,6 +1760,16 @@ export type components = {
             /** @description `ok`, `mismatch`, `unresolved` or `unknown`. */
             status: string;
             message: string;
+        };
+        EmergencyRollback: {
+            /** @description Why this cannot wait; kept on the run and in the audit log. */
+            reason: string;
+            /**
+             * Format: uuid
+             * @description The release to return to; the newest earlier release that ran
+             *     successfully when omitted.
+             */
+            release?: string | null;
         };
         /** @enum {string} */
         EnvType: "standard" | "production" | "preview";
@@ -1734,6 +1916,16 @@ export type components = {
             /** @description Invited and has not replaced the temporary password yet. */
             must_change_password: boolean;
             active: boolean;
+        };
+        OwnerDto: {
+            /**
+             * @description A team or a person.
+             * @example payments-team
+             */
+            owner: string;
+            /** @description How to reach them: an email, a chat channel, an on-call rotation. */
+            contact?: string | null;
+            runbookUrl?: string | null;
         };
         /** @description One step of a run's timeline. */
         PhaseStep: {
@@ -1927,6 +2119,9 @@ export type components = {
              * @example 50
              */
             pods?: number | null;
+        };
+        Reason: {
+            reason: string;
         };
         RegistryLoginDto: {
             name: string;
@@ -2212,6 +2407,22 @@ export type components = {
              * @example 5Gi
              */
             size?: string;
+        };
+        WindowDto: {
+            /** Format: uuid */
+            id: string;
+            reason: string;
+            /**
+             * Format: uuid
+             * @description Silences only: the app, when not the whole environment.
+             */
+            app?: string | null;
+            createdBy: string;
+            startsAt: string;
+            endsAt: string;
+            liftedAt?: string | null;
+            /** @description In force now. */
+            active: boolean;
         };
     };
     responses: never;
@@ -2960,6 +3171,82 @@ export interface operations {
             };
             /** @description The project still has environments */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getApplicationOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null | components["schemas"]["OwnerDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putApplicationOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3903,6 +4190,61 @@ export interface operations {
             };
         };
     };
+    emergencyRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmergencyRollback"];
+            };
+        };
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No earlier release ran successfully */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getAppEvents: {
         parameters: {
             query?: never;
@@ -4036,6 +4378,44 @@ export interface operations {
             };
         };
     };
+    pauseApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reason"];
+            };
+        };
+        responses: {
+            /** @description Paused */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Paused already */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     promoteApp: {
         parameters: {
             query?: never;
@@ -4156,6 +4536,40 @@ export interface operations {
                 content?: never;
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resumeApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resumed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not paused */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4480,6 +4894,110 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem"];
                 };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listFreezes: {
+        parameters: {
+            query?: {
+                /** @description Include ended and lifted ones. */
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"][];
+                };
+            };
+        };
+    };
+    createFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWindow"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    liftFreeze: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Freeze id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lifted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: {
                 headers: {
@@ -5071,6 +5589,110 @@ export interface operations {
             };
         };
     };
+    listSilences: {
+        parameters: {
+            query?: {
+                /** @description Include ended and lifted ones. */
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"][];
+                };
+            };
+        };
+    };
+    createSilence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWindow"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    liftSilence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Silence id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lifted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     deployTemplate: {
         parameters: {
             query?: never;
@@ -5263,6 +5885,78 @@ export interface operations {
                 };
             };
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProjectOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null | components["schemas"]["OwnerDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    putProjectOwner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

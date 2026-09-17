@@ -77,6 +77,8 @@ pub enum ChangeKind {
     /// The same release and configuration with a secret's new revision: new
     /// values reach production like any other change.
     Rotation,
+    /// A person's break-glass rollback (M4.9): it cannot wait for approvals.
+    Emergency,
 }
 
 impl EnvironmentPolicy {
@@ -137,7 +139,7 @@ impl EnvironmentPolicy {
     #[must_use]
     pub const fn approvals_for(&self, kind: ChangeKind) -> u8 {
         match kind {
-            ChangeKind::Restart | ChangeKind::Handover => 0,
+            ChangeKind::Restart | ChangeKind::Handover | ChangeKind::Emergency => 0,
             _ => self.required_approvals,
         }
     }

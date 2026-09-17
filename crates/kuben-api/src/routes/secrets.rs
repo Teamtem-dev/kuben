@@ -444,6 +444,7 @@ async fn rotate(
             Started::Rejected(reject) => skipped(&reject.to_string()),
             Started::SecretRevoked => skipped("another secret it references is revoked"),
             Started::VulnerabilityBlocked => skipped("the vulnerability gate refuses its release"),
+            Started::Frozen => skipped("the environment is frozen"),
             Started::NotFound | Started::Replayed(_) | Started::KeyReused(_) => {
                 skipped("the app changed meanwhile")
             }

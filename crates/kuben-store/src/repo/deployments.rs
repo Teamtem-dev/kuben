@@ -79,13 +79,13 @@ const WAKE_SUPERSEDED: &str = "UPDATE operations SET next_attempt_at = kuben_now
 const INSERT_RUN: &str = "INSERT INTO deployment_runs \
      (id, org_id, project_id, application_id, target_id, release_id, config_revision_id, render_plan_id, \
       generation, lifecycle_uid, reason, requested_by, operation_id, created_at, updated_at, restarted_at, \
-      approvals_required, approval_expires_at, policy_revision, approval_plan_hash) \
+      approvals_required, approval_expires_at, policy_revision, approval_plan_hash, emergency_reason) \
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, \
        CASE WHEN $11 = 'restart' THEN $14 ELSE (SELECT d.restarted_at FROM deployment_runs d \
          WHERE d.target_id = $5 AND d.org_id = $2 ORDER BY d.generation DESC LIMIT 1) END, \
        $15, $16, $17, \
        CASE WHEN $15 > 0 THEN sha256(convert_to(concat_ws('/', $1::text, $5::text, $6::text, $7::text, \
-         $9::text, $10::text, $11::text), 'UTF8')) END)";
+         $9::text, $10::text, $11::text), 'UTF8')) END, $18)";
 const AWAIT_APPROVAL: &str =
     "UPDATE deployment_runs SET phase = $2, updated_at = $3 WHERE id = $1 AND phase = $4";
 const PARK_OPERATION: &str = "UPDATE operations SET next_attempt_at = $2 WHERE id = $1 AND NOT done";
@@ -129,6 +129,9 @@ pub enum RunReason {
     /// A verified build of the target's current source head, deployed by the
     /// compare-and-set of [`TargetState::try_autodeploy`] (M3).
     Build,
+    /// A rollback by a person with a reason that passes approvals, freezes,
+    /// the scan gate and a pause (M4.9, [`Tenant::start_emergency_rollback`]).
+    Emergency,
     /// The same release and configuration with the current revisions of the
     /// secrets it references (M4.4).
     Rotation,
@@ -146,6 +149,7 @@ impl RunReason {
             Self::Handover => ChangeKind::Handover,
             Self::Build => ChangeKind::Build,
             Self::Rotation => ChangeKind::Rotation,
+            Self::Emergency => ChangeKind::Emergency,
         }
     }
 
@@ -167,6 +171,7 @@ impl RunReason {
             Self::Handover => "handover",
             Self::Build => "build",
             Self::Rotation => "rotation",
+            Self::Emergency => "emergency",
         }
     }
 }
@@ -213,6 +218,8 @@ pub enum Started {
     SecretRevoked,
     /// The environment's scan gate refuses the release (M4.6).
     VulnerabilityBlocked,
+    /// The environment is frozen (M4.9): only an emergency rollback passes.
+    Frozen,
 }
 
 /// The outcome of [`Store::advance_run`].
@@ -390,12 +397,16 @@ impl Tenant {
         idempotency: Option<&IdempotencyKey>,
     ) -> Result<Started, StoreError> {
         let reason = req.reason;
+        if reason == RunReason::Emergency {
+            return Err(sqlx::Error::Protocol("an emergency rollback needs its reason".into()).into());
+        }
         self.start_with(
             req,
             audit,
             idempotency,
+            None,
             |state, lifecycle, expected| match reason {
-                RunReason::Rollback => state.rollback(lifecycle, expected),
+                RunReason::Rollback | RunReason::Emergency => state.rollback(lifecycle, expected),
                 RunReason::Deploy
                 | RunReason::Promotion
                 | RunReason::Restart
@@ -404,6 +415,23 @@ impl Tenant {
                 | RunReason::Rotation => state.deploy_explicit(lifecycle, expected),
             },
         )
+        .await
+    }
+
+    /// Accept an emergency rollback to `req.release` (M4.9): a person's
+    /// break-glass that passes approvals, a freeze, the scan gate and a
+    /// pause. It pins the target like any rollback. `why` is kept on the run.
+    pub async fn start_emergency_rollback(
+        &mut self,
+        req: &StartDeployment,
+        why: &str,
+        audit: NewAudit,
+    ) -> Result<Started, StoreError> {
+        let mut req = req.clone();
+        req.reason = RunReason::Emergency;
+        self.start_with(&req, audit, None, Some(why), |state, lifecycle, expected| {
+            state.rollback(lifecycle, expected)
+        })
         .await
     }
 
@@ -419,14 +447,20 @@ impl Tenant {
         build_config_revision: u64,
         audit: NewAudit,
     ) -> Result<Started, StoreError> {
-        self.start_with(req, audit, None, |state, lifecycle_uid, expected_generation| {
-            state.try_autodeploy(AutodeployRequest {
-                lifecycle_uid,
-                source_epoch,
-                build_config_revision,
-                expected_generation,
-            })
-        })
+        self.start_with(
+            req,
+            audit,
+            None,
+            None,
+            |state, lifecycle_uid, expected_generation| {
+                state.try_autodeploy(AutodeployRequest {
+                    lifecycle_uid,
+                    source_epoch,
+                    build_config_revision,
+                    expected_generation,
+                })
+            },
+        )
         .await
     }
 
@@ -435,6 +469,7 @@ impl Tenant {
         req: &StartDeployment,
         audit: NewAudit,
         idempotency: Option<&IdempotencyKey>,
+        emergency: Option<&str>,
         decide: impl FnOnce(&mut TargetState, Uuid, Generation) -> Result<Generation, Reject>,
     ) -> Result<Started, StoreError> {
         // The row lock serializes every decision about this target.
@@ -465,7 +500,11 @@ impl Tenant {
         if secrets.iter().any(|s| s.revoked) {
             return Ok(Started::SecretRevoked);
         }
-        if req.reason.carries_new_code()
+        let governed = req.reason.carries_new_code() && emergency.is_none();
+        if governed && self.active_freeze(req.target, now_ms()).await?.is_some() {
+            return Ok(Started::Frozen);
+        }
+        if governed
             && let Some(GateVerdict::Block(reasons)) =
                 self.scan_verdict(req.target, req.release, now_ms()).await?
         {
@@ -497,7 +536,15 @@ impl Tenant {
             Accepted::KeyReused(id) => return Ok(Started::KeyReused(id)),
         };
         let approvals_required = self
-            .record_run(req, row.application_id, run, operation, generation, state.policy)
+            .record_run(
+                req,
+                row.application_id,
+                run,
+                operation,
+                generation,
+                state.policy,
+                emergency,
+            )
             .await?;
         self.bind_run_secrets(run, &secrets).await?;
         Ok(Started::Accepted {
@@ -549,6 +596,7 @@ impl Tenant {
         operation: OperationId,
         generation: Generation,
         policy: DeployPolicy,
+        emergency: Option<&str>,
     ) -> Result<u8, StoreError> {
         let revision = self.policy_of_target(req.target).await?;
         let approvals = revision
@@ -607,6 +655,7 @@ impl Tenant {
             .bind(i16::from(approvals))
             .bind(expires_at)
             .bind(revision.as_ref().map(|r| signed(r.revision)).transpose()?)
+            .bind(emergency)
             .execute(&mut *self.tx)
             .await?;
         if let Some(expires_at) = expires_at {
@@ -672,6 +721,31 @@ impl Tenant {
             .await?;
         row.map(|(phase, generation)| Ok((parse_phase(&phase)?, Generation(counter(generation)?))))
             .transpose()
+    }
+}
+
+/// Test support: set a run's phase and read its release, without the
+/// materializer.
+#[cfg(any(test, feature = "testing"))]
+impl Tenant {
+    pub async fn force_run_phase(&mut self, run: DeploymentRunId, phase: RunPhase) -> Result<(), StoreError> {
+        sqlx::query("UPDATE deployment_runs SET phase = $2 WHERE id = $1 AND org_id = $3")
+            .bind(*run.as_uuid())
+            .bind(phase.as_str())
+            .bind(self.org.to_string())
+            .execute(&mut *self.tx)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn run_release(&mut self, run: DeploymentRunId) -> Result<Option<ReleaseId>, StoreError> {
+        let id: Option<Uuid> =
+            sqlx::query_scalar("SELECT release_id FROM deployment_runs WHERE id = $1 AND org_id = $2")
+                .bind(*run.as_uuid())
+                .bind(self.org.to_string())
+                .fetch_optional(&mut *self.tx)
+                .await?;
+        Ok(id.map(ReleaseId::from_uuid))
     }
 }
 

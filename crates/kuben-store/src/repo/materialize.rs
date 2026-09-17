@@ -25,7 +25,7 @@ use super::{Claim, Tenant, product::counter};
 use crate::{Store, StoreError};
 
 const MATERIALIZATION: &str = "SELECT r.id AS run_id, r.phase, r.generation, r.lifecycle_uid, r.render_plan_id, \
-     r.restarted_at, r.approval_expires_at, \
+     r.restarted_at, r.approval_expires_at, r.reason = 'emergency' AS emergency, t.paused_at IS NOT NULL AS paused, \
      pr.id AS project_id, pr.slug AS project_slug, pr.name AS project_name, \
      pr.description AS project_description, \
      e.id AS environment_id, e.slug AS environment_slug, e.name AS environment_name, e.protected, \
@@ -126,6 +126,10 @@ pub struct Materialization {
     pub approval_expires_at: Option<i64>,
     /// The secret revisions the run renders, by referenced name (M4.4).
     pub secrets: Vec<super::SecretBinding>,
+    /// The run is an emergency rollback, which a pause does not hold.
+    pub emergency: bool,
+    /// The target's delivery is paused (M4.9).
+    pub paused: bool,
 }
 
 /// A run's frozen RenderPlan (ADR-026).
@@ -164,6 +168,8 @@ struct MaterializationRow {
     render_plan_id: Option<Uuid>,
     restarted_at: Option<i64>,
     approval_expires_at: Option<i64>,
+    emergency: bool,
+    paused: bool,
     project_id: Uuid,
     project_slug: String,
     project_name: String,
@@ -276,6 +282,8 @@ impl MaterializationRow {
             restarted_at: self.restarted_at,
             approval_expires_at: self.approval_expires_at,
             secrets: Vec::new(),
+            emergency: self.emergency,
+            paused: self.paused,
         })
     }
 }

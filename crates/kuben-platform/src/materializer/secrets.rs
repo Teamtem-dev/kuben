@@ -238,6 +238,8 @@ mod tests {
             restarted_at: None,
             approval_expires_at: None,
             secrets: Vec::new(),
+            emergency: false,
+            paused: false,
         }
     }
 

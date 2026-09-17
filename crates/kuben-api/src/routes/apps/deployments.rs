@@ -335,6 +335,7 @@ pub async fn start(
         }
         Started::SecretRevoked => return Err(super::secret_revoked().into()),
         Started::VulnerabilityBlocked => return Err(super::vulnerability_blocked().into()),
+        Started::Frozen => return Err(super::frozen().into()),
     };
     let location = format!(
         "/api/v1/projects/{project}/environments/{environment}/apps/{app}/deployments/{}",

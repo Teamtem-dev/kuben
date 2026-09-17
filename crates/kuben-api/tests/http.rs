@@ -2694,3 +2694,148 @@ async fn m4_the_scan_gate_refuses_known_critical_findings() {
     let (_, _, listed) = call(&app.router, "GET", exceptions, Auth::Cookie(&bob), None, None).await;
     assert_eq!(listed, json!([]), "revoked exceptions are not in force");
 }
+
+const PROD: &str = "/api/v1/projects/shop/environments/prod";
+
+/// An RFC 3339 time `hours` from now.
+fn hours_ahead(hours: i64) -> String {
+    k8s_openapi::jiff::Timestamp::from_millisecond(kuben_core::time::now_ms() + hours * 3_600_000)
+        .expect("time")
+        .to_string()
+}
+
+/// POST `body` to `path` as `cookie`: the status and the answer.
+async fn post_json(
+    app: &TestApp,
+    path: &str,
+    cookie: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    let (status, _, answer) = call(&app.router, "POST", path, Auth::Cookie(cookie), Some(body), None).await;
+    (status, answer)
+}
+
+/// M4.9: a freeze refuses releases, an emergency rollback passes it with a
+/// reason, and a pause is held and resumed.
+#[tokio::test]
+async fn m4_freezes_pauses_and_emergency_rollbacks() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let (status, first) = send(&app.router, deploy(&alice, 0, None)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+    let first_release = succeed(&app, &first).await;
+    let freezes = format!("{PROD}/freezes");
+    let freeze = json!({ "reason": "launch", "endsAt": hours_ahead(2) });
+    assert_eq!(
+        (post_json(&app, &freezes, &bob, freeze.clone()).await).0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, frozen) = post_json(&app, &freezes, &alice, freeze).await;
+    assert_eq!(
+        (status, frozen["active"].clone()),
+        (StatusCode::CREATED, json!(true)),
+        "{frozen}"
+    );
+    let redeploy = json!({
+        "image": "ghcr.io/acme/api@sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "expected_generation": 1,
+    });
+    let (status, refused) = post_json(&app, DEPLOYMENTS, &alice, redeploy).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert!(refused.to_string().contains("frozen"));
+
+    let api = format!("{PROD}/apps/api");
+    let pause = json!({ "reason": "incident 42" });
+    assert_eq!(
+        post_json(&app, &format!("{api}/pause"), &alice, pause.clone())
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        post_json(&app, &format!("{api}/pause"), &alice, pause).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, _, shown) = call(&app.router, "GET", &api, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(shown["paused"], "incident 42");
+    let emergency = format!("{api}/emergency-rollback");
+    let why = json!({ "reason": "checkout is down" });
+    assert_eq!(
+        post_json(&app, &emergency, &alice, why.clone()).await.0,
+        StatusCode::NOT_FOUND,
+        "no release before the only one"
+    );
+    let chosen = json!({ "reason": "checkout is down", "release": first_release });
+    let (status, run) = post_json(&app, &emergency, &alice, chosen).await;
+    assert_eq!(
+        (status, run["approvals_required"].clone()),
+        (StatusCode::ACCEPTED, json!(0)),
+        "{run}"
+    );
+    assert_eq!(
+        post_json(&app, &emergency, &bob, why).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        post_json(&app, &format!("{api}/resume"), &alice, json!(null))
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    let lift = format!("{freezes}/{}", frozen["id"].as_str().expect("id"));
+    assert_eq!(
+        status_of(&app.router, "DELETE", &lift, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &lift, &alice, None).await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// M4.9: owners and alert silences are kept.
+#[tokio::test]
+async fn m4_owners_and_silences_are_kept() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let owner =
+        json!({ "owner": "shop-team", "contact": "#shop", "runbookUrl": "https://wiki.example.com/shop" });
+    let path = "/api/v1/projects/shop/applications/api/owner";
+    let (status, _, saved) = call(&app.router, "PUT", path, Auth::Cookie(&alice), Some(owner), None).await;
+    assert_eq!(
+        (status, saved["owner"].clone()),
+        (StatusCode::OK, json!("shop-team")),
+        "{saved}"
+    );
+    let (_, _, read) = call(&app.router, "GET", path, Auth::Cookie(&alice), None, None).await;
+    assert_eq!(read["runbookUrl"], "https://wiki.example.com/shop");
+    let silences = format!("{PROD}/silences");
+    let silence = json!({ "reason": "maintenance", "endsAt": hours_ahead(1), "app": "api" });
+    let (status, made) = post_json(&app, &silences, &alice, silence).await;
+    assert_eq!(
+        (status, made["active"].clone()),
+        (StatusCode::CREATED, json!(true)),
+        "{made}"
+    );
+    let too_long = json!({ "reason": "forever", "endsAt": hours_ahead(24 * 8) });
+    assert_eq!(
+        post_json(&app, &silences, &alice, too_long).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+/// Mark the run in `run` as succeeded; its release.
+async fn succeed(app: &TestApp, run: &serde_json::Value) -> uuid::Uuid {
+    let id: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+    let run = kuben_core::ids::DeploymentRunId::from_uuid(id);
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    t.force_run_phase(run, kuben_core::ops::RunPhase::Succeeded)
+        .await
+        .expect("phase");
+    let release = t.run_release(run).await.expect("read").expect("release");
+    t.commit().await.expect("commit");
+    *release.as_uuid()
+}

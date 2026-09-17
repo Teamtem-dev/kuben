@@ -54,6 +54,8 @@ const NAMESPACE_WAIT: Duration = Duration::from_mins(1);
 const VERIFY_DEADLINE: Duration = Duration::from_mins(15);
 /// Longest sleep of a run waiting for approval.
 const APPROVAL_RECHECK: Duration = Duration::from_hours(1);
+/// Longest sleep of a run of a paused target; resuming wakes it at once.
+const PAUSE_RECHECK: Duration = Duration::from_mins(5);
 /// How long an environment deletion waits before it checks again.
 const DELETION_CHECK: Duration = Duration::from_secs(20);
 /// Claims of one deployment operation before its run fails for good.
@@ -342,6 +344,9 @@ impl Worker {
         if m.phase == RunPhase::AwaitingApproval {
             return Err(self.await_approval(claim, m).await);
         }
+        if matches!(m.phase, RunPhase::Planned | RunPhase::PendingDelivery) {
+            self.hold_if_paused(m).await?;
+        }
         if m.delivery == kuben_store::repo::Delivery::Agent {
             return self.drive_agent(claim, m, token).await;
         }
@@ -455,6 +460,23 @@ impl Worker {
         Err(Error::Contended(name).into())
     }
 
+    /// Hold the run of a paused target before it writes anything (M4.9);
+    /// an emergency rollback is never held. Checked again at the write, so a
+    /// pause observed before it stops the write.
+    pub(super) async fn hold_if_paused(&self, m: &Materialization) -> Result<(), Stop> {
+        if m.emergency {
+            return Ok(());
+        }
+        let paused = {
+            let mut tenant = self.store.tenant(m.org).await?;
+            tenant.target_paused(m.target).await?
+        };
+        if paused {
+            return Err(Stop::Wait(PAUSE_RECHECK, "Paused"));
+        }
+        Ok(())
+    }
+
     /// Write the App object under the generation fence.
     pub(super) async fn write_app(&self, m: &Materialization, desired: &App) -> Result<App, Stop> {
         let api = Api::<App>::namespaced(self.client.clone(), &m.namespace);
@@ -473,6 +495,7 @@ impl Worker {
                 ),
                 Fence::Write => {}
             }
+            self.hold_if_paused(m).await?;
             match write::put(&api, desired, live.as_ref()).await {
                 Ok(written) => return Ok(written),
                 Err(e) if write::is_conflict(&e) => {}

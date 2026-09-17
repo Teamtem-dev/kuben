@@ -8,8 +8,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     auth,
     routes::{
-        access, apps, audit, ci, environments, git, health, members, policy, projects, registries, secrets,
-        templates, tokens, vulnerabilities,
+        access, apps, audit, ci, controls, environments, git, health, members, policy, projects, registries,
+        secrets, templates, tokens, vulnerabilities,
     },
     state::ApiState,
 };
@@ -70,6 +70,15 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(apps::approvals::approve))
         .routes(routes!(apps::approvals::reject))
         .routes(routes!(policy::get, policy::put))
+        .routes(routes!(controls::get_project_owner, controls::put_project_owner))
+        .routes(routes!(controls::get_app_owner, controls::put_app_owner))
+        .routes(routes!(controls::list_freezes, controls::create_freeze))
+        .routes(routes!(controls::lift_freeze))
+        .routes(routes!(controls::list_silences, controls::create_silence))
+        .routes(routes!(controls::lift_silence))
+        .routes(routes!(controls::pause))
+        .routes(routes!(controls::resume))
+        .routes(routes!(controls::emergency_rollback))
         .routes(routes!(access::list_project))
         .routes(routes!(access::put_project, access::remove_project))
         .routes(routes!(access::list_environment))

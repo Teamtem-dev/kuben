@@ -1189,6 +1189,7 @@ impl Tenant {
             Started::NotFound => (None, "TargetMissing".into(), None),
             Started::SecretRevoked => (None, "SecretRevoked".into(), None),
             Started::VulnerabilityBlocked => (None, "VulnerabilityBlocked".into(), None),
+            Started::Frozen => (None, "EnvironmentFrozen".into(), None),
             Started::Replayed(_) | Started::KeyReused(_) => (None, "Replayed".into(), None),
         })
     }

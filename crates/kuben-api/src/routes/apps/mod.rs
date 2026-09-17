@@ -164,6 +164,9 @@ pub struct AppDto {
     /// Whether the app can be reached through the gateway, apart from
     /// whether it runs (null while it has no route).
     pub exposure: Option<ExposureDto>,
+    /// Why delivery is paused, while it is: new runs wait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused: Option<String>,
 }
 
 /// How an app is reached through the gateway.
@@ -271,6 +274,7 @@ impl AppDto {
                 .collect(),
             created_at: v.created_at.clone(),
             exposure: None,
+            paused: None,
         }
     }
 
@@ -297,6 +301,7 @@ impl AppDto {
             dto.message = view.and_then(|v| v.message.clone());
         }
         dto.created_at = Some(request::timestamp(record.created_at));
+        dto.paused = record.paused.as_ref().map(|(_, reason)| reason.clone());
         dto
     }
 }
@@ -531,6 +536,7 @@ pub(crate) fn started(started: Started) -> ApiResult<()> {
         Started::NotFound => Err(Error::NotFound("that release of this app".into()).into()),
         Started::SecretRevoked => Err(secret_revoked().into()),
         Started::VulnerabilityBlocked => Err(vulnerability_blocked().into()),
+        Started::Frozen => Err(frozen().into()),
         Started::KeyReused(_) => {
             Err(Error::Internal("a deployment without a key was a replay".into()).into())
         }
@@ -542,6 +548,13 @@ pub(crate) fn started(started: Started) -> ApiResult<()> {
 pub(crate) fn secret_revoked() -> Error {
     Error::Conflict(
         "a secret this app references has its current revision revoked: set a new value first".into(),
+    )
+}
+
+/// A run refused because the environment is frozen.
+pub(crate) fn frozen() -> Error {
+    Error::Conflict(
+        "the environment is frozen: only an emergency rollback passes until the freeze ends".into(),
     )
 }
 
@@ -645,6 +658,7 @@ mod tests {
             image: Some("nginx:1.27".into()),
             delivery: Delivery::Controller,
             runtime: None,
+            paused: None,
         }
     }
 
