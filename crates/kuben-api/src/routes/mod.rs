@@ -11,6 +11,7 @@ pub mod health;
 pub mod members;
 pub mod policy;
 pub mod projects;
+pub mod registries;
 pub mod request;
 pub mod scope;
 pub mod secrets;

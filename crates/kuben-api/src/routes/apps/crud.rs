@@ -195,7 +195,7 @@ pub async fn update(
         )));
     }
     let artifact = match image.filter(|i| Some(i.as_str()) != a.app.image.as_deref()) {
-        Some(image) => Artifact::Resolved(resolve(&state, &image).await?),
+        Some(image) => Artifact::Resolved(resolve(&state, &a.env, &image).await?),
         None => Artifact::Release(
             a.app
                 .release

@@ -132,6 +132,7 @@ pub fn rollback_spec(current: &AppSpec, revision: AppSpec) -> AppSpec {
         env: revision.env,
         domains: current.domains.clone(),
         volumes: current.volumes.clone(),
+        image_pull_secrets: Vec::new(),
     }
 }
 

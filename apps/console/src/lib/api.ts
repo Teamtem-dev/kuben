@@ -367,6 +367,39 @@ export const deleteSecret = (project: string, environment: string, secret: strin
     }),
   )
 
+// ---- registry logins ----
+
+export const registriesQuery = (project: string, environment: string) =>
+  queryOptions({
+    queryKey: ['registries', project, environment],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/registries', {
+          params: { path: { project, environment } },
+        }),
+      ),
+  })
+
+export const putRegistryLogin = (
+  project: string,
+  environment: string,
+  name: string,
+  login: { registry: string; username: string; password: string },
+) =>
+  unwrap(
+    api.PUT('/api/v1/projects/{project}/environments/{environment}/registries/{name}', {
+      params: { path: { project, environment, name } },
+      body: login,
+    }),
+  )
+
+export const deleteRegistryLogin = (project: string, environment: string, name: string) =>
+  ok(
+    api.DELETE('/api/v1/projects/{project}/environments/{environment}/registries/{name}', {
+      params: { path: { project, environment, name } },
+    }),
+  )
+
 // ---- tokens ----
 
 export const tokensQuery = queryOptions({

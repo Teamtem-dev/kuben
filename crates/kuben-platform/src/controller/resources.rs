@@ -13,11 +13,11 @@ use k8s_openapi::{
         batch::v1::{CronJob, CronJobSpec, Job, JobSpec, JobTemplateSpec},
         core::v1::{
             Capabilities, Container, ContainerPort, EnvVar, EnvVarSource, HTTPGetAction, LimitRange,
-            LimitRangeItem, LimitRangeSpec, Namespace, PersistentVolumeClaim, PersistentVolumeClaimSpec,
-            PersistentVolumeClaimVolumeSource, PodSecurityContext, PodSpec, PodTemplateSpec, Probe,
-            ResourceQuota, ResourceQuotaSpec, ResourceRequirements, SeccompProfile, SecretKeySelector,
-            SecurityContext, Service, ServicePort, ServiceSpec, TCPSocketAction, Volume as PodVolume,
-            VolumeMount, VolumeResourceRequirements,
+            LimitRangeItem, LimitRangeSpec, LocalObjectReference, Namespace, PersistentVolumeClaim,
+            PersistentVolumeClaimSpec, PersistentVolumeClaimVolumeSource, PodSecurityContext, PodSpec,
+            PodTemplateSpec, Probe, ResourceQuota, ResourceQuotaSpec, ResourceRequirements, SeccompProfile,
+            SecretKeySelector, SecurityContext, Service, ServicePort, ServiceSpec, TCPSocketAction,
+            Volume as PodVolume, VolumeMount, VolumeResourceRequirements,
         },
         networking::v1::{NetworkPolicy, NetworkPolicyIngressRule, NetworkPolicyPeer, NetworkPolicySpec},
     },
@@ -725,6 +725,13 @@ fn pod_spec(app: &App, container: Container, restart_policy: Option<&str>) -> Po
                 .collect()
         }),
         restart_policy: restart_policy.map(str::to_owned),
+        image_pull_secrets: (!app.spec.image_pull_secrets.is_empty()).then(|| {
+            app.spec
+                .image_pull_secrets
+                .iter()
+                .map(|name| LocalObjectReference { name: name.clone() })
+                .collect()
+        }),
         automount_service_account_token: Some(false),
         enable_service_links: Some(false),
         security_context: Some(PodSecurityContext {

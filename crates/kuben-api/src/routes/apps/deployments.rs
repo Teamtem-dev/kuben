@@ -338,7 +338,8 @@ pub struct DeploymentSummary {
     pub run: Uuid,
     /// The target generation (the app's revision) this run owns.
     pub generation: u64,
-    /// `deploy`, `rollback` or `promotion`.
+    /// `deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or
+    /// `rotation`.
     pub reason: String,
     pub phase: String,
     /// `succeeded`, `failed` or `cancelled` once it ended.

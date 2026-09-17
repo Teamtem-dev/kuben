@@ -448,7 +448,9 @@ impl Tenant {
             Ok(generation) => generation,
             Err(reject) => return Ok(Started::Rejected(reject)),
         };
-        let secrets = self.wanted_secrets(req.config_revision, req.target).await?;
+        let secrets = self
+            .wanted_secrets(req.config_revision, req.target, req.release)
+            .await?;
         if secrets.iter().any(|s| s.revoked) {
             return Ok(Started::SecretRevoked);
         }

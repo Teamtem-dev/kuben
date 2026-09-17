@@ -372,6 +372,75 @@ pub fn object_name(name: &str, revision: u64) -> String {
     format!("{name}.r{revision}")
 }
 
+/// Docker Hub's registry name in image references.
+pub const DOCKER_HUB: &str = "docker.io";
+
+/// Credentials for pulling from a private registry: the values of a
+/// `registry` secret.
+#[derive(Clone, PartialEq, Eq)]
+pub struct RegistryLogin {
+    pub username: String,
+    pub password: String,
+}
+
+impl fmt::Debug for RegistryLogin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RegistryLogin")
+            .field("username", &self.username)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RegistryLogin {
+    const USERNAME: &str = "username";
+    const PASSWORD: &str = "password";
+
+    /// The login in the values of a `registry` secret.
+    #[must_use]
+    pub fn from_values(values: &BTreeMap<String, String>) -> Option<Self> {
+        Some(Self {
+            username: values.get(Self::USERNAME)?.clone(),
+            password: values.get(Self::PASSWORD)?.clone(),
+        })
+    }
+
+    /// The values a `registry` secret stores.
+    #[must_use]
+    pub fn values(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (Self::USERNAME.to_owned(), self.username.clone()),
+            (Self::PASSWORD.to_owned(), self.password.clone()),
+        ])
+    }
+
+    /// An `Authorization: Basic …` value.
+    #[must_use]
+    pub fn basic(&self) -> String {
+        format!(
+            "Basic {}",
+            STANDARD.encode(format!("{}:{}", self.username, self.password))
+        )
+    }
+
+    /// The `.dockerconfigjson` of a pull secret for `registry` (a registry
+    /// name as image references carry it).
+    #[must_use]
+    pub fn docker_config(&self, registry: &str) -> String {
+        // The kubelet knows Docker Hub by its legacy index URL.
+        let key = if registry == DOCKER_HUB {
+            "https://index.docker.io/v1/"
+        } else {
+            registry
+        };
+        serde_json::json!({ "auths": { key: {
+            "username": self.username,
+            "password": self.password,
+            "auth": STANDARD.encode(format!("{}:{}", self.username, self.password)),
+        } } })
+        .to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,6 +541,22 @@ mod tests {
             matches!(wrong.open(WHO, &sealed), Err(SecretError::Open)),
             "another installation"
         );
+    }
+
+    #[test]
+    fn registry_logins_become_pull_secrets() {
+        let login = RegistryLogin {
+            username: "bot".into(),
+            password: "s3cret".into(),
+        };
+        assert_eq!(RegistryLogin::from_values(&login.values()), Some(login.clone()));
+        assert_eq!(RegistryLogin::from_values(&BTreeMap::new()), None);
+        assert_eq!(login.basic(), "Basic Ym90OnMzY3JldA==");
+        assert!(!format!("{login:?}").contains("s3cret"));
+        let config: serde_json::Value = serde_json::from_str(&login.docker_config("ghcr.io")).expect("json");
+        assert_eq!(config["auths"]["ghcr.io"]["auth"], "Ym90OnMzY3JldA==");
+        let hub: serde_json::Value = serde_json::from_str(&login.docker_config(DOCKER_HUB)).expect("json");
+        assert_eq!(hub["auths"]["https://index.docker.io/v1/"]["username"], "bot");
     }
 
     #[test]

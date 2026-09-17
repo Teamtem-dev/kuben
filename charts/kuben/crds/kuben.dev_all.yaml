@@ -525,6 +525,13 @@ spec:
                   - name
                   type: object
                 type: array
+              imagePullSecrets:
+                description: |-
+                  Secrets of the app's namespace the kubelet pulls its image with.
+                  Kuben sets them from the environment's registry credentials.
+                items:
+                  type: string
+                type: array
               runtime:
                 properties:
                   fsGroup:
@@ -832,6 +839,13 @@ spec:
                       required:
                       - name
                       type: object
+                    type: array
+                  imagePullSecrets:
+                    description: |-
+                      Secrets of the app's namespace the kubelet pulls its image with.
+                      Kuben sets them from the environment's registry credentials.
+                    items:
+                      type: string
                     type: array
                   runtime:
                     properties:

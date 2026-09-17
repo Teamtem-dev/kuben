@@ -3741,6 +3741,211 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/registries": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "List the registry logins of an environment (never their passwords).",
+        "operationId": "listRegistryLogins",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegistryLoginDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/registries/{name}": {
+      "put": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Set the login of a registry: a new revision, used by the next runs.",
+        "operationId": "putRegistryLogin",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Login name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutRegistryLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryLoginDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name or registry is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Delete a registry login. Runs accepted with it keep their revision.",
+        "operationId": "deleteRegistryLogin",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Login name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An app reads it as a secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/secrets": {
       "get": {
         "tags": [
@@ -3853,7 +4058,7 @@
             }
           },
           "409": {
-            "description": "The environment is being deleted",
+            "description": "The environment is being deleted, or the name is a registry login",
             "content": {
               "application/json": {
                 "schema": {
@@ -5633,7 +5838,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "`deploy`, `rollback` or `promotion`."
+            "description": "`deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or\n`rotation`."
           },
           "phase": {
             "type": "string"
@@ -6522,6 +6727,28 @@
         },
         "additionalProperties": false
       },
+      "PutRegistryLogin": {
+        "type": "object",
+        "required": [
+          "registry",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "registry": {
+            "type": "string",
+            "description": "`ghcr.io`, `docker.io`, `registry.example.com:5000`."
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "A password or access token; write-only."
+          }
+        },
+        "additionalProperties": false
+      },
       "PutScopedRole": {
         "type": "object",
         "required": [
@@ -6629,6 +6856,37 @@
             "format": "int32",
             "example": 50,
             "minimum": 0
+          }
+        }
+      },
+      "RegistryLoginDto": {
+        "type": "object",
+        "required": [
+          "name",
+          "registry",
+          "revision",
+          "revoked",
+          "updatedAt"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "registry": {
+            "type": "string",
+            "description": "The registry as image references name it (`ghcr.io`, `docker.io`)."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "The current revision is revoked: images from the registry are not\ndeployed until a new login is set."
+          },
+          "updatedAt": {
+            "type": "string"
           }
         }
       },

@@ -5,12 +5,14 @@
 //! bound to, and [`Tenant::insert_secret_revision`], in one transaction.
 //! Deployment runs bind the current revision of every secret their
 //! configuration references when they are accepted; names without a
-//! managed secret are left to the cluster (Secrets made before M4.4).
+//! managed secret are left to the cluster (Secrets made before M4.4). A
+//! `registry` secret (migration 0023) holds the login of one registry and is
+//! bound to every run whose release comes from that registry.
 
 use std::collections::BTreeSet;
 
 use kuben_core::{
-    ids::{ConfigRevisionId, DeploymentRunId, EnvironmentId, ProjectId, TargetId},
+    ids::{ConfigRevisionId, DeploymentRunId, EnvironmentId, ProjectId, ReleaseId, TargetId},
     ops::RunPhase,
     time::now_ms,
 };
@@ -22,7 +24,8 @@ use crate::{Store, StoreError};
 macro_rules! summary {
     ($filter:literal) => {
         concat!(
-            "SELECT s.id, s.name, s.current_revision, r.keys, r.revoked_at IS NOT NULL AS revoked, ",
+            "SELECT s.id, s.name, s.kind, s.registry, s.current_revision, r.keys, ",
+            "r.revoked_at IS NOT NULL AS revoked, ",
             "s.created_at, s.updated_at FROM secrets s ",
             "JOIN secret_revisions r ON r.secret_id = s.id AND r.revision = s.current_revision ",
             "AND r.org_id = s.org_id ",
@@ -34,13 +37,14 @@ macro_rules! summary {
 const SECRETS: &str = summary!("ORDER BY s.name");
 const SECRET: &str = summary!("AND s.name = $3");
 const CREATE_SECRET: &str = "INSERT INTO secrets \
-     (id, org_id, project_id, environment_id, name, created_by, created_at, updated_at) \
-     SELECT $1, e.org_id, e.project_id, e.id, $5, $6, $7, $7 FROM environments e \
+     (id, org_id, project_id, environment_id, name, kind, registry, created_by, created_at, updated_at) \
+     SELECT $1, e.org_id, e.project_id, e.id, $5, $8, $9, $6, $7, $7 FROM environments e \
      WHERE e.id = $4 AND e.org_id = $2 AND e.project_id = $3 AND NOT e.deleting \
      ON CONFLICT (environment_id, name) WHERE deleted_at IS NULL DO NOTHING";
 const NEXT_REVISION: &str = "UPDATE secrets s SET current_revision = current_revision + 1, updated_at = $4 \
      FROM environments e \
      WHERE s.environment_id = $1 AND s.name = $2 AND s.org_id = $3 AND s.deleted_at IS NULL \
+       AND s.kind = $5 AND s.registry IS NOT DISTINCT FROM $6 \
        AND e.id = s.environment_id AND e.org_id = s.org_id AND NOT e.deleting \
      RETURNING s.id, s.current_revision";
 const INSERT_REVISION: &str = "INSERT INTO secret_revisions \
@@ -48,6 +52,13 @@ const INSERT_REVISION: &str = "INSERT INTO secret_revisions \
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)";
 const LIVE_SECRET: &str = "SELECT id FROM secrets \
      WHERE environment_id = $1 AND name = $2 AND org_id = $3 AND deleted_at IS NULL";
+const REGISTRY_TAKEN: &str = "SELECT name FROM secrets WHERE environment_id = $1 AND org_id = $2 \
+     AND deleted_at IS NULL AND kind = 'registry' AND registry = $3 AND name <> $4";
+const REGISTRY_LOGIN: &str = "SELECT s.id AS secret_id, s.current_revision AS revision, r.ciphertext, \
+     r.wrapped_key, r.key_version FROM secrets s \
+     JOIN secret_revisions r ON r.secret_id = s.id AND r.revision = s.current_revision AND r.org_id = s.org_id \
+     WHERE s.environment_id = $1 AND s.org_id = $2 AND s.deleted_at IS NULL AND s.kind = 'registry' \
+       AND s.registry = $3 AND r.revoked_at IS NULL";
 const REVISIONS: &str = "SELECT revision, keys, key_version, created_by, created_at, revoked_at, revoked_by \
      FROM secret_revisions WHERE secret_id = $1 AND org_id = $2 ORDER BY revision DESC";
 const REVOKE: &str = "UPDATE secret_revisions SET revoked_at = $4, revoked_by = $5 \
@@ -69,27 +80,39 @@ const USERS: &str = "SELECT t.id, a.slug FROM application_targets t \
 const DELETE: &str = "UPDATE secrets SET deleted_at = $3, updated_at = $3 \
      WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL";
 /// The managed secret, if any, behind every name a configuration revision
-/// references, in the environment of `target`.
-const WANTED: &str = "WITH wanted AS ( \
+/// references in the environment of `target`, and the login of the registry
+/// the release comes from.
+const WANTED: &str = "WITH place AS ( \
+       SELECT p.environment_id FROM application_targets t \
+       JOIN environment_placements p ON p.id = t.placement_id AND p.org_id = t.org_id \
+       WHERE t.id = $3 AND t.org_id = $2), \
+     wanted AS ( \
        SELECT DISTINCT v.value -> 'fromSecret' ->> 'name' AS name FROM target_config_revisions c \
        CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c.config -> 'env') = 'array' \
          THEN c.config -> 'env' ELSE '[]'::jsonb END) AS v (value) \
        WHERE c.id = $1 AND c.org_id = $2 AND jsonb_typeof(v.value -> 'fromSecret' -> 'name') = 'string') \
      SELECT w.name, s.id AS secret_id, s.current_revision, r.revoked_at IS NOT NULL AS revoked \
-     FROM wanted w \
-     JOIN application_targets t ON t.id = $3 AND t.org_id = $2 \
-     JOIN environment_placements p ON p.id = t.placement_id AND p.org_id = t.org_id \
-     LEFT JOIN secrets s ON s.environment_id = p.environment_id AND s.name = w.name \
-       AND s.org_id = $2 AND s.deleted_at IS NULL \
+     FROM wanted w CROSS JOIN place \
+     LEFT JOIN secrets s ON s.environment_id = place.environment_id AND s.name = w.name \
+       AND s.org_id = $2 AND s.deleted_at IS NULL AND s.kind = 'opaque' \
      LEFT JOIN secret_revisions r ON r.secret_id = s.id AND r.revision = s.current_revision \
-     ORDER BY w.name";
+     UNION ALL \
+     SELECT s.name, s.id, s.current_revision, r.revoked_at IS NOT NULL FROM place \
+     JOIN releases rel ON rel.id = $4 AND rel.org_id = $2 \
+     JOIN secrets s ON s.environment_id = place.environment_id AND s.org_id = $2 \
+       AND s.deleted_at IS NULL AND s.kind = 'registry' \
+       AND s.registry = split_part(rel.source ->> 'image_repository', '/', 1) \
+     JOIN secret_revisions r ON r.secret_id = s.id AND r.revision = s.current_revision \
+     ORDER BY 1";
 const BIND: &str = "INSERT INTO run_secret_bindings (run_id, org_id, secret_id, revision, name) \
      SELECT $1, $2, x.secret_id, x.revision, x.name \
      FROM unnest($3::uuid[], $4::bigint[], $5::text[]) AS x (secret_id, revision, name)";
-const RUN_BINDINGS: &str = "SELECT name, secret_id, revision FROM run_secret_bindings \
-     WHERE run_id = $1 AND org_id = $2 ORDER BY name";
-const RUN_SECRETS: &str = "SELECT b.name, b.secret_id, b.revision, r.keys, r.ciphertext, r.wrapped_key, \
-     r.key_version, r.revoked_at IS NOT NULL AS revoked FROM run_secret_bindings b \
+const RUN_BINDINGS: &str = "SELECT b.name, b.secret_id, b.revision, s.registry FROM run_secret_bindings b \
+     JOIN secrets s ON s.id = b.secret_id AND s.org_id = b.org_id \
+     WHERE b.run_id = $1 AND b.org_id = $2 ORDER BY b.name";
+const RUN_SECRETS: &str = "SELECT b.name, b.secret_id, b.revision, s.registry, r.keys, r.ciphertext, \
+     r.wrapped_key, r.key_version, r.revoked_at IS NOT NULL AS revoked FROM run_secret_bindings b \
+     JOIN secrets s ON s.id = b.secret_id AND s.org_id = b.org_id \
      JOIN secret_revisions r ON r.secret_id = b.secret_id AND r.revision = b.revision AND r.org_id = b.org_id \
      WHERE b.run_id = $1 AND b.org_id = $2 ORDER BY b.name";
 /// Revisions the cluster may still need in an environment: those of runs
@@ -131,11 +154,40 @@ impl std::fmt::Debug for SealedBytes {
     }
 }
 
+/// What a secret holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SecretKind {
+    /// Values an app reads by key.
+    Opaque,
+    /// The username and password of this registry (`ghcr.io`, …).
+    Registry(String),
+}
+
+impl SecretKind {
+    fn columns(&self) -> (&'static str, Option<&str>) {
+        match self {
+            Self::Opaque => ("opaque", None),
+            Self::Registry(host) => ("registry", Some(host)),
+        }
+    }
+
+    fn of(kind: &str, registry: Option<String>) -> Result<Self, sqlx::Error> {
+        match (kind, registry) {
+            ("opaque", None) => Ok(Self::Opaque),
+            ("registry", Some(host)) => Ok(Self::Registry(host)),
+            (other, _) => Err(sqlx::Error::Decode(
+                format!("unknown secret kind {other:?}").into(),
+            )),
+        }
+    }
+}
+
 /// A live secret and its current revision.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SecretSummary {
     pub id: Uuid,
     pub name: String,
+    pub kind: SecretKind,
     pub revision: u64,
     pub keys: Vec<String>,
     /// The current revision is revoked: nothing can be deployed with it.
@@ -163,6 +215,17 @@ pub struct Reserved {
     pub revision: u64,
 }
 
+/// The outcome of [`Tenant::reserve_secret_revision`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reservation {
+    Reserved(Reserved),
+    /// The project has no such live environment.
+    NoEnvironment,
+    /// The name belongs to a secret of another kind or registry, or the
+    /// registry has a credential of another name.
+    Taken(String),
+}
+
 /// The revision of a secret a run renders.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SecretBinding {
@@ -170,6 +233,8 @@ pub struct SecretBinding {
     pub name: String,
     pub secret: Uuid,
     pub revision: u64,
+    /// The registry of a pull credential; `None` for values an app reads.
+    pub registry: Option<String>,
 }
 
 /// A bound revision with its sealed values, for the materializer.
@@ -181,9 +246,9 @@ pub struct BoundSecret {
     pub revoked: bool,
 }
 
-/// A revision sealed under an older key.
+/// One revision's sealed values.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StaleSeal {
+pub struct SealedRevision {
     pub secret: Uuid,
     pub revision: u64,
     pub sealed: SealedBytes,
@@ -219,6 +284,8 @@ pub(super) struct Wanted {
 struct SummaryRow {
     id: Uuid,
     name: String,
+    kind: String,
+    registry: Option<String>,
     current_revision: i64,
     keys: Vec<String>,
     revoked: bool,
@@ -250,6 +317,7 @@ struct BoundRow {
     name: String,
     secret_id: Uuid,
     revision: i64,
+    registry: Option<String>,
     keys: Vec<String>,
     ciphertext: Vec<u8>,
     wrapped_key: Vec<u8>,
@@ -258,7 +326,7 @@ struct BoundRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct StaleRow {
+struct SealedRow {
     secret_id: Uuid,
     revision: i64,
     ciphertext: Vec<u8>,
@@ -278,6 +346,7 @@ impl TryFrom<SummaryRow> for SecretSummary {
     type Error = sqlx::Error;
     fn try_from(r: SummaryRow) -> Result<Self, Self::Error> {
         Ok(Self {
+            kind: SecretKind::of(&r.kind, r.registry)?,
             id: r.id,
             name: r.name,
             revision: counter(r.current_revision)?,
@@ -312,6 +381,7 @@ impl TryFrom<BoundRow> for BoundSecret {
                 name: r.name,
                 secret: r.secret_id,
                 revision: counter(r.revision)?,
+                registry: r.registry,
             },
             keys: r.keys,
             sealed: SealedBytes {
@@ -324,8 +394,23 @@ impl TryFrom<BoundRow> for BoundSecret {
     }
 }
 
+impl TryFrom<SealedRow> for SealedRevision {
+    type Error = sqlx::Error;
+    fn try_from(r: SealedRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            secret: r.secret_id,
+            revision: counter(r.revision)?,
+            sealed: SealedBytes {
+                ciphertext: r.ciphertext,
+                wrapped_key: r.wrapped_key,
+                key_version: version(r.key_version)?,
+            },
+        })
+    }
+}
+
 impl Tenant {
-    /// The live secrets of `environment`, by name.
+    /// The live secrets of `environment`, of every kind, by name.
     pub async fn secrets(&mut self, environment: EnvironmentId) -> Result<Vec<SecretSummary>, StoreError> {
         let rows: Vec<SummaryRow> = sqlx::query_as(SECRETS)
             .bind(*environment.as_uuid())
@@ -353,17 +438,33 @@ impl Tenant {
         Ok(row.map(SecretSummary::try_from).transpose()?)
     }
 
-    /// Take the next revision number of secret `name`, creating the secret
-    /// when it does not exist. `None` when the project has no such live
-    /// environment. The revision must be inserted in the same transaction.
+    /// Take the next revision number of secret `name` of `kind`, creating
+    /// the secret when it does not exist. The revision must be inserted in
+    /// the same transaction.
     pub async fn reserve_secret_revision(
         &mut self,
         project: ProjectId,
         environment: EnvironmentId,
         name: &str,
+        kind: &SecretKind,
         created_by: &str,
-    ) -> Result<Option<Reserved>, StoreError> {
+    ) -> Result<Reservation, StoreError> {
         let org = self.org.to_string();
+        let (kind, registry) = kind.columns();
+        if let Some(registry) = registry {
+            let other: Option<String> = sqlx::query_scalar(REGISTRY_TAKEN)
+                .bind(*environment.as_uuid())
+                .bind(&org)
+                .bind(registry)
+                .bind(name)
+                .fetch_optional(&mut *self.tx)
+                .await?;
+            if let Some(other) = other {
+                return Ok(Reservation::Taken(format!(
+                    "registry `{registry}` has the credential `{other}` already"
+                )));
+            }
+        }
         let now = now_ms();
         sqlx::query(CREATE_SECRET)
             .bind(Uuid::now_v7())
@@ -373,6 +474,8 @@ impl Tenant {
             .bind(name)
             .bind(created_by)
             .bind(now)
+            .bind(kind)
+            .bind(registry)
             .execute(&mut *self.tx)
             .await?;
         let row: Option<(Uuid, i64)> = sqlx::query_as(NEXT_REVISION)
@@ -380,15 +483,36 @@ impl Tenant {
             .bind(name)
             .bind(&org)
             .bind(now)
+            .bind(kind)
+            .bind(registry)
             .fetch_optional(&mut *self.tx)
             .await?;
-        row.map(|(secret, revision)| {
-            Ok(Reserved {
+        if let Some((secret, revision)) = row {
+            return Ok(Reservation::Reserved(Reserved {
                 secret,
                 revision: counter(revision)?,
-            })
+            }));
+        }
+        Ok(match self.live_secret(environment, name).await? {
+            Some(_) => Reservation::Taken(format!("`{name}` is a secret of another kind or registry")),
+            None => Reservation::NoEnvironment,
         })
-        .transpose()
+    }
+
+    /// The current, unrevoked revision of the login for `registry` in
+    /// `environment`, sealed.
+    pub async fn registry_login(
+        &mut self,
+        environment: EnvironmentId,
+        registry: &str,
+    ) -> Result<Option<SealedRevision>, StoreError> {
+        let row: Option<SealedRow> = sqlx::query_as(REGISTRY_LOGIN)
+            .bind(*environment.as_uuid())
+            .bind(self.org.to_string())
+            .bind(registry)
+            .fetch_optional(&mut *self.tx)
+            .await?;
+        Ok(row.map(SealedRevision::try_from).transpose()?)
     }
 
     /// Record the `reserved` revision with `keys` and its sealed values, and
@@ -545,16 +669,18 @@ impl Tenant {
         Ok(SecretDeleted::Done)
     }
 
-    /// What a run of `config_revision` on `target` would bind.
+    /// What a run of `config_revision` and `release` on `target` would bind.
     pub(super) async fn wanted_secrets(
         &mut self,
         config_revision: ConfigRevisionId,
         target: TargetId,
+        release: ReleaseId,
     ) -> Result<Vec<Wanted>, StoreError> {
         let rows: Vec<WantedRow> = sqlx::query_as(WANTED)
             .bind(*config_revision.as_uuid())
             .bind(self.org.to_string())
             .bind(*target.as_uuid())
+            .bind(*release.as_uuid())
             .fetch_all(&mut *self.tx)
             .await?;
         rows.into_iter()
@@ -605,17 +731,18 @@ impl Tenant {
         &mut self,
         run: DeploymentRunId,
     ) -> Result<Vec<SecretBinding>, StoreError> {
-        let rows: Vec<(String, Uuid, i64)> = sqlx::query_as(RUN_BINDINGS)
+        let rows: Vec<(String, Uuid, i64, Option<String>)> = sqlx::query_as(RUN_BINDINGS)
             .bind(*run.as_uuid())
             .bind(self.org.to_string())
             .fetch_all(&mut *self.tx)
             .await?;
         rows.into_iter()
-            .map(|(name, secret, revision)| {
+            .map(|(name, secret, revision, registry)| {
                 Ok(SecretBinding {
                     name,
                     secret,
                     revision: counter(revision)?,
+                    registry,
                 })
             })
             .collect()
@@ -657,31 +784,26 @@ impl Tenant {
     }
 
     /// Up to `limit` revisions sealed under a key older than `current`.
-    pub async fn stale_seals(&mut self, current: u32, limit: i64) -> Result<Vec<StaleSeal>, StoreError> {
-        let rows: Vec<StaleRow> = sqlx::query_as(SEALED_BELOW)
+    pub async fn stale_seals(&mut self, current: u32, limit: i64) -> Result<Vec<SealedRevision>, StoreError> {
+        let rows: Vec<SealedRow> = sqlx::query_as(SEALED_BELOW)
             .bind(self.org.to_string())
             .bind(i32::try_from(current).map_err(|e| sqlx::Error::Encode(e.into()))?)
             .bind(limit)
             .fetch_all(&mut *self.tx)
             .await?;
-        rows.into_iter()
-            .map(|r| {
-                Ok(StaleSeal {
-                    secret: r.secret_id,
-                    revision: counter(r.revision)?,
-                    sealed: SealedBytes {
-                        ciphertext: r.ciphertext,
-                        wrapped_key: r.wrapped_key,
-                        key_version: version(r.key_version)?,
-                    },
-                })
-            })
-            .collect()
+        Ok(rows
+            .into_iter()
+            .map(SealedRevision::try_from)
+            .collect::<Result<_, _>>()?)
     }
 
     /// Replace the sealed data key of `stale` with `resealed`, unless it
     /// changed meanwhile. The values are not touched.
-    pub async fn reseal(&mut self, stale: &StaleSeal, resealed: &SealedBytes) -> Result<bool, StoreError> {
+    pub async fn reseal(
+        &mut self,
+        stale: &SealedRevision,
+        resealed: &SealedBytes,
+    ) -> Result<bool, StoreError> {
         let to_i32 = |v: u32| i32::try_from(v).map_err(|e| sqlx::Error::Encode(e.into()));
         if resealed.ciphertext != stale.sealed.ciphertext {
             return Err(sqlx::Error::Protocol("a reseal must keep the ciphertext".into()).into());
@@ -818,12 +940,18 @@ mod tests {
 
     /// Set a new revision of `name` with key `url`.
     async fn put(store: &Store, f: &Fixture, name: &str, tag: u8) -> Reserved {
+        put_kind(store, f, name, &SecretKind::Opaque, tag).await
+    }
+
+    async fn put_kind(store: &Store, f: &Fixture, name: &str, kind: &SecretKind, tag: u8) -> Reserved {
         let mut t = store.tenant(f.org).await.expect("tenant");
-        let reserved = t
-            .reserve_secret_revision(f.project, f.environment, name, BY)
+        let Reservation::Reserved(reserved) = t
+            .reserve_secret_revision(f.project, f.environment, name, kind, BY)
             .await
             .expect("reserve")
-            .expect("environment");
+        else {
+            panic!("{name} not reserved");
+        };
         t.insert_secret_revision(reserved, &["url".into()], &sealed(tag), BY, NewAudit::default())
             .await
             .expect("insert");
@@ -931,10 +1059,14 @@ mod tests {
             Revoked::NotFound
         );
         let foreign = t
-            .reserve_secret_revision(other.project, f.environment, "db", BY)
+            .reserve_secret_revision(other.project, f.environment, "db", &SecretKind::Opaque, BY)
             .await
             .expect("reserve");
-        assert_eq!(foreign, None, "another organization's environment");
+        assert_eq!(
+            foreign,
+            Reservation::NoEnvironment,
+            "another organization's environment"
+        );
     }
 
     #[tokio::test]
@@ -954,6 +1086,7 @@ mod tests {
                 name: "db".into(),
                 secret: db.secret,
                 revision,
+                registry: None,
             }]
         };
         assert_eq!(t.run_secret_bindings(first).await.expect("read"), binding(1));
@@ -1061,5 +1194,84 @@ mod tests {
         assert!(t.reseal(&stale[0], &tampered).await.is_err());
         assert!(t.stale_seals(2, 10).await.expect("read").is_empty());
         t.commit().await.expect("commit");
+    }
+
+    #[tokio::test]
+    async fn runs_bind_the_login_of_their_registry() {
+        let Some(store) = pg_store().await else {
+            return skip("runs_bind_the_login_of_their_registry");
+        };
+        let f = fixture(&store, "a").await;
+        let ghcr = SecretKind::Registry("ghcr.io".into());
+        let login = put_kind(&store, &f, "ghcr", &ghcr, 1).await;
+        // The fixture's release has no source; give the target one from ghcr.io.
+        let mut t = store.tenant(f.org).await.expect("tenant");
+        let application = t.application(f.project, "web").await.expect("read").expect("app");
+        let (release, _) = t
+            .create_release(
+                f.project,
+                &PortableRelease {
+                    application,
+                    artifacts: [("web".to_owned(), DIGEST.parse().expect("digest"))].into(),
+                    process_contract: json!({}),
+                    portable_config: json!({}),
+                    renderer_schema: 1,
+                    source: Some(json!({ "image_repository": "ghcr.io/acme/web" })),
+                    created_by: BY.into(),
+                },
+            )
+            .await
+            .expect("release");
+        for (name, kind, expected) in [
+            ("ghcr", &SecretKind::Opaque, "another kind"),
+            ("other", &ghcr, "already"),
+        ] {
+            let taken = t
+                .reserve_secret_revision(f.project, f.environment, name, kind, BY)
+                .await
+                .expect("reserve");
+            assert!(
+                matches!(&taken, Reservation::Taken(why) if why.contains(expected)),
+                "{name}: {taken:?}"
+            );
+        }
+        let sealed_login = t
+            .registry_login(f.environment, "ghcr.io")
+            .await
+            .expect("read")
+            .expect("login");
+        assert_eq!((sealed_login.secret, sealed_login.revision), (login.secret, 1));
+        assert_eq!(
+            t.registry_login(f.environment, "docker.io").await.expect("read"),
+            None
+        );
+        let listed = t.secrets(f.environment).await.expect("list");
+        assert_eq!(listed[0].kind, ghcr);
+        t.commit().await.expect("commit");
+
+        let from_ghcr = Fixture { release, ..f };
+        let run = run_of(deploy(&store, &from_ghcr, &[]).await);
+        let mut t = store.tenant(from_ghcr.org).await.expect("tenant");
+        let bound = t.run_secret_bindings(run).await.expect("read");
+        assert_eq!(
+            bound,
+            [SecretBinding {
+                name: "ghcr".into(),
+                secret: login.secret,
+                revision: 1,
+                registry: Some("ghcr.io".into()),
+            }]
+        );
+        t.revoke_secret_revision(from_ghcr.environment, "ghcr", 1, BY, NewAudit::default())
+            .await
+            .expect("revoke");
+        assert_eq!(
+            t.registry_login(from_ghcr.environment, "ghcr.io")
+                .await
+                .expect("read"),
+            None
+        );
+        t.commit().await.expect("commit");
+        assert_eq!(deploy(&store, &from_ghcr, &[]).await, Started::SecretRevoked);
     }
 }

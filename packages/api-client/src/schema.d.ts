@@ -818,6 +818,41 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/registries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the registry logins of an environment (never their passwords). */
+        get: operations["listRegistryLogins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/registries/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the login of a registry: a new revision, used by the next runs. */
+        put: operations["putRegistryLogin"];
+        post?: never;
+        /** Delete a registry login. Runs accepted with it keep their revision. */
+        delete: operations["deleteRegistryLogin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/secrets": {
         parameters: {
             query?: never;
@@ -1406,7 +1441,10 @@ export type components = {
              * @description The target generation (the app's revision) this run owns.
              */
             generation: number;
-            /** @description `deploy`, `rollback` or `promotion`. */
+            /**
+             * @description `deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or
+             *     `rotation`.
+             */
             reason: string;
             phase: string;
             /** @description `succeeded`, `failed` or `cancelled` once it ended. */
@@ -1707,6 +1745,13 @@ export type components = {
              */
             approvalTtlSecs?: number;
         };
+        PutRegistryLogin: {
+            /** @description `ghcr.io`, `docker.io`, `registry.example.com:5000`. */
+            registry: string;
+            username: string;
+            /** @description A password or access token; write-only. */
+            password: string;
+        };
         PutScopedRole: {
             /**
              * @description `viewer`, `developer`, `admin` or `owner`.
@@ -1756,6 +1801,19 @@ export type components = {
              * @example 50
              */
             pods?: number | null;
+        };
+        RegistryLoginDto: {
+            name: string;
+            /** @description The registry as image references name it (`ghcr.io`, `docker.io`). */
+            registry: string;
+            /** Format: int64 */
+            revision: number;
+            /**
+             * @description The current revision is revoked: images from the registry are not
+             *     deployed until a new login is set.
+             */
+            revoked: boolean;
+            updatedAt: string;
         };
         ReleaseDto: {
             /** Format: int64 */
@@ -4436,6 +4494,135 @@ export interface operations {
             };
         };
     };
+    listRegistryLogins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryLoginDto"][];
+                };
+            };
+        };
+    };
+    putRegistryLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Login name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutRegistryLogin"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryLoginDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name or registry is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteRegistryLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description Login name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An app reads it as a secret */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listSecrets: {
         parameters: {
             query?: never;
@@ -4496,7 +4683,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The environment is being deleted */
+            /** @description The environment is being deleted, or the name is a registry login */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -49,8 +49,8 @@ pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};
 pub use secrets::{
-    BoundSecret, KeyringCheck, Reserved, Revoked, SealedBytes, SecretBinding, SecretDeleted,
-    SecretRevisionInfo, SecretSummary, StaleSeal,
+    BoundSecret, KeyringCheck, Reservation, Reserved, Revoked, SealedBytes, SealedRevision, SecretBinding,
+    SecretDeleted, SecretKind, SecretRevisionInfo, SecretSummary,
 };
 pub use sessions::NewSession;
 pub use sso::{PendingSso, SsoSignIn};

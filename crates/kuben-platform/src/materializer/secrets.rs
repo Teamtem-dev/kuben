@@ -22,7 +22,7 @@ use super::{
     worker::{Error, Stop, Worker, refused},
     write,
 };
-use crate::secrets::{Identity, Keyring, SECRET_ID, SECRET_REVISION, object_name};
+use crate::secrets::{Identity, Keyring, RegistryLogin, SECRET_ID, SECRET_REVISION, object_name};
 
 /// Unused revision objects younger than this are kept: a run accepted a
 /// moment ago may be about to use one.
@@ -40,6 +40,25 @@ fn secret_object(m: &Materialization, b: &BoundSecret, keyring: &Keyring) -> Res
         tracing::error!(run = %m.run, secret = %b.binding.name, revision = b.binding.revision, error = %e, "a secret revision does not open");
         refused("SecretUnreadable")
     })?;
+    let (type_, data) = match &b.binding.registry {
+        None => (
+            "Opaque",
+            values
+                .into_iter()
+                .map(|(k, v)| (k, ByteString(v.into_bytes())))
+                .collect(),
+        ),
+        Some(registry) => {
+            let login = RegistryLogin::from_values(&values).ok_or_else(|| refused("SecretUnreadable"))?;
+            (
+                "kubernetes.io/dockerconfigjson",
+                BTreeMap::from([(
+                    ".dockerconfigjson".to_owned(),
+                    ByteString(login.docker_config(registry).into_bytes()),
+                )]),
+            )
+        }
+    };
     Ok(Secret {
         metadata: ObjectMeta {
             name: Some(object_name(&b.binding.name, b.binding.revision)),
@@ -58,13 +77,8 @@ fn secret_object(m: &Materialization, b: &BoundSecret, keyring: &Keyring) -> Res
             ..ObjectMeta::default()
         },
         immutable: Some(true),
-        type_: Some("Opaque".into()),
-        data: Some(
-            values
-                .into_iter()
-                .map(|(k, v)| (k, ByteString(v.into_bytes())))
-                .collect(),
-        ),
+        type_: Some(type_.into()),
+        data: Some(data),
         ..Secret::default()
     })
 }
@@ -228,9 +242,19 @@ mod tests {
     }
 
     fn bound(m: &Materialization, keyring: &Keyring, revision: u64) -> BoundSecret {
+        let values = BTreeMap::from([("url".to_owned(), "postgres://db".to_owned())]);
+        sealed_binding(m, keyring, revision, &values, None)
+    }
+
+    fn sealed_binding(
+        m: &Materialization,
+        keyring: &Keyring,
+        revision: u64,
+        values: &BTreeMap<String, String>,
+        registry: Option<&str>,
+    ) -> BoundSecret {
         let secret = Uuid::now_v7();
         let (org, id) = (m.org.to_string(), secret.to_string());
-        let values = BTreeMap::from([("url".to_owned(), "postgres://db".to_owned())]);
         let sealed = keyring
             .seal_values(
                 Identity {
@@ -238,7 +262,7 @@ mod tests {
                     secret: &id,
                     revision,
                 },
-                &values,
+                values,
             )
             .expect("seal");
         BoundSecret {
@@ -246,6 +270,7 @@ mod tests {
                 name: "db".into(),
                 secret,
                 revision,
+                registry: registry.map(str::to_owned),
             },
             keys: vec!["url".into()],
             sealed,
@@ -275,6 +300,24 @@ mod tests {
             ..materialization()
         };
         assert!(!is_revision(&s, &foreign, &b), "another organization");
+    }
+
+    #[test]
+    fn a_registry_login_becomes_a_pull_secret() {
+        let keyring = Keyring::from_keys([(1, [3; 32])]);
+        let m = materialization();
+        let login = RegistryLogin {
+            username: "bot".into(),
+            password: "token".into(),
+        };
+        let b = sealed_binding(&m, &keyring, 1, &login.values(), Some("ghcr.io"));
+        let s = secret_object(&m, &b, &keyring).expect("object");
+        assert_eq!(s.type_.as_deref(), Some("kubernetes.io/dockerconfigjson"));
+        let data = s.data.expect("data");
+        let config: serde_json::Value = serde_json::from_slice(&data[".dockerconfigjson"].0).expect("json");
+        assert_eq!(config["auths"]["ghcr.io"]["username"], "bot");
+        let broken = sealed_binding(&m, &keyring, 1, &BTreeMap::new(), Some("ghcr.io"));
+        assert!(secret_object(&m, &broken, &keyring).is_err(), "not a login");
     }
 
     #[test]

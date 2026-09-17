@@ -14,13 +14,14 @@ use http_body_util::BodyExt;
 use kuben_api::{
     ApiState,
     auth::CLIENT_HEADER,
-    oci::FixedImages,
+    oci::{FixedImages, ImageResolver, ResolveError, Resolved},
     oidc::{GithubOidc, Jwks},
 };
 use kuben_core::{config::Config, ids::OrgId, ops::Generation, perm::Role, traits::StaticPolicy};
 use kuben_platform::{
     health::Health,
     projection::{AppView, EnvironmentView, PodPhase, PodView, ProcessView, ProjectView, Projections},
+    secrets::RegistryLogin,
 };
 use kuben_store::{
     Store,
@@ -116,11 +117,36 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
 const NGINX_127: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const NGINX_126: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
-fn images() -> Arc<FixedImages> {
-    Arc::new(FixedImages(BTreeMap::from([
+/// The digest `ghcr.io/acme/private:1` resolves to, for bot's login only.
+const PRIVATE: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
+
+/// Public images resolve anonymously; `ghcr.io/acme/private:1` only with the
+/// login `bot`.
+#[derive(Debug)]
+struct TestImages(FixedImages);
+
+#[async_trait::async_trait]
+impl ImageResolver for TestImages {
+    async fn resolve_as(&self, image: &str, login: Option<&RegistryLogin>) -> Result<Resolved, ResolveError> {
+        if image != "ghcr.io/acme/private:1" {
+            return self.0.resolve_as(image, login).await;
+        }
+        match login {
+            Some(l) if l.username == "bot" && l.password == "token" => Ok(Resolved {
+                repository: "ghcr.io/acme/private".into(),
+                digest: PRIVATE.parse().expect("digest"),
+                given: image.to_owned(),
+            }),
+            _ => Err(ResolveError::Unauthorized(image.to_owned())),
+        }
+    }
+}
+
+fn images() -> Arc<TestImages> {
+    Arc::new(TestImages(FixedImages(BTreeMap::from([
         ("nginx:1.27".to_owned(), NGINX_127.parse().expect("digest")),
         ("nginx:1.26".to_owned(), NGINX_126.parse().expect("digest")),
-    ])))
+    ]))))
 }
 
 /// Project `shop`, production environment `prod` and app `api` (`nginx:1.27`
@@ -2396,5 +2422,128 @@ async fn m4_production_rotations_wait_for_approval() {
     assert_eq!(
         status_of(&app.router, "PUT", &format!("{SECRETS}/db"), &bob, Some(body)).await,
         StatusCode::FORBIDDEN
+    );
+}
+
+const REGISTRIES: &str = "/api/v1/projects/shop/environments/prod/registries";
+
+/// Set shop's login for ghcr.io as alice, after the refusals it gets on the
+/// way; its path.
+async fn set_ghcr_login(app: &TestApp, alice: &str, bob: &str) -> String {
+    let ghcr = format!("{REGISTRIES}/ghcr");
+    let login_body = |registry: &str| json!({ "registry": registry, "username": "bot", "password": "token" });
+    assert_eq!(
+        status_of(&app.router, "PUT", &ghcr, bob, Some(login_body("ghcr.io"))).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status_of(&app.router, "PUT", &ghcr, alice, Some(login_body("ghcr.io/acme"))).await,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, _, saved) = call(
+        &app.router,
+        "PUT",
+        &ghcr,
+        Auth::Cookie(alice),
+        Some(login_body("GHCR.io")),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(
+        (saved["registry"].clone(), saved["revision"].clone()),
+        (json!("ghcr.io"), json!(1))
+    );
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{REGISTRIES}/other"),
+            alice,
+            Some(login_body("ghcr.io"))
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "one login per registry"
+    );
+    let secret = json!({ "data": { "url": "x" } });
+    assert_eq!(
+        status_of(
+            &app.router,
+            "PUT",
+            &format!("{SECRETS}/ghcr"),
+            alice,
+            Some(secret)
+        )
+        .await,
+        StatusCode::CONFLICT,
+        "the name is a login"
+    );
+    let (_, _, listed) = call(&app.router, "GET", REGISTRIES, Auth::Cookie(alice), None, None).await;
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+    assert!(
+        !listed.to_string().contains("token"),
+        "passwords are never returned"
+    );
+    let (_, _, secrets) = call(&app.router, "GET", SECRETS, Auth::Cookie(alice), None, None).await;
+    assert_eq!(secrets, json!([]), "logins are not app secrets");
+    ghcr
+}
+
+/// M4.4: a registry login resolves private tags and is bound to the runs of
+/// images from its registry; its password never comes back.
+#[tokio::test]
+async fn m4_registry_logins_pull_private_images() {
+    let Some(app) = setup().await else { return };
+    sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let apps = "/api/v1/projects/shop/environments/prod/apps";
+    let private = json!({ "name": "private", "image": "ghcr.io/acme/private:1", "port": 80 });
+    assert_eq!(
+        status_of(&app.router, "POST", apps, &alice, Some(private.clone())).await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "no login yet"
+    );
+
+    let ghcr = set_ghcr_login(&app, &alice, &bob).await;
+
+    let (status, _, created) = call(
+        &app.router,
+        "POST",
+        apps,
+        Auth::Cookie(&alice),
+        Some(private),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let (_, _, runs) = call(
+        &app.router,
+        "GET",
+        &format!("{apps}/private/deployments"),
+        Auth::Cookie(&alice),
+        None,
+        None,
+    )
+    .await;
+    let run = &runs.as_array().expect("runs")[0];
+    let bindings = {
+        let id: uuid::Uuid = run["run"].as_str().expect("run").parse().expect("uuid");
+        let mut t = app.store.tenant(app.org).await.expect("tenant");
+        t.run_secret_bindings(kuben_core::ids::DeploymentRunId::from_uuid(id))
+            .await
+            .expect("bindings")
+    };
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].registry.as_deref(), Some("ghcr.io"));
+
+    assert_eq!(
+        status_of(&app.router, "DELETE", &ghcr, &alice, None).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        status_of(&app.router, "DELETE", &ghcr, &alice, None).await,
+        StatusCode::NOT_FOUND
     );
 }

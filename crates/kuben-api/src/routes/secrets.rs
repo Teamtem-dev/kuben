@@ -22,10 +22,10 @@ use kube::{
 };
 use kuben_core::{Error, perm::Perm};
 use kuben_crd::labels;
-use kuben_platform::secrets::{Identity, Keyring, SECRET_ID};
+use kuben_platform::secrets::{Identity, Keyring, RegistryLogin, SECRET_ID};
 use kuben_store::repo::{
-    AppRecord, Reserved, Revoked, RunReason, SecretDeleted, SecretRevisionInfo, SecretSummary,
-    StartDeployment, Started, Tenant,
+    AppRecord, Reservation, Reserved, Revoked, RunReason, SecretDeleted, SecretKind, SecretRevisionInfo,
+    SecretSummary, StartDeployment, Started, Tenant,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -221,6 +221,7 @@ pub async fn list(
         .secrets(e.id())
         .await?
         .into_iter()
+        .filter(|s| s.kind == SecretKind::Opaque)
         .map(SecretDto::from)
         .collect();
     drop(tenant);
@@ -258,7 +259,7 @@ pub async fn list(
     responses(
         (status = 200, body = SecretDto),
         (status = 403, body = crate::error::Problem),
-        (status = 409, description = "The environment is being deleted", body = crate::error::Problem),
+        (status = 409, description = "The environment is being deleted, or the name is a registry login", body = crate::error::Problem),
         (status = 422, body = crate::error::Problem),
         (status = 503, body = crate::error::Problem),
     )
@@ -273,27 +274,13 @@ pub async fn put(
     let _proof = authz.require(&state, Perm::SecretWrite, &e.chain())?;
     validate::dns_label("secret name", &secret, 63)?;
     check_values(&body.data)?;
-    let keyring = keyring(&state)?;
-    if e.deleting() {
-        return Err(Error::Conflict(format!("environment `{}` is being deleted", e.short_name())).into());
-    }
-    let (_, actor) = request::actor(&authz);
     let mut tenant = state.store.tenant(e.project.org).await?;
-    let reserved = tenant
-        .reserve_secret_revision(e.project.id(), e.id(), &secret, &actor)
-        .await?
-        .ok_or_else(|| Error::Conflict(format!("environment `{}` is being deleted", e.short_name())))?;
-    let sealed = seal(keyring, &e, reserved, &body.data)?;
-    let keys: Vec<String> = body.data.keys().cloned().collect();
-    let audit = request::audit(
-        &authz,
-        "secret.revision.created",
-        "secret",
-        reference(&e, &secret),
-    );
-    tenant
-        .insert_secret_revision(reserved, &keys, &sealed, &actor, audit)
-        .await?;
+    let new = NewRevision {
+        name: &secret,
+        kind: &SecretKind::Opaque,
+        values: &body.data,
+    };
+    store_revision(&state, &mut tenant, &authz, &e, new).await?;
     let rollouts = if body.rollout {
         rotate(&state, &mut tenant, &authz, &e, &secret).await?
     } else {
@@ -308,6 +295,66 @@ pub async fn put(
         rollouts,
         ..SecretDto::from(summary)
     }))
+}
+
+/// A new revision of a secret.
+pub(crate) struct NewRevision<'a> {
+    pub name: &'a str,
+    pub kind: &'a SecretKind,
+    pub values: &'a BTreeMap<String, String>,
+}
+
+/// Seal and record a new revision in `tenant`'s transaction.
+pub(crate) async fn store_revision(
+    state: &ApiState,
+    tenant: &mut Tenant,
+    authz: &Authz,
+    e: &EnvScope,
+    new: NewRevision<'_>,
+) -> ApiResult<()> {
+    let keyring = keyring(state)?;
+    let deleting = || Error::Conflict(format!("environment `{}` is being deleted", e.short_name()));
+    if e.deleting() {
+        return Err(deleting().into());
+    }
+    let (_, actor) = request::actor(authz);
+    let reserved = match tenant
+        .reserve_secret_revision(e.project.id(), e.id(), new.name, new.kind, &actor)
+        .await?
+    {
+        Reservation::Reserved(reserved) => reserved,
+        Reservation::NoEnvironment => return Err(deleting().into()),
+        Reservation::Taken(why) => return Err(Error::Conflict(why).into()),
+    };
+    let sealed = seal(keyring, e, reserved, new.values)?;
+    let keys: Vec<String> = new.values.keys().cloned().collect();
+    let audit = request::audit(authz, "secret.revision.created", "secret", reference(e, new.name));
+    tenant
+        .insert_secret_revision(reserved, &keys, &sealed, &actor, audit)
+        .await?;
+    Ok(())
+}
+
+/// The login of `registry` in `e`, opened.
+pub(crate) async fn registry_login(
+    state: &ApiState,
+    tenant: &mut Tenant,
+    e: &EnvScope,
+    registry: &str,
+) -> ApiResult<Option<RegistryLogin>> {
+    let Some(current) = tenant.registry_login(e.id(), registry).await? else {
+        return Ok(None);
+    };
+    let (org, id) = (e.project.org.to_string(), current.secret.to_string());
+    let who = Identity {
+        org: &org,
+        secret: &id,
+        revision: current.revision,
+    };
+    let values = keyring(state)?
+        .open_values(who, &current.sealed)
+        .map_err(|err| Error::Internal(format!("opening a registry login failed: {err}")))?;
+    Ok(RegistryLogin::from_values(&values))
 }
 
 fn seal(

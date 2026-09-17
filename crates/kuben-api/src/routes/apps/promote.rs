@@ -73,6 +73,7 @@ pub fn promote_spec(source: &AppSpec, target: Option<&AppSpec>) -> AppSpec {
             Some(t) if !t.volumes.is_empty() => t.volumes.clone(),
             _ => source.volumes.clone(),
         },
+        image_pull_secrets: Vec::new(),
     }
 }
 

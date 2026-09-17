@@ -372,6 +372,7 @@ fn empty_spec() -> AppSpec {
         env: Vec::new(),
         domains: Vec::new(),
         volumes: Vec::new(),
+        image_pull_secrets: Vec::new(),
     }
 }
 
@@ -406,12 +407,25 @@ pub(crate) fn config_of(spec: &AppSpec) -> Result<Value, Error> {
     Ok(config)
 }
 
-/// Resolve `image` to a digest at its registry (option A).
-pub(crate) async fn resolve(state: &ApiState, image: &str) -> ApiResult<Resolved> {
-    state.images.resolve(image).await.map_err(|e| match e {
-        ResolveError::Unreachable { .. } => ApiError(Error::Unavailable(e.to_string())),
-        _ => ApiError(Error::Validation(e.to_string())),
-    })
+/// Resolve `image` to a digest at its registry (option A), pulling with
+/// `e`'s login for that registry when it has one.
+pub(crate) async fn resolve(state: &ApiState, e: &EnvScope, image: &str) -> ApiResult<Resolved> {
+    let login = match crate::oci::parse(image) {
+        // A digest needs no registry.
+        Ok(reference) if matches!(reference.reference, crate::oci::Reference::Tag(_)) => {
+            let mut tenant = state.store.tenant(e.project.org).await?;
+            crate::routes::secrets::registry_login(state, &mut tenant, e, &reference.registry).await?
+        }
+        _ => None,
+    };
+    state
+        .images
+        .resolve_as(image, login.as_ref())
+        .await
+        .map_err(|e| match e {
+            ResolveError::Unreachable { .. } => ApiError(Error::Unavailable(e.to_string())),
+            _ => ApiError(Error::Validation(e.to_string())),
+        })
 }
 
 /// What a deployment runs: a newly resolved image, or an existing release.
@@ -527,7 +541,7 @@ pub(crate) async fn create_app(
         .image
         .as_deref()
         .ok_or_else(|| Error::Validation("an app needs an image".into()))?;
-    let resolved = resolve(state, image).await?;
+    let resolved = resolve(state, e, image).await?;
     let placement = e
         .env
         .placement

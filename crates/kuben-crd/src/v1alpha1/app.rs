@@ -35,6 +35,10 @@ pub struct AppSpec {
     /// process with at most one replica (ReadWriteOnce).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub volumes: Vec<Volume>,
+    /// Secrets of the app's namespace the kubelet pulls its image with.
+    /// Kuben sets them from the environment's registry credentials.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub image_pull_secrets: Vec<String>,
 }
 
 /// A persistent volume mounted into the app's process. Backed by a PVC named
