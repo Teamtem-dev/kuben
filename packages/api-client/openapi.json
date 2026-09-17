@@ -8390,6 +8390,13 @@
               "string",
               "null"
             ]
+          },
+          "runbook": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What to do about it."
           }
         }
       },

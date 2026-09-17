@@ -16,6 +16,7 @@ pub mod policy;
 pub mod scan;
 pub mod source;
 pub mod sso;
+pub mod support;
 pub mod time;
 pub mod traits;
 pub mod upgrade;

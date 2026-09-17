@@ -2143,6 +2143,8 @@ export type components = {
             acknowledgedBy?: string | null;
             resolvedAt?: string | null;
             resolvedBy?: string | null;
+            /** @description What to do about it. */
+            runbook?: string | null;
         };
         InstallationDto: {
             /** Format: int64 */

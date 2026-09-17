@@ -241,6 +241,38 @@ jobs:
           rust-cache-save: "false"
       - run: bun run drift
 
+  # Pull requests may add to the API, never break it, unless labelled
+  # `breaking` (re-run the job after labelling). The base is the merge
+  # commit's first parent.
+  api-compat:
+    name: API compatibility (oasdiff)
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.codegen == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      OASDIFF_VERSION: 1.32.1
+      OASDIFF_SHA256: 7c8939fc49b75ee11fec66a5b83b37a2fca6aee109fed85013b1ba2ac2a1ee7f
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Install oasdiff (pinned, checksummed)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/oasdiff.tgz" \
+            "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+          echo "${OASDIFF_SHA256}  $RUNNER_TEMP/oasdiff.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/oasdiff.tgz" -C "$RUNNER_TEMP" oasdiff
+      - name: Compare the spec with the base branch
+        env:
+          OASDIFF: ${{ runner.temp }}/oasdiff
+          KUBEN_ALLOW_BREAKING: ${{ contains(github.event.pull_request.labels.*.name, 'breaking') }}
+        run: |
+          git show HEAD^1:packages/api-client/openapi.json > "$RUNNER_TEMP/base.json" 2>/dev/null \
+            || : > "$RUNNER_TEMP/base.json"
+          scripts/check-api-compat.sh "$RUNNER_TEMP/base.json"
+
   scripts:
     name: Shell scripts
     needs: changes
@@ -514,7 +546,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
+    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

@@ -304,7 +304,12 @@ impl Notifier {
                     .map(|id| (id, "incident.resolved"))
             };
             if let Some((id, event)) = changed.filter(|_| !silenced) {
-                let body = json!({ "incident": id, "event": plan.event, "subject": payload["subject"] });
+                let body = json!({
+                    "incident": id,
+                    "event": plan.event,
+                    "subject": payload["subject"],
+                    "runbook": crate::routes::incidents::runbook(plan.event),
+                });
                 tenant.enqueue_event(Uuid::now_v7(), event, &body).await?;
             }
         }

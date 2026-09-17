@@ -4,7 +4,10 @@
 
 use std::path::PathBuf;
 
-use kuben_core::config::{Config, KubeCfg, in_cluster};
+use kuben_core::{
+    config::{Config, KubeCfg, in_cluster},
+    support,
+};
 
 use crate::cli::DoctorOpts;
 use kuben_platform::{
@@ -45,7 +48,11 @@ async fn database_checks(r: &mut Report, cfg: &Config, store: &kuben_store::Stor
             let local = cfg.database.url.contains("@localhost")
                 || cfg.database.url.contains("@127.0.0.1")
                 || cfg.database.url.contains("host=/");
-            let level = if facts.major() < 15 || facts.in_recovery || (!facts.tls && !local) {
+            let (fit, fits) = support::POSTGRESQL.describe(support::Minor(
+                u32::try_from(facts.major()).unwrap_or_default(),
+                0,
+            ));
+            let level = if fit != support::Fit::Supported || facts.in_recovery || (!facts.tls && !local) {
                 Level::Warn
             } else {
                 Level::Ok
@@ -70,6 +77,9 @@ async fn database_checks(r: &mut Report, cfg: &Config, store: &kuben_store::Stor
                     }
                 ),
             );
+            if fit != support::Fit::Supported {
+                r.line(Level::Warn, "support envelope", fits);
+            }
             if facts.archives_wal() {
                 r.line(
                     Level::Ok,
@@ -214,7 +224,10 @@ async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
         Ok(registry) => {
             let client = registry.primary();
             match client.apiserver_version().await {
-                Ok(v) => r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version)),
+                Ok(v) => {
+                    r.line(Level::Ok, "kubernetes", format!("apiserver {}", v.git_version));
+                    envelope_line(r, support::KUBERNETES, &format!("{}.{}", v.major, v.minor));
+                }
                 Err(e) => r.line(Level::Fail, "kubernetes", e),
             }
             let facts = discovery::discover(&client).await;
@@ -238,6 +251,26 @@ async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
     }
 }
 
+/// How `version` of a dependency fits the support envelope (M4.12): OK when
+/// supported, WARN when untested, FAIL when unsupported.
+fn envelope_line(r: &mut Report, range: support::VersionRange, version: &str) {
+    let Some(minor) = support::Minor::parse(version) else {
+        r.line(
+            Level::Warn,
+            "support envelope",
+            format!("cannot read the {} version {version:?}", range.name),
+        );
+        return;
+    };
+    let (fit, text) = range.describe(minor);
+    let level = match fit {
+        support::Fit::Supported => Level::Ok,
+        support::Fit::Untested => Level::Warn,
+        support::Fit::Unsupported => Level::Fail,
+    };
+    r.line(level, "support envelope", text);
+}
+
 /// What the cluster can do (ADR-031), as the controllers see it: unknown
 /// facts are warnings, never OK.
 fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
@@ -249,15 +282,20 @@ fn check_capabilities(r: &mut Report, facts: &ClusterFacts) {
         );
     }
     match &facts.gateway_api {
-        Some(api) => r.line(
-            Level::Ok,
-            "gateway-api",
-            format!(
-                "{} ({} channel)",
-                api.bundle_version.as_deref().unwrap_or("unknown version"),
-                api.channel.as_deref().unwrap_or("unknown")
-            ),
-        ),
+        Some(api) => {
+            r.line(
+                Level::Ok,
+                "gateway-api",
+                format!(
+                    "{} ({} channel)",
+                    api.bundle_version.as_deref().unwrap_or("unknown version"),
+                    api.channel.as_deref().unwrap_or("unknown")
+                ),
+            );
+            if let Some(version) = &api.bundle_version {
+                envelope_line(r, support::GATEWAY_API, version);
+            }
+        }
         None => r.line(
             Level::Warn,
             "gateway-api",

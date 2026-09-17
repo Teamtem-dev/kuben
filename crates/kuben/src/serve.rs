@@ -642,6 +642,35 @@ async fn database_ready(
         health.clone(),
         shutdown.child_token(),
     ));
+    tokio::spawn(keep_budgets(cfg.clone(), store.clone(), shutdown.child_token()));
+}
+
+/// Remove rows older than their retention budget (M4.12), hourly, and more
+/// often while a pass still finds a full batch.
+async fn keep_budgets(cfg: Config, store: kuben_store::Store, token: CancellationToken) {
+    let mut wait = Duration::from_mins(1);
+    loop {
+        tokio::select! {
+            () = tokio::time::sleep(wait) => {}
+            () = token.cancelled() => return,
+        }
+        wait = match store.apply_retention_now(&cfg.retention).await {
+            Ok(done) => {
+                if done.total() > 0 {
+                    tracing::info!(?done, "old rows removed");
+                }
+                if done.more {
+                    Duration::from_secs(5)
+                } else {
+                    Duration::from_hours(1)
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "retention pass failed");
+                Duration::from_mins(10)
+            }
+        };
+    }
 }
 
 /// Report `backups` degraded while the newest good backup is older than

@@ -103,6 +103,7 @@ pub const CONFIG_ALLOWLIST: &[&str] = &[
     "quota",
     "backup",
     "notify",
+    "retention",
 ];
 
 /// Options of `kuben support-bundle`.
@@ -217,6 +218,7 @@ pub async fn run(cfg: Config, opts: SupportOpts, config_path: Option<&Path>) -> 
             "generated_at": now_ms(),
             "in_cluster": in_cluster(),
             "format": 1,
+            "support_envelope": kuben_core::support::envelope(),
         }),
     );
     sections.insert("config".into(), allowed_config(&cfg));

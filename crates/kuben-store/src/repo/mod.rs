@@ -23,6 +23,7 @@ mod policies;
 mod product;
 mod releases;
 mod resolve;
+mod retention;
 mod scans;
 mod secrets;
 mod sessions;
@@ -62,6 +63,7 @@ pub use policies::{ApprovalRecord, Decided, PolicyRevision, RunApproval};
 pub use product::{EnvironmentKind, Project, Tenant, placement_id};
 pub use releases::NewRelease;
 pub use resolve::{Named, SqlScope};
+pub use retention::Retained;
 pub use scans::{NewException, NewScan, VulnException};
 pub use secrets::{
     BoundSecret, KeyringCheck, Reservation, Reserved, Revoked, SealedBytes, SealedRevision, SecretBinding,

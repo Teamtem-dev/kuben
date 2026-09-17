@@ -1,0 +1,78 @@
+---
+title: Support envelope and budgets
+description: What a supported Kuben installation runs on, what is and is not claimed, the size and retention budgets, and the API compatibility promise.
+sidebar:
+  order: 7
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Support envelope
+
+A **supported** installation runs on the versions below. `kuben doctor` checks a running installation against them:
+
+- OK for a version in the tested range;
+- WARN for an untested version;
+- FAIL for an unsupported version.
+
+Every support bundle includes the envelope.
+
+| Dependency | Tested | Works from | Installed by `kuben setup` |
+|---|---|---|---|
+| Kubernetes | 1.31 – 1.36 | 1.29 | k3s v1.36 |
+| PostgreSQL | 15 – 18 | 15 | 17 (chart and host) |
+| Gateway API (standard channel) | 1.2 – 1.5 | 1.1 | 1.5 |
+| cert-manager (with Gateway API support) | 1.16 – 1.21 | 1.15 | 1.21 |
+
+- **Hosts for `kuben setup`:** Ubuntu 22.04 and 24.04, Debian 12 and 13, RHEL, Rocky and AlmaLinux 9 and 10.
+- **Architectures:** amd64 and arm64.
+- **Pins:** the exact version and digest of everything a release installs are listed in `bundle.lock.json`, and printed by `kuben version --bundle`. A test checks that they stay inside this envelope.
+
+### What is claimed, and what is not
+
+| Area | The Supported MVP |
+|---|---|
+| Clusters | One cluster per installation |
+| Placements | One placement (namespace) per environment |
+| Workloads | Stateless web and worker processes; production data in an external PostgreSQL |
+| Availability | A single failure domain. **No high-availability claim** (planned for M7) |
+| Nodes | Adding, draining and replacing nodes is the operator's job (planned for M6) |
+| Previews | No preview environments (planned for M5) |
+| Registries | OCI registries with basic or token auth; GitHub for Git sources |
+| Gateways | One Gateway API implementation. Traefik (k3s) is the tested one |
+
+<Aside>
+"Untested" does not mean broken. It means we have no evidence either way. Report what you find, and include a [support bundle](/docs/operations/support-and-exit/#support-bundle).
+</Aside>
+
+## Budgets
+
+Budgets are limits that CI or the server enforces. They are not targets.
+
+| Budget | Limit | Enforced by |
+|---|---|---|
+| Server binary (static musl, UI included) | 32 MiB | CI (`scripts/check-budgets.sh binary`) |
+| Server image | 42 MiB | the release (`scripts/check-budgets.sh image`) |
+| Console bundle | per chunk | CI (`size-limit`) |
+| Support bundle | 8 MiB, newest 3 kept | `kuben support-bundle` (drops old log lines first) |
+| Export and render plan | the envelope bound | the renderer refuses larger plans |
+| Request body, request time | `server.max_body_bytes`, `server.request_timeout_secs` | the API |
+| Organization resources | `quota.*` | admission (see [Configuration](/docs/reference/configuration/)) |
+
+### Retention
+
+Rows that only describe the past are removed after their budget. A background pass runs hourly and removes rows in batches:
+
+| Data | Kept | Setting |
+|---|---|---|
+| Expired sessions | until they expire | — |
+| Delivered outbox messages | 7 days | `retention.outbox_days` |
+| Finished webhook deliveries | 30 days | `retention.webhook_delivery_days` |
+| Resolved incidents | 180 days | `retention.resolved_incident_days` |
+| Database backups | newest 7 | `backup.keep` |
+
+Audit events, deployment runs, releases, render plans, SBOMs and scan results are never removed by this pass. They are the history an audit or a rollback depends on.
+
+## API compatibility
+
+`/api/v1` only grows. A pull request that would break it fails CI's compatibility gate (oasdiff, comparing the OpenAPI spec with the base branch) unless it is labelled `breaking`. Breaking changes are recorded in the release notes. Clients generated from `packages/api-client` keep working across minor releases.

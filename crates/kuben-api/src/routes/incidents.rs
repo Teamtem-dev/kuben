@@ -37,6 +37,21 @@ pub const EVENTS: [&str; 11] = [
     "ping",
 ];
 
+/// Where the runbooks live (M4.12).
+pub const RUNBOOKS: &str = "https://kuben.teamtem.com/docs/operations/runbooks/";
+
+/// The runbook section for incidents of `kind`, if there is one.
+#[must_use]
+pub fn runbook(kind: &str) -> Option<String> {
+    let anchor = match kind {
+        "deployment.failed" => "a-deployment-failed",
+        "build.failed" => "a-build-failed",
+        "backup.stale" => "backups-are-stale",
+        _ => return None,
+    };
+    Some(format!("{RUNBOOKS}#{anchor}"))
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IncidentDto {
@@ -56,11 +71,14 @@ pub struct IncidentDto {
     pub acknowledged_by: Option<String>,
     pub resolved_at: Option<String>,
     pub resolved_by: Option<String>,
+    /// What to do about it.
+    pub runbook: Option<String>,
 }
 
 impl From<Incident> for IncidentDto {
     fn from(i: Incident) -> Self {
         Self {
+            runbook: runbook(&i.kind),
             id: i.id,
             kind: i.kind,
             severity: i.severity,
@@ -433,6 +451,14 @@ mod tests {
             url: "https://hooks.example.com/kuben".into(),
             events: events.iter().map(|e| (*e).to_owned()).collect(),
         }
+    }
+
+    #[test]
+    fn incident_kinds_link_their_runbook() {
+        for kind in ["deployment.failed", "build.failed", "backup.stale"] {
+            assert!(runbook(kind).is_some_and(|u| u.starts_with(RUNBOOKS)), "{kind}");
+        }
+        assert_eq!(runbook("something.else"), None);
     }
 
     #[test]

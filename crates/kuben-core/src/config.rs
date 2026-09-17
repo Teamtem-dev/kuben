@@ -44,6 +44,7 @@ pub struct Config {
     pub quota: QuotaCfg,
     pub backup: BackupCfg,
     pub notify: NotifyCfg,
+    pub retention: RetentionCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -501,6 +502,29 @@ pub struct NotifyCfg {
     pub allow_private_targets: bool,
     /// Allow `http://` endpoints (by default only `https://`).
     pub allow_http: bool,
+}
+
+/// How long rows that only describe the past are kept (M4.12). Audit
+/// events, runs, releases and evidence are not covered: they are kept.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RetentionCfg {
+    /// Delivered outbox messages.
+    pub outbox_days: u32,
+    /// Delivered and given-up webhook deliveries.
+    pub webhook_delivery_days: u32,
+    /// Resolved incidents.
+    pub resolved_incident_days: u32,
+}
+
+impl Default for RetentionCfg {
+    fn default() -> Self {
+        Self {
+            outbox_days: 7,
+            webhook_delivery_days: 30,
+            resolved_incident_days: 180,
+        }
+    }
 }
 
 /// Backups of the database (M4.7). `kuben backup` writes them (a systemd
