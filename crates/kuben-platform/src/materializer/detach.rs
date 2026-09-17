@@ -94,12 +94,22 @@ impl Worker {
 
     /// Delete `slug`'s ApplicationRuntime, orphaning its workloads; done
     /// once it is gone.
-    async fn orphan_runtime(&self, namespace: &str, slug: &str, org: OrgId) -> Result<(), Stop> {
+    async fn orphan_runtime(
+        &self,
+        namespace: &str,
+        slug: &str,
+        target: TargetId,
+    ) -> Result<(), Stop> {
         let runtimes = Api::<ApplicationRuntime>::namespaced(self.client.clone(), namespace);
         let Some(live) = runtimes.get_opt(slug).await? else {
             return Ok(());
         };
-        if !write::belongs_to(live.meta(), org) {
+        let managed = live
+            .labels()
+            .get(labels::MANAGED_BY)
+            .is_some_and(|v| v == labels::MANAGER);
+        let ours = live.spec.target_id == target.to_string();
+        if !managed || !ours {
             return Err(refused("NameTaken"));
         }
         if live.metadata.deletion_timestamp.is_none() {
@@ -133,7 +143,7 @@ impl Worker {
         drop(tenant);
         let (namespace, slug) = (record.namespace.as_str(), record.app.as_str());
         if delivery == Some(Delivery::Agent) {
-            self.orphan_runtime(namespace, slug, org).await?;
+            self.orphan_runtime(namespace, slug, target).await?;
         }
         self.orphan_app_object(namespace, slug, org, target).await?;
         let api = Api::<Secret>::namespaced(self.client.clone(), namespace);
