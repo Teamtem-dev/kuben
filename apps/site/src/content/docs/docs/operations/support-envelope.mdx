@@ -76,3 +76,23 @@ Audit events, deployment runs, releases, render plans, SBOMs and scan results ar
 ## API compatibility
 
 `/api/v1` only grows. A pull request that would break it fails CI's compatibility gate (oasdiff, comparing the OpenAPI spec with the base branch) unless it is labelled `breaking`. Breaking changes are recorded in the release notes. Clients generated from `packages/api-client` keep working across minor releases.
+
+## Acceptance runs
+
+A release is a Supported MVP only after the acceptance scenarios S01–S10 pass on a real installation, and a reviewer signs the report. Run the harness on the server, after `scripts/vps-acceptance.sh`:
+
+```bash
+sudo KUBEN_URL=https://kuben.apps.example.com DOMAIN=apps.example.com \
+  KUBEN_TOKEN=<admin token> KUBEN_APPROVER_TOKEN=<a second admin's token> \
+  REVIEWER="Jane Doe" scripts/m4-acceptance.sh | tee m4-acceptance.md
+```
+
+The report lists what was checked, the Kuben and Kubernetes versions, and the date. Each check reads PASS or FAIL. Steps that need a person, a second host or a destructive action read **MANUAL**. These include:
+
+- the outage alert from outside the host;
+- a restore on a fresh host, with the measured RPO and RTO;
+- an interrupted upgrade;
+- a retaining uninstall;
+- the pilot.
+
+A MANUAL row counts only once its evidence is attached. CI covers the automatable parts of every scenario on each change: the kind end-to-end suite runs export, detach and a support bundle.

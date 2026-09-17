@@ -642,6 +642,38 @@ expect 204 DELETE "$APP/edge"
 eventually 90 "edge runtime gone" bash -c "! kubectl -n $NS get applicationruntime edge"
 eventually 90 "edge deployment gone" bash -c "! kubectl -n $NS get deployment edge-web"
 
+step "M4.11: export, detach and release"
+expect 201 POST "$APP" "{\"name\":\"keep\",\"image\":\"${IMAGE}\",\"port\":8080}"
+eventually 180 "keep delivered (its export exists)" bash -c \
+  "curl -fsS -b '$work/cookies' $BASE$APP/keep/export | jq -e '.format == \"kuben.dev/export/v1\"'"
+eventually 180 "keep-web running" kubectl -n "$NS" rollout status deployment/keep-web --timeout=10s
+expect 200 GET "$APP/keep/export"
+jq -e '[.manifests.items[].kind] | index("Deployment") != null' "$work/body" >/dev/null ||
+  fail "the export has no Deployment: $(cat "$work/body")"
+expect 422 POST "$APP/keep/detach" '{"confirm":"other","reason":"e2e"}'
+expect 202 POST "$APP/keep/detach" '{"confirm":"keep","reason":"e2e"}'
+detached=$(jq -r .id "$work/body")
+eventually 120 "detach complete" bash -c \
+  "curl -fsS -b '$work/cookies' $BASE/projects/${P}/environments/dev/detached/${detached} | jq -e '.completedAt != null'"
+kubectl -n "$NS" get app keep >/dev/null 2>&1 && fail "the App of a detached app is still there"
+kubectl -n "$NS" get applicationruntime keep >/dev/null 2>&1 && fail "the runtime of a detached app is still there"
+kubectl -n "$NS" get deployment keep-web -o json | jq -e '(.metadata.ownerReferences // []) == []' >/dev/null ||
+  fail "the detached Deployment still has an owner"
+sleep 5
+kubectl -n "$NS" rollout status deployment/keep-web --timeout=30s || fail "the detached app stopped running"
+expect 404 GET "$APP/keep"
+expect 204 POST "/projects/${P}/environments/dev/detached/${detached}/release"
+expect 409 POST "/projects/${P}/environments/dev/detached/${detached}/release"
+
+step "M4.11: a local support bundle without secrets"
+KUBEN_DATABASE__URL="$DATABASE_URL" KUBEN_KUBE__NAMESPACE="$LEASE_NS" KUBEN_SERVER__STATE_DIR="$work/state" \
+  "$BIN" support-bundle --out "$work/support" >"$work/support.txt" 2>&1 || fail "support-bundle: $(cat "$work/support.txt")"
+bundle=$(ls "$work"/support/kuben-support-*.json)
+[[ $(stat -c %a "$bundle") == 600 ]] || fail "the support bundle is not private"
+grep -qF "$PASSWORD" "$bundle" && fail "the support bundle holds the admin password"
+jq -e '.about.support_envelope.profile == "supported-mvp" and (.database.summary.organizations >= 1)' "$bundle" >/dev/null ||
+  fail "the support bundle lacks the envelope or the database summary"
+
 step "delete apps → children are garbage-collected"
 for a in web tick cache; do expect 204 DELETE "$APP/${a}?delete_volumes=true"; done
 eventually 90 "deployment gone" bash -c "! kubectl -n $NS get deployment web-web"
