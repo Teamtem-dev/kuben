@@ -35,6 +35,7 @@ struct TestApp {
     projections: Arc<Projections>,
     org: OrgId,
     store: Store,
+    usage: Arc<kuben_platform::usage::UsageBuffer>,
 }
 
 /// The test app on a fresh PostgreSQL schema, or `None` (the test skips)
@@ -80,6 +81,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
 
     let health = Health::new();
     health.set_ready(true);
+    let usage = kuben_platform::usage::UsageBuffer::new();
     let projections = Arc::new(Projections::new());
     // CI trust with the fixture's keys, at a time its tokens are valid.
     let oidc = cfg.github_oidc_audience().map(|audience| {
@@ -103,6 +105,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     .with_github_oidc(oidc)
     .with_github(Some(kuben_api::github::GithubApp::webhook_only(HOOK_SECRET)))
     .with_dns(Arc::new(FakeDns::default()))
+    .with_usage(usage.clone())
     .with_sso(sso)
     .with_keyring(Arc::new(kuben_platform::secrets::Keyring::from_keys([(
         1, [7; 32],
@@ -112,6 +115,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
         projections,
         org: org.id,
         store,
+        usage,
     })
 }
 
@@ -3840,5 +3844,67 @@ async fn m5_image_policies_deploy_new_digests() {
     assert_eq!(
         send(&app.router, get(path, &alice)).await.0,
         StatusCode::NOT_FOUND
+    );
+}
+
+/// M5.5: usage is shown when measured and reported unavailable otherwise,
+/// never as zero.
+#[tokio::test]
+async fn m5_metrics_are_never_invented() {
+    let Some(app) = setup().await else { return };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let path = "/api/v1/projects/shop/environments/prod/apps/api/metrics";
+    let (status, empty) = send(&app.router, get(path, &alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (empty["available"].clone(), empty["points"].clone()),
+        (json!(false), json!([])),
+        "{empty}"
+    );
+    assert!(empty["reason"].as_str().is_some_and(|r| r.contains("no samples")));
+    let now = kuben_core::time::now_ms();
+    let key = kuben_platform::usage::SeriesKey {
+        namespace: "kb-shop-prod".into(),
+        app: "api".into(),
+        org: app.org.to_string(),
+    };
+    let sample = kuben_platform::usage::Sample {
+        at: now,
+        cpu_millis: 250,
+        memory_bytes: 64 << 20,
+        pods: 2,
+    };
+    app.usage.record(key, sample);
+    let (_, live) = send(&app.router, get(path, &alice)).await;
+    assert_eq!(live["available"], true, "{live}");
+    assert_eq!(
+        (
+            live["points"][0]["cpuMillis"].clone(),
+            live["points"][0]["pods"].clone()
+        ),
+        (json!(250), json!(2))
+    );
+
+    let week = format!("{path}?window=7d");
+    let (_, none) = send(&app.router, get(&week, &alice)).await;
+    assert_eq!(none["available"], false);
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let hour = kuben_platform::usage::hour_of(now) - 3_600_000;
+    t.keep_usage(target, (hour, 100, 400, 1_000, 2_000, 120))
+        .await
+        .expect("keep");
+    t.commit().await.expect("commit");
+    let (_, rolled) = send(&app.router, get(&week, &alice)).await;
+    assert_eq!(
+        (rolled["available"].clone(), rolled["points"][0]["cpuMax"].clone()),
+        (json!(true), json!(400)),
+        "{rolled}"
+    );
+    assert_eq!(
+        send(&app.router, get(&format!("{path}?window=2d"), &alice))
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
     );
 }

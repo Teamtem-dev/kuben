@@ -3779,6 +3779,75 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/metrics": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "An app's CPU and memory usage.",
+        "operationId": "getAppMetrics",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "description": "`1h` (live samples) or `7d` (hourly averages and peaks).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/pause": {
       "post": {
         "tags": [
@@ -9058,7 +9127,9 @@
         "type": "object",
         "required": [
           "status",
-          "checks"
+          "checks",
+          "graph",
+          "findings"
         ],
         "properties": {
           "status": {
@@ -9070,6 +9141,17 @@
             "items": {
               "$ref": "#/components/schemas/DoctorCheck"
             }
+          },
+          "graph": {
+            "type": "object",
+            "description": "Every layer from the build to the visitor, with what was observed\n(M5.5)."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Conclusions, root causes first; nothing unobserved counts as fine."
           }
         }
       },
@@ -9823,6 +9905,86 @@
           },
           "active": {
             "type": "boolean"
+          }
+        }
+      },
+      "MetricPoint": {
+        "type": "object",
+        "required": [
+          "at",
+          "cpuMillis",
+          "memoryBytes"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "description": "RFC 3339."
+          },
+          "cpuMillis": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "memoryBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cpuMax": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The hour's peaks (`7d` only).",
+            "minimum": 0
+          },
+          "memoryMax": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "pods": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Pods sampled (`1h` only).",
+            "minimum": 0
+          }
+        }
+      },
+      "MetricsDto": {
+        "type": "object",
+        "required": [
+          "window",
+          "available",
+          "points"
+        ],
+        "properties": {
+          "window": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False when there is nothing to show: never read as zero."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is unavailable."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricPoint"
+            }
           }
         }
       },

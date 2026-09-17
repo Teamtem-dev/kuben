@@ -544,6 +544,8 @@ pub struct RetentionCfg {
     pub webhook_delivery_days: u32,
     /// Resolved incidents.
     pub resolved_incident_days: u32,
+    /// Hourly usage of apps (M5.5).
+    pub usage_days: u32,
 }
 
 impl Default for RetentionCfg {
@@ -552,6 +554,7 @@ impl Default for RetentionCfg {
             outbox_days: 7,
             webhook_delivery_days: 30,
             resolved_incident_days: 180,
+            usage_days: 7,
         }
     }
 }

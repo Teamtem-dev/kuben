@@ -18,6 +18,7 @@ const OUTBOX: &str = "DELETE FROM outbox WHERE id IN (SELECT id FROM outbox \
      WHERE delivered_at IS NOT NULL AND delivered_at < $1 LIMIT $2)";
 const DELIVERIES: &str = "DELETE FROM webhook_deliveries WHERE id IN (SELECT id FROM webhook_deliveries \
      WHERE status <> 'pending' AND finished_at < $1 LIMIT $2)";
+const USAGE: &str = "DELETE FROM usage_rollups WHERE org_id = $2 AND hour < $1";
 const INCIDENTS: &str = "DELETE FROM incidents WHERE id IN (SELECT id FROM incidents \
      WHERE org_id = $3 AND resolved_at IS NOT NULL AND resolved_at < $1 LIMIT $2)";
 
@@ -28,6 +29,7 @@ pub struct Retained {
     pub outbox: u64,
     pub webhook_deliveries: u64,
     pub incidents: u64,
+    pub usage_hours: u64,
     /// A batch was full: more rows are due.
     pub more: bool,
 }
@@ -35,7 +37,7 @@ pub struct Retained {
 impl Retained {
     #[must_use]
     pub const fn total(&self) -> u64 {
-        self.sessions + self.outbox + self.webhook_deliveries + self.incidents
+        self.sessions + self.outbox + self.webhook_deliveries + self.incidents + self.usage_hours
     }
 }
 
@@ -67,6 +69,7 @@ impl Store {
                 .await?
                 .rows_affected(),
             incidents: 0,
+            usage_hours: 0,
             more: false,
         };
         let full = u64::try_from(BATCH).unwrap_or(u64::MAX);
@@ -76,6 +79,12 @@ impl Store {
             let removed = sqlx::query(INCIDENTS)
                 .bind(before(now, cfg.resolved_incident_days))
                 .bind(BATCH)
+                .bind(org.to_string())
+                .execute(&mut *tenant.tx)
+                .await?
+                .rows_affected();
+            done.usage_hours += sqlx::query(USAGE)
+                .bind(before(now, cfg.usage_days))
                 .bind(org.to_string())
                 .execute(&mut *tenant.tx)
                 .await?

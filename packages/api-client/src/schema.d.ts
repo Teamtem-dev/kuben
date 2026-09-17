@@ -891,6 +891,23 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An app's CPU and memory usage. */
+        get: operations["getAppMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/pause": {
         parameters: {
             query?: never;
@@ -2287,6 +2304,13 @@ export type components = {
             /** @description The worst status of the checks; `unknown` is never `ok`. */
             status: string;
             checks: components["schemas"]["DoctorCheck"][];
+            /**
+             * @description Every layer from the build to the visitor, with what was observed
+             *     (M5.5).
+             */
+            graph: Record<string, never>;
+            /** @description Conclusions, root causes first; nothing unobserved counts as fine. */
+            findings: Record<string, never>[];
         };
         DomainCheck: {
             host: string;
@@ -2527,6 +2551,34 @@ export type components = {
             /** @description Invited and has not replaced the temporary password yet. */
             must_change_password: boolean;
             active: boolean;
+        };
+        MetricPoint: {
+            /** @description RFC 3339. */
+            at: string;
+            /** Format: int64 */
+            cpuMillis: number;
+            /** Format: int64 */
+            memoryBytes: number;
+            /**
+             * Format: int64
+             * @description The hour's peaks (`7d` only).
+             */
+            cpuMax?: number | null;
+            /** Format: int64 */
+            memoryMax?: number | null;
+            /**
+             * Format: int32
+             * @description Pods sampled (`1h` only).
+             */
+            pods?: number | null;
+        };
+        MetricsDto: {
+            window: string;
+            /** @description False when there is nothing to show: never read as zero. */
+            available: boolean;
+            /** @description Why it is unavailable. */
+            reason?: string | null;
+            points: components["schemas"]["MetricPoint"][];
         };
         OwnerDto: {
             /**
@@ -5646,6 +5698,43 @@ export interface operations {
                 };
             };
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAppMetrics: {
+        parameters: {
+            query?: {
+                /** @description `1h` (live samples) or `7d` (hourly averages and peaks). */
+                window?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricsDto"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

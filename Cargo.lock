@@ -2127,6 +2127,7 @@ name = "kuben"
 version = "1.2.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "base64 0.23.1",
  "clap",

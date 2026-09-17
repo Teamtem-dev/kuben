@@ -48,6 +48,7 @@ base64.workspace = true
 axum.workspace = true
 futures.workspace = true
 uuid.workspace = true
+async-trait.workspace = true
 
 [dev-dependencies]
 kuben-store = { workspace = true, features = ["testing"] }

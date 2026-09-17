@@ -42,6 +42,13 @@ pub struct DoctorReport {
     /// The worst status of the checks; `unknown` is never `ok`.
     pub status: String,
     pub checks: Vec<DoctorCheck>,
+    /// Every layer from the build to the visitor, with what was observed
+    /// (M5.5).
+    #[schema(value_type = Object)]
+    pub graph: serde_json::Value,
+    /// Conclusions, root causes first; nothing unobserved counts as fine.
+    #[schema(value_type = Vec<Object>)]
+    pub findings: serde_json::Value,
 }
 
 fn status_name(status: Status) -> String {
@@ -117,9 +124,13 @@ pub async fn doctor(
         let stale_after = (state.cfg.agent.heartbeat_secs * 3).max(30);
         checks.push(doctor::agent_check(&agent(&state, &a).await?, stale_after));
     }
+    let graph = super::evidence::graph(&state, &a, &client, &checks).await?;
+    let findings = kuben_platform::evidence::diagnose(&graph);
     Ok(Json(DoctorReport {
         status: status_name(doctor::overall(&checks)),
         checks: checks.into_iter().map(DoctorCheck::from).collect(),
+        graph: serde_json::to_value(&graph).unwrap_or_default(),
+        findings: serde_json::to_value(&findings).unwrap_or_default(),
     }))
 }
 
