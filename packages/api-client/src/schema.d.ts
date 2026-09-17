@@ -147,6 +147,93 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dns-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's DNS provider accounts. */
+        get: operations["listDnsProviders"];
+        put?: never;
+        /** Add a DNS provider account; its token is checked first and kept sealed. */
+        post: operations["createDnsProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dns-providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a DNS provider account (its records stay at the provider). */
+        delete: operations["deleteDnsProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's domain claims. */
+        get: operations["listDomainClaims"];
+        put?: never;
+        /** Claim a domain; verify it next. */
+        post: operations["createDomainClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a claim: its apps keep their domains, but nothing protects them. */
+        delete: operations["revokeDomainClaim"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/domains/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a claim through its TXT record or a DNS provider account. */
+        post: operations["verifyDomainClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/git/installations": {
         parameters: {
             query?: never;
@@ -615,6 +702,26 @@ export type paths = {
         put?: never;
         /** Detach an app: Kuben lets go of it and leaves its objects running. */
         post: operations["detachApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write an app's DNS records: every custom domain the organization
+         *     verified points at the Gateway (or `domains.cname_target`).
+         */
+        post: operations["syncAppDns"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1751,6 +1858,23 @@ export type components = {
             /** Format: int64 */
             revokedAt?: number | null;
         };
+        ClaimDto: {
+            /** Format: uuid */
+            id: string;
+            domain: string;
+            /** @description `pending`, `verified` or `revoked`. */
+            status: string;
+            /** @description The TXT record that proves the claim, and its value. */
+            challengeName: string;
+            challengeValue: string;
+            /** @description `txt` or the provider kind that proved it. */
+            method?: string | null;
+            createdBy: string;
+            createdAt: string;
+            verifiedAt?: string | null;
+            lastCheckedAt?: string | null;
+            lastError?: string | null;
+        };
         CreateApp: {
             /** @example api */
             name: string;
@@ -1843,6 +1967,18 @@ export type components = {
              * @description Life of an exchanged token, 60–3600 seconds (default 900).
              */
             tokenTtlSecs?: number | null;
+        };
+        CreateClaim: {
+            /** @example example.com */
+            domain: string;
+        };
+        CreateDnsProvider: {
+            /** @example cloudflare */
+            name: string;
+            /** @description `cloudflare`. */
+            kind: string;
+            /** @description An API token that may edit the zones' DNS (write-only). */
+            token: string;
         };
         CreateEndpoint: {
             /** @example ops-pager */
@@ -2055,10 +2191,30 @@ export type components = {
             /** @description The export frozen with the request (only when one app is read). */
             export?: Record<string, never> | null;
         };
+        DnsChangeDto: {
+            host: string;
+            recordType?: string | null;
+            content?: string | null;
+            /**
+             * @description `created`, `updated`, `unchanged`, `deleted`, `conflict`, `skipped` or
+             *     `failed`.
+             */
+            action: string;
+            detail?: string | null;
+        };
+        DnsProviderDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description `cloudflare`. */
+            kind: string;
+            createdBy: string;
+            createdAt: string;
+        };
         DoctorCheck: {
             /**
              * @description `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
-             *     `certificate`, `dns` or `agent`.
+             *     `certificate`, `dns`, `claim`, `delegation`, `proxy` or `agent`.
              */
             id: string;
             /** @description What was checked (a host, a class, a port), when there are several. */
@@ -2747,6 +2903,10 @@ export type components = {
         };
         /** @enum {string} */
         StrategyDto: "auto" | "dockerfile" | "railpack";
+        SyncDns: {
+            /** @description The DNS provider account to write through. */
+            provider: string;
+        };
         TemplateDto: {
             id: string;
             name: string;
@@ -2819,6 +2979,10 @@ export type components = {
              *     anything else is allowed.
              */
             must_change_password: boolean;
+        };
+        VerifyClaim: {
+            /** @description Prove the claim with this DNS provider account instead of a TXT record. */
+            provider?: string | null;
         };
         /** @description Persistent volume (kept when the app is deleted, unless requested). */
         VolumeDto: {
@@ -3140,6 +3304,229 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDnsProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderDto"][];
+                };
+            };
+        };
+    };
+    createDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDnsProvider"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsProviderDto"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown kind, or the provider refused the token */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteDnsProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDomainClaims: {
+        parameters: {
+            query?: {
+                /** @description Include revoked claims. */
+                all?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimDto"][];
+                };
+            };
+        };
+    };
+    createDomainClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateClaim"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimDto"];
+                };
+            };
+            /** @description Claimed already, here or elsewhere */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revokeDomainClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Claim id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    verifyDomainClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Claim id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyClaim"];
+            };
+        };
+        responses: {
+            /** @description The claim; `lastError` says why it is still pending */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another organization verified an overlapping domain */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4675,6 +5062,44 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    syncAppDns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncDns"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DnsChangeDto"][];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -38,6 +38,81 @@ This guide assumes the platform is configured with a Gateway and a `clusterIssue
 
 Kuben refuses the same domain on a second app with `409 Conflict`. At the gateway, each hostname only accepts routes from the namespace that claimed it first, so one tenant cannot take over another tenant's domain by adding it to their own app.
 
+## Claim your domain
+
+An organization **claims** a domain before its apps use it. A claim on `example.com` covers the domain itself and every name below it, such as `shop.example.com` and `api.example.com`.
+
+- **Verified is exclusive.** Once a claim is verified, no other organization on the installation can verify an overlapping name or serve a host below it. Kuben checks this in one transaction, so two organizations can never both win.
+- **Optional by default.** Unclaimed domains still work. With `domains.require_claim = true`, an app can only use domains its organization has verified. Either way, a domain another organization verified is refused.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"domain":"example.com"}' https://kuben.example.com/api/v1/domains
+```
+
+The answer names a TXT record, `_kuben-challenge.example.com`, and the value it must hold. There are two ways to prove the claim:
+
+- **With a TXT record.** Create that record, then verify:
+  ```bash
+  curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{}' \
+    https://kuben.example.com/api/v1/domains/<id>/verify
+  ```
+  Kuben reads the record through DNS-over-HTTPS (`domains.doh_url`), so what counts is the public DNS. If the record is missing or wrong, the claim stays `pending` and `lastError` says why.
+- **With a DNS provider account.** If one of your organization's provider accounts holds the domain's zone, `{"provider":"cf"}` verifies the claim without a TXT record.
+
+Revoking a claim (`DELETE /api/v1/domains/<id>`) removes the protection. Apps keep their domains.
+
+## DNS records through Cloudflare
+
+Add a Cloudflare account once. Use an API token with **Zone → DNS → Edit** on your zones:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"name":"cf","kind":"cloudflare","token":"<api token>"}' \
+  https://kuben.example.com/api/v1/dns-providers
+```
+
+Kuben checks the token before saving it, stores it encrypted, and never shows it again.
+
+Then write an app's records:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"provider":"cf"}' \
+  https://kuben.example.com/api/v1/projects/shop/environments/prod/apps/web/dns
+```
+
+Every custom domain your organization has verified gets records pointing at the Gateway:
+
+- **By default:** A and AAAA records for the Gateway's public addresses.
+- **With `domains.cname_target`:** a CNAME to that name.
+
+Kuben is careful with records it did not write:
+
+- **Tagging.** Its records carry the comment `kuben:<organization>`.
+- **Conflicts.** A record of the same name and type without that comment is reported as a `conflict` and never overwritten.
+- **Deletion.** A record is deleted only when Cloudflare still reports the id Kuben stored for it.
+- **Retries.** Running the call again is safe: records that are already right are reported `unchanged`.
+
+## Wildcard and apex certificates (DNS-01)
+
+HTTP-01 challenges need port 80 to reach the Gateway directly. For wildcard certificates, for apex names, or behind a proxy, use DNS-01 through Cloudflare:
+
+```bash
+kuben dns01-issuer --email ops@example.com --token-file /root/cloudflare-token
+kubectl patch kubenconfig kuben --type merge -p '{"spec":{"clusterIssuer":"letsencrypt-dns"}}'
+```
+
+The command stores the token in a Secret next to cert-manager and creates the ClusterIssuer `letsencrypt-dns`. Add `--staging` to test against Let's Encrypt's staging server, or `--dry-run` to print the objects without applying them.
+
+## Doctor
+
+For each custom domain, an app's Doctor also reports:
+
+- **claim:** whether your organization verified the domain.
+- **delegation:** the zone's public name servers.
+- **proxy:** whether a provider proxies the record. A proxy means visitors reach the provider's edge rather than your Gateway, so use DNS-01 certificates there.
+
 ## Generated hostnames
 
 Every HTTP app also answers on `<app>-<environment>.<baseDomain>`, for example `api-production.apps.example.com`. With many apps, provide a **wildcard certificate** for `*.<baseDomain>` (a DNS-01 `Certificate`) as `wildcardTlsSecret`; all generated hostnames then share one listener instead of each taking one.

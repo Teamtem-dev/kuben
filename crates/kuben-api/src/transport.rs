@@ -136,4 +136,22 @@ impl Transport {
             .map_err(|_| "timed out".to_owned())?
             .map_err(|e| chain(&e))
     }
+
+    /// Send `request` and read at most `max_body` bytes of the answer within
+    /// the transport's timeout: the status and the body.
+    pub async fn fetch(
+        &self,
+        request: Request<Full<Bytes>>,
+        max_body: usize,
+    ) -> Result<(http::StatusCode, Bytes), String> {
+        use http_body_util::{BodyExt as _, Limited};
+        let response = self.send(request).await?;
+        let (parts, body) = response.into_parts();
+        let body = tokio::time::timeout(self.timeout, Limited::new(body, max_body).collect())
+            .await
+            .map_err(|_| "timed out reading the answer".to_owned())?
+            .map_err(|e| chain(&*e))?
+            .to_bytes();
+        Ok((parts.status, body))
+    }
 }

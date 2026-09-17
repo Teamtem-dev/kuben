@@ -383,6 +383,298 @@
         }
       }
     },
+    "/api/v1/dns-providers": {
+      "get": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "The organization's DNS provider accounts.",
+        "operationId": "listDnsProviders",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DnsProviderDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Add a DNS provider account; its token is checked first and kept sealed.",
+        "operationId": "createDnsProvider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDnsProvider"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnsProviderDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unknown kind, or the provider refused the token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dns-providers/{id}": {
+      "delete": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Remove a DNS provider account (its records stay at the provider).",
+        "operationId": "deleteDnsProvider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains": {
+      "get": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "The organization's domain claims.",
+        "operationId": "listDomainClaims",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Include revoked claims.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Claim a domain; verify it next.",
+        "operationId": "createDomainClaim",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClaim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Claimed already, here or elsewhere",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains/{id}": {
+      "delete": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Revoke a claim: its apps keep their domains, but nothing protects them.",
+        "operationId": "revokeDomainClaim",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Claim id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/domains/{id}/verify": {
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Verify a claim through its TXT record or a DNS provider account.",
+        "operationId": "verifyDomainClaim",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Claim id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyClaim"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The claim; `lastError` says why it is still pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another organization verified an overlapping domain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/git/installations": {
       "get": {
         "tags": [
@@ -2694,6 +2986,79 @@
             }
           },
           "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/dns": {
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Write an app's DNS records: every custom domain the organization\nverified points at the Gateway (or `domains.cname_target`).",
+        "operationId": "syncAppDns",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncDns"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DnsChangeDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
             "description": "",
             "content": {
               "application/json": {
@@ -7384,6 +7749,69 @@
           }
         }
       },
+      "ClaimDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "challengeName",
+          "challengeValue",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "`pending`, `verified` or `revoked`."
+          },
+          "challengeName": {
+            "type": "string",
+            "description": "The TXT record that proves the claim, and its value."
+          },
+          "challengeValue": {
+            "type": "string"
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`txt` or the provider kind that proved it."
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "verifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CreateApp": {
         "type": "object",
         "required": [
@@ -7583,6 +8011,42 @@
             "format": "int32",
             "description": "Life of an exchanged token, 60–3600 seconds (default 900).",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateClaim": {
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "example": "example.com"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateDnsProvider": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "token"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "cloudflare"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`cloudflare`."
+          },
+          "token": {
+            "type": "string",
+            "description": "An API token that may edit the zones' DNS (write-only)."
           }
         },
         "additionalProperties": false
@@ -8128,6 +8592,69 @@
           }
         }
       },
+      "DnsChangeDto": {
+        "type": "object",
+        "required": [
+          "host",
+          "action"
+        ],
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "recordType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "description": "`created`, `updated`, `unchanged`, `deleted`, `conflict`, `skipped` or\n`failed`."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DnsProviderDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`cloudflare`."
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        }
+      },
       "DoctorCheck": {
         "type": "object",
         "required": [
@@ -8139,7 +8666,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "`gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,\n`certificate`, `dns` or `agent`."
+            "description": "`gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,\n`certificate`, `dns`, `claim`, `delegation`, `proxy` or `agent`."
           },
           "subject": {
             "type": "string",
@@ -10128,6 +10655,19 @@
           "railpack"
         ]
       },
+      "SyncDns": {
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "The DNS provider account to write through."
+          }
+        },
+        "additionalProperties": false
+      },
       "TemplateDto": {
         "type": "object",
         "required": [
@@ -10400,6 +10940,19 @@
           }
         }
       },
+      "VerifyClaim": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Prove the claim with this DNS provider account instead of a TXT record."
+          }
+        },
+        "additionalProperties": false
+      },
       "VolumeDto": {
         "type": "object",
         "description": "Persistent volume (kept when the app is deleted, unless requested).",
@@ -10504,6 +11057,10 @@
     {
       "name": "previews",
       "description": "Preview environments of pull requests"
+    },
+    {
+      "name": "domains",
+      "description": "Domain claims, DNS providers and app DNS records"
     },
     {
       "name": "git",

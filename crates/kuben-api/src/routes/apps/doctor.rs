@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DoctorCheck {
     /// `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`,
-    /// `certificate`, `dns` or `agent`.
+    /// `certificate`, `dns`, `claim`, `delegation`, `proxy` or `agent`.
     pub id: String,
     /// What was checked (a host, a class, a port), when there are several.
     pub subject: String,
@@ -112,6 +112,7 @@ pub async fn doctor(
         async move { doctor::dns_check(host, &doctor::resolve(host).await, addresses) }
     });
     checks.extend(futures::future::join_all(dns).await);
+    checks.extend(domain_checks(&state, &a).await?);
     if a.app.delivery == Delivery::Agent {
         let stale_after = (state.cfg.agent.heartbeat_secs * 3).max(30);
         checks.push(doctor::agent_check(&agent(&state, &a).await?, stale_after));
@@ -120,6 +121,67 @@ pub async fn doctor(
         status: status_name(doctor::overall(&checks)),
         checks: checks.into_iter().map(DoctorCheck::from).collect(),
     }))
+}
+
+/// Each custom domain's claim, delegation and proxy (M5.2).
+async fn domain_checks(state: &ApiState, a: &AppScope) -> ApiResult<Vec<Check>> {
+    let org = a.env.project.org;
+    let hosts: Vec<String> = super::desired_spec(&a.app)
+        .map(|spec| spec.domains.into_iter().map(|d| d.host).collect())
+        .unwrap_or_default();
+    let mut checks = Vec::new();
+    for host in hosts {
+        let Ok(host) = kuben_core::domain::canonical(&host) else {
+            continue;
+        };
+        let owner = match state.store.domain_owner(&host).await? {
+            Some((domain, owner)) if owner == org => doctor::ClaimOwner::Ours(domain),
+            Some(_) => doctor::ClaimOwner::Others,
+            None => doctor::ClaimOwner::Nobody,
+        };
+        checks.push(doctor::claim_check(
+            &host,
+            &owner,
+            state.cfg.domains.require_claim,
+        ));
+        let zone = kuben_core::domain::lock_key(&host).to_owned();
+        let servers = state.dns.ns(&zone).await.map_err(|e| e.to_string());
+        checks.push(doctor::delegation_check(
+            &host,
+            &zone,
+            servers.as_deref().map_err(String::as_str),
+        ));
+        checks.push(doctor::proxy_check(&host, proxied(state, org, &host).await));
+    }
+    Ok(checks)
+}
+
+/// Whether a DNS provider account of `org` proxies `host`'s record; `None`
+/// when no account holds it (or none answered).
+async fn proxied(state: &ApiState, org: kuben_core::ids::OrgId, host: &str) -> Option<bool> {
+    let keyring = state.keyring.as_deref()?;
+    let mut tenant = state.store.tenant(org).await.ok()?;
+    for p in tenant.dns_providers().await.ok()? {
+        let Ok(Some((kind, sealed))) = tenant.dns_provider_secret(p.id).await else {
+            continue;
+        };
+        let Some(token) = crate::notify::open_secret(keyring, org, p.id, &sealed)
+            .ok()
+            .and_then(|t| String::from_utf8(t).ok())
+        else {
+            continue;
+        };
+        let Some(api) = state.dns.provider(&kind, &token) else {
+            continue;
+        };
+        if let Ok(Some(zone)) = api.zone_for(host).await
+            && let Ok(records) = api.records(&zone, host).await
+            && !records.is_empty()
+        {
+            return Some(records.iter().any(|r| r.proxied));
+        }
+    }
+    None
 }
 
 /// A recorded observation older than this is asked again.

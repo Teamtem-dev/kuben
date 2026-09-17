@@ -10,6 +10,7 @@ pub mod audit;
 pub mod auth;
 pub mod authz;
 pub mod client;
+pub mod dns;
 pub mod error;
 pub mod github;
 pub mod host;

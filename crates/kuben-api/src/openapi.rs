@@ -8,8 +8,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::{
     auth,
     routes::{
-        access, apps, audit, ci, controls, environments, git, health, incidents, members, policy, previews,
-        projects, registries, secrets, templates, tokens, vulnerabilities,
+        access, apps, audit, ci, controls, domains, environments, git, health, incidents, members, policy,
+        previews, projects, registries, secrets, templates, tokens, vulnerabilities,
     },
     state::ApiState,
 };
@@ -30,6 +30,7 @@ use crate::{
         (name = "security", description = "Vulnerability exceptions"),
         (name = "incidents", description = "Incidents and signed webhooks"),
         (name = "previews", description = "Preview environments of pull requests"),
+        (name = "domains", description = "Domain claims, DNS providers and app DNS records"),
         (name = "git", description = "GitHub App installations for Git sources"),
         (name = "ci", description = "Trust for external CI (GitHub Actions OIDC)"),
         (name = "templates", description = "One-click services and databases"),
@@ -115,6 +116,12 @@ pub fn api_router() -> OpenApiRouter<ApiState> {
         .routes(routes!(previews::list))
         .routes(routes!(previews::extend))
         .routes(routes!(previews::destroy))
+        .routes(routes!(domains::list, domains::create))
+        .routes(routes!(domains::verify))
+        .routes(routes!(domains::revoke))
+        .routes(routes!(domains::list_providers, domains::create_provider))
+        .routes(routes!(domains::delete_provider))
+        .routes(routes!(domains::sync_app))
         .routes(routes!(vulnerabilities::list, vulnerabilities::create))
         .routes(routes!(vulnerabilities::revoke))
         .routes(routes!(templates::list))

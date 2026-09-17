@@ -104,6 +104,7 @@ pub const CONFIG_ALLOWLIST: &[&str] = &[
     "backup",
     "notify",
     "retention",
+    "domains",
 ];
 
 /// Options of `kuben support-bundle`.

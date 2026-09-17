@@ -102,6 +102,7 @@ async fn setup_with(tweak: impl FnOnce(&mut Config)) -> Option<TestApp> {
     .with_images(images())
     .with_github_oidc(oidc)
     .with_github(Some(kuben_api::github::GithubApp::webhook_only(HOOK_SECRET)))
+    .with_dns(Arc::new(FakeDns::default()))
     .with_sso(sso)
     .with_keyring(Arc::new(kuben_platform::secrets::Keyring::from_keys([(
         1, [7; 32],
@@ -3459,4 +3460,221 @@ async fn forks_and_manual_actions(app: &TestApp, alice: &str, policy: &str, prev
         .and_then(|a| a.iter().find(|p| p["environment"] == "pr13-1"))
         .expect("closed");
     assert_eq!(closed["closeReason"], "manual");
+}
+
+/// DNS for the tests: TXT answers from `TXT_VALUE`, and a provider whose
+/// token `good` holds the zone `example.com`.
+#[derive(Debug, Default)]
+struct FakeDns {
+    records: Arc<std::sync::Mutex<Vec<kuben_api::dns::ProviderRecord>>>,
+}
+
+/// The TXT value the fake resolver answers for every challenge name.
+static TXT_VALUE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+#[async_trait::async_trait]
+impl kuben_api::dns::DnsBackend for FakeDns {
+    async fn txt(&self, _name: &str) -> Result<Vec<String>, kuben_api::dns::DnsError> {
+        let value = TXT_VALUE.lock().expect("lock").clone();
+        Ok(if value.is_empty() { vec![] } else { vec![value] })
+    }
+
+    async fn ns(&self, _name: &str) -> Result<Vec<String>, kuben_api::dns::DnsError> {
+        Ok(vec!["ada.ns.cloudflare.com".into()])
+    }
+
+    fn provider(&self, kind: &str, token: &str) -> Option<Arc<dyn kuben_api::dns::DnsProvider>> {
+        (kind == "cloudflare").then(|| {
+            Arc::new(FakeProvider {
+                good: token == "good",
+                records: self.records.clone(),
+            }) as Arc<dyn kuben_api::dns::DnsProvider>
+        })
+    }
+}
+
+#[derive(Debug)]
+struct FakeProvider {
+    good: bool,
+    records: Arc<std::sync::Mutex<Vec<kuben_api::dns::ProviderRecord>>>,
+}
+
+#[async_trait::async_trait]
+impl kuben_api::dns::DnsProvider for FakeProvider {
+    async fn verify(&self) -> Result<(), kuben_api::dns::DnsError> {
+        if self.good {
+            Ok(())
+        } else {
+            Err(kuben_api::dns::DnsError::Refused("bad token".into()))
+        }
+    }
+
+    async fn zone_for(&self, name: &str) -> Result<Option<kuben_api::dns::Zone>, kuben_api::dns::DnsError> {
+        Ok(
+            (name == "example.com" || name.ends_with(".example.com")).then(|| kuben_api::dns::Zone {
+                id: "z1".into(),
+                name: "example.com".into(),
+                name_servers: vec![],
+            }),
+        )
+    }
+
+    async fn records(
+        &self,
+        _zone: &kuben_api::dns::Zone,
+        name: &str,
+    ) -> Result<Vec<kuben_api::dns::ProviderRecord>, kuben_api::dns::DnsError> {
+        let all = self.records.lock().expect("lock");
+        Ok(all.iter().filter(|r| r.name == name).cloned().collect())
+    }
+
+    async fn create(
+        &self,
+        _zone: &kuben_api::dns::Zone,
+        spec: &kuben_api::dns::RecordSpec,
+        tag: &str,
+    ) -> Result<kuben_api::dns::ProviderRecord, kuben_api::dns::DnsError> {
+        let mut all = self.records.lock().expect("lock");
+        let record = kuben_api::dns::ProviderRecord {
+            id: format!("r{}", all.len() + 1),
+            name: spec.name.clone(),
+            record_type: spec.record_type.clone(),
+            content: spec.content.clone(),
+            proxied: false,
+            comment: Some(tag.into()),
+        };
+        all.push(record.clone());
+        Ok(record)
+    }
+
+    async fn update(
+        &self,
+        zone: &kuben_api::dns::Zone,
+        id: &str,
+        spec: &kuben_api::dns::RecordSpec,
+        tag: &str,
+    ) -> Result<kuben_api::dns::ProviderRecord, kuben_api::dns::DnsError> {
+        self.delete(zone, id).await?;
+        self.create(zone, spec, tag).await
+    }
+
+    async fn delete(&self, _zone: &kuben_api::dns::Zone, id: &str) -> Result<(), kuben_api::dns::DnsError> {
+        self.records.lock().expect("lock").retain(|r| r.id != id);
+        Ok(())
+    }
+}
+
+/// M5.2: domains are claimed and verified by TXT or a provider, another
+/// organization's domain is refused, and an app's records are written once.
+#[tokio::test]
+async fn m5_domain_claims_and_dns_records() {
+    let Some(app) = setup_with(|cfg| cfg.domains.cname_target = Some("lb.example.net".into())).await else {
+        return;
+    };
+    let target = sql_app(&app).await;
+    let alice = login(&app.router, "alice@example.com").await;
+    let bob = login(&app.router, "bob@example.com").await;
+    let body = json!({ "domain": "Shop.Example.com." });
+    assert_eq!(
+        post_json(&app, "/api/v1/domains", &bob, body.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, claim) = post_json(&app, "/api/v1/domains", &alice, body.clone()).await;
+    assert_eq!(
+        (status, claim["domain"].clone()),
+        (StatusCode::CREATED, json!("shop.example.com")),
+        "{claim}"
+    );
+    assert_eq!(claim["challengeName"], "_kuben-challenge.shop.example.com");
+    assert_eq!(
+        post_json(&app, "/api/v1/domains", &alice, body).await.0,
+        StatusCode::CONFLICT
+    );
+    let verify = format!("/api/v1/domains/{}/verify", claim["id"].as_str().expect("id"));
+    let (_, pending) = post_json(&app, &verify, &alice, json!({})).await;
+    assert_eq!(pending["status"], "pending");
+    assert!(
+        pending["lastError"]
+            .as_str()
+            .is_some_and(|e| e.contains("no TXT record")),
+        "{pending}"
+    );
+    *TXT_VALUE.lock().expect("lock") = claim["challengeValue"].as_str().expect("value").to_owned();
+    let (_, verified) = post_json(&app, &verify, &alice, json!({})).await;
+    assert_eq!(
+        (verified["status"].clone(), verified["method"].clone()),
+        (json!("verified"), json!("txt"))
+    );
+    TXT_VALUE.lock().expect("lock").clear();
+
+    let providers = "/api/v1/dns-providers";
+    let bad = json!({ "name": "cf", "kind": "cloudflare", "token": "bad" });
+    assert_eq!(
+        post_json(&app, providers, &alice, bad).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let unknown = json!({ "name": "cf", "kind": "route53", "token": "good" });
+    assert_eq!(
+        post_json(&app, providers, &alice, unknown).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (status, _) = post_json(
+        &app,
+        providers,
+        &alice,
+        json!({ "name": "cf", "kind": "cloudflare", "token": "good" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, api_claim) = post_json(
+        &app,
+        "/api/v1/domains",
+        &alice,
+        json!({ "domain": "api.example.com" }),
+    )
+    .await;
+    let verify = format!("/api/v1/domains/{}/verify", api_claim["id"].as_str().expect("id"));
+    let (_, by_provider) = post_json(&app, &verify, &alice, json!({ "provider": "cf" })).await;
+    assert_eq!(by_provider["method"], "cloudflare", "{by_provider}");
+    app_records(&app, &alice, target).await;
+}
+
+async fn app_records(app: &TestApp, alice: &str, target: kuben_core::ids::TargetId) {
+    let mut t = app.store.tenant(app.org).await.expect("tenant");
+    let project = t.projects().await.expect("projects")[0].id;
+    let config = json!({ "runtime": { "processes": { "web": { "port": 8080 } } }, "domains": [{ "host": "shop.example.com" }] });
+    t.create_config_revision(project, target, &config, "user:test")
+        .await
+        .expect("config");
+    t.commit().await.expect("commit");
+    let dns = "/api/v1/projects/shop/environments/prod/apps/api/dns";
+    let (status, changes) = post_json(app, dns, alice, json!({ "provider": "cf" })).await;
+    assert_eq!(status, StatusCode::OK, "{changes}");
+    assert_eq!(
+        (
+            changes[0]["action"].clone(),
+            changes[0]["recordType"].clone(),
+            changes[0]["content"].clone()
+        ),
+        (json!("created"), json!("CNAME"), json!("lb.example.net"))
+    );
+    let (_, again) = post_json(app, dns, alice, json!({ "provider": "cf" })).await;
+    assert_eq!(again[0]["action"], "unchanged", "{again}");
+    let other = app.store.create_org("rival", "Rival").await.expect("org").id;
+    let mut t = app.store.tenant(other).await.expect("tenant");
+    let claim = uuid::Uuid::now_v7();
+    t.create_claim(claim, "rival.io", &"x".repeat(32), "user:r")
+        .await
+        .expect("claim");
+    t.verify_claim(claim, "txt", None).await.expect("verify");
+    t.commit().await.expect("commit");
+    let taken = json!({ "name": "web2", "image": "nginx:1.27", "port": 8080, "domains": ["www.rival.io"] });
+    let (status, body) = post_json(app, "/api/v1/projects/shop/environments/prod/apps", alice, taken).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "another organization's domain: {body}"
+    );
+    let (status, _) = post_json(app, "/api/v1/domains", alice, json!({ "domain": "rival.io" })).await;
+    assert_eq!(status, StatusCode::CONFLICT);
 }

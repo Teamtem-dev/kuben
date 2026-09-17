@@ -42,6 +42,8 @@ pub struct ApiState {
     pub sso: Option<Arc<crate::sso::SsoClient>>,
     /// Seals secret values; `None` refuses to store them (M4.4).
     pub keyring: Option<Arc<kuben_platform::secrets::Keyring>>,
+    /// DNS lookups and provider accounts (M5.2).
+    pub dns: Arc<dyn crate::dns::DnsBackend>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -69,6 +71,7 @@ impl ApiState {
         let hasher = Arc::new(Hasher::from_config(&cfg.security));
         let login_permits = Arc::new(Semaphore::new(cfg.security.login_concurrency.max(1)));
         let throttle = LoginThrottle::new(&cfg.security, store.clone());
+        let cfg_domains = cfg.domains.clone();
         Self {
             cfg: Arc::new(cfg),
             store,
@@ -87,7 +90,15 @@ impl ApiState {
             github_oidc: None,
             sso: None,
             keyring: None,
+            dns: Arc::new(crate::dns::PublicDns::new(&cfg_domains)),
         }
+    }
+
+    /// Look names up and reach DNS providers through `dns`.
+    #[must_use]
+    pub fn with_dns(mut self, dns: Arc<dyn crate::dns::DnsBackend>) -> Self {
+        self.dns = dns;
+        self
     }
 
     /// Resolve images with `images` instead of asking their registries.

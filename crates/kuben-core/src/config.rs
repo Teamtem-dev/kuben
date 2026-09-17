@@ -45,6 +45,7 @@ pub struct Config {
     pub backup: BackupCfg,
     pub notify: NotifyCfg,
     pub retention: RetentionCfg,
+    pub domains: DomainsCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -502,6 +503,34 @@ pub struct NotifyCfg {
     pub allow_private_targets: bool,
     /// Allow `http://` endpoints (by default only `https://`).
     pub allow_http: bool,
+}
+
+/// Domain claims and DNS providers (M5.2).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DomainsCfg {
+    /// Apps may only use custom domains their organization verified. Off by
+    /// default; a domain another organization verified is refused either
+    /// way.
+    pub require_claim: bool,
+    /// The DNS-over-HTTPS resolver claims are checked with (JSON API).
+    pub doh_url: String,
+    /// The Cloudflare API.
+    pub cloudflare_api_url: String,
+    /// Records Kuben writes for an app point here (a CNAME) instead of at
+    /// the Gateway's addresses.
+    pub cname_target: Option<String>,
+}
+
+impl Default for DomainsCfg {
+    fn default() -> Self {
+        Self {
+            require_claim: false,
+            doh_url: "https://cloudflare-dns.com/dns-query".into(),
+            cloudflare_api_url: "https://api.cloudflare.com/client/v4".into(),
+            cname_target: None,
+        }
+    }
 }
 
 /// How long rows that only describe the past are kept (M4.12). Audit

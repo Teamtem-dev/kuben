@@ -6,6 +6,7 @@ pub mod apps;
 pub mod audit;
 pub mod ci;
 pub mod controls;
+pub mod domains;
 pub mod environments;
 pub mod git;
 pub mod health;

@@ -2,6 +2,7 @@ pub mod admin;
 pub mod agent;
 pub mod backup;
 pub mod client;
+pub mod dns01;
 pub mod doctor;
 pub mod setup;
 pub mod support;
@@ -79,6 +80,9 @@ pub enum Command {
     /// doctor, database counts, cluster state and (with --logs) Kuben's
     /// logs. Nothing is uploaded; `--preview` writes nothing.
     SupportBundle(support::SupportOpts),
+    /// Set up a cert-manager ClusterIssuer that answers ACME DNS-01
+    /// challenges through Cloudflare (wildcard and apex certificates).
+    Dns01Issuer(dns01::Dns01Opts),
     /// Print version information; `--bundle` adds what a release installs
     /// besides Kuben, with its digests.
     Version(VersionOpts),
