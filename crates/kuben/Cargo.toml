@@ -24,6 +24,7 @@ full = ["embed-ui", "activator"]
 kuben-core.workspace = true
 kuben-crd.workspace = true
 kuben-store.workspace = true
+kuben-agent.workspace = true
 kuben-platform.workspace = true
 kuben-api.workspace = true
 tokio.workspace = true

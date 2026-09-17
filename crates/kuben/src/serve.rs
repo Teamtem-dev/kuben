@@ -51,7 +51,8 @@ async fn serve(cfg: Config) -> anyhow::Result<()> {
     let health = Health::new();
     tokio::spawn(watchdog(health.clone(), shutdown.child_token()));
 
-    let store = kuben_store::Store::connect(&cfg.database).await?;
+    let store = kuben_store::Store::connect_unmigrated(&cfg.database).await?;
+    crate::cli::upgrade::migrate(&cfg, &store).await?;
     database_ready(&cfg, &store, &health, &shutdown).await;
     let cluster = ClusterRegistry::from_config(&cfg.kube).await?;
     let election = election(&cfg)?;

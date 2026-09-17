@@ -67,6 +67,9 @@ backup:
   # Also copy the keyring into each backup: whoever has such a backup can
   # read every secret.
   includeKeyring: false
+  # Before `helm upgrade`: a backup, then the new version's preflight; a
+  # failure stops the upgrade (see `kuben upgrade-check`).
+  beforeUpgrade: true
   # An image with PostgreSQL client tools at least as new as the server;
   # default: the chart's PostgreSQL image.
   image: ""

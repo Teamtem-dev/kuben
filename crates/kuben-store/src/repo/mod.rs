@@ -26,6 +26,7 @@ mod sessions;
 mod sso;
 mod throttle;
 mod tokens;
+mod upgrades;
 mod usage;
 mod users;
 
@@ -61,4 +62,5 @@ pub use sessions::NewSession;
 pub use sso::{PendingSso, SsoSignIn};
 pub use throttle::ThrottleWindow;
 pub use tokens::NewToken;
+pub use upgrades::{Migrated, SchemaState};
 pub use usage::LiveConfig;

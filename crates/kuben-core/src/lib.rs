@@ -18,5 +18,6 @@ pub mod source;
 pub mod sso;
 pub mod time;
 pub mod traits;
+pub mod upgrade;
 
 pub use error::{Error, Result};

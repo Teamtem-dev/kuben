@@ -19,6 +19,14 @@ pub enum StoreError {
         "database.url is not set: Kuben keeps its data in PostgreSQL. For a local server run `docker run -d --name kuben-postgres -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine` and set KUBEN_DATABASE__URL=postgres://postgres:kuben@localhost:5432/postgres"
     )]
     NotConfigured,
+    #[error(
+        "the database is at schema {database}, newer than this Kuben knows ({binary}): it was upgraded by a newer Kuben; run that version or newer, or restore the backup taken before the upgrade"
+    )]
+    SchemaAhead { database: i64, binary: i64 },
+    #[error(
+        "a database migration failed half-way (_sqlx_migrations has an unsuccessful row): restore the backup taken before the upgrade"
+    )]
+    DirtySchema,
 }
 
 impl From<StoreError> for kuben_core::Error {
@@ -100,6 +108,7 @@ impl Store {
 
     async fn migrated(pool: PgPool) -> Result<Self, StoreError> {
         let store = Self { pool };
+        store.guard_schema().await?;
         store.migrate().await?;
         Ok(store)
     }

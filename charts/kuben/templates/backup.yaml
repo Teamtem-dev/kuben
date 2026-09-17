@@ -2,9 +2,16 @@
 Scheduled backups (M4.7): `kuben backup` runs next to PostgreSQL's client
 tools (the chart's PostgreSQL image) and writes to a kept volume. Copy the
 backups off the cluster: a backup on the same storage is no backup.
+Before `helm upgrade` (M4.8), a hook Job takes a backup and runs the new
+version's preflight; a failure stops the upgrade before anything changed.
 */}}
 {{- if .Values.backup.enabled }}
 {{- $name := printf "%s-backup" (include "kuben.fullname" .) }}
+{{- $claim := .Values.backup.persistence.existingClaim | default $name }}
+{{- $backup := list "/tools/kuben" "backup" "--scheduled" }}
+{{- if .Values.backup.includeKeyring }}
+{{- $backup = append $backup "--include-keyring" }}
+{{- end }}
 {{- if not .Values.backup.persistence.existingClaim }}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -40,95 +47,25 @@ spec:
       backoffLimit: 1
       activeDeadlineSeconds: {{ .Values.backup.deadlineSeconds }}
       template:
-        metadata:
-          labels:
-            {{- include "kuben.selectorLabels" . | nindent 12 }}
-            app.kubernetes.io/component: backup
-        spec:
-          restartPolicy: Never
-          automountServiceAccountToken: false
-          enableServiceLinks: false
-          {{- with .Values.imagePullSecrets }}
-          imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 65532
-            runAsGroup: 65532
-            fsGroup: 65532
-            seccompProfile:
-              type: RuntimeDefault
-          initContainers:
-            # The release image has no shell: the binary copies itself.
-            - name: kuben
-              image: {{ include "kuben.image" . }}
-              imagePullPolicy: {{ .Values.image.pullPolicy }}
-              args: ["copy-self", "/tools/kuben"]
-              resources:
-                requests: {cpu: 10m, memory: 16Mi}
-                limits: {memory: 64Mi}
-              securityContext:
-                allowPrivilegeEscalation: false
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop: [ALL]
-              volumeMounts:
-                - name: tools
-                  mountPath: /tools
-          containers:
-            - name: backup
-              image: {{ .Values.backup.image | default (include "kuben.postgresql.image" .) }}
-              imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
-              command:
-                - /tools/kuben
-                - backup
-                - --scheduled
-                {{- if .Values.backup.includeKeyring }}
-                - --include-keyring
-                {{- end }}
-              env:
-                {{- include "kuben.databaseEnv" . | trim | nindent 16 }}
-                - name: KUBEN_SECRETS__KEYRING_FILE
-                  value: /etc/kuben/keyring/secrets.keyring
-                - name: KUBEN_BACKUP__DIR
-                  value: /backups
-                - name: KUBEN_BACKUP__KEEP
-                  value: {{ .Values.backup.keep | quote }}
-                - name: KUBEN_SERVER__STATE_DIR
-                  value: /tmp/kuben
-                - name: HOME
-                  value: /tmp
-              resources:
-                {{- toYaml .Values.backup.resources | nindent 16 }}
-              securityContext:
-                allowPrivilegeEscalation: false
-                readOnlyRootFilesystem: true
-                capabilities:
-                  drop: [ALL]
-              volumeMounts:
-                - name: tools
-                  mountPath: /tools
-                  readOnly: true
-                - name: backups
-                  mountPath: /backups
-                - name: keyring
-                  mountPath: /etc/kuben/keyring
-                  readOnly: true
-                - name: tmp
-                  mountPath: /tmp
-          volumes:
-            - name: tools
-              emptyDir:
-                sizeLimit: 128Mi
-            - name: tmp
-              emptyDir:
-                sizeLimit: 64Mi
-            - name: backups
-              persistentVolumeClaim:
-                claimName: {{ .Values.backup.persistence.existingClaim | default $name }}
-            - name: keyring
-              secret:
-                secretName: {{ include "kuben.keyring.secret" . }}
-                defaultMode: 0400
+        {{- include "kuben.backup.pod" (dict "root" . "claim" $claim "command" $backup) | nindent 8 }}
+{{- $volume := or .Values.backup.persistence.existingClaim (lookup "v1" "PersistentVolumeClaim" .Release.Namespace $name) }}
+{{- if and .Release.IsUpgrade .Values.backup.beforeUpgrade $volume }}
+{{- $check := list "/bin/sh" "-c" (printf "%s && /tools/kuben upgrade-check" (join " " $backup)) }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-pre-upgrade
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ .Values.backup.deadlineSeconds }}
+  template:
+    {{- include "kuben.backup.pod" (dict "root" . "claim" $claim "command" $check) | nindent 4 }}
+{{- end }}
 {{- end }}

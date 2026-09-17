@@ -504,6 +504,9 @@ pub struct BackupCfg {
     /// The server reports itself degraded when the newest good backup is
     /// older than this; 0 turns the check off.
     pub max_age_hours: u32,
+    /// Take a backup before a new version migrates the database (where
+    /// PostgreSQL's client tools are installed).
+    pub before_upgrade: bool,
 }
 
 impl Default for BackupCfg {
@@ -512,6 +515,7 @@ impl Default for BackupCfg {
             dir: None,
             keep: 7,
             max_age_hours: 26,
+            before_upgrade: true,
         }
     }
 }

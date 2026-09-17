@@ -2134,6 +2134,7 @@ dependencies = [
  "futures",
  "k8s-openapi",
  "kube",
+ "kuben-agent",
  "kuben-api",
  "kuben-core",
  "kuben-crd",

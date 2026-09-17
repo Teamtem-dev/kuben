@@ -105,6 +105,15 @@ fn pg_tool(tool: &str, url: &str) -> (Command, String) {
     (cmd, bare)
 }
 
+/// Whether PostgreSQL's client tools are on the `PATH`.
+#[must_use]
+pub fn client_tools_installed() -> bool {
+    Command::new("pg_dump")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
 /// The major version of `tool`, e.g. 17 for `pg_dump (PostgreSQL) 17.4`.
 fn tool_major(tool: &str) -> anyhow::Result<i32> {
     let out = Command::new(tool)

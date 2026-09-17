@@ -51,11 +51,13 @@ fn main() -> anyhow::Result<()> {
         cli::Command::Uninstall(opts) => cli::setup::uninstall(&opts),
         cli::Command::Serve(_) => serve::run(cfg),
         cli::Command::Migrate => serve::block_on(&runtime, async move {
-            let store = kuben_store::Store::connect(&cfg.database).await?;
+            let store = kuben_store::Store::connect_unmigrated(&cfg.database).await?;
+            cli::upgrade::migrate(&cfg, &store).await?;
             tracing::info!(backend = store.backend(), "migrations applied");
             store.close().await?;
             Ok(())
         }),
+        cli::Command::UpgradeCheck(opts) => serve::block_on(&runtime, cli::upgrade::check(cfg, opts)),
         cli::Command::Doctor(opts) => serve::block_on(&runtime, cli::doctor::run(cfg, opts)),
         cli::Command::ResetAdmin(opts) => serve::block_on(&runtime, cli::admin::reset(cfg, opts)),
         cli::Command::SetupToken => bootstrap::print_setup_token(&cfg),

@@ -5,6 +5,7 @@ pub mod client;
 pub mod doctor;
 pub mod setup;
 pub mod ui;
+pub mod upgrade;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use kuben_core::config::{Config, Role};
@@ -65,6 +66,9 @@ pub enum Command {
     Rollback(client::RollbackOpts),
     /// Remove the service installed by `kuben setup` (with --purge: everything).
     Uninstall(setup::UninstallOpts),
+    /// Check that this binary may upgrade the installation (run it before
+    /// the new version replaces the old one); nothing is changed.
+    UpgradeCheck(UpgradeCheckOpts),
     /// Back up the database (and, if asked, the secret keyring) into a new
     /// directory under `backup.dir`.
     Backup(BackupOpts),
@@ -184,6 +188,13 @@ pub struct BackupOpts {
     /// Record the backup as scheduled (the timer and the CronJob set it).
     #[arg(long, hide = true)]
     pub scheduled: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UpgradeCheckOpts {
+    /// Allow a major version step (after reading its release notes).
+    #[arg(long)]
+    pub major: bool,
 }
 
 #[derive(Debug, Args)]
