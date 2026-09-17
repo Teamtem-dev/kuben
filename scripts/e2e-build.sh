@@ -295,8 +295,8 @@ eventually 60 "kuben readyz" curl -fsS "http://127.0.0.1:${PORT}/readyz"
 
 step "Login and setup project"
 expect 200 POST /auth/login "{\"email\":\"admin@kuben.local\",\"password\":\"$PASSWORD\"}"
-expect 201 POST /projects "{\"name\":\"$P\",\"slug\":\"$P\"}"
-expect 201 POST "/projects/$P/environments" "{\"name\":\"$ENV\",\"slug\":\"$ENV\",\"type\":\"development\"}"
+expect 201 POST /projects "{\"name\":\"$P\",\"display_name\":\"M3 E2E\"}"
+expect 201 POST "/projects/$P/environments" "{\"name\":\"$ENV\"}"
 
 # Link the GitHub App installation via public API
 expect 201 POST /git/installations "{\"installationId\": $INSTALLATION_ID}"
@@ -307,7 +307,6 @@ for r in "${repos[@]}"; do
   echo "--- Testing sample repo: $r ---"
   expect 201 POST "/projects/$P/environments/$ENV/apps" "$(jq -n --arg name "$r" --arg repo "test-org/$r" --arg reg "$CLUSTER_REG_BASE/test-org/$r" '{
     name: $name,
-    slug: $name,
     git: {
       installationId: 42,
       repository: $repo,
@@ -409,8 +408,7 @@ step "Criterion 5: External CI parity"
 # Deploy directly by digest vs building from Git
 expect 201 POST "/projects/$P/environments/$ENV/apps" "$(jq -n '{
   name: "external-ci-app",
-  slug: "external-ci-app",
-  image: "registry.example.com/team/app:v1"
+  image: "registry.example.com/team/app@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }')"
 # Verify app and target created with identical release and materialization semantics
 expect 200 GET "/projects/$P/environments/$ENV/apps/external-ci-app"
@@ -418,9 +416,9 @@ echo "External CI parity confirmed"
 
 step "Cleanup"
 for r in "${repos[@]}" external-ci-app; do
-  expect 202 DELETE "/projects/$P/environments/$ENV/apps/$r"
+  expect 204 DELETE "/projects/$P/environments/$ENV/apps/$r"
 done
 expect 202 DELETE "/projects/$P/environments/$ENV"
-expect 202 DELETE "/projects/$P"
+expect 204 DELETE "/projects/$P"
 
 echo "==> M3 E2E BUILD TESTS PASSED SUCCESSFULLY <=="
