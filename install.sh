@@ -42,7 +42,16 @@ set -eu
 REPO="Teamtem-dev/kuben"
 BIN="kuben"
 
-if [ -t 2 ]; then BOLD=$(printf '\033[1m'); RED=$(printf '\033[31m'); GREEN=$(printf '\033[32m'); DIM=$(printf '\033[2m'); RESET=$(printf '\033[0m'); else BOLD=""; RED=""; GREEN=""; DIM=""; RESET=""; fi
+if [ -t 2 ]; then
+  BOLD=$(printf '\033[1m')
+  RED=$(printf '\033[31m')
+  GREEN=$(printf '\033[32m')
+  ORANGE=$(printf '\033[38;5;208m')
+  DIM=$(printf '\033[2m')
+  RESET=$(printf '\033[0m')
+else
+  BOLD="" RED="" GREEN="" ORANGE="" DIM="" RESET=""
+fi
 
 say() { printf '%s✔%s %s\n' "$GREEN" "$RESET" "$*" >&2; }
 note() { printf '  %s%s%s\n' "$DIM" "$*" "$RESET" >&2; }
@@ -51,6 +60,43 @@ err() {
   exit 1
 }
 has() { command -v "$1" >/dev/null 2>&1; }
+
+banner() {
+  printf '\n' >&2
+  printf '  %s██╗  ██╗██╗   ██╗██████╗ ███████╗███╗   ██╗%s\n' "$ORANGE" "$RESET" >&2
+  printf '  %s██║ ██╔╝██║   ██║██╔══██╗██╔════╝████╗  ██║%s\n' "$ORANGE" "$RESET" >&2
+  printf '  %s█████╔╝ ██║   ██║██████╔╝█████╗  ██╔██╗ ██║%s\n' "$ORANGE" "$RESET" >&2
+  printf '  %s██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ██║╚██╗██║%s\n' "$ORANGE" "$RESET" >&2
+  printf '  %s██║  ██╗╚██████╔╝██████╔╝███████╗██║ ╚████║%s\n' "$ORANGE" "$RESET" >&2
+  printf '  %s╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝%s\n' "$ORANGE" "$RESET" >&2
+  if [ -n "${1:-}" ]; then
+    printf '  %s%s · a Kubernetes PaaS in a single binary · kuben.teamtem.com%s\n\n' "$DIM" "$1" "$RESET" >&2
+  else
+    printf '  %sa Kubernetes PaaS in a single binary · kuben.teamtem.com%s\n\n' "$DIM" "$RESET" >&2
+  fi
+}
+
+spin_task() { # <label> <command...>
+  label=$1
+  shift
+  if [ -t 2 ]; then
+    "$@" &
+    pid=$!
+    frames='⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏'
+    while kill -0 "$pid" 2>/dev/null; do
+      for f in $frames; do
+        printf '\r%s%s%s %s' "$ORANGE" "$f" "$RESET" "$label" >&2
+        sleep 0.08 2>/dev/null || sleep 1
+        kill -0 "$pid" 2>/dev/null || break
+      done
+    done
+    printf '\r\033[2K' >&2
+    wait "$pid"
+  else
+    printf '  %s...\n' "$label" >&2
+    "$@"
+  fi
+}
 
 # Not read from "$0": under `curl … | sh` that is the shell, not this file.
 usage() {
@@ -247,13 +293,14 @@ main() {
   trap 'exit 130' INT TERM
 
   target=$(detect_target)
+  banner "${version:-}"
   [ -n "$version" ] || version=$(latest_tag)
   case "$version" in v*) ;; *) version="v${version}" ;; esac
 
   archive="${BIN}-${target}.tar.gz"
   base="https://github.com/${REPO}/releases/download/${version}"
 
-  download "${base}/${archive}" "${tmp}/${archive}" ||
+  spin_task "Downloading ${BIN} ${version} (${target})" download "${base}/${archive}" "${tmp}/${archive}" ||
     err "download failed: ${base}/${archive} — release ${version} has no ${archive}; see https://github.com/${REPO}/releases/tag/${version}"
   download "${base}/checksums.txt" "${tmp}/checksums.txt" || err "download failed: ${base}/checksums.txt"
   verify_signature "${tmp}/checksums.txt" "$version"
@@ -266,14 +313,15 @@ main() {
   tar -xzf "${tmp}/${archive}" -C "$tmp" "$BIN" || err "archive does not contain '${BIN}'"
   install_binary "${tmp}/${BIN}" "$dir"
 
+  say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
+
   if [ "$binary_only" != 1 ] && can_setup; then
-    # `kuben setup` opens with its banner and then reports this download.
     KUBEN_INSTALLED="${version} ${target} ${dir}/${BIN} ${actual}"
-    export KUBEN_INSTALLED
+    KUBEN_BANNER_PRINTED=1
+    export KUBEN_INSTALLED KUBEN_BANNER_PRINTED
     # shellcheck disable=SC2086
     exec "${dir}/${BIN}" setup $setup_args
   fi
-  say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
 
   case ":${PATH}:" in
   *":${dir}:"*) ;;

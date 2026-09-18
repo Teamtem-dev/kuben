@@ -143,7 +143,9 @@ pub struct UninstallOpts {
 
 pub fn setup(opts: &SetupOpts) -> anyhow::Result<()> {
     let ui = Ui::new();
-    ui.banner(super::VERSION);
+    if std::env::var_os("KUBEN_BANNER_PRINTED").is_none() {
+        ui.banner(super::VERSION);
+    }
     if opts.plan {
         plan::show(ui, opts);
         return Ok(());
@@ -187,9 +189,12 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
     book.set_group(gid);
     book.start("cluster");
     let kubeconfig = ensure_cluster(ui, opts, uid, gid, book)?;
-    let configured = std::fs::read_to_string(CONFIG_FILE).ok();
+    let mut configured = std::fs::read_to_string(CONFIG_FILE).ok();
     book.start("database");
-    ensure_database(ui, configured.as_deref(), book)?;
+    let config_reset = ensure_database(ui, opts, configured.as_deref(), book)?;
+    if config_reset {
+        configured = None;
+    }
     book.start("config");
     let port = choose_port(
         ui,
@@ -354,6 +359,9 @@ fn parse_port(answer: &str) -> Option<u16> {
 /// install.sh passes `KUBEN_INSTALLED="<version> <target> <path> <sha256>"`
 /// when it hands over to `kuben setup`.
 fn report_download(ui: Ui) {
+    if std::env::var_os("KUBEN_BANNER_PRINTED").is_some() {
+        return;
+    }
     let Ok(info) = std::env::var("KUBEN_INSTALLED") else {
         return;
     };
@@ -549,16 +557,37 @@ fn data_home(config: Option<&str>) -> DataHome {
 /// `kuben`. The role logs in over the Unix socket by peer authentication as
 /// the `kuben` system user, so it has no password; it owns its database and
 /// is no superuser, so row-level security applies to it.
-fn ensure_database(ui: Ui, configured: Option<&str>, book: &mut Book) -> anyhow::Result<()> {
-    let step = ui.step("PostgreSQL");
+fn ensure_database(
+    ui: Ui,
+    opts: &SetupOpts,
+    configured: Option<&str>,
+    book: &mut Book,
+) -> anyhow::Result<bool> {
     match data_home(configured) {
         DataHome::External => {
+            let step = ui.step("PostgreSQL");
             step.done(format!("the database in {CONFIG_FILE}"));
             book.done(false, "an external database")?;
-            return Ok(());
+            Ok(false)
         }
         DataHome::Sqlite => {
+            let step = ui.step("PostgreSQL");
             step.fail("Kuben 1.x data in SQLite");
+            let should_reset = opts.yes
+                || ui.confirm(
+                    "Kuben 1.2+ uses PostgreSQL (SQLite is discontinued). Backup old /etc/kuben/config.toml and set up PostgreSQL?",
+                ) == Some(true);
+            if should_reset {
+                let backup = format!("{CONFIG_FILE}.v1-sqlite.bak");
+                std::fs::rename(CONFIG_FILE, &backup).context("backing up old config.toml")?;
+                ui.note(&format!("Old SQLite configuration backed up to {backup}"));
+                ui.done(
+                    "SQLite migration",
+                    "backed up old configuration, setting up PostgreSQL",
+                );
+                setup_local_postgres(ui, book)?;
+                return Ok(true);
+            }
             bail!(
                 "{CONFIG_FILE} keeps the data in SQLite, as Kuben 1.x did; this version keeps it in \
                  PostgreSQL and does not carry 1.x data over. Delete {CONFIG_FILE} (setup then \
@@ -566,8 +595,15 @@ fn ensure_database(ui: Ui, configured: Option<&str>, book: &mut Book) -> anyhow:
                  PostgreSQL of your own, then run kuben setup again"
             );
         }
-        DataHome::Local => {}
+        DataHome::Local => {
+            setup_local_postgres(ui, book)?;
+            Ok(false)
+        }
     }
+}
+
+fn setup_local_postgres(ui: Ui, book: &mut Book) -> anyhow::Result<()> {
+    let step = ui.step("PostgreSQL");
     let installed = postgres_installed();
     if !installed {
         let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
