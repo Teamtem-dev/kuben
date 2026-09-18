@@ -211,10 +211,17 @@ fn install(ui: Ui, opts: &SetupOpts, host: &Host, fresh_state: bool, book: &mut 
         .flatten()
         .map(|ip| ip.to_string());
     let console = hub.as_ref().and_then(|_| opts.console_host());
+    let allow_http = opts.allow_http_setup
+        || (opts.domain.is_none()
+            && !opts.bind_local
+            && (opts.yes
+                || ui.confirm_default_yes(
+                    "Allow web setup directly over HTTP (http://<ip>:<port> without SSH tunnel)?",
+                ) == Some(true)));
     let wants = ConfigWants {
         hub: hub.as_deref(),
         console: console.as_deref(),
-        insecure_setup: opts.allow_http_setup,
+        insecure_setup: allow_http,
     };
     let config_changed = write_config(ui, opts, &kubeconfig, configured.as_deref(), port, &wants, book)?;
     if managed {
@@ -614,7 +621,7 @@ fn setup_local_postgres(ui: Ui, book: &mut Book) -> anyhow::Result<()> {
                  or set [database] url in {CONFIG_FILE} to a PostgreSQL of your own"
             );
         };
-        ui.command(packages.describe());
+        step.command(packages.describe());
         packages.install()?;
     }
     book.claim(Kind::Package, "postgresql", !installed)?;
@@ -864,6 +871,15 @@ fn write_config(
         }
         if owned && !has_section(text, "security") {
             updated.push_str(&security_section(wants));
+        } else if owned && wants.insecure_setup && !text.contains("insecure_setup") {
+            if has_section(text, "security") {
+                if let Some(pos) = updated.find("[security]") {
+                    let insert_at = updated[pos..].find('\n').map_or(updated.len(), |i| pos + i + 1);
+                    updated.insert_str(insert_at, "insecure_setup = true\n");
+                }
+            } else {
+                updated.push_str(&security_section(wants));
+            }
         }
         let changed = updated != text;
         if changed {
@@ -1633,7 +1649,7 @@ fn purge(ui: Ui, owned: &Owned) {
     }
     if owned.k3s && Path::new(K3S_UNINSTALL).exists() {
         let step = ui.step("Uninstalling k3s");
-        ui.command(K3S_UNINSTALL);
+        step.command(K3S_UNINSTALL);
         match Command::new(K3S_UNINSTALL).output() {
             Ok(out) if out.status.success() => step.done(""),
             Ok(out) => {

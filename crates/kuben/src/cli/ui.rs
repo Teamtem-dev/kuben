@@ -108,8 +108,12 @@ impl Ui {
         }
     }
 
-    /// A command this tool is about to run.
+    /// A command this tool is about to run outside a step.
+    #[allow(dead_code)]
     pub fn command(self, cmd: &str) {
+        if self.tty {
+            eprint!("\r\x1b[2K");
+        }
         eprintln!("{} {}", self.paint(self.accent, "❯"), self.paint(DIM, cmd));
     }
 
@@ -125,6 +129,9 @@ impl Ui {
     /// terminal to ask (CI, cron, a pipe without a controlling tty).
     #[must_use]
     pub fn ask(self, question: &str, default: &str) -> Option<String> {
+        if self.tty {
+            eprint!("\r\x1b[2K");
+        }
         let tty = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -154,7 +161,17 @@ impl Ui {
         Some(matches!(answer.to_ascii_lowercase().as_str(), "y" | "yes"))
     }
 
+    /// A yes/no question, `Yes` by default; `None` without a terminal.
+    #[must_use]
+    pub fn confirm_default_yes(self, question: &str) -> Option<bool> {
+        let answer = self.ask(&format!("{question} (Y/n)"), "Y")?;
+        Some(!matches!(answer.to_ascii_lowercase().as_str(), "n" | "no"))
+    }
+
     fn line(self, glyph: Glyph, label: &str, detail: &str) {
+        if self.tty {
+            eprint!("\r\x1b[2K");
+        }
         let (colour, mark) = match glyph {
             Glyph::Done => (GREEN, "✔"),
             Glyph::Warn => (YELLOW, "⚠"),
@@ -194,6 +211,7 @@ pub struct Step {
     label: String,
     started: Instant,
     stop: Arc<AtomicBool>,
+    command: Arc<std::sync::Mutex<Option<String>>>,
     spinner: Option<JoinHandle<()>>,
 }
 
@@ -201,8 +219,10 @@ impl Step {
     fn start(ui: Ui, label: String) -> Self {
         let started = Instant::now();
         let stop = Arc::new(AtomicBool::new(false));
+        let command = Arc::new(std::sync::Mutex::new(None));
         let spinner = ui.tty.then(|| {
             let stop = Arc::clone(&stop);
+            let command = Arc::clone(&command);
             let text = label.clone();
             let accent = ui.accent;
             std::thread::spawn(move || {
@@ -217,7 +237,15 @@ impl Step {
                     } else {
                         String::new()
                     };
-                    let _ = write!(stderr, "\r\x1b[2K{accent}{frame}{RESET} {text}{clock}");
+                    let cmd_str = command.lock().ok().and_then(|c| c.clone());
+                    let cmd_suffix = match cmd_str {
+                        Some(c) => format!(" {accent}❯{RESET} {DIM}{c}{RESET}"),
+                        None => String::new(),
+                    };
+                    let _ = write!(
+                        stderr,
+                        "\r\x1b[2K{accent}{frame}{RESET} {text}{cmd_suffix}{clock}"
+                    );
                     let _ = stderr.flush();
                     std::thread::sleep(Duration::from_millis(80));
                 }
@@ -231,7 +259,22 @@ impl Step {
             label,
             started,
             stop,
+            command,
             spinner,
+        }
+    }
+
+    /// Display a command being run under this step without breaking the spinner line.
+    pub fn command(&self, cmd: &str) {
+        if let Ok(mut lock) = self.command.lock() {
+            *lock = Some(cmd.to_owned());
+        }
+        if !self.ui.tty {
+            eprintln!(
+                "  {} {}",
+                self.ui.paint(self.ui.accent, "❯"),
+                self.ui.paint(DIM, cmd)
+            );
         }
     }
 

@@ -141,7 +141,7 @@ pub fn install_k3s(ui: Ui, datastore: Datastore) -> anyhow::Result<()> {
         return Err(e);
     }
     let exec = k3s_exec(datastore);
-    ui.command(&format!(
+    step.command(&format!(
         "INSTALL_K3S_VERSION={} INSTALL_K3S_EXEC=\"{exec}\" sh install.sh",
         k3s.version
     ));
