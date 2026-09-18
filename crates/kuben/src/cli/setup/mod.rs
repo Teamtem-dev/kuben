@@ -557,7 +557,12 @@ fn data_home(config: Option<&str>) -> DataHome {
 /// `kuben`. The role logs in over the Unix socket by peer authentication as
 /// the `kuben` system user, so it has no password; it owns its database and
 /// is no superuser, so row-level security applies to it.
-fn ensure_database(ui: Ui, opts: &SetupOpts, configured: Option<&str>, book: &mut Book) -> anyhow::Result<bool> {
+fn ensure_database(
+    ui: Ui,
+    opts: &SetupOpts,
+    configured: Option<&str>,
+    book: &mut Book,
+) -> anyhow::Result<bool> {
     match data_home(configured) {
         DataHome::External => {
             let step = ui.step("PostgreSQL");
@@ -576,7 +581,10 @@ fn ensure_database(ui: Ui, opts: &SetupOpts, configured: Option<&str>, book: &mu
                 let backup = format!("{CONFIG_FILE}.v1-sqlite.bak");
                 std::fs::rename(CONFIG_FILE, &backup).context("backing up old config.toml")?;
                 ui.note(&format!("Old SQLite configuration backed up to {backup}"));
-                ui.done("SQLite migration", "backed up old configuration, setting up PostgreSQL");
+                ui.done(
+                    "SQLite migration",
+                    "backed up old configuration, setting up PostgreSQL",
+                );
                 setup_local_postgres(ui, book)?;
                 return Ok(true);
             }
