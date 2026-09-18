@@ -51,8 +51,8 @@ Budgets are limits that CI or the server enforces. They are not targets.
 
 | Budget | Limit | Enforced by |
 |---|---|---|
-| Server binary (static musl, UI included) | 32 MiB | CI (`scripts/check-budgets.sh binary`) |
-| Server image | 42 MiB | the release (`scripts/check-budgets.sh image`) |
+| Server binary (static musl, UI included) | 45 MiB | CI (`scripts/check-budgets.sh binary`) |
+| Server image | 50 MiB | the release (`scripts/check-budgets.sh image`) |
 | Console bundle | per chunk | CI (`size-limit`) |
 | Support bundle | 8 MiB, newest 3 kept | `kuben support-bundle` (drops old log lines first) |
 | Export and render plan | the envelope bound | the renderer refuses larger plans |

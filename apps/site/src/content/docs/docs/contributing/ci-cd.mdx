@@ -43,7 +43,7 @@ Details that matter:
 tag v1.0.2 ─► plan (tag == Cargo version)
                ├─► web (bun: vite build + size-limit) ─► build ×5 (cargo auditable) ─┬─► publish (checksums, attestations, GitHub Release)
                │                                                                     │        └─► verify-install ×3 (install.sh against the real release)
-               │                                                                     └─► image (budget ≤ 42 MiB → Trivy → push amd64+arm64, SBOM, provenance)
+               │                                                                     └─► image (budget ≤ 50 MiB → Trivy → push amd64+arm64, SBOM, provenance)
                │                                                                              └─► chart (helm push oci://ghcr.io/teamtem-dev/charts)
 ```
 
