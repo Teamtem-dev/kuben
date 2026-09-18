@@ -130,7 +130,7 @@ jobs:
         with:
           rust-toolchain: stable
           rust-cache-key: ${{ matrix.name }}
-      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: cargo-nextest
       - run: bun turbo run kuben-cargo#test
@@ -162,7 +162,7 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           rust-toolchain: stable
-      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: cargo-nextest
       - run: bun turbo run kuben-store#test:postgres
@@ -306,7 +306,7 @@ jobs:
           helm template kuben charts/kuben --kube-version 1.32.0 \
             --set route.enabled=true --set route.hostname=kuben.example.com \
             --set route.gateway.name=gw --set platform.gateway=infra/gw >/dev/null
-      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: trivy@0.74.0
       # RBAC and pod security of what users install; exceptions are justified
@@ -509,7 +509,7 @@ jobs:
       # built here (seconds) so this job never waits for the web job.
       - run: bun turbo run @kuben/console#build
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
-      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: cargo-zigbuild,cargo-auditable@0.7.5,trivy@0.74.0
       # Exactly like the release: static musl, UI and dependency list embedded.
@@ -532,7 +532,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2.87.10
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: zizmor@1.30.1
       # The token enables the online audits (impostor commits, known-vulnerable
