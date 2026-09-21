@@ -5,6 +5,7 @@ import {
   createRouter,
   type ErrorComponentProps,
   Link,
+  lazyRouteComponent,
   redirect,
 } from '@tanstack/react-router'
 import {
@@ -21,22 +22,29 @@ import {
 } from './lib/api'
 import { usePrefs } from './lib/prefs'
 import { problemMessage } from './lib/problem'
-import { AccountPage } from './routes/account'
-import { AppPage } from './routes/app'
-import { AuditPage } from './routes/audit'
-import { DoctorPage } from './routes/doctor'
-import { DomainsPage } from './routes/domains'
-import { EnvironmentPage } from './routes/environment'
-import { IncidentsPage } from './routes/incidents'
-import { LoginPage } from './routes/login'
-import { ProjectPage } from './routes/project'
-import { ProjectsPage } from './routes/projects'
-import { SetupPage } from './routes/setup'
 import { AppShell } from './routes/shell'
-import { StatusPage } from './routes/status'
-import { TeamPage } from './routes/team'
-import { TokensPage } from './routes/tokens'
-import { WebhooksPage } from './routes/webhooks'
+
+/**
+ * Pages load on demand (each its own chunk, preloaded on hover or focus of a
+ * link); the shell, the router and the data layer are in the entry chunk.
+ */
+const page = {
+  AccountPage: lazyRouteComponent(() => import('./routes/account'), 'AccountPage'),
+  AppPage: lazyRouteComponent(() => import('./routes/app'), 'AppPage'),
+  AuditPage: lazyRouteComponent(() => import('./routes/audit'), 'AuditPage'),
+  DoctorPage: lazyRouteComponent(() => import('./routes/doctor'), 'DoctorPage'),
+  DomainsPage: lazyRouteComponent(() => import('./routes/domains'), 'DomainsPage'),
+  EnvironmentPage: lazyRouteComponent(() => import('./routes/environment'), 'EnvironmentPage'),
+  IncidentsPage: lazyRouteComponent(() => import('./routes/incidents'), 'IncidentsPage'),
+  LoginPage: lazyRouteComponent(() => import('./routes/login'), 'LoginPage'),
+  ProjectPage: lazyRouteComponent(() => import('./routes/project'), 'ProjectPage'),
+  ProjectsPage: lazyRouteComponent(() => import('./routes/projects'), 'ProjectsPage'),
+  SetupPage: lazyRouteComponent(() => import('./routes/setup'), 'SetupPage'),
+  StatusPage: lazyRouteComponent(() => import('./routes/status'), 'StatusPage'),
+  TeamPage: lazyRouteComponent(() => import('./routes/team'), 'TeamPage'),
+  TokensPage: lazyRouteComponent(() => import('./routes/tokens'), 'TokensPage'),
+  WebhooksPage: lazyRouteComponent(() => import('./routes/webhooks'), 'WebhooksPage'),
+}
 
 interface RouterContext {
   queryClient: QueryClient
@@ -81,7 +89,7 @@ const setupRoute = createRoute({
   beforeLoad: async ({ context }) => {
     if (!(await setupNeeded(context.queryClient))) throw redirect({ to: '/login' })
   },
-  component: SetupPage,
+  component: page.SetupPage,
 })
 
 const loginRoute = createRoute({
@@ -94,14 +102,14 @@ const loginRoute = createRoute({
   beforeLoad: async ({ context }) => {
     if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
   },
-  component: LoginPage,
+  component: page.LoginPage,
 })
 
 /** A project's public status page: no session needed (M5.3). */
 const statusRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/status/$slug',
-  component: StatusPage,
+  component: page.StatusPage,
 })
 
 /** Pathless layout: everything below it requires a session. */
@@ -126,7 +134,7 @@ const projectsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/',
   loader: ({ context }) => context.queryClient.ensureQueryData(projectsQuery),
-  component: ProjectsPage,
+  component: page.ProjectsPage,
 })
 
 const projectRoute = createRoute({
@@ -137,7 +145,7 @@ const projectRoute = createRoute({
       context.queryClient.ensureQueryData(projectQuery(params.project)),
       context.queryClient.ensureQueryData(environmentsQuery(params.project)),
     ]),
-  component: ProjectPage,
+  component: page.ProjectPage,
 })
 
 const environmentRoute = createRoute({
@@ -149,7 +157,7 @@ const environmentRoute = createRoute({
       context.queryClient.ensureQueryData(environmentQuery(params.project, params.environment)),
       context.queryClient.ensureQueryData(appsQuery(params.project, params.environment)),
     ]),
-  component: EnvironmentPage,
+  component: page.EnvironmentPage,
 })
 
 const appRoute = createRoute({
@@ -157,57 +165,57 @@ const appRoute = createRoute({
   path: '/projects/$project/$environment/$app',
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(appQuery(params.project, params.environment, params.app)),
-  component: AppPage,
+  component: page.AppPage,
 })
 
 const doctorRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/projects/$project/$environment/$app/doctor',
-  component: DoctorPage,
+  component: page.DoctorPage,
 })
 
 const teamRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/team',
   loader: ({ context }) => context.queryClient.ensureQueryData(membersQuery),
-  component: TeamPage,
+  component: page.TeamPage,
 })
 
 const tokensRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/tokens',
   loader: ({ context }) => context.queryClient.ensureQueryData(tokensQuery),
-  component: TokensPage,
+  component: page.TokensPage,
 })
 
 const auditRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/audit',
-  component: AuditPage,
+  component: page.AuditPage,
 })
 
 const incidentsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/incidents',
-  component: IncidentsPage,
+  component: page.IncidentsPage,
 })
 
 const webhooksRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/webhooks',
-  component: WebhooksPage,
+  component: page.WebhooksPage,
 })
 
 const domainsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/domains',
-  component: DomainsPage,
+  component: page.DomainsPage,
 })
 
 const accountRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/account',
-  component: AccountPage,
+  component: page.AccountPage,
 })
 
 const routeTree = rootRoute.addChildren([
