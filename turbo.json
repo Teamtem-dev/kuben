@@ -2,6 +2,7 @@
   "$schema": "https://turborepo.dev/schema.json",
   "futureFlags": {
     "experimentalCargoWorkspaces": true,
+    "experimentalGoWorkspaces": true,
     "experimentalTaskCommand": true
   },
   "envMode": "loose",
@@ -21,15 +22,18 @@
       "dependsOn": ["transit"]
     },
     "lint": {
-      "description": "clippy -D warnings (Biome is the root task biome:check)."
+      "description": "clippy -D warnings; Go static checks (scripts/go-check.sh). Biome is the root task biome:check.",
+      "command": { "go": ["bash", "../../scripts/go-check.sh"] }
     },
     "format": {
-      "description": "rustfmt (Biome is the root task biome:fix). `-- --check` only verifies.",
-      "cache": false
+      "description": "rustfmt and gofumpt (Biome is the root task biome:fix). `-- --check` only verifies.",
+      "cache": false,
+      "command": { "go": ["go", "tool", "gofumpt", "-w", "."] }
     },
     "test": {
-      "description": "cargo-nextest and bun test.",
-      "dependsOn": ["transit"]
+      "description": "cargo-nextest, bun test, and go test with the race detector.",
+      "dependsOn": ["transit"],
+      "command": { "go": ["go", "test", "-race", "-shuffle=on", "./..."] }
     },
     "gen": {
       "description": "Regenerates the committed OpenAPI spec, TS client types and CRD manifests."

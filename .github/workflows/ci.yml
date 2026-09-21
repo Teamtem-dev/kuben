@@ -48,6 +48,7 @@ jobs:
       web: ${{ steps.detect.outputs.web }}
       codegen: ${{ steps.detect.outputs.codegen }}
       scripts: ${{ steps.detect.outputs.scripts }}
+      go: ${{ steps.detect.outputs.go }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,7 +69,7 @@ jobs:
           {
             echo "### Selected job groups"
             echo '```'
-            grep -E '^(rust|deps|web|codegen|scripts)=' "$GITHUB_OUTPUT"
+            grep -E '^(rust|deps|web|codegen|scripts|go)=' "$GITHUB_OUTPUT"
             echo '```'
             echo "$(wc -l < "$RUNNER_TEMP/changed.txt") changed file(s)"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -138,6 +139,42 @@ jobs:
       - name: Doctests
         if: matrix.name == 'linux-x64'
         run: bun turbo run kuben-cargo#test:doc
+
+  go:
+    name: Go (lint, race tests, vulnerabilities)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: kuben
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/hub/go.mod
+          cache-dependency-path: "go/*/go.sum"
+      - uses: $/.github/actions/setup
+      # Checksums against sum.golang.org (the sandbox mirror cannot check them).
+      - run: for m in go/*/; do (cd "$m" && go mod verify); done
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+          working-directory: go/hub
+          args: --config ../../.golangci.yml
+      - run: bun turbo run lint test --filter=hub --filter=agent --filter=kubenapi --filter=tools
+      - run: cd go/hub && go tool govulncheck ./...
+      - run: scripts/rust-drift.sh
 
   postgres:
     name: Store matrix (PostgreSQL 17)
@@ -546,7 +583,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
+    needs: [changes, fmt, clippy, test, go, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

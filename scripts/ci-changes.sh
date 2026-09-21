@@ -12,6 +12,7 @@
 #   codegen  generated files or their inputs       → drift (always with rust: Rust
 #            types produce the OpenAPI spec and the CRDs)
 #   scripts  shell scripts, installer, Helm chart  → scripts, e2e
+#   go       the Go rewrite (go/, go.work)          → go
 #
 # Fail open: a change to CI itself (.github/) or to the task runner every job
 # goes through (turbo.json, the root package.json, bun.lock, bunfig.toml), or an
@@ -20,8 +21,8 @@
 #   git diff --name-only origin/main...HEAD | scripts/ci-changes.sh
 set -euo pipefail
 
-rust=false deps=false web=false codegen=false scripts=false
-select_all() { rust=true deps=true web=true codegen=true scripts=true; }
+rust=false deps=false web=false codegen=false scripts=false go=false
+select_all() { rust=true deps=true web=true codegen=true scripts=true go=true; }
 
 if [[ ${1:-} == --all ]]; then
   select_all
@@ -37,6 +38,11 @@ else
       deps=true
       ;;
     crates/* | rust-toolchain.toml | clippy.toml | rustfmt.toml | .cargo/* | .config/nextest.toml) rust=true ;;
+    go/* | go.work | go.work.sum | .golangci.yml) go=true ;;
+    scripts/go-check.sh | scripts/rust-drift.sh)
+      go=true
+      scripts=true
+      ;;
     packages/api-client/*)
       web=true
       codegen=true
@@ -55,4 +61,4 @@ fi
 
 if [[ $rust == true ]]; then codegen=true; fi
 
-printf 'rust=%s\ndeps=%s\nweb=%s\ncodegen=%s\nscripts=%s\n' "$rust" "$deps" "$web" "$codegen" "$scripts"
+printf 'rust=%s\ndeps=%s\nweb=%s\ncodegen=%s\nscripts=%s\ngo=%s\n' "$rust" "$deps" "$web" "$codegen" "$scripts" "$go"

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Static checks for the Go module in the working directory: what stands in
+# for the guarantees the Rust compiler gave (go/CONVENTIONS.md). CI also runs
+# golangci-lint with .golangci.yml; this script needs nothing but `go`.
+set -euo pipefail
+unformatted=$(go tool gofumpt -l .)
+if [[ -n $unformatted ]]; then
+  echo "not gofumpt-formatted:"; echo "$unformatted"; exit 1
+fi
+go vet ./...
+go tool exhaustive -default-signifies-exhaustive=false -ignore-enum-types '^reflect\.Kind$' ./...
+go tool go-check-sumtype -default-signifies-exhaustive=false ./...
+go tool nilaway -test=true ./...
