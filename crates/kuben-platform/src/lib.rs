@@ -35,5 +35,8 @@ pub mod secrets;
 pub mod supervise;
 pub mod usage;
 
+#[cfg(test)]
+mod compat_fixtures;
+
 #[cfg(feature = "activator")]
 pub mod activator;
