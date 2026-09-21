@@ -2,13 +2,19 @@ import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { cspStyles } from './vite-plugins/csp-styles'
 
 const src = (path: string) => fileURLToPath(new URL(`./src/${path}`, import.meta.url))
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), cspStyles()],
   resolve: {
-    alias: [{ find: /^@\//, replacement: `${src('')}` }],
+    alias: [
+      // Scroll locking (Radix Dialog, Sheet, menus) through constructed
+      // stylesheets instead of <style> elements: see src/lib/style-singleton.ts.
+      { find: /^react-style-singleton$/, replacement: src('lib/style-singleton.ts') },
+      { find: /^@\//, replacement: `${src('')}` },
+    ],
   },
   server: {
     port: 5173,

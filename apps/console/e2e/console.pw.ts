@@ -169,3 +169,63 @@ test('the skip link moves focus to the page content', async ({ page }) => {
   await page.keyboard.press('Enter')
   await expect(page.locator('main#content')).toBeFocused()
 })
+
+// Kuben serves the console with a strict policy (no 'unsafe-inline'; see
+// crates/kuben-api/src/web.rs, which fixtures.ts reads): every page, and the
+// overlays that lock scrolling or bring their own styles, must pass it.
+test.describe('content security policy', () => {
+  const pages = [
+    '/',
+    '/team',
+    '/tokens',
+    '/incidents',
+    '/webhooks',
+    '/domains',
+    '/audit',
+    '/account',
+    '/projects/shop',
+    '/projects/shop/prod',
+    '/projects/shop/prod/web',
+    '/projects/shop/prod/web/doctor',
+  ]
+
+  for (const path of pages) {
+    test(`no violation on ${path}, with the palette and a menu open`, async ({ page }) => {
+      const csp = await watchCsp(page)
+      await mockApi(page)
+      const response = await page.goto(path)
+      expect(response?.headers()['content-security-policy']).toContain("style-src 'self'")
+      await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+      await page.keyboard.press('Control+k')
+      await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await page.getByRole('button', { name: 'Theme' }).click()
+      await expect(page.getByRole('menu')).toBeVisible()
+      await page.keyboard.press('Escape')
+      await page.getByRole('banner').getByRole('button', { name: 'Toggle sidebar' }).click()
+      await expect(page.locator('[data-slot="sidebar"][data-state="collapsed"]')).toBeVisible()
+      expect(csp).toEqual([])
+    })
+  }
+
+  test('no violation in the phone drawer', async ({ page }) => {
+    const csp = await watchCsp(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await mockApi(page)
+    await page.goto('/projects/shop/prod/web')
+    await page.getByRole('banner').getByRole('button', { name: 'Toggle sidebar' }).click()
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+    expect(csp).toEqual([])
+  })
+
+  for (const path of ['/login', '/status/shop']) {
+    test(`no violation on ${path} (outside the shell)`, async ({ page }) => {
+      const csp = await watchCsp(page)
+      await mockApi(page, { signedIn: false })
+      const response = await page.goto(path)
+      expect(response?.headers()['content-security-policy']).toContain("style-src 'self'")
+      await expect(page.locator('#root')).not.toBeEmpty()
+      expect(csp).toEqual([])
+    })
+  }
+})
