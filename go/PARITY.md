@@ -2,14 +2,14 @@
 
 Baseline: every Rust file as of `86ce940` (origin/main). A file is **done** only when its Go counterpart is reviewed line by line against it, every one of its tests has a Go counterpart, and lint (golangci-lint, NilAway) is clean. `scripts/rust-drift.sh` lists Rust files changed after the baseline.
 
-Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed` · `dropped` (deliberately not ported; reason given).
+Status: `todo` · `partial` (the parts a slice needs; the note says what is left) · `ported` (written, tests green, not yet reviewed) · `reviewed` · `dropped` (deliberately not ported; reason given).
 
 | Crate | File | Lines | Rust tests | Go package | Status | Notes |
 |---|---|---:|---:|---|---|---|
 | kuben | `bootstrap.rs` | 301 | 3 |  | todo | |
 | kuben | `bundle.rs` | 184 | 3 |  | todo | |
-| kuben | `main.rs` | 85 | 0 |  | todo | |
-| kuben | `serve.rs` | 867 | 0 |  | todo | |
+| kuben | `main.rs` | 85 | 0 | cmd/kuben | partial | serve, setup-token, version; the rest: G5 |
+| kuben | `serve.rs` | 867 | 0 | serve | partial | api role only; cluster, builds, background work: S1–S5 |
 | kuben | `telemetry.rs` | 36 | 0 |  | todo | |
 | kuben | `cli/admin.rs` | 38 | 0 |  | todo | |
 | kuben | `cli/agent.rs` | 50 | 0 |  | todo | |
@@ -35,11 +35,11 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-agent | `runtime.rs` | 657 | 4 |  | todo | |
 | kuben-agent | `state.rs` | 351 | 4 |  | todo | |
 | kuben-agent | `tls.rs` | 323 | 6 |  | todo | |
-| kuben-api | `audit.rs` | 205 | 3 |  | todo | |
-| kuben-api | `authz.rs` | 180 | 1 |  | todo | |
+| kuben-api | `audit.rs` | 205 | 3 | api (audit.go) | ported |  |
+| kuben-api | `authz.rs` | 180 | 1 | api/access | ported |  |
 | kuben-api | `client.rs` | 483 | 4 |  | todo | |
 | kuben-api | `dns.rs` | 631 | 4 |  | todo | |
-| kuben-api | `error.rs` | 100 | 0 |  | todo | |
+| kuben-api | `error.rs` | 100 | 0 | api/problem | ported |  |
 | kuben-api | `github.rs` | 750 | 6 |  | todo | |
 | kuben-api | `host.rs` | 73 | 2 |  | todo | |
 | kuben-api | `image_watch.rs` | 287 | 0 |  | todo | |
@@ -47,20 +47,20 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-api | `notify.rs` | 593 | 6 |  | todo | |
 | kuben-api | `oci.rs` | 908 | 9 |  | todo | |
 | kuben-api | `oidc.rs` | 465 | 5 |  | todo | |
-| kuben-api | `openapi.rs` | 231 | 2 |  | todo | |
+| kuben-api | `openapi.rs` | 231 | 2 | api/gen (ogen) + api/genspec | dropped | spec first: the contract generates the server |
 | kuben-api | `previews.rs` | 464 | 0 |  | todo | |
-| kuben-api | `setup.rs` | 375 | 2 |  | todo | |
+| kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | setup_guide/banner: G5 |
 | kuben-api | `sso.rs` | 554 | 5 |  | todo | |
 | kuben-api | `state.rs` | 151 | 0 |  | todo | |
-| kuben-api | `stream.rs` | 248 | 2 |  | todo | |
+| kuben-api | `stream.rs` | 248 | 2 | api/stream | partial | visibility filter and deltas with the projections (S1) |
 | kuben-api | `transport.rs` | 157 | 0 |  | todo | |
-| kuben-api | `web.rs` | 106 | 1 |  | todo | |
+| kuben-api | `web.rs` | 106 | 1 | api/web | ported |  |
 | kuben-api | `bin/openapi.rs` | 23 | 0 |  | todo | |
-| kuben-api | `auth/mod.rs` | 462 | 1 |  | todo | |
-| kuben-api | `auth/password.rs` | 75 | 1 |  | todo | |
-| kuben-api | `auth/session.rs` | 202 | 4 |  | todo | |
+| kuben-api | `auth/mod.rs` | 462 | 1 | api (session_routes.go), api/httpx | ported | SSO routes: S4 |
+| kuben-api | `auth/password.rs` | 75 | 1 | api/auth | ported |  |
+| kuben-api | `auth/session.rs` | 202 | 4 | api/auth, api (identity.go) | ported |  |
 | kuben-api | `auth/sso.rs` | 260 | 1 |  | todo | |
-| kuben-api | `auth/throttle.rs` | 200 | 5 |  | todo | |
+| kuben-api | `auth/throttle.rs` | 200 | 5 | api (identity.go) | ported |  |
 | kuben-api | `routes/access.rs` | 322 | 2 |  | todo | |
 | kuben-api | `routes/audit.rs` | 123 | 0 |  | todo | |
 | kuben-api | `routes/ci.rs` | 443 | 3 |  | todo | |
@@ -68,16 +68,16 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-api | `routes/domains.rs` | 703 | 0 |  | todo | |
 | kuben-api | `routes/environments.rs` | 326 | 0 |  | todo | |
 | kuben-api | `routes/git.rs` | 298 | 0 |  | todo | |
-| kuben-api | `routes/health.rs` | 54 | 0 |  | todo | |
+| kuben-api | `routes/health.rs` | 54 | 0 | api (probes.go) | ported | seq/pods from projections (S1) |
 | kuben-api | `routes/incidents.rs` | 511 | 2 |  | todo | |
 | kuben-api | `routes/members.rs` | 267 | 0 |  | todo | |
 | kuben-api | `routes/mod.rs` | 26 | 0 |  | todo | |
 | kuben-api | `routes/policy.rs` | 299 | 2 |  | todo | |
 | kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
-| kuben-api | `routes/projects.rs` | 189 | 0 |  | todo | |
+| kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | partial | list and get; create/delete with lifecycle (S1) |
 | kuben-api | `routes/registries.rs` | 262 | 2 |  | todo | |
-| kuben-api | `routes/request.rs` | 64 | 1 |  | todo | |
-| kuben-api | `routes/scope.rs` | 301 | 1 |  | todo | |
+| kuben-api | `routes/request.rs` | 64 | 1 | api (projects.go, access) | partial | duplicate(): S1 |
+| kuben-api | `routes/scope.rs` | 301 | 1 | api (projects.go) | partial | project scope; environment/app scopes: S1 |
 | kuben-api | `routes/secrets.rs` | 654 | 2 |  | todo | |
 | kuben-api | `routes/status.rs` | 322 | 0 |  | todo | |
 | kuben-api | `routes/templates.rs` | 543 | 2 |  | todo | |
@@ -148,7 +148,7 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-platform | `doctor.rs` | 701 | 4 |  | todo | |
 | kuben-platform | `duration.rs` | 57 | 2 |  | todo | |
 | kuben-platform | `evidence.rs` | 391 | 5 |  | todo | |
-| kuben-platform | `health.rs` | 159 | 1 |  | todo | |
+| kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
 | kuben-platform | `leader.rs` | 313 | 2 |  | todo | |
 | kuben-platform | `lib.rs` | 39 | 0 |  | todo | |
 | kuben-platform | `local_agent.rs` | 341 | 2 |  | todo | |
