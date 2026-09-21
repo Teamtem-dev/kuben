@@ -97,8 +97,10 @@ type and reproduce the exact wire form; add a test that pins it.
 - Table-driven, in the external `x_test` package, standard library plus
   `go-cmp`. `proptest` properties become `testing/quick` checks or fuzz
   targets with a seed corpus. No sleeping: inject the clock.
-- Database tests use a real PostgreSQL; Kubernetes tests use envtest. No
-  mocks of the database.
+- Database tests use a real PostgreSQL (`KUBEN_TEST_PG_URL`); Kubernetes
+  tests use envtest. No mocks of the database. Without the URL a database
+  test skips with a message, and CI sets `KUBEN_REQUIRE_PG=1`, which turns
+  that skip into a failure: no database test is ever skipped silently.
 
 ## Style
 

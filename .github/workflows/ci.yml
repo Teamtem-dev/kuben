@@ -156,6 +156,8 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
+      # A database test that skips here fails instead (go/CONVENTIONS.md).
+      KUBEN_REQUIRE_PG: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
