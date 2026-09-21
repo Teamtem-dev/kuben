@@ -46,12 +46,11 @@ Largest contributors to the hub (packages): client-go 275, grpc 66,
 apimachinery 59, k8s.io/api 58, controller-runtime 47, BuildKit 44,
 protobuf 39, go-containerregistry 25.
 
-Decisions:
-- **Agent budget stays a hard 25 MiB, target ≈ 12 MiB**: the agent maps
-  kinds to resources with a small resolver over the API server's
-  `/api` and `/apis` resource lists (plain REST client, cached), not
-  client-go's discovery package, whose OpenAPI dependencies cost 15 MiB.
-  The hub-agent protocol does not change.
+Decisions (owner, 2026-09-21: correctness and standard libraries come
+before binary size):
+- **Agent**: uses client-go's standard discovery and cached REST mapper
+  (25.4 MiB) rather than a hand-written resolver that would save 15 MiB.
+  Its size budget is a warning, like the hub's.
 - **Hub**: expected ≈ 65–70 MiB with Kuben's own code, the generated
   server and the embedded console. The size budget for the hub is a
   warning only (owner's decision); it is set to 75 MiB.
