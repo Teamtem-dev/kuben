@@ -35,6 +35,12 @@ type and reproduce the exact wire form; add a test that pins it.
   values must be safe to use: prefer `Valid()`-style checks over constructors
   that callers can bypass.
 - CI runs NilAway; a finding is a build failure, not a suggestion.
+- **Exception: `go/kubenapi`** follows the Kubernetes API conventions
+  instead (optional fields are pointers or `omitempty` slices and maps,
+  `metav1` types, generated `DeepCopy`), because server-side apply,
+  controller-gen and client-go are built on them. Code outside kubenapi
+  reads those pointers through small accessors or converts them at the
+  boundary; NilAway still checks every dereference.
 
 ## Closed sets and state machines
 
