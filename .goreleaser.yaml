@@ -1,0 +1,59 @@
+# goreleaser v2 — release builds of the Go hub (plan §5, §14).
+# Pre-releases (2.0.0-alpha.N, -beta.N, -rc.N) are published as such and
+# never become `latest`; GA re-tags the last rc's commit.
+version: 2
+project_name: kuben
+
+before:
+  hooks:
+    - bun install --frozen-lockfile
+    - bun turbo run @kuben/console#build
+    # Embed the console once, before the parallel builds.
+    - bash -c 'find go/hub/internal/api/web/dist -mindepth 1 ! -name .gitkeep -delete && cp -R apps/console/dist/. go/hub/internal/api/web/dist/ && find go/hub/internal/api/web/dist -name "*.map" -delete'
+
+builds:
+  - id: kuben
+    dir: go/hub
+    main: ./cmd/kuben
+    binary: kuben
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/Teamtem-dev/kuben/go/hub/internal/version.Version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "kuben-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args: [sign-blob, "--output-signature=${signature}", "--output-certificate=${certificate}", "${artifact}", "--yes"]
+    artifacts: checksum
+
+release:
+  prerelease: auto
+  make_latest: "{{ if .Prerelease }}false{{ else }}true{{ end }}"
+
+changelog:
+  use: github
+  sort: asc
