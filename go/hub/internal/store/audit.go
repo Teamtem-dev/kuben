@@ -4,7 +4,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"math"
 
 	"github.com/jackc/pgx/v5"
@@ -86,8 +85,7 @@ func scanAudit(row pgx.CollectableRow) (model.AuditEvent, error) {
 	e.RequestID = opt.FromPtr(requestID)
 	// Data that is not JSON reads as absent, as in Rust (`.ok()`).
 	if data != nil {
-		var v any
-		if json.Unmarshal([]byte(*data), &v) == nil {
+		if v, err := wire.DecodeAny([]byte(*data)); err == nil {
 			e.Data = opt.Some(v)
 		}
 	}

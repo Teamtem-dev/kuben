@@ -11,7 +11,6 @@ package store
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -231,8 +230,8 @@ func canonicalOpt(op string, v opt.Val[any]) (opt.Val[string], error) {
 
 // jsonValue reads JSON text; invalid JSON is a decode error.
 func jsonValue(op, text string) (any, error) {
-	var v any
-	if err := json.Unmarshal([]byte(text), &v); err != nil {
+	v, err := wire.DecodeAny([]byte(text))
+	if err != nil {
 		return nil, decodeErr(op, "%v", err)
 	}
 	return v, nil

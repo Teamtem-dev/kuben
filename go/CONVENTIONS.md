@@ -74,8 +74,12 @@ type and reproduce the exact wire form; add a test that pins it.
 - Time is `int64` unix milliseconds. Code that needs "now" takes a
   `clock.Clock`. Rust's saturating arithmetic is `clock.SaturatingAdd` and
   friends: overflow must not wrap.
-- `serde_json::Value` is `any` decoded with `json.Unmarshal` (objects are
-  `map[string]any`); an opaque stored blob is `json.RawMessage`.
+- `serde_json::Value` is `any` decoded with `wire.DecodeAny` (objects are
+  `map[string]any`, numbers `json.Number`); never `json.Unmarshal` into
+  `any`: a float64 turns `1.0` into `1` and changes every hash and stored
+  document that holds it. An opaque stored blob is `json.RawMessage`.
+  Canonical text (hashes, stored jsonb) comes from `wire.Canonical` /
+  `wire.CanonicalValue` only.
 - Unsigned Rust integers stay unsigned where the value is a count or a size;
   convert at the SQL boundary.
 

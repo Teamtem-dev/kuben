@@ -11,8 +11,9 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
+
+	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -77,8 +78,8 @@ func jsonColumn(text *string) (opt.Val[any], error) {
 	if text == nil {
 		return opt.None[any](), nil
 	}
-	var v any
-	if err := json.Unmarshal([]byte(*text), &v); err != nil {
+	v, err := wire.DecodeAny([]byte(*text))
+	if err != nil {
 		return opt.None[any](), decodeErr("read a JSON column", "%v", err)
 	}
 	return opt.Some(v), nil

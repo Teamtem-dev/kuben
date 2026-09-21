@@ -89,3 +89,20 @@ func TestTakeLeavesTheRest(t *testing.T) {
 		t.Fatalf("got %v", o)
 	}
 }
+
+func TestDecodeAnyKeepsNumberText(t *testing.T) {
+	v, err := wire.DecodeAny([]byte(`{"a":1.0,"b":1,"c":[1e21]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := wire.CanonicalValue(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `{"a":1.0,"b":1,"c":[1e+21]}` {
+		t.Fatalf("got %s", got)
+	}
+	if _, err := wire.DecodeAny([]byte(`{} {}`)); err == nil {
+		t.Fatal("trailing data")
+	}
+}

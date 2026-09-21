@@ -80,3 +80,21 @@ func TakeOptional[T any](o Object, key string, out *opt.Val[T]) error {
 	defer delete(o, key)
 	return Optional(o, key, out)
 }
+
+// DecodeAny reads JSON text into a generic value the way serde_json::Value
+// holds it: numbers keep their text (json.Number), so an integer stays an
+// integer and `1.0` stays a float when the value is written or hashed
+// again (see Canonical). Every JSON that can reach a content hash, a stored
+// jsonb or a manifest is read with it, never with json.Unmarshal into any.
+func DecodeAny(data []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, fmt.Errorf("decode JSON: %w", err)
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("decode JSON: trailing data")
+	}
+	return v, nil
+}
