@@ -34,6 +34,22 @@ func (s *Store) TestQueryRow(ctx context.Context, sql string, args ...any) pgx.R
 // transactions on the same session.
 func (s *Store) TestAcquire(ctx context.Context) (*pgxpool.Conn, error) { return s.db.acquire(ctx) }
 
+// ReleaseContent exposes releaseContent to the external tests.
+func ReleaseContent(r PortableRelease) (string, error) { return releaseContent(r) }
+
+// PlanContent exposes planContent to the external tests.
+func PlanContent(version string, capabilities, resources any) (string, error) {
+	return planContent(version, capabilities, resources)
+}
+
+// RetentionBefore exposes retentionBefore to the external tests.
+func RetentionBefore(now int64, days uint32) int64 { return retentionBefore(now, days) }
+
+// TestQuery runs a query in the tenant's transaction.
+func (t *Tenant) TestQuery(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return t.tx.Query(ctx, sql, args...)
+}
+
 // TestExec runs a statement in the tenant's transaction (Rust tests used t.tx).
 func (t *Tenant) TestExec(ctx context.Context, sql string, args ...any) (uint64, error) {
 	return exec(ctx, t.tx, "test", sql, args...)

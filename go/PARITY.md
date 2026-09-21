@@ -189,39 +189,39 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `db.rs` | 195 | 2 | store (store.go, pool.go, errors.go) | ported | 2 → 4 Go tests (+ error messages, id encoding); acquire timeout via a pool wrapper |
 | kuben-store | `lib.rs` | 13 | 0 | store (package doc) | ported | |
 | kuben-store | `testing.rs` | 55 | 0 | store/pgtest | ported | skip → failure with KUBEN_REQUIRE_PG=1; schema dropped after the test; `Schema` for migrator tests |
-| kuben-store | `repo/acceptance.rs` | 451 | 3 |  | todo | |
-| kuben-store | `repo/agents.rs` | 875 | 7 |  | todo | |
+| kuben-store | `repo/acceptance.rs` | 451 | 3 | store (acceptance_test.go) | ported | 3 → 3; the panicking handler is a recovered panic with the deferred rollback a Go server runs |
+| kuben-store | `repo/agents.rs` | 875 | 7 | store (agents.go, partial) | partial | `Delivery` and `record_runtime_observation` (for the catalog and the materializer); enrollment, links, tokens, handover and the 7 tests follow with the agent work |
 | kuben-store | `repo/audit.rs` | 130 | 0 | store (audit.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/backups.rs` | 357 | 2 |  | todo | |
 | kuben-store | `repo/builds.rs` | 1794 | 11 |  | todo | |
-| kuben-store | `repo/capabilities.rs` | 198 | 1 |  | todo | |
-| kuben-store | `repo/catalog.rs` | 711 | 2 | store (catalog.go, partial) | todo | environments/environment ported with the projects half of lists_what_the_api_shows; apps, runs, run phases, config revisions, domains, application left |
+| kuben-store | `repo/capabilities.rs` | 198 | 1 | store (capabilities.go) | ported | 1 → 1 |
+| kuben-store | `repo/catalog.rs` | 711 | 2 | store (catalog.go) | ported | 2 → 2 |
 | kuben-store | `repo/ci.rs` | 471 | 3 |  | todo | |
-| kuben-store | `repo/controls.rs` | 707 | 2 |  | todo | |
-| kuben-store | `repo/deployments.rs` | 1290 | 4 |  | todo | |
+| kuben-store | `repo/controls.rs` | 707 | 2 | store (controls.go, partial) | partial | `active_freeze` (a deployment checks it); freezes, silences, owners and the 2 tests follow with the control routes |
+| kuben-store | `repo/deployments.rs` | 1290 | 4 | store (deployments.go) | ported | 4 → 7 Go tests (+ run reasons, emergency guard, serde content texts); INSERT_RUN casts $1, $5, $6, $7, $9, $10, $15 (SUBSTITUTIONS.md) |
 | kuben-store | `repo/detach.rs` | 285 | 0 |  | todo | |
 | kuben-store | `repo/domains.rs` | 503 | 2 |  | todo | |
 | kuben-store | `repo/image_policies.rs` | 357 | 1 |  | todo | |
 | kuben-store | `repo/installs.rs` | 84 | 1 |  | todo | |
-| kuben-store | `repo/lifecycle.rs` | 375 | 2 |  | todo | |
-| kuben-store | `repo/materialize.rs` | 927 | 6 |  | todo | |
+| kuben-store | `repo/lifecycle.rs` | 375 | 2 | store (lifecycle.go) | ported | 2 → 3 Go tests (+ the subject's wire form) |
+| kuben-store | `repo/materialize.rs` | 927 | 6 | store (materialize.go) | ported | 6 → 6 |
 | kuben-store | `repo/mod.rs` | 88 | 0 |  | todo | |
 | kuben-store | `repo/notify.rs` | 749 | 3 |  | todo | |
-| kuben-store | `repo/operations.rs` | 804 | 5 |  | todo | |
+| kuben-store | `repo/operations.rs` | 804 | 5 | store (operations.go) | ported | 5 → 5 |
 | kuben-store | `repo/orgs.rs` | 320 | 0 | store (orgs.go) | ported | covered by the tests/matrix.rs port |
-| kuben-store | `repo/policies.rs` | 888 | 8 |  | todo | |
-| kuben-store | `repo/previews.rs` | 740 | 2 |  | todo | |
+| kuben-store | `repo/policies.rs` | 888 | 8 | store (policies.go, partial) | partial | `PolicyRevision`, `environment_policy`, `policy_of_target`; setting policies, approvals and the 8 tests follow with the policy routes |
+| kuben-store | `repo/previews.rs` | 740 | 2 | store (previews.go, partial) | partial | `untrusted_target` (a deployment checks it); previews and the 2 tests follow with the preview work |
 | kuben-store | `repo/product.rs` | 693 | 3 | store (tenant.go) | ported | 3 → 3 |
-| kuben-store | `repo/releases.rs` | 144 | 0 |  | todo | |
-| kuben-store | `repo/resolve.rs` | 244 | 2 |  | todo | |
-| kuben-store | `repo/retention.rs` | 182 | 2 |  | todo | |
+| kuben-store | `repo/releases.rs` | 144 | 0 | store (releases.go) | ported | 0 tests in the file; covered by the releases section of the tests/matrix.rs port |
+| kuben-store | `repo/resolve.rs` | 244 | 2 | store (resolve.go) | ported | 2 → 2; `SqlScope` is `SQLScope` |
+| kuben-store | `repo/retention.rs` | 182 | 2 | store (retention.go) | ported | 2 → 2; the DB test writes its incidents and webhook deliveries by hand until repo/notify.rs is ported |
 | kuben-store | `repo/rollups.rs` | 145 | 1 |  | todo | |
-| kuben-store | `repo/scans.rs` | 683 | 3 |  | todo | |
-| kuben-store | `repo/secrets.rs` | 1283 | 5 |  | todo | |
+| kuben-store | `repo/scans.rs` | 683 | 3 | store (scans.go, partial) | partial | `scan_verdict`, `latest_scans` (a deployment checks the gate); recording scans, SBOMs, exceptions and the 3 tests follow with the scan work |
+| kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets.go, partial) | partial | `wanted_secrets`, `bind_run_secrets`, `run_secret_bindings`, `SecretBinding`; the secret store and the 5 tests follow with the secret routes |
 | kuben-store | `repo/sessions.rs` | 125 | 0 | store (sessions.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/sso.rs` | 326 | 3 |  | todo | |
 | kuben-store | `repo/status.rs` | 244 | 1 |  | todo | |
-| kuben-store | `repo/support.rs` | 160 | 1 |  | todo | |
+| kuben-store | `repo/support.rs` | 160 | 1 | store (support.go) | ported | 1 → 1; incidents written by hand until repo/notify.rs is ported |
 | kuben-store | `repo/throttle.rs` | 64 | 0 | store (throttle.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/tokens.rs` | 154 | 0 | store (tokens.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/upgrades.rs` | 260 | 1 | store (upgrades.go) | ported | 1 → 3 Go tests (+ version order, char truncation) |
@@ -235,7 +235,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 |  | todo | |
 | kuben-platform | `tests/materializer.rs` | 633 | 5 |  | todo | |
 | kuben-platform | `tests/two_writer_cas.rs` | 185 | 3 |  | todo | |
-| kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go, partial) | todo | every identity section ported; the releases section waits for repo/releases.rs |
+| kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
 Totals: 231 files, 87964 lines, 685 Rust tests; ported 38.

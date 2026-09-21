@@ -14,8 +14,8 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store/pgtest"
 )
 
-// Ported from tests/matrix.rs: one pass over every identity repository.
-// The releases section (repo/releases.rs) comes with that repository.
+// Ported from tests/matrix.rs: one pass over every identity repository and
+// the release history.
 
 func nowMs() int64 { return time.Now().UnixMilli() }
 
@@ -29,6 +29,7 @@ func TestPostgresRoundtrip(t *testing.T) {
 	roundtripAudit(t, s, o, user)
 	roundtripTokens(t, s, o, user)
 	roundtripMembers(t, s, o, user)
+	roundtripReleases(t, s, o, user)
 	roundtripAuditPages(t, s, o)
 	roundtripThrottle(t, s)
 	if err := s.Ping(t.Context()); err != nil {
@@ -208,6 +209,45 @@ func roundtripMembers(t *testing.T, s *store.Store, o model.Organization, user m
 	}
 	if members := must[[]model.Member](t, "members")(s.ListMembers(ctx, o.ID)); len(members) != 1 {
 		t.Fatalf("members: %+v", members)
+	}
+}
+
+// releases (scenario 5)
+func roundtripReleases(t *testing.T, s *store.Store, o model.Organization, user model.User) {
+	t.Helper()
+	ctx := t.Context()
+	for i, image := range []string{"nginx:1.27", "nginx:1.28"} {
+		r := must[model.AppRelease](t, "release")(s.RecordRelease(ctx, store.NewRelease{
+			OrgID:     opt.Some(o.ID),
+			Namespace: "kb-shop-prod",
+			App:       "api",
+			Image:     opt.Some(image),
+			Spec:      map[string]any{"source": map[string]any{"image": image}},
+			Reason:    "deploy",
+			ActorID:   opt.Some(user.ID.String()),
+		}))
+		if r.Revision != int64(i)+1 {
+			t.Fatalf("revision: %d", r.Revision)
+		}
+	}
+	releases := must[[]model.AppRelease](t, "releases")(s.ListReleases(ctx, "kb-shop-prod", "api", 10))
+	var revisions []int64
+	for _, r := range releases {
+		revisions = append(revisions, r.Revision)
+	}
+	if diff := cmp.Diff([]int64{2, 1}, revisions); diff != "" {
+		t.Fatalf("revisions (-want +got):\n%s", diff)
+	}
+	first, ok, err := s.FindRelease(ctx, "kb-shop-prod", "api", 1)
+	if err != nil || !ok {
+		t.Fatalf("revision 1: %v, %v", ok, err)
+	}
+	if image, _ := first.Image.Get(); image != "nginx:1.27" {
+		t.Fatalf("image: %+v", first.Image)
+	}
+	spec, ok := first.Spec.(map[string]any)
+	if source, _ := spec["source"].(map[string]any); !ok || source["image"] != "nginx:1.27" {
+		t.Fatalf("spec: %#v", first.Spec)
 	}
 }
 
