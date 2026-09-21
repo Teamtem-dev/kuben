@@ -16,26 +16,10 @@ import (
 // knownManifestDefects are disagreements between the frozen manifest and
 // the Rust types that the structural walk finds, keyed by CRD kind and
 // schema path. They are real: the test fails when one disappears, so the
-// entry is removed together with the fix.
-//
-// The Rust generator wrote the IdleMode variant `off` unquoted. YAML 1.1
-// readers (sigs.k8s.io/yaml, so kubectl and Helm) read it as the boolean
-// false, which makes the default and the first enum member of idle.mode a
-// boolean where the Rust type (and the Go one) has the string "off". The
-// running binary applied the CRDs from the Rust types, not from this file,
-// so only a Helm install of the chart's crds/ sees the boolean.
-var knownManifestDefects = map[string][]string{
-	"App": {
-		"spec.runtime.processes.*.idle.mode: default false, want a string",
-		"spec.runtime.processes.*.idle.mode: enum member false is not a string",
-		"spec.runtime.processes.*.idle.mode: enum [throttle zero], Go [off throttle zero]",
-	},
-	"Release": {
-		"spec.appSpec.runtime.processes.*.idle.mode: default false, want a string",
-		"spec.appSpec.runtime.processes.*.idle.mode: enum member false is not a string",
-		"spec.appSpec.runtime.processes.*.idle.mode: enum [throttle zero], Go [off throttle zero]",
-	},
-}
+// entry is removed together with the fix. (The last one, IdleMode `off`
+// written unquoted and read by YAML 1.1 parsers as false, was fixed in
+// crdgen, which now quotes YAML 1.1 booleans.)
+var knownManifestDefects = map[string][]string{}
 
 // rootFieldsOutsideTheSchema are the members every object has that the
 // kube-rs generator left out of the root schema (the apiserver knows them).
