@@ -50,6 +50,20 @@ export const user = {
   must_change_password: false,
 }
 
+export const projects = [
+  {
+    name: 'shop',
+    uid: null,
+    display_name: 'Shop',
+    description: null,
+    org: null,
+    environments: 1,
+    ready: true,
+    deleting: false,
+    created_at: '2026-09-16T08:00:00Z',
+  },
+]
+
 const process = (name: string, schedule: string | null = null) => ({
   name,
   command: [],
@@ -269,6 +283,7 @@ export async function mockApi(page: Page, { signedIn = true } = {}) {
         },
       ])
     }
+    if (path === '/api/v1/projects') return json(route, projects)
     if (path === '/api/v1/projects/shop/environments') return json(route, [])
     return json(
       route,

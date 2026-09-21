@@ -10,6 +10,11 @@
  *
  * Beyond shadcn's set: --success, --warning and --link, which the older
  * pages use for status text and links.
+ *
+ * Values are shadcn's neutral baseline, except light --muted-foreground and
+ * --destructive, a touch darker so text in them keeps WCAG AA (4.5:1) on
+ * --muted/--accent too (the console's axe checks enforce it). Keep that
+ * contrast when changing colours.
  */
 
 :root {
@@ -26,10 +31,10 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.53 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.55 0.23 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);

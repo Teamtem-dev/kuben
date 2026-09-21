@@ -80,14 +80,92 @@ for (const l of locales) {
   }
 }
 
-test('the menu opens as a drawer on a phone and closes on navigation', async ({ page }) => {
+test('the sidebar opens as a drawer on a phone and closes on navigation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
   await page.goto('/projects/shop/prod/web')
   const nav = page.getByRole('navigation', { name: 'Main' })
   await expect(nav).toBeHidden()
-  await page.getByRole('button', { name: 'Menu' }).click()
+  await page.getByRole('banner').getByRole('button', { name: 'Toggle sidebar' }).click()
   await expect(nav).toBeVisible()
   await nav.getByRole('link', { name: 'Team' }).click()
+  await expect(page).toHaveURL(/\/team$/)
   await expect(nav).toBeHidden()
+})
+
+for (const l of locales) {
+  test(`${l.locale}: the sidebar sits on the start side and collapses to icons`, async ({ page }) => {
+    await prefer(page, l.locale, 'light')
+    await mockApi(page)
+    await page.goto('/projects/shop/prod/web')
+    const nav = page.getByRole('navigation', { name: l.locale === 'fa' ? 'اصلی' : 'Main' })
+    await expect(nav).toBeVisible()
+    const box = await nav.boundingBox()
+    const width = page.viewportSize()?.width ?? 0
+    expect(box).not.toBeNull()
+    if (box) expect(l.dir === 'rtl' ? box.x > width / 2 : box.x < width / 2).toBe(true)
+    const toggle = page
+      .getByRole('banner')
+      .getByRole('button', { name: l.locale === 'fa' ? 'باز و بسته کردن نوار کناری' : 'Toggle sidebar' })
+    await toggle.click()
+    await expect(page.locator('[data-slot="sidebar"][data-state="collapsed"]')).toBeVisible()
+    await toggle.click()
+    await expect(page.locator('[data-slot="sidebar"][data-state="expanded"]')).toBeVisible()
+  })
+}
+
+test('the breadcrumb follows the project hierarchy', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web/doctor')
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(trail.getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '/')
+  await expect(trail.getByRole('link', { name: 'web' })).toHaveAttribute('href', '/projects/shop/prod/web')
+  await expect(trail.locator('[aria-current="page"]')).toHaveText('Doctor')
+})
+
+test('the command palette opens with Ctrl+K and goes to a page or a project', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web')
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+  await page.keyboard.press('Control+k')
+  const palette = page.getByRole('dialog', { name: 'Command palette' })
+  await expect(palette).toBeVisible()
+  await expect(palette.getByRole('option', { name: /Shop/ })).toBeVisible()
+  await expectAccessible(page)
+  await page.keyboard.type('audit')
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/audit$/)
+  await expect(palette).toBeHidden()
+  await page.getByRole('button', { name: 'Search…' }).click()
+  await page.getByRole('dialog', { name: 'Command palette' }).getByRole('option', { name: /Shop/ }).click()
+  await expect(page).toHaveURL(/\/projects\/shop$/)
+})
+
+test('the account menu, theme and language menus', async ({ page }) => {
+  await prefer(page, 'en', 'light')
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web')
+  await page.getByRole('button', { name: 'Theme' }).click()
+  await page.getByRole('menuitemradio', { name: 'Dark' }).click()
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.getByRole('button', { name: 'Language' }).click()
+  await page.getByRole('menuitemradio', { name: 'فارسی' }).click()
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+  await page.getByRole('button', { name: 'منوی حساب کاربری' }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu.getByRole('menuitem', { name: 'حساب کاربری' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'خروج' })).toBeVisible()
+  await expectAccessible(page)
+})
+
+test('the skip link moves focus to the page content', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web')
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+  await page.keyboard.press('Tab')
+  const skip = page.getByRole('link', { name: 'Skip to content' })
+  await expect(skip).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('main#content')).toBeFocused()
 })
