@@ -225,6 +225,13 @@
       ],
       "outputs": ["$TURBO_ROOT$/charts/kuben/crds/kuben.dev_all.yaml"]
     },
+    "hub#build": {
+      "description": "The Go hub with the console embedded (scripts/go-build.sh).",
+      "command": ["bash", "../../scripts/go-build.sh", "bin/kuben"],
+      "dependsOn": ["@kuben/console#build"],
+      "inputs": ["$TURBO_DEFAULT$", "!bin/**", "!internal/api/web/dist/**", "$TURBO_ROOT$/apps/console/dist/**"],
+      "outputs": ["bin/kuben"]
+    },
     "kuben#dev": {
       "description": "The API with every role, in dev mode (Vite proxies /api to it).",
       "command": ["cargo", "run", "--package=kuben", "--locked", "--", "serve", "--roles=all", "--dev"],

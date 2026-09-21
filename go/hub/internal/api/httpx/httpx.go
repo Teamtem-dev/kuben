@@ -58,6 +58,11 @@ type Request struct {
 	IP opt.Val[string]
 	// UserAgent is the raw User-Agent header ("" without one).
 	UserAgent string
+	// Peer is the TCP peer's address, when it parses.
+	Peer opt.Val[netip.Addr]
+	// ForwardedProto is the raw X-Forwarded-Proto header, believed only
+	// together with a trusted peer.
+	ForwardedProto string
 	// Cookie reads a request cookie by name.
 	Cookie func(name string) (string, bool)
 }
@@ -169,9 +174,11 @@ func Wrap(security config.SecurityCfg, next http.Handler) http.Handler {
 		w.Header().Set(RequestIDHeader, id)
 		ww := &Writer{ResponseWriter: w}
 		req := Request{
-			ID:        id,
-			IP:        ClientIP(r, security),
-			UserAgent: r.UserAgent(),
+			ID:             id,
+			IP:             ClientIP(r, security),
+			UserAgent:      r.UserAgent(),
+			Peer:           peerAddr(r),
+			ForwardedProto: r.Header.Get("X-Forwarded-Proto"),
 			Cookie: func(name string) (string, bool) {
 				c, err := r.Cookie(name)
 				if err != nil {
@@ -191,13 +198,10 @@ func Wrap(security config.SecurityCfg, next http.Handler) http.Handler {
 // one that proxy appended) is used when the configuration trusts it; the
 // earlier hops are client-controlled and never used.
 func ClientIP(r *http.Request, security config.SecurityCfg) opt.Val[string] {
-	peer := opt.None[netip.Addr]()
+	peer := peerAddr(r)
 	peerText := ""
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		peerText = host
-		if a, err := netip.ParseAddr(host); err == nil {
-			peer = opt.Some(a.Unmap())
-		}
 	}
 	if security.TrustsForwarded(peer) {
 		last := ""
@@ -237,4 +241,17 @@ func CSRFGuard(forbidden func(http.ResponseWriter), next http.Handler) http.Hand
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// peerAddr is the TCP peer of r, when its address parses.
+func peerAddr(r *http.Request) opt.Val[netip.Addr] {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return opt.None[netip.Addr]()
+	}
+	a, err := netip.ParseAddr(host)
+	if err != nil {
+		return opt.None[netip.Addr]()
+	}
+	return opt.Some(a.Unmap())
 }

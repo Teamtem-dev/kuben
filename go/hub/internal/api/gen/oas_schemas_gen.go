@@ -43,37 +43,42 @@ func (*AppDetail) getAppRes() {}
 
 // Ref: #/components/schemas/AppDto
 type AppDto struct {
-	Name    string `json:"name"`
-	Project string `json:"project"`
-	// Environment short name.
-	Environment string       `json:"environment"`
-	Namespace   string       `json:"namespace"`
-	Image       OptNilString `json:"image"`
-	GitRepo     OptNilString `json:"git_repo"`
-	URL         OptNilString `json:"url"`
-	Ready       bool         `json:"ready"`
-	// `Available`, `Progressing`, `RolloutFailed`, `Scheduled`, `AwaitingBuild`, ...
-	Reason    OptNilString `json:"reason"`
-	Message   OptNilString `json:"message"`
-	Processes []ProcessDto `json:"processes"`
+	CreatedAt OptNilString `json:"created_at"`
+	Domains   []string     `json:"domains"`
 	// Values are only included in the app detail, for callers allowed to read secrets.
-	Env       []EnvVarDto       `json:"env"`
-	Domains   []string          `json:"domains"`
-	Volumes   []VolumeDto       `json:"volumes"`
-	CreatedAt OptNilString      `json:"created_at"`
-	Exposure  OptNilExposureDto `json:"exposure"`
+	Env []EnvVarDto `json:"env"`
+	// Environment short name.
+	Environment string            `json:"environment"`
+	Exposure    OptNilExposureDto `json:"exposure"`
+	GitRepo     OptNilString      `json:"git_repo"`
+	Image       OptNilString      `json:"image"`
+	Message     OptNilString      `json:"message"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
 	// Why delivery is paused, while it is: new runs wait.
-	Paused OptNilString `json:"paused"`
+	Paused    OptNilString `json:"paused"`
+	Processes []ProcessDto `json:"processes"`
+	Project   string       `json:"project"`
+	Ready     bool         `json:"ready"`
+	// `Available`, `Progressing`, `RolloutFailed`, `Scheduled`, `AwaitingBuild`, ...
+	Reason  OptNilString `json:"reason"`
+	URL     OptNilString `json:"url"`
+	Volumes []VolumeDto  `json:"volumes"`
 }
 
-// GetName returns the value of Name.
-func (s *AppDto) GetName() string {
-	return s.Name
+// GetCreatedAt returns the value of CreatedAt.
+func (s *AppDto) GetCreatedAt() OptNilString {
+	return s.CreatedAt
 }
 
-// GetProject returns the value of Project.
-func (s *AppDto) GetProject() string {
-	return s.Project
+// GetDomains returns the value of Domains.
+func (s *AppDto) GetDomains() []string {
+	return s.Domains
+}
+
+// GetEnv returns the value of Env.
+func (s *AppDto) GetEnv() []EnvVarDto {
+	return s.Env
 }
 
 // GetEnvironment returns the value of Environment.
@@ -81,14 +86,9 @@ func (s *AppDto) GetEnvironment() string {
 	return s.Environment
 }
 
-// GetNamespace returns the value of Namespace.
-func (s *AppDto) GetNamespace() string {
-	return s.Namespace
-}
-
-// GetImage returns the value of Image.
-func (s *AppDto) GetImage() OptNilString {
-	return s.Image
+// GetExposure returns the value of Exposure.
+func (s *AppDto) GetExposure() OptNilExposureDto {
+	return s.Exposure
 }
 
 // GetGitRepo returns the value of GitRepo.
@@ -96,9 +96,39 @@ func (s *AppDto) GetGitRepo() OptNilString {
 	return s.GitRepo
 }
 
-// GetURL returns the value of URL.
-func (s *AppDto) GetURL() OptNilString {
-	return s.URL
+// GetImage returns the value of Image.
+func (s *AppDto) GetImage() OptNilString {
+	return s.Image
+}
+
+// GetMessage returns the value of Message.
+func (s *AppDto) GetMessage() OptNilString {
+	return s.Message
+}
+
+// GetName returns the value of Name.
+func (s *AppDto) GetName() string {
+	return s.Name
+}
+
+// GetNamespace returns the value of Namespace.
+func (s *AppDto) GetNamespace() string {
+	return s.Namespace
+}
+
+// GetPaused returns the value of Paused.
+func (s *AppDto) GetPaused() OptNilString {
+	return s.Paused
+}
+
+// GetProcesses returns the value of Processes.
+func (s *AppDto) GetProcesses() []ProcessDto {
+	return s.Processes
+}
+
+// GetProject returns the value of Project.
+func (s *AppDto) GetProject() string {
+	return s.Project
 }
 
 // GetReady returns the value of Ready.
@@ -111,24 +141,9 @@ func (s *AppDto) GetReason() OptNilString {
 	return s.Reason
 }
 
-// GetMessage returns the value of Message.
-func (s *AppDto) GetMessage() OptNilString {
-	return s.Message
-}
-
-// GetProcesses returns the value of Processes.
-func (s *AppDto) GetProcesses() []ProcessDto {
-	return s.Processes
-}
-
-// GetEnv returns the value of Env.
-func (s *AppDto) GetEnv() []EnvVarDto {
-	return s.Env
-}
-
-// GetDomains returns the value of Domains.
-func (s *AppDto) GetDomains() []string {
-	return s.Domains
+// GetURL returns the value of URL.
+func (s *AppDto) GetURL() OptNilString {
+	return s.URL
 }
 
 // GetVolumes returns the value of Volumes.
@@ -136,29 +151,19 @@ func (s *AppDto) GetVolumes() []VolumeDto {
 	return s.Volumes
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *AppDto) GetCreatedAt() OptNilString {
-	return s.CreatedAt
+// SetCreatedAt sets the value of CreatedAt.
+func (s *AppDto) SetCreatedAt(val OptNilString) {
+	s.CreatedAt = val
 }
 
-// GetExposure returns the value of Exposure.
-func (s *AppDto) GetExposure() OptNilExposureDto {
-	return s.Exposure
+// SetDomains sets the value of Domains.
+func (s *AppDto) SetDomains(val []string) {
+	s.Domains = val
 }
 
-// GetPaused returns the value of Paused.
-func (s *AppDto) GetPaused() OptNilString {
-	return s.Paused
-}
-
-// SetName sets the value of Name.
-func (s *AppDto) SetName(val string) {
-	s.Name = val
-}
-
-// SetProject sets the value of Project.
-func (s *AppDto) SetProject(val string) {
-	s.Project = val
+// SetEnv sets the value of Env.
+func (s *AppDto) SetEnv(val []EnvVarDto) {
+	s.Env = val
 }
 
 // SetEnvironment sets the value of Environment.
@@ -166,14 +171,9 @@ func (s *AppDto) SetEnvironment(val string) {
 	s.Environment = val
 }
 
-// SetNamespace sets the value of Namespace.
-func (s *AppDto) SetNamespace(val string) {
-	s.Namespace = val
-}
-
-// SetImage sets the value of Image.
-func (s *AppDto) SetImage(val OptNilString) {
-	s.Image = val
+// SetExposure sets the value of Exposure.
+func (s *AppDto) SetExposure(val OptNilExposureDto) {
+	s.Exposure = val
 }
 
 // SetGitRepo sets the value of GitRepo.
@@ -181,9 +181,39 @@ func (s *AppDto) SetGitRepo(val OptNilString) {
 	s.GitRepo = val
 }
 
-// SetURL sets the value of URL.
-func (s *AppDto) SetURL(val OptNilString) {
-	s.URL = val
+// SetImage sets the value of Image.
+func (s *AppDto) SetImage(val OptNilString) {
+	s.Image = val
+}
+
+// SetMessage sets the value of Message.
+func (s *AppDto) SetMessage(val OptNilString) {
+	s.Message = val
+}
+
+// SetName sets the value of Name.
+func (s *AppDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetNamespace sets the value of Namespace.
+func (s *AppDto) SetNamespace(val string) {
+	s.Namespace = val
+}
+
+// SetPaused sets the value of Paused.
+func (s *AppDto) SetPaused(val OptNilString) {
+	s.Paused = val
+}
+
+// SetProcesses sets the value of Processes.
+func (s *AppDto) SetProcesses(val []ProcessDto) {
+	s.Processes = val
+}
+
+// SetProject sets the value of Project.
+func (s *AppDto) SetProject(val string) {
+	s.Project = val
 }
 
 // SetReady sets the value of Ready.
@@ -196,44 +226,14 @@ func (s *AppDto) SetReason(val OptNilString) {
 	s.Reason = val
 }
 
-// SetMessage sets the value of Message.
-func (s *AppDto) SetMessage(val OptNilString) {
-	s.Message = val
-}
-
-// SetProcesses sets the value of Processes.
-func (s *AppDto) SetProcesses(val []ProcessDto) {
-	s.Processes = val
-}
-
-// SetEnv sets the value of Env.
-func (s *AppDto) SetEnv(val []EnvVarDto) {
-	s.Env = val
-}
-
-// SetDomains sets the value of Domains.
-func (s *AppDto) SetDomains(val []string) {
-	s.Domains = val
+// SetURL sets the value of URL.
+func (s *AppDto) SetURL(val OptNilString) {
+	s.URL = val
 }
 
 // SetVolumes sets the value of Volumes.
 func (s *AppDto) SetVolumes(val []VolumeDto) {
 	s.Volumes = val
-}
-
-// SetCreatedAt sets the value of CreatedAt.
-func (s *AppDto) SetCreatedAt(val OptNilString) {
-	s.CreatedAt = val
-}
-
-// SetExposure sets the value of Exposure.
-func (s *AppDto) SetExposure(val OptNilExposureDto) {
-	s.Exposure = val
-}
-
-// SetPaused sets the value of Paused.
-func (s *AppDto) SetPaused(val OptNilString) {
-	s.Paused = val
 }
 
 func (*AppDto) createAppRes()   {}
@@ -243,43 +243,18 @@ func (*AppDto) updateAppRes()   {}
 // A Kubernetes event about one of the app's objects.
 // Ref: #/components/schemas/AppEvent
 type AppEvent struct {
-	// Kind and name of the object (`Pod`, `Deployment`, `HTTPRoute`, `Certificate`, …).
-	Kind string `json:"kind"`
-	Name string `json:"name"`
-	// `Normal` or `Warning`.
-	Type      string       `json:"type"`
-	Reason    OptNilString `json:"reason"`
-	Message   OptNilString `json:"message"`
 	Count     int32        `json:"count"`
 	FirstSeen OptNilString `json:"first_seen"`
-	LastSeen  OptNilString `json:"last_seen"`
+	// Kind and name of the object (`Pod`, `Deployment`, `HTTPRoute`, `Certificate`, …).
+	Kind     string       `json:"kind"`
+	LastSeen OptNilString `json:"last_seen"`
+	Message  OptNilString `json:"message"`
+	Name     string       `json:"name"`
+	Reason   OptNilString `json:"reason"`
 	// The component that reported it.
 	Source OptNilString `json:"source"`
-}
-
-// GetKind returns the value of Kind.
-func (s *AppEvent) GetKind() string {
-	return s.Kind
-}
-
-// GetName returns the value of Name.
-func (s *AppEvent) GetName() string {
-	return s.Name
-}
-
-// GetType returns the value of Type.
-func (s *AppEvent) GetType() string {
-	return s.Type
-}
-
-// GetReason returns the value of Reason.
-func (s *AppEvent) GetReason() OptNilString {
-	return s.Reason
-}
-
-// GetMessage returns the value of Message.
-func (s *AppEvent) GetMessage() OptNilString {
-	return s.Message
+	// `Normal` or `Warning`.
+	Type string `json:"type"`
 }
 
 // GetCount returns the value of Count.
@@ -292,9 +267,29 @@ func (s *AppEvent) GetFirstSeen() OptNilString {
 	return s.FirstSeen
 }
 
+// GetKind returns the value of Kind.
+func (s *AppEvent) GetKind() string {
+	return s.Kind
+}
+
 // GetLastSeen returns the value of LastSeen.
 func (s *AppEvent) GetLastSeen() OptNilString {
 	return s.LastSeen
+}
+
+// GetMessage returns the value of Message.
+func (s *AppEvent) GetMessage() OptNilString {
+	return s.Message
+}
+
+// GetName returns the value of Name.
+func (s *AppEvent) GetName() string {
+	return s.Name
+}
+
+// GetReason returns the value of Reason.
+func (s *AppEvent) GetReason() OptNilString {
+	return s.Reason
 }
 
 // GetSource returns the value of Source.
@@ -302,29 +297,9 @@ func (s *AppEvent) GetSource() OptNilString {
 	return s.Source
 }
 
-// SetKind sets the value of Kind.
-func (s *AppEvent) SetKind(val string) {
-	s.Kind = val
-}
-
-// SetName sets the value of Name.
-func (s *AppEvent) SetName(val string) {
-	s.Name = val
-}
-
-// SetType sets the value of Type.
-func (s *AppEvent) SetType(val string) {
-	s.Type = val
-}
-
-// SetReason sets the value of Reason.
-func (s *AppEvent) SetReason(val OptNilString) {
-	s.Reason = val
-}
-
-// SetMessage sets the value of Message.
-func (s *AppEvent) SetMessage(val OptNilString) {
-	s.Message = val
+// GetType returns the value of Type.
+func (s *AppEvent) GetType() string {
+	return s.Type
 }
 
 // SetCount sets the value of Count.
@@ -337,9 +312,29 @@ func (s *AppEvent) SetFirstSeen(val OptNilString) {
 	s.FirstSeen = val
 }
 
+// SetKind sets the value of Kind.
+func (s *AppEvent) SetKind(val string) {
+	s.Kind = val
+}
+
 // SetLastSeen sets the value of LastSeen.
 func (s *AppEvent) SetLastSeen(val OptNilString) {
 	s.LastSeen = val
+}
+
+// SetMessage sets the value of Message.
+func (s *AppEvent) SetMessage(val OptNilString) {
+	s.Message = val
+}
+
+// SetName sets the value of Name.
+func (s *AppEvent) SetName(val string) {
+	s.Name = val
+}
+
+// SetReason sets the value of Reason.
+func (s *AppEvent) SetReason(val OptNilString) {
+	s.Reason = val
 }
 
 // SetSource sets the value of Source.
@@ -347,18 +342,18 @@ func (s *AppEvent) SetSource(val OptNilString) {
 	s.Source = val
 }
 
-// Ref: #/components/schemas/AppScansDto
-type AppScansDto struct {
-	Release OptNilUUID `json:"release"`
-	// `pass`, `warn` or `block`: what the environment's gate says now.
-	Gate    string         `json:"gate"`
-	Reasons []string       `json:"reasons"`
-	Images  []ImageScanDto `json:"images"`
+// SetType sets the value of Type.
+func (s *AppEvent) SetType(val string) {
+	s.Type = val
 }
 
-// GetRelease returns the value of Release.
-func (s *AppScansDto) GetRelease() OptNilUUID {
-	return s.Release
+// Ref: #/components/schemas/AppScansDto
+type AppScansDto struct {
+	// `pass`, `warn` or `block`: what the environment's gate says now.
+	Gate    string         `json:"gate"`
+	Images  []ImageScanDto `json:"images"`
+	Reasons []string       `json:"reasons"`
+	Release OptNilUUID     `json:"release"`
 }
 
 // GetGate returns the value of Gate.
@@ -366,19 +361,19 @@ func (s *AppScansDto) GetGate() string {
 	return s.Gate
 }
 
-// GetReasons returns the value of Reasons.
-func (s *AppScansDto) GetReasons() []string {
-	return s.Reasons
-}
-
 // GetImages returns the value of Images.
 func (s *AppScansDto) GetImages() []ImageScanDto {
 	return s.Images
 }
 
-// SetRelease sets the value of Release.
-func (s *AppScansDto) SetRelease(val OptNilUUID) {
-	s.Release = val
+// GetReasons returns the value of Reasons.
+func (s *AppScansDto) GetReasons() []string {
+	return s.Reasons
+}
+
+// GetRelease returns the value of Release.
+func (s *AppScansDto) GetRelease() OptNilUUID {
+	return s.Release
 }
 
 // SetGate sets the value of Gate.
@@ -386,69 +381,44 @@ func (s *AppScansDto) SetGate(val string) {
 	s.Gate = val
 }
 
+// SetImages sets the value of Images.
+func (s *AppScansDto) SetImages(val []ImageScanDto) {
+	s.Images = val
+}
+
 // SetReasons sets the value of Reasons.
 func (s *AppScansDto) SetReasons(val []string) {
 	s.Reasons = val
 }
 
-// SetImages sets the value of Images.
-func (s *AppScansDto) SetImages(val []ImageScanDto) {
-	s.Images = val
+// SetRelease sets the value of Release.
+func (s *AppScansDto) SetRelease(val OptNilUUID) {
+	s.Release = val
 }
 
 func (*AppScansDto) getAppScansRes() {}
 
 // Ref: #/components/schemas/ApprovalDto
 type ApprovalDto struct {
-	Run   uuid.UUID `json:"run"`
-	Phase string    `json:"phase"`
-	// Email of whoever asked for the deployment.
-	RequestedBy string `json:"requestedBy"`
-	// Distinct approvals needed; 0 when the run needs none.
-	Required int32 `json:"required"`
 	Approved int32 `json:"approved"`
-	// When the run is cancelled unless approved (Unix milliseconds).
-	ExpiresAt OptNilInt64 `json:"expiresAt"`
-	// What an approver confirms: send it back with the decision.
-	PlanHash OptNilString `json:"planHash"`
 	// Whether the caller may decide on this run now.
 	CanDecide bool          `json:"canDecide"`
 	Decisions []DecisionDto `json:"decisions"`
-}
-
-// GetRun returns the value of Run.
-func (s *ApprovalDto) GetRun() uuid.UUID {
-	return s.Run
-}
-
-// GetPhase returns the value of Phase.
-func (s *ApprovalDto) GetPhase() string {
-	return s.Phase
-}
-
-// GetRequestedBy returns the value of RequestedBy.
-func (s *ApprovalDto) GetRequestedBy() string {
-	return s.RequestedBy
-}
-
-// GetRequired returns the value of Required.
-func (s *ApprovalDto) GetRequired() int32 {
-	return s.Required
+	// When the run is cancelled unless approved (Unix milliseconds).
+	ExpiresAt OptNilInt64 `json:"expiresAt"`
+	Phase     string      `json:"phase"`
+	// What an approver confirms: send it back with the decision.
+	PlanHash OptNilString `json:"planHash"`
+	// Email of whoever asked for the deployment.
+	RequestedBy string `json:"requestedBy"`
+	// Distinct approvals needed; 0 when the run needs none.
+	Required int32     `json:"required"`
+	Run      uuid.UUID `json:"run"`
 }
 
 // GetApproved returns the value of Approved.
 func (s *ApprovalDto) GetApproved() int32 {
 	return s.Approved
-}
-
-// GetExpiresAt returns the value of ExpiresAt.
-func (s *ApprovalDto) GetExpiresAt() OptNilInt64 {
-	return s.ExpiresAt
-}
-
-// GetPlanHash returns the value of PlanHash.
-func (s *ApprovalDto) GetPlanHash() OptNilString {
-	return s.PlanHash
 }
 
 // GetCanDecide returns the value of CanDecide.
@@ -461,14 +431,64 @@ func (s *ApprovalDto) GetDecisions() []DecisionDto {
 	return s.Decisions
 }
 
-// SetRun sets the value of Run.
-func (s *ApprovalDto) SetRun(val uuid.UUID) {
-	s.Run = val
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *ApprovalDto) GetExpiresAt() OptNilInt64 {
+	return s.ExpiresAt
+}
+
+// GetPhase returns the value of Phase.
+func (s *ApprovalDto) GetPhase() string {
+	return s.Phase
+}
+
+// GetPlanHash returns the value of PlanHash.
+func (s *ApprovalDto) GetPlanHash() OptNilString {
+	return s.PlanHash
+}
+
+// GetRequestedBy returns the value of RequestedBy.
+func (s *ApprovalDto) GetRequestedBy() string {
+	return s.RequestedBy
+}
+
+// GetRequired returns the value of Required.
+func (s *ApprovalDto) GetRequired() int32 {
+	return s.Required
+}
+
+// GetRun returns the value of Run.
+func (s *ApprovalDto) GetRun() uuid.UUID {
+	return s.Run
+}
+
+// SetApproved sets the value of Approved.
+func (s *ApprovalDto) SetApproved(val int32) {
+	s.Approved = val
+}
+
+// SetCanDecide sets the value of CanDecide.
+func (s *ApprovalDto) SetCanDecide(val bool) {
+	s.CanDecide = val
+}
+
+// SetDecisions sets the value of Decisions.
+func (s *ApprovalDto) SetDecisions(val []DecisionDto) {
+	s.Decisions = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *ApprovalDto) SetExpiresAt(val OptNilInt64) {
+	s.ExpiresAt = val
 }
 
 // SetPhase sets the value of Phase.
 func (s *ApprovalDto) SetPhase(val string) {
 	s.Phase = val
+}
+
+// SetPlanHash sets the value of PlanHash.
+func (s *ApprovalDto) SetPlanHash(val OptNilString) {
+	s.PlanHash = val
 }
 
 // SetRequestedBy sets the value of RequestedBy.
@@ -481,29 +501,9 @@ func (s *ApprovalDto) SetRequired(val int32) {
 	s.Required = val
 }
 
-// SetApproved sets the value of Approved.
-func (s *ApprovalDto) SetApproved(val int32) {
-	s.Approved = val
-}
-
-// SetExpiresAt sets the value of ExpiresAt.
-func (s *ApprovalDto) SetExpiresAt(val OptNilInt64) {
-	s.ExpiresAt = val
-}
-
-// SetPlanHash sets the value of PlanHash.
-func (s *ApprovalDto) SetPlanHash(val OptNilString) {
-	s.PlanHash = val
-}
-
-// SetCanDecide sets the value of CanDecide.
-func (s *ApprovalDto) SetCanDecide(val bool) {
-	s.CanDecide = val
-}
-
-// SetDecisions sets the value of Decisions.
-func (s *ApprovalDto) SetDecisions(val []DecisionDto) {
-	s.Decisions = val
+// SetRun sets the value of Run.
+func (s *ApprovalDto) SetRun(val uuid.UUID) {
+	s.Run = val
 }
 
 func (*ApprovalDto) approveDeploymentRes()     {}
@@ -528,48 +528,23 @@ func (*ApproveDeploymentUnprocessableEntity) approveDeploymentRes() {}
 
 // Ref: #/components/schemas/AuditEventDto
 type AuditEventDto struct {
-	Seq int64  `json:"seq"`
-	ID  string `json:"id"`
-	// Unix milliseconds.
-	At int64 `json:"at"`
-	// `session`, `token`, `user` or `anonymous`.
-	ActorKind string `json:"actor_kind"`
+	// OpenAPI operation id, e.g. `createApp`.
+	Action string `json:"action"`
 	// Email of the actor (or its id if the user no longer exists).
 	Actor OptNilString `json:"actor"`
-	// OpenAPI operation id, e.g. `createApp`.
-	Action     string       `json:"action"`
-	TargetKind OptNilString `json:"target_kind"`
-	Target     OptNilString `json:"target"`
+	// `session`, `token`, `user` or `anonymous`.
+	ActorKind string `json:"actor_kind"`
+	// Unix milliseconds.
+	At int64        `json:"at"`
+	ID string       `json:"id"`
+	IP OptNilString `json:"ip"`
 	// `success`, `denied`, `failure`, `throttled` or `error`.
-	Outcome   string       `json:"outcome"`
-	Status    OptNilInt32  `json:"status"`
-	IP        OptNilString `json:"ip"`
-	RequestID OptNilString `json:"request_id"`
-}
-
-// GetSeq returns the value of Seq.
-func (s *AuditEventDto) GetSeq() int64 {
-	return s.Seq
-}
-
-// GetID returns the value of ID.
-func (s *AuditEventDto) GetID() string {
-	return s.ID
-}
-
-// GetAt returns the value of At.
-func (s *AuditEventDto) GetAt() int64 {
-	return s.At
-}
-
-// GetActorKind returns the value of ActorKind.
-func (s *AuditEventDto) GetActorKind() string {
-	return s.ActorKind
-}
-
-// GetActor returns the value of Actor.
-func (s *AuditEventDto) GetActor() OptNilString {
-	return s.Actor
+	Outcome    string       `json:"outcome"`
+	RequestID  OptNilString `json:"request_id"`
+	Seq        int64        `json:"seq"`
+	Status     OptNilInt32  `json:"status"`
+	Target     OptNilString `json:"target"`
+	TargetKind OptNilString `json:"target_kind"`
 }
 
 // GetAction returns the value of Action.
@@ -577,24 +552,24 @@ func (s *AuditEventDto) GetAction() string {
 	return s.Action
 }
 
-// GetTargetKind returns the value of TargetKind.
-func (s *AuditEventDto) GetTargetKind() OptNilString {
-	return s.TargetKind
+// GetActor returns the value of Actor.
+func (s *AuditEventDto) GetActor() OptNilString {
+	return s.Actor
 }
 
-// GetTarget returns the value of Target.
-func (s *AuditEventDto) GetTarget() OptNilString {
-	return s.Target
+// GetActorKind returns the value of ActorKind.
+func (s *AuditEventDto) GetActorKind() string {
+	return s.ActorKind
 }
 
-// GetOutcome returns the value of Outcome.
-func (s *AuditEventDto) GetOutcome() string {
-	return s.Outcome
+// GetAt returns the value of At.
+func (s *AuditEventDto) GetAt() int64 {
+	return s.At
 }
 
-// GetStatus returns the value of Status.
-func (s *AuditEventDto) GetStatus() OptNilInt32 {
-	return s.Status
+// GetID returns the value of ID.
+func (s *AuditEventDto) GetID() string {
+	return s.ID
 }
 
 // GetIP returns the value of IP.
@@ -602,34 +577,34 @@ func (s *AuditEventDto) GetIP() OptNilString {
 	return s.IP
 }
 
+// GetOutcome returns the value of Outcome.
+func (s *AuditEventDto) GetOutcome() string {
+	return s.Outcome
+}
+
 // GetRequestID returns the value of RequestID.
 func (s *AuditEventDto) GetRequestID() OptNilString {
 	return s.RequestID
 }
 
-// SetSeq sets the value of Seq.
-func (s *AuditEventDto) SetSeq(val int64) {
-	s.Seq = val
+// GetSeq returns the value of Seq.
+func (s *AuditEventDto) GetSeq() int64 {
+	return s.Seq
 }
 
-// SetID sets the value of ID.
-func (s *AuditEventDto) SetID(val string) {
-	s.ID = val
+// GetStatus returns the value of Status.
+func (s *AuditEventDto) GetStatus() OptNilInt32 {
+	return s.Status
 }
 
-// SetAt sets the value of At.
-func (s *AuditEventDto) SetAt(val int64) {
-	s.At = val
+// GetTarget returns the value of Target.
+func (s *AuditEventDto) GetTarget() OptNilString {
+	return s.Target
 }
 
-// SetActorKind sets the value of ActorKind.
-func (s *AuditEventDto) SetActorKind(val string) {
-	s.ActorKind = val
-}
-
-// SetActor sets the value of Actor.
-func (s *AuditEventDto) SetActor(val OptNilString) {
-	s.Actor = val
+// GetTargetKind returns the value of TargetKind.
+func (s *AuditEventDto) GetTargetKind() OptNilString {
+	return s.TargetKind
 }
 
 // SetAction sets the value of Action.
@@ -637,24 +612,24 @@ func (s *AuditEventDto) SetAction(val string) {
 	s.Action = val
 }
 
-// SetTargetKind sets the value of TargetKind.
-func (s *AuditEventDto) SetTargetKind(val OptNilString) {
-	s.TargetKind = val
+// SetActor sets the value of Actor.
+func (s *AuditEventDto) SetActor(val OptNilString) {
+	s.Actor = val
 }
 
-// SetTarget sets the value of Target.
-func (s *AuditEventDto) SetTarget(val OptNilString) {
-	s.Target = val
+// SetActorKind sets the value of ActorKind.
+func (s *AuditEventDto) SetActorKind(val string) {
+	s.ActorKind = val
 }
 
-// SetOutcome sets the value of Outcome.
-func (s *AuditEventDto) SetOutcome(val string) {
-	s.Outcome = val
+// SetAt sets the value of At.
+func (s *AuditEventDto) SetAt(val int64) {
+	s.At = val
 }
 
-// SetStatus sets the value of Status.
-func (s *AuditEventDto) SetStatus(val OptNilInt32) {
-	s.Status = val
+// SetID sets the value of ID.
+func (s *AuditEventDto) SetID(val string) {
+	s.ID = val
 }
 
 // SetIP sets the value of IP.
@@ -662,9 +637,34 @@ func (s *AuditEventDto) SetIP(val OptNilString) {
 	s.IP = val
 }
 
+// SetOutcome sets the value of Outcome.
+func (s *AuditEventDto) SetOutcome(val string) {
+	s.Outcome = val
+}
+
 // SetRequestID sets the value of RequestID.
 func (s *AuditEventDto) SetRequestID(val OptNilString) {
 	s.RequestID = val
+}
+
+// SetSeq sets the value of Seq.
+func (s *AuditEventDto) SetSeq(val int64) {
+	s.Seq = val
+}
+
+// SetStatus sets the value of Status.
+func (s *AuditEventDto) SetStatus(val OptNilInt32) {
+	s.Status = val
+}
+
+// SetTarget sets the value of Target.
+func (s *AuditEventDto) SetTarget(val OptNilString) {
+	s.Target = val
+}
+
+// SetTargetKind sets the value of TargetKind.
+func (s *AuditEventDto) SetTargetKind(val OptNilString) {
+	s.TargetKind = val
 }
 
 // Ref: #/components/schemas/AuditPage
@@ -698,38 +698,33 @@ func (*AuditPage) listAuditRes() {}
 
 // Ref: #/components/schemas/BuildDto
 type BuildDto struct {
-	ID string `json:"id"`
 	// 1 for the first attempt; an infrastructure retry is the next one.
-	Attempt    int32  `json:"attempt"`
-	Repository string `json:"repository"`
-	Branch     string `json:"branch"`
-	Commit     string `json:"commit"`
-	// `auto`, `dockerfile` or `railpack`, as configured.
-	Strategy string `json:"strategy"`
-	// `queued`, `blocked`, `preparing`, `running`, `publishing`, `verifyingOutput`, `cancelRequested`,
-	// `cancelling`, `succeeded`, `failed` or `cancelled`.
-	Phase         string       `json:"phase"`
-	BlockedReason OptNilString `json:"blockedReason"`
+	Attempt         int32        `json:"attempt"`
+	BlockedReason   OptNilString `json:"blockedReason"`
+	Branch          string       `json:"branch"`
+	CancelRequested bool         `json:"cancelRequested"`
+	Commit          string       `json:"commit"`
+	CreatedAt       int64        `json:"createdAt"`
+	// `deployed`, or why the build did not deploy (`StaleSource`, `BuildConfigChanged`, `NotAutomatic`,
+	// …).
+	DeployDecision OptNilString `json:"deployDecision"`
+	Deployment     OptNilString `json:"deployment"`
 	// `BuildError`, `OutOfMemory`, `DiskFull`, `DeadlineExceeded`, `LostWorker`, `SourceUnavailable`,
 	// `OutputRejected`, ….
 	Failure       OptNilString `json:"failure"`
 	FailureDetail OptNilString `json:"failureDetail"`
+	FinishedAt    OptNilInt64  `json:"finishedAt"`
+	ID            string       `json:"id"`
 	// `repository@digest`, once the registry confirmed it.
-	Image      OptNilString `json:"image"`
+	Image OptNilString `json:"image"`
+	// `queued`, `blocked`, `preparing`, `running`, `publishing`, `verifyingOutput`, `cancelRequested`,
+	// `cancelling`, `succeeded`, `failed` or `cancelled`.
+	Phase      string       `json:"phase"`
 	Release    OptNilString `json:"release"`
-	Deployment OptNilString `json:"deployment"`
-	// `deployed`, or why the build did not deploy (`StaleSource`, `BuildConfigChanged`, `NotAutomatic`,
-	// …).
-	DeployDecision  OptNilString `json:"deployDecision"`
-	CancelRequested bool         `json:"cancelRequested"`
-	CreatedAt       int64        `json:"createdAt"`
-	StartedAt       OptNilInt64  `json:"startedAt"`
-	FinishedAt      OptNilInt64  `json:"finishedAt"`
-}
-
-// GetID returns the value of ID.
-func (s *BuildDto) GetID() string {
-	return s.ID
+	Repository string       `json:"repository"`
+	StartedAt  OptNilInt64  `json:"startedAt"`
+	// `auto`, `dockerfile` or `railpack`, as configured.
+	Strategy string `json:"strategy"`
 }
 
 // GetAttempt returns the value of Attempt.
@@ -737,9 +732,9 @@ func (s *BuildDto) GetAttempt() int32 {
 	return s.Attempt
 }
 
-// GetRepository returns the value of Repository.
-func (s *BuildDto) GetRepository() string {
-	return s.Repository
+// GetBlockedReason returns the value of BlockedReason.
+func (s *BuildDto) GetBlockedReason() OptNilString {
+	return s.BlockedReason
 }
 
 // GetBranch returns the value of Branch.
@@ -747,24 +742,29 @@ func (s *BuildDto) GetBranch() string {
 	return s.Branch
 }
 
+// GetCancelRequested returns the value of CancelRequested.
+func (s *BuildDto) GetCancelRequested() bool {
+	return s.CancelRequested
+}
+
 // GetCommit returns the value of Commit.
 func (s *BuildDto) GetCommit() string {
 	return s.Commit
 }
 
-// GetStrategy returns the value of Strategy.
-func (s *BuildDto) GetStrategy() string {
-	return s.Strategy
+// GetCreatedAt returns the value of CreatedAt.
+func (s *BuildDto) GetCreatedAt() int64 {
+	return s.CreatedAt
 }
 
-// GetPhase returns the value of Phase.
-func (s *BuildDto) GetPhase() string {
-	return s.Phase
+// GetDeployDecision returns the value of DeployDecision.
+func (s *BuildDto) GetDeployDecision() OptNilString {
+	return s.DeployDecision
 }
 
-// GetBlockedReason returns the value of BlockedReason.
-func (s *BuildDto) GetBlockedReason() OptNilString {
-	return s.BlockedReason
+// GetDeployment returns the value of Deployment.
+func (s *BuildDto) GetDeployment() OptNilString {
+	return s.Deployment
 }
 
 // GetFailure returns the value of Failure.
@@ -777,9 +777,24 @@ func (s *BuildDto) GetFailureDetail() OptNilString {
 	return s.FailureDetail
 }
 
+// GetFinishedAt returns the value of FinishedAt.
+func (s *BuildDto) GetFinishedAt() OptNilInt64 {
+	return s.FinishedAt
+}
+
+// GetID returns the value of ID.
+func (s *BuildDto) GetID() string {
+	return s.ID
+}
+
 // GetImage returns the value of Image.
 func (s *BuildDto) GetImage() OptNilString {
 	return s.Image
+}
+
+// GetPhase returns the value of Phase.
+func (s *BuildDto) GetPhase() string {
+	return s.Phase
 }
 
 // GetRelease returns the value of Release.
@@ -787,24 +802,9 @@ func (s *BuildDto) GetRelease() OptNilString {
 	return s.Release
 }
 
-// GetDeployment returns the value of Deployment.
-func (s *BuildDto) GetDeployment() OptNilString {
-	return s.Deployment
-}
-
-// GetDeployDecision returns the value of DeployDecision.
-func (s *BuildDto) GetDeployDecision() OptNilString {
-	return s.DeployDecision
-}
-
-// GetCancelRequested returns the value of CancelRequested.
-func (s *BuildDto) GetCancelRequested() bool {
-	return s.CancelRequested
-}
-
-// GetCreatedAt returns the value of CreatedAt.
-func (s *BuildDto) GetCreatedAt() int64 {
-	return s.CreatedAt
+// GetRepository returns the value of Repository.
+func (s *BuildDto) GetRepository() string {
+	return s.Repository
 }
 
 // GetStartedAt returns the value of StartedAt.
@@ -812,14 +812,9 @@ func (s *BuildDto) GetStartedAt() OptNilInt64 {
 	return s.StartedAt
 }
 
-// GetFinishedAt returns the value of FinishedAt.
-func (s *BuildDto) GetFinishedAt() OptNilInt64 {
-	return s.FinishedAt
-}
-
-// SetID sets the value of ID.
-func (s *BuildDto) SetID(val string) {
-	s.ID = val
+// GetStrategy returns the value of Strategy.
+func (s *BuildDto) GetStrategy() string {
+	return s.Strategy
 }
 
 // SetAttempt sets the value of Attempt.
@@ -827,9 +822,9 @@ func (s *BuildDto) SetAttempt(val int32) {
 	s.Attempt = val
 }
 
-// SetRepository sets the value of Repository.
-func (s *BuildDto) SetRepository(val string) {
-	s.Repository = val
+// SetBlockedReason sets the value of BlockedReason.
+func (s *BuildDto) SetBlockedReason(val OptNilString) {
+	s.BlockedReason = val
 }
 
 // SetBranch sets the value of Branch.
@@ -837,24 +832,29 @@ func (s *BuildDto) SetBranch(val string) {
 	s.Branch = val
 }
 
+// SetCancelRequested sets the value of CancelRequested.
+func (s *BuildDto) SetCancelRequested(val bool) {
+	s.CancelRequested = val
+}
+
 // SetCommit sets the value of Commit.
 func (s *BuildDto) SetCommit(val string) {
 	s.Commit = val
 }
 
-// SetStrategy sets the value of Strategy.
-func (s *BuildDto) SetStrategy(val string) {
-	s.Strategy = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *BuildDto) SetCreatedAt(val int64) {
+	s.CreatedAt = val
 }
 
-// SetPhase sets the value of Phase.
-func (s *BuildDto) SetPhase(val string) {
-	s.Phase = val
+// SetDeployDecision sets the value of DeployDecision.
+func (s *BuildDto) SetDeployDecision(val OptNilString) {
+	s.DeployDecision = val
 }
 
-// SetBlockedReason sets the value of BlockedReason.
-func (s *BuildDto) SetBlockedReason(val OptNilString) {
-	s.BlockedReason = val
+// SetDeployment sets the value of Deployment.
+func (s *BuildDto) SetDeployment(val OptNilString) {
+	s.Deployment = val
 }
 
 // SetFailure sets the value of Failure.
@@ -867,9 +867,24 @@ func (s *BuildDto) SetFailureDetail(val OptNilString) {
 	s.FailureDetail = val
 }
 
+// SetFinishedAt sets the value of FinishedAt.
+func (s *BuildDto) SetFinishedAt(val OptNilInt64) {
+	s.FinishedAt = val
+}
+
+// SetID sets the value of ID.
+func (s *BuildDto) SetID(val string) {
+	s.ID = val
+}
+
 // SetImage sets the value of Image.
 func (s *BuildDto) SetImage(val OptNilString) {
 	s.Image = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *BuildDto) SetPhase(val string) {
+	s.Phase = val
 }
 
 // SetRelease sets the value of Release.
@@ -877,24 +892,9 @@ func (s *BuildDto) SetRelease(val OptNilString) {
 	s.Release = val
 }
 
-// SetDeployment sets the value of Deployment.
-func (s *BuildDto) SetDeployment(val OptNilString) {
-	s.Deployment = val
-}
-
-// SetDeployDecision sets the value of DeployDecision.
-func (s *BuildDto) SetDeployDecision(val OptNilString) {
-	s.DeployDecision = val
-}
-
-// SetCancelRequested sets the value of CancelRequested.
-func (s *BuildDto) SetCancelRequested(val bool) {
-	s.CancelRequested = val
-}
-
-// SetCreatedAt sets the value of CreatedAt.
-func (s *BuildDto) SetCreatedAt(val int64) {
-	s.CreatedAt = val
+// SetRepository sets the value of Repository.
+func (s *BuildDto) SetRepository(val string) {
+	s.Repository = val
 }
 
 // SetStartedAt sets the value of StartedAt.
@@ -902,9 +902,9 @@ func (s *BuildDto) SetStartedAt(val OptNilInt64) {
 	s.StartedAt = val
 }
 
-// SetFinishedAt sets the value of FinishedAt.
-func (s *BuildDto) SetFinishedAt(val OptNilInt64) {
-	s.FinishedAt = val
+// SetStrategy sets the value of Strategy.
+func (s *BuildDto) SetStrategy(val string) {
+	s.Strategy = val
 }
 
 func (*BuildDto) cancelBuildRes() {}
@@ -967,21 +967,46 @@ func (*CheckAppDomainsOKApplicationJSON) checkAppDomainsRes() {}
 
 // Ref: #/components/schemas/CiPolicyDto
 type CiPolicyDto struct {
+	CreatedAt         int64       `json:"createdAt"`
+	CreatedBy         string      `json:"createdBy"`
+	Environment       OptNilUUID  `json:"environment"`
+	Environments      []string    `json:"environments"`
+	Events            []string    `json:"events"`
 	ID                uuid.UUID   `json:"id"`
 	Name              string      `json:"name"`
 	Project           uuid.UUID   `json:"project"`
-	Environment       OptNilUUID  `json:"environment"`
+	Refs              []string    `json:"refs"`
 	Repository        string      `json:"repository"`
 	RepositoryId      int64       `json:"repositoryId"`
 	RepositoryOwnerId int64       `json:"repositoryOwnerId"`
-	Refs              []string    `json:"refs"`
-	Environments      []string    `json:"environments"`
-	Events            []string    `json:"events"`
+	RevokedAt         OptNilInt64 `json:"revokedAt"`
 	Role              string      `json:"role"`
 	TokenTtlSecs      int32       `json:"tokenTtlSecs"`
-	CreatedBy         string      `json:"createdBy"`
-	CreatedAt         int64       `json:"createdAt"`
-	RevokedAt         OptNilInt64 `json:"revokedAt"`
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *CiPolicyDto) GetCreatedAt() int64 {
+	return s.CreatedAt
+}
+
+// GetCreatedBy returns the value of CreatedBy.
+func (s *CiPolicyDto) GetCreatedBy() string {
+	return s.CreatedBy
+}
+
+// GetEnvironment returns the value of Environment.
+func (s *CiPolicyDto) GetEnvironment() OptNilUUID {
+	return s.Environment
+}
+
+// GetEnvironments returns the value of Environments.
+func (s *CiPolicyDto) GetEnvironments() []string {
+	return s.Environments
+}
+
+// GetEvents returns the value of Events.
+func (s *CiPolicyDto) GetEvents() []string {
+	return s.Events
 }
 
 // GetID returns the value of ID.
@@ -999,9 +1024,9 @@ func (s *CiPolicyDto) GetProject() uuid.UUID {
 	return s.Project
 }
 
-// GetEnvironment returns the value of Environment.
-func (s *CiPolicyDto) GetEnvironment() OptNilUUID {
-	return s.Environment
+// GetRefs returns the value of Refs.
+func (s *CiPolicyDto) GetRefs() []string {
+	return s.Refs
 }
 
 // GetRepository returns the value of Repository.
@@ -1019,19 +1044,9 @@ func (s *CiPolicyDto) GetRepositoryOwnerId() int64 {
 	return s.RepositoryOwnerId
 }
 
-// GetRefs returns the value of Refs.
-func (s *CiPolicyDto) GetRefs() []string {
-	return s.Refs
-}
-
-// GetEnvironments returns the value of Environments.
-func (s *CiPolicyDto) GetEnvironments() []string {
-	return s.Environments
-}
-
-// GetEvents returns the value of Events.
-func (s *CiPolicyDto) GetEvents() []string {
-	return s.Events
+// GetRevokedAt returns the value of RevokedAt.
+func (s *CiPolicyDto) GetRevokedAt() OptNilInt64 {
+	return s.RevokedAt
 }
 
 // GetRole returns the value of Role.
@@ -1044,19 +1059,29 @@ func (s *CiPolicyDto) GetTokenTtlSecs() int32 {
 	return s.TokenTtlSecs
 }
 
-// GetCreatedBy returns the value of CreatedBy.
-func (s *CiPolicyDto) GetCreatedBy() string {
-	return s.CreatedBy
+// SetCreatedAt sets the value of CreatedAt.
+func (s *CiPolicyDto) SetCreatedAt(val int64) {
+	s.CreatedAt = val
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *CiPolicyDto) GetCreatedAt() int64 {
-	return s.CreatedAt
+// SetCreatedBy sets the value of CreatedBy.
+func (s *CiPolicyDto) SetCreatedBy(val string) {
+	s.CreatedBy = val
 }
 
-// GetRevokedAt returns the value of RevokedAt.
-func (s *CiPolicyDto) GetRevokedAt() OptNilInt64 {
-	return s.RevokedAt
+// SetEnvironment sets the value of Environment.
+func (s *CiPolicyDto) SetEnvironment(val OptNilUUID) {
+	s.Environment = val
+}
+
+// SetEnvironments sets the value of Environments.
+func (s *CiPolicyDto) SetEnvironments(val []string) {
+	s.Environments = val
+}
+
+// SetEvents sets the value of Events.
+func (s *CiPolicyDto) SetEvents(val []string) {
+	s.Events = val
 }
 
 // SetID sets the value of ID.
@@ -1074,9 +1099,9 @@ func (s *CiPolicyDto) SetProject(val uuid.UUID) {
 	s.Project = val
 }
 
-// SetEnvironment sets the value of Environment.
-func (s *CiPolicyDto) SetEnvironment(val OptNilUUID) {
-	s.Environment = val
+// SetRefs sets the value of Refs.
+func (s *CiPolicyDto) SetRefs(val []string) {
+	s.Refs = val
 }
 
 // SetRepository sets the value of Repository.
@@ -1094,19 +1119,9 @@ func (s *CiPolicyDto) SetRepositoryOwnerId(val int64) {
 	s.RepositoryOwnerId = val
 }
 
-// SetRefs sets the value of Refs.
-func (s *CiPolicyDto) SetRefs(val []string) {
-	s.Refs = val
-}
-
-// SetEnvironments sets the value of Environments.
-func (s *CiPolicyDto) SetEnvironments(val []string) {
-	s.Environments = val
-}
-
-// SetEvents sets the value of Events.
-func (s *CiPolicyDto) SetEvents(val []string) {
-	s.Events = val
+// SetRevokedAt sets the value of RevokedAt.
+func (s *CiPolicyDto) SetRevokedAt(val OptNilInt64) {
+	s.RevokedAt = val
 }
 
 // SetRole sets the value of Role.
@@ -1119,54 +1134,24 @@ func (s *CiPolicyDto) SetTokenTtlSecs(val int32) {
 	s.TokenTtlSecs = val
 }
 
-// SetCreatedBy sets the value of CreatedBy.
-func (s *CiPolicyDto) SetCreatedBy(val string) {
-	s.CreatedBy = val
-}
-
-// SetCreatedAt sets the value of CreatedAt.
-func (s *CiPolicyDto) SetCreatedAt(val int64) {
-	s.CreatedAt = val
-}
-
-// SetRevokedAt sets the value of RevokedAt.
-func (s *CiPolicyDto) SetRevokedAt(val OptNilInt64) {
-	s.RevokedAt = val
-}
-
 func (*CiPolicyDto) createCiTrustPolicyRes() {}
 
 // Ref: #/components/schemas/ClaimDto
 type ClaimDto struct {
-	ID     uuid.UUID `json:"id"`
-	Domain string    `json:"domain"`
-	// `pending`, `verified` or `revoked`.
-	Status string `json:"status"`
 	// The TXT record that proves the claim, and its value.
-	ChallengeName  string `json:"challengeName"`
-	ChallengeValue string `json:"challengeValue"`
+	ChallengeName  string       `json:"challengeName"`
+	ChallengeValue string       `json:"challengeValue"`
+	CreatedAt      string       `json:"createdAt"`
+	CreatedBy      string       `json:"createdBy"`
+	Domain         string       `json:"domain"`
+	ID             uuid.UUID    `json:"id"`
+	LastCheckedAt  OptNilString `json:"lastCheckedAt"`
+	LastError      OptNilString `json:"lastError"`
 	// `txt` or the provider kind that proved it.
-	Method        OptNilString `json:"method"`
-	CreatedBy     string       `json:"createdBy"`
-	CreatedAt     string       `json:"createdAt"`
-	VerifiedAt    OptNilString `json:"verifiedAt"`
-	LastCheckedAt OptNilString `json:"lastCheckedAt"`
-	LastError     OptNilString `json:"lastError"`
-}
-
-// GetID returns the value of ID.
-func (s *ClaimDto) GetID() uuid.UUID {
-	return s.ID
-}
-
-// GetDomain returns the value of Domain.
-func (s *ClaimDto) GetDomain() string {
-	return s.Domain
-}
-
-// GetStatus returns the value of Status.
-func (s *ClaimDto) GetStatus() string {
-	return s.Status
+	Method OptNilString `json:"method"`
+	// `pending`, `verified` or `revoked`.
+	Status     string       `json:"status"`
+	VerifiedAt OptNilString `json:"verifiedAt"`
 }
 
 // GetChallengeName returns the value of ChallengeName.
@@ -1179,9 +1164,9 @@ func (s *ClaimDto) GetChallengeValue() string {
 	return s.ChallengeValue
 }
 
-// GetMethod returns the value of Method.
-func (s *ClaimDto) GetMethod() OptNilString {
-	return s.Method
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ClaimDto) GetCreatedAt() string {
+	return s.CreatedAt
 }
 
 // GetCreatedBy returns the value of CreatedBy.
@@ -1189,14 +1174,14 @@ func (s *ClaimDto) GetCreatedBy() string {
 	return s.CreatedBy
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *ClaimDto) GetCreatedAt() string {
-	return s.CreatedAt
+// GetDomain returns the value of Domain.
+func (s *ClaimDto) GetDomain() string {
+	return s.Domain
 }
 
-// GetVerifiedAt returns the value of VerifiedAt.
-func (s *ClaimDto) GetVerifiedAt() OptNilString {
-	return s.VerifiedAt
+// GetID returns the value of ID.
+func (s *ClaimDto) GetID() uuid.UUID {
+	return s.ID
 }
 
 // GetLastCheckedAt returns the value of LastCheckedAt.
@@ -1209,19 +1194,19 @@ func (s *ClaimDto) GetLastError() OptNilString {
 	return s.LastError
 }
 
-// SetID sets the value of ID.
-func (s *ClaimDto) SetID(val uuid.UUID) {
-	s.ID = val
+// GetMethod returns the value of Method.
+func (s *ClaimDto) GetMethod() OptNilString {
+	return s.Method
 }
 
-// SetDomain sets the value of Domain.
-func (s *ClaimDto) SetDomain(val string) {
-	s.Domain = val
+// GetStatus returns the value of Status.
+func (s *ClaimDto) GetStatus() string {
+	return s.Status
 }
 
-// SetStatus sets the value of Status.
-func (s *ClaimDto) SetStatus(val string) {
-	s.Status = val
+// GetVerifiedAt returns the value of VerifiedAt.
+func (s *ClaimDto) GetVerifiedAt() OptNilString {
+	return s.VerifiedAt
 }
 
 // SetChallengeName sets the value of ChallengeName.
@@ -1234,9 +1219,9 @@ func (s *ClaimDto) SetChallengeValue(val string) {
 	s.ChallengeValue = val
 }
 
-// SetMethod sets the value of Method.
-func (s *ClaimDto) SetMethod(val OptNilString) {
-	s.Method = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ClaimDto) SetCreatedAt(val string) {
+	s.CreatedAt = val
 }
 
 // SetCreatedBy sets the value of CreatedBy.
@@ -1244,14 +1229,14 @@ func (s *ClaimDto) SetCreatedBy(val string) {
 	s.CreatedBy = val
 }
 
-// SetCreatedAt sets the value of CreatedAt.
-func (s *ClaimDto) SetCreatedAt(val string) {
-	s.CreatedAt = val
+// SetDomain sets the value of Domain.
+func (s *ClaimDto) SetDomain(val string) {
+	s.Domain = val
 }
 
-// SetVerifiedAt sets the value of VerifiedAt.
-func (s *ClaimDto) SetVerifiedAt(val OptNilString) {
-	s.VerifiedAt = val
+// SetID sets the value of ID.
+func (s *ClaimDto) SetID(val uuid.UUID) {
+	s.ID = val
 }
 
 // SetLastCheckedAt sets the value of LastCheckedAt.
@@ -1264,54 +1249,49 @@ func (s *ClaimDto) SetLastError(val OptNilString) {
 	s.LastError = val
 }
 
+// SetMethod sets the value of Method.
+func (s *ClaimDto) SetMethod(val OptNilString) {
+	s.Method = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ClaimDto) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetVerifiedAt sets the value of VerifiedAt.
+func (s *ClaimDto) SetVerifiedAt(val OptNilString) {
+	s.VerifiedAt = val
+}
+
 func (*ClaimDto) createDomainClaimRes() {}
 func (*ClaimDto) verifyDomainClaimRes() {}
 
 // Ref: #/components/schemas/CreateApp
 type CreateApp struct {
-	Name string `json:"name"`
+	Command []string    `json:"command"`
+	Domains []string    `json:"domains"`
+	Env     []EnvVarDto `json:"env"`
+	// Group id owning the volumes, for images running as a non-root user.
+	FsGroup         OptNilInt64     `json:"fs_group"`
+	Git             OptNilPutSource `json:"git"`
+	HealthCheckPath OptNilString    `json:"health_check_path"`
 	// The image to run; give this or `git`.
-	Image OptNilString    `json:"image"`
-	Git   OptNilPutSource `json:"git"`
-	// Port the process listens on; omit for workers and scheduled jobs.
-	Port     OptNilInt32 `json:"port"`
-	Command  []string    `json:"command"`
-	Replicas OptInt32    `json:"replicas"`
+	Image OptNilString `json:"image"`
 	// CPU autoscaling up to this many replicas when greater than `replicas`.
 	MaxReplicas OptNilInt32 `json:"max_replicas"`
-	// Size preset: `nano`, `small`, `medium`, `large` (or custom).
-	Size            OptString    `json:"size"`
-	Env             []EnvVarDto  `json:"env"`
-	Domains         []string     `json:"domains"`
-	HealthCheckPath OptNilString `json:"health_check_path"`
+	Name        string      `json:"name"`
+	// Port the process listens on; omit for workers and scheduled jobs.
+	Port     OptNilInt32    `json:"port"`
+	Protocol OptProtocolDto `json:"protocol"`
+	Replicas OptInt32       `json:"replicas"`
 	// Cron expression: the app runs as a scheduled job (no port).
 	Schedule OptNilString `json:"schedule"`
+	// Size preset: `nano`, `small`, `medium`, `large` (or custom).
+	Size OptString `json:"size"`
 	// IANA time zone for `schedule` (default UTC).
-	TimeZone OptNilString   `json:"time_zone"`
-	Protocol OptProtocolDto `json:"protocol"`
-	Volumes  []VolumeDto    `json:"volumes"`
-	// Group id owning the volumes, for images running as a non-root user.
-	FsGroup OptNilInt64 `json:"fs_group"`
-}
-
-// GetName returns the value of Name.
-func (s *CreateApp) GetName() string {
-	return s.Name
-}
-
-// GetImage returns the value of Image.
-func (s *CreateApp) GetImage() OptNilString {
-	return s.Image
-}
-
-// GetGit returns the value of Git.
-func (s *CreateApp) GetGit() OptNilPutSource {
-	return s.Git
-}
-
-// GetPort returns the value of Port.
-func (s *CreateApp) GetPort() OptNilInt32 {
-	return s.Port
+	TimeZone OptNilString `json:"time_zone"`
+	Volumes  []VolumeDto  `json:"volumes"`
 }
 
 // GetCommand returns the value of Command.
@@ -1319,19 +1299,9 @@ func (s *CreateApp) GetCommand() []string {
 	return s.Command
 }
 
-// GetReplicas returns the value of Replicas.
-func (s *CreateApp) GetReplicas() OptInt32 {
-	return s.Replicas
-}
-
-// GetMaxReplicas returns the value of MaxReplicas.
-func (s *CreateApp) GetMaxReplicas() OptNilInt32 {
-	return s.MaxReplicas
-}
-
-// GetSize returns the value of Size.
-func (s *CreateApp) GetSize() OptString {
-	return s.Size
+// GetDomains returns the value of Domains.
+func (s *CreateApp) GetDomains() []string {
+	return s.Domains
 }
 
 // GetEnv returns the value of Env.
@@ -1339,9 +1309,14 @@ func (s *CreateApp) GetEnv() []EnvVarDto {
 	return s.Env
 }
 
-// GetDomains returns the value of Domains.
-func (s *CreateApp) GetDomains() []string {
-	return s.Domains
+// GetFsGroup returns the value of FsGroup.
+func (s *CreateApp) GetFsGroup() OptNilInt64 {
+	return s.FsGroup
+}
+
+// GetGit returns the value of Git.
+func (s *CreateApp) GetGit() OptNilPutSource {
+	return s.Git
 }
 
 // GetHealthCheckPath returns the value of HealthCheckPath.
@@ -1349,14 +1324,24 @@ func (s *CreateApp) GetHealthCheckPath() OptNilString {
 	return s.HealthCheckPath
 }
 
-// GetSchedule returns the value of Schedule.
-func (s *CreateApp) GetSchedule() OptNilString {
-	return s.Schedule
+// GetImage returns the value of Image.
+func (s *CreateApp) GetImage() OptNilString {
+	return s.Image
 }
 
-// GetTimeZone returns the value of TimeZone.
-func (s *CreateApp) GetTimeZone() OptNilString {
-	return s.TimeZone
+// GetMaxReplicas returns the value of MaxReplicas.
+func (s *CreateApp) GetMaxReplicas() OptNilInt32 {
+	return s.MaxReplicas
+}
+
+// GetName returns the value of Name.
+func (s *CreateApp) GetName() string {
+	return s.Name
+}
+
+// GetPort returns the value of Port.
+func (s *CreateApp) GetPort() OptNilInt32 {
+	return s.Port
 }
 
 // GetProtocol returns the value of Protocol.
@@ -1364,34 +1349,29 @@ func (s *CreateApp) GetProtocol() OptProtocolDto {
 	return s.Protocol
 }
 
+// GetReplicas returns the value of Replicas.
+func (s *CreateApp) GetReplicas() OptInt32 {
+	return s.Replicas
+}
+
+// GetSchedule returns the value of Schedule.
+func (s *CreateApp) GetSchedule() OptNilString {
+	return s.Schedule
+}
+
+// GetSize returns the value of Size.
+func (s *CreateApp) GetSize() OptString {
+	return s.Size
+}
+
+// GetTimeZone returns the value of TimeZone.
+func (s *CreateApp) GetTimeZone() OptNilString {
+	return s.TimeZone
+}
+
 // GetVolumes returns the value of Volumes.
 func (s *CreateApp) GetVolumes() []VolumeDto {
 	return s.Volumes
-}
-
-// GetFsGroup returns the value of FsGroup.
-func (s *CreateApp) GetFsGroup() OptNilInt64 {
-	return s.FsGroup
-}
-
-// SetName sets the value of Name.
-func (s *CreateApp) SetName(val string) {
-	s.Name = val
-}
-
-// SetImage sets the value of Image.
-func (s *CreateApp) SetImage(val OptNilString) {
-	s.Image = val
-}
-
-// SetGit sets the value of Git.
-func (s *CreateApp) SetGit(val OptNilPutSource) {
-	s.Git = val
-}
-
-// SetPort sets the value of Port.
-func (s *CreateApp) SetPort(val OptNilInt32) {
-	s.Port = val
 }
 
 // SetCommand sets the value of Command.
@@ -1399,19 +1379,9 @@ func (s *CreateApp) SetCommand(val []string) {
 	s.Command = val
 }
 
-// SetReplicas sets the value of Replicas.
-func (s *CreateApp) SetReplicas(val OptInt32) {
-	s.Replicas = val
-}
-
-// SetMaxReplicas sets the value of MaxReplicas.
-func (s *CreateApp) SetMaxReplicas(val OptNilInt32) {
-	s.MaxReplicas = val
-}
-
-// SetSize sets the value of Size.
-func (s *CreateApp) SetSize(val OptString) {
-	s.Size = val
+// SetDomains sets the value of Domains.
+func (s *CreateApp) SetDomains(val []string) {
+	s.Domains = val
 }
 
 // SetEnv sets the value of Env.
@@ -1419,9 +1389,14 @@ func (s *CreateApp) SetEnv(val []EnvVarDto) {
 	s.Env = val
 }
 
-// SetDomains sets the value of Domains.
-func (s *CreateApp) SetDomains(val []string) {
-	s.Domains = val
+// SetFsGroup sets the value of FsGroup.
+func (s *CreateApp) SetFsGroup(val OptNilInt64) {
+	s.FsGroup = val
+}
+
+// SetGit sets the value of Git.
+func (s *CreateApp) SetGit(val OptNilPutSource) {
+	s.Git = val
 }
 
 // SetHealthCheckPath sets the value of HealthCheckPath.
@@ -1429,14 +1404,24 @@ func (s *CreateApp) SetHealthCheckPath(val OptNilString) {
 	s.HealthCheckPath = val
 }
 
-// SetSchedule sets the value of Schedule.
-func (s *CreateApp) SetSchedule(val OptNilString) {
-	s.Schedule = val
+// SetImage sets the value of Image.
+func (s *CreateApp) SetImage(val OptNilString) {
+	s.Image = val
 }
 
-// SetTimeZone sets the value of TimeZone.
-func (s *CreateApp) SetTimeZone(val OptNilString) {
-	s.TimeZone = val
+// SetMaxReplicas sets the value of MaxReplicas.
+func (s *CreateApp) SetMaxReplicas(val OptNilInt32) {
+	s.MaxReplicas = val
+}
+
+// SetName sets the value of Name.
+func (s *CreateApp) SetName(val string) {
+	s.Name = val
+}
+
+// SetPort sets the value of Port.
+func (s *CreateApp) SetPort(val OptNilInt32) {
+	s.Port = val
 }
 
 // SetProtocol sets the value of Protocol.
@@ -1444,14 +1429,29 @@ func (s *CreateApp) SetProtocol(val OptProtocolDto) {
 	s.Protocol = val
 }
 
+// SetReplicas sets the value of Replicas.
+func (s *CreateApp) SetReplicas(val OptInt32) {
+	s.Replicas = val
+}
+
+// SetSchedule sets the value of Schedule.
+func (s *CreateApp) SetSchedule(val OptNilString) {
+	s.Schedule = val
+}
+
+// SetSize sets the value of Size.
+func (s *CreateApp) SetSize(val OptString) {
+	s.Size = val
+}
+
+// SetTimeZone sets the value of TimeZone.
+func (s *CreateApp) SetTimeZone(val OptNilString) {
+	s.TimeZone = val
+}
+
 // SetVolumes sets the value of Volumes.
 func (s *CreateApp) SetVolumes(val []VolumeDto) {
 	s.Volumes = val
-}
-
-// SetFsGroup sets the value of FsGroup.
-func (s *CreateApp) SetFsGroup(val OptNilInt64) {
-	s.FsGroup = val
 }
 
 type CreateAppConflict Problem
@@ -1472,27 +1472,42 @@ func (*CreateAppUnprocessableEntity) createAppRes() {}
 
 // Ref: #/components/schemas/CreateCiPolicy
 type CreateCiPolicy struct {
+	// Narrows the tokens to one environment of `project`.
+	Environment OptNilString `json:"environment"`
+	// GitHub environments allowed; empty for any.
+	Environments []string `json:"environments"`
+	// Workflow events allowed; `push`, `workflow_dispatch` and `release` when empty.
+	Events []string `json:"events"`
 	// Unique in the organization, 1–64 characters.
 	Name    string `json:"name"`
 	Project string `json:"project"`
-	// Narrows the tokens to one environment of `project`.
-	Environment OptNilString `json:"environment"`
+	// `refs/heads/main`, `refs/tags/v*`, ….
+	Refs []string `json:"refs"`
 	// `owner/name`, for people; the ids decide.
 	Repository string `json:"repository"`
 	// GitHub's numeric repository id (`repository_id` claim).
 	RepositoryId int64 `json:"repositoryId"`
 	// GitHub's numeric owner id (`repository_owner_id` claim).
 	RepositoryOwnerId int64 `json:"repositoryOwnerId"`
-	// `refs/heads/main`, `refs/tags/v*`, ….
-	Refs []string `json:"refs"`
-	// GitHub environments allowed; empty for any.
-	Environments []string `json:"environments"`
-	// Workflow events allowed; `push`, `workflow_dispatch` and `release` when empty.
-	Events []string `json:"events"`
 	// `developer` (deploy) or `admin` (deploy and promote).
 	Role OptNilString `json:"role"`
 	// Life of an exchanged token, 60–3600 seconds (default 900).
 	TokenTtlSecs OptNilInt32 `json:"tokenTtlSecs"`
+}
+
+// GetEnvironment returns the value of Environment.
+func (s *CreateCiPolicy) GetEnvironment() OptNilString {
+	return s.Environment
+}
+
+// GetEnvironments returns the value of Environments.
+func (s *CreateCiPolicy) GetEnvironments() []string {
+	return s.Environments
+}
+
+// GetEvents returns the value of Events.
+func (s *CreateCiPolicy) GetEvents() []string {
+	return s.Events
 }
 
 // GetName returns the value of Name.
@@ -1505,9 +1520,9 @@ func (s *CreateCiPolicy) GetProject() string {
 	return s.Project
 }
 
-// GetEnvironment returns the value of Environment.
-func (s *CreateCiPolicy) GetEnvironment() OptNilString {
-	return s.Environment
+// GetRefs returns the value of Refs.
+func (s *CreateCiPolicy) GetRefs() []string {
+	return s.Refs
 }
 
 // GetRepository returns the value of Repository.
@@ -1525,21 +1540,6 @@ func (s *CreateCiPolicy) GetRepositoryOwnerId() int64 {
 	return s.RepositoryOwnerId
 }
 
-// GetRefs returns the value of Refs.
-func (s *CreateCiPolicy) GetRefs() []string {
-	return s.Refs
-}
-
-// GetEnvironments returns the value of Environments.
-func (s *CreateCiPolicy) GetEnvironments() []string {
-	return s.Environments
-}
-
-// GetEvents returns the value of Events.
-func (s *CreateCiPolicy) GetEvents() []string {
-	return s.Events
-}
-
 // GetRole returns the value of Role.
 func (s *CreateCiPolicy) GetRole() OptNilString {
 	return s.Role
@@ -1548,6 +1548,21 @@ func (s *CreateCiPolicy) GetRole() OptNilString {
 // GetTokenTtlSecs returns the value of TokenTtlSecs.
 func (s *CreateCiPolicy) GetTokenTtlSecs() OptNilInt32 {
 	return s.TokenTtlSecs
+}
+
+// SetEnvironment sets the value of Environment.
+func (s *CreateCiPolicy) SetEnvironment(val OptNilString) {
+	s.Environment = val
+}
+
+// SetEnvironments sets the value of Environments.
+func (s *CreateCiPolicy) SetEnvironments(val []string) {
+	s.Environments = val
+}
+
+// SetEvents sets the value of Events.
+func (s *CreateCiPolicy) SetEvents(val []string) {
+	s.Events = val
 }
 
 // SetName sets the value of Name.
@@ -1560,9 +1575,9 @@ func (s *CreateCiPolicy) SetProject(val string) {
 	s.Project = val
 }
 
-// SetEnvironment sets the value of Environment.
-func (s *CreateCiPolicy) SetEnvironment(val OptNilString) {
-	s.Environment = val
+// SetRefs sets the value of Refs.
+func (s *CreateCiPolicy) SetRefs(val []string) {
+	s.Refs = val
 }
 
 // SetRepository sets the value of Repository.
@@ -1578,21 +1593,6 @@ func (s *CreateCiPolicy) SetRepositoryId(val int64) {
 // SetRepositoryOwnerId sets the value of RepositoryOwnerId.
 func (s *CreateCiPolicy) SetRepositoryOwnerId(val int64) {
 	s.RepositoryOwnerId = val
-}
-
-// SetRefs sets the value of Refs.
-func (s *CreateCiPolicy) SetRefs(val []string) {
-	s.Refs = val
-}
-
-// SetEnvironments sets the value of Environments.
-func (s *CreateCiPolicy) SetEnvironments(val []string) {
-	s.Environments = val
-}
-
-// SetEvents sets the value of Events.
-func (s *CreateCiPolicy) SetEvents(val []string) {
-	s.Events = val
 }
 
 // SetRole sets the value of Role.
@@ -1638,16 +1638,11 @@ func (s *CreateClaim) SetDomain(val string) {
 
 // Ref: #/components/schemas/CreateDnsProvider
 type CreateDnsProvider struct {
-	Name string `json:"name"`
 	// `cloudflare`.
 	Kind string `json:"kind"`
+	Name string `json:"name"`
 	// An API token that may edit the zones' DNS (write-only).
 	Token string `json:"token"`
-}
-
-// GetName returns the value of Name.
-func (s *CreateDnsProvider) GetName() string {
-	return s.Name
 }
 
 // GetKind returns the value of Kind.
@@ -1655,19 +1650,24 @@ func (s *CreateDnsProvider) GetKind() string {
 	return s.Kind
 }
 
+// GetName returns the value of Name.
+func (s *CreateDnsProvider) GetName() string {
+	return s.Name
+}
+
 // GetToken returns the value of Token.
 func (s *CreateDnsProvider) GetToken() string {
 	return s.Token
 }
 
-// SetName sets the value of Name.
-func (s *CreateDnsProvider) SetName(val string) {
-	s.Name = val
-}
-
 // SetKind sets the value of Kind.
 func (s *CreateDnsProvider) SetKind(val string) {
 	s.Kind = val
+}
+
+// SetName sets the value of Name.
+func (s *CreateDnsProvider) SetName(val string) {
+	s.Name = val
 }
 
 // SetToken sets the value of Token.
@@ -1693,10 +1693,15 @@ func (*CreateDomainClaimUnprocessableEntity) createDomainClaimRes() {}
 
 // Ref: #/components/schemas/CreateEndpoint
 type CreateEndpoint struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
 	// Event types, or `*` for all.
 	Events []string `json:"events"`
+	Name   string   `json:"name"`
+	URL    string   `json:"url"`
+}
+
+// GetEvents returns the value of Events.
+func (s *CreateEndpoint) GetEvents() []string {
+	return s.Events
 }
 
 // GetName returns the value of Name.
@@ -1709,9 +1714,9 @@ func (s *CreateEndpoint) GetURL() string {
 	return s.URL
 }
 
-// GetEvents returns the value of Events.
-func (s *CreateEndpoint) GetEvents() []string {
-	return s.Events
+// SetEvents sets the value of Events.
+func (s *CreateEndpoint) SetEvents(val []string) {
+	s.Events = val
 }
 
 // SetName sets the value of Name.
@@ -1724,22 +1729,12 @@ func (s *CreateEndpoint) SetURL(val string) {
 	s.URL = val
 }
 
-// SetEvents sets the value of Events.
-func (s *CreateEndpoint) SetEvents(val []string) {
-	s.Events = val
-}
-
 // Ref: #/components/schemas/CreateEnvironment
 type CreateEnvironment struct {
+	EnvType OptEnvType `json:"env_type"`
 	// Short name, e.g. `prod` (the object is named `<project>-<name>`).
-	Name    string           `json:"name"`
-	EnvType OptEnvType       `json:"env_type"`
-	Quota   OptNilQuotaInput `json:"quota"`
-}
-
-// GetName returns the value of Name.
-func (s *CreateEnvironment) GetName() string {
-	return s.Name
+	Name  string           `json:"name"`
+	Quota OptNilQuotaInput `json:"quota"`
 }
 
 // GetEnvType returns the value of EnvType.
@@ -1747,19 +1742,24 @@ func (s *CreateEnvironment) GetEnvType() OptEnvType {
 	return s.EnvType
 }
 
+// GetName returns the value of Name.
+func (s *CreateEnvironment) GetName() string {
+	return s.Name
+}
+
 // GetQuota returns the value of Quota.
 func (s *CreateEnvironment) GetQuota() OptNilQuotaInput {
 	return s.Quota
 }
 
-// SetName sets the value of Name.
-func (s *CreateEnvironment) SetName(val string) {
-	s.Name = val
-}
-
 // SetEnvType sets the value of EnvType.
 func (s *CreateEnvironment) SetEnvType(val OptEnvType) {
 	s.EnvType = val
+}
+
+// SetName sets the value of Name.
+func (s *CreateEnvironment) SetName(val string) {
+	s.Name = val
 }
 
 // SetQuota sets the value of Quota.
@@ -1781,30 +1781,15 @@ func (*CreateEnvironmentUnprocessableEntity) createEnvironmentRes() {}
 
 // Ref: #/components/schemas/CreateException
 type CreateException struct {
-	// The finding's id, e.g. `CVE-2026-12345` or `GHSA-xxxx-xxxx-xxxx`.
-	Vulnerability string `json:"vulnerability"`
-	Reason        string `json:"reason"`
-	// Who answers for it: a person or a team.
-	Owner string `json:"owner"`
 	// 1 to 90 days.
 	Days int32 `json:"days"`
+	// Who answers for it: a person or a team.
+	Owner string `json:"owner"`
 	// Limit it to one project; every project when omitted.
 	Project OptNilString `json:"project"`
-}
-
-// GetVulnerability returns the value of Vulnerability.
-func (s *CreateException) GetVulnerability() string {
-	return s.Vulnerability
-}
-
-// GetReason returns the value of Reason.
-func (s *CreateException) GetReason() string {
-	return s.Reason
-}
-
-// GetOwner returns the value of Owner.
-func (s *CreateException) GetOwner() string {
-	return s.Owner
+	Reason  string       `json:"reason"`
+	// The finding's id, e.g. `CVE-2026-12345` or `GHSA-xxxx-xxxx-xxxx`.
+	Vulnerability string `json:"vulnerability"`
 }
 
 // GetDays returns the value of Days.
@@ -1812,24 +1797,24 @@ func (s *CreateException) GetDays() int32 {
 	return s.Days
 }
 
+// GetOwner returns the value of Owner.
+func (s *CreateException) GetOwner() string {
+	return s.Owner
+}
+
 // GetProject returns the value of Project.
 func (s *CreateException) GetProject() OptNilString {
 	return s.Project
 }
 
-// SetVulnerability sets the value of Vulnerability.
-func (s *CreateException) SetVulnerability(val string) {
-	s.Vulnerability = val
+// GetReason returns the value of Reason.
+func (s *CreateException) GetReason() string {
+	return s.Reason
 }
 
-// SetReason sets the value of Reason.
-func (s *CreateException) SetReason(val string) {
-	s.Reason = val
-}
-
-// SetOwner sets the value of Owner.
-func (s *CreateException) SetOwner(val string) {
-	s.Owner = val
+// GetVulnerability returns the value of Vulnerability.
+func (s *CreateException) GetVulnerability() string {
+	return s.Vulnerability
 }
 
 // SetDays sets the value of Days.
@@ -1837,9 +1822,24 @@ func (s *CreateException) SetDays(val int32) {
 	s.Days = val
 }
 
+// SetOwner sets the value of Owner.
+func (s *CreateException) SetOwner(val string) {
+	s.Owner = val
+}
+
 // SetProject sets the value of Project.
 func (s *CreateException) SetProject(val OptNilString) {
 	s.Project = val
+}
+
+// SetReason sets the value of Reason.
+func (s *CreateException) SetReason(val string) {
+	s.Reason = val
+}
+
+// SetVulnerability sets the value of Vulnerability.
+func (s *CreateException) SetVulnerability(val string) {
+	s.Vulnerability = val
 }
 
 type CreateFreezeForbidden Problem
@@ -1852,20 +1852,10 @@ func (*CreateFreezeUnprocessableEntity) createFreezeRes() {}
 
 // Ref: #/components/schemas/CreateProject
 type CreateProject struct {
-	// DNS label, e.g. `shop` (at most 40 characters).
-	Name        string       `json:"name"`
-	DisplayName string       `json:"display_name"`
 	Description OptNilString `json:"description"`
-}
-
-// GetName returns the value of Name.
-func (s *CreateProject) GetName() string {
-	return s.Name
-}
-
-// GetDisplayName returns the value of DisplayName.
-func (s *CreateProject) GetDisplayName() string {
-	return s.DisplayName
+	DisplayName string       `json:"display_name"`
+	// DNS label, e.g. `shop` (at most 40 characters).
+	Name string `json:"name"`
 }
 
 // GetDescription returns the value of Description.
@@ -1873,9 +1863,19 @@ func (s *CreateProject) GetDescription() OptNilString {
 	return s.Description
 }
 
-// SetName sets the value of Name.
-func (s *CreateProject) SetName(val string) {
-	s.Name = val
+// GetDisplayName returns the value of DisplayName.
+func (s *CreateProject) GetDisplayName() string {
+	return s.DisplayName
+}
+
+// GetName returns the value of Name.
+func (s *CreateProject) GetName() string {
+	return s.Name
+}
+
+// SetDescription sets the value of Description.
+func (s *CreateProject) SetDescription(val OptNilString) {
+	s.Description = val
 }
 
 // SetDisplayName sets the value of DisplayName.
@@ -1883,9 +1883,9 @@ func (s *CreateProject) SetDisplayName(val string) {
 	s.DisplayName = val
 }
 
-// SetDescription sets the value of Description.
-func (s *CreateProject) SetDescription(val OptNilString) {
-	s.Description = val
+// SetName sets the value of Name.
+func (s *CreateProject) SetName(val string) {
+	s.Name = val
 }
 
 type CreateProjectConflict Problem
@@ -1910,30 +1910,15 @@ func (*CreateSilenceUnprocessableEntity) createSilenceRes() {}
 
 // Ref: #/components/schemas/CreateToken
 type CreateToken struct {
-	Name string `json:"name"`
-	// Upper bound on what the token may do: `viewer`, `developer` or `admin`.
-	Role OptString `json:"role"`
-	// Restrict the token to one project.
-	Project OptNilString `json:"project"`
 	// Restrict the token to one environment of `project`.
 	Environment OptNilString `json:"environment"`
 	// Lifetime in days (1–365, default 90).
 	ExpiresInDays OptNilInt32 `json:"expires_in_days"`
-}
-
-// GetName returns the value of Name.
-func (s *CreateToken) GetName() string {
-	return s.Name
-}
-
-// GetRole returns the value of Role.
-func (s *CreateToken) GetRole() OptString {
-	return s.Role
-}
-
-// GetProject returns the value of Project.
-func (s *CreateToken) GetProject() OptNilString {
-	return s.Project
+	Name          string      `json:"name"`
+	// Restrict the token to one project.
+	Project OptNilString `json:"project"`
+	// Upper bound on what the token may do: `viewer`, `developer` or `admin`.
+	Role OptString `json:"role"`
 }
 
 // GetEnvironment returns the value of Environment.
@@ -1946,19 +1931,19 @@ func (s *CreateToken) GetExpiresInDays() OptNilInt32 {
 	return s.ExpiresInDays
 }
 
-// SetName sets the value of Name.
-func (s *CreateToken) SetName(val string) {
-	s.Name = val
+// GetName returns the value of Name.
+func (s *CreateToken) GetName() string {
+	return s.Name
 }
 
-// SetRole sets the value of Role.
-func (s *CreateToken) SetRole(val OptString) {
-	s.Role = val
+// GetProject returns the value of Project.
+func (s *CreateToken) GetProject() OptNilString {
+	return s.Project
 }
 
-// SetProject sets the value of Project.
-func (s *CreateToken) SetProject(val OptNilString) {
-	s.Project = val
+// GetRole returns the value of Role.
+func (s *CreateToken) GetRole() OptString {
+	return s.Role
 }
 
 // SetEnvironment sets the value of Environment.
@@ -1969,6 +1954,21 @@ func (s *CreateToken) SetEnvironment(val OptNilString) {
 // SetExpiresInDays sets the value of ExpiresInDays.
 func (s *CreateToken) SetExpiresInDays(val OptNilInt32) {
 	s.ExpiresInDays = val
+}
+
+// SetName sets the value of Name.
+func (s *CreateToken) SetName(val string) {
+	s.Name = val
+}
+
+// SetProject sets the value of Project.
+func (s *CreateToken) SetProject(val OptNilString) {
+	s.Project = val
+}
+
+// SetRole sets the value of Role.
+func (s *CreateToken) SetRole(val OptString) {
+	s.Role = val
 }
 
 type CreateTokenForbidden Problem
@@ -2005,13 +2005,23 @@ func (*CreateWebhookUnprocessableEntity) createWebhookRes() {}
 
 // Ref: #/components/schemas/CreateWindow
 type CreateWindow struct {
+	// Silences only: one app of the environment.
+	App OptNilString `json:"app"`
+	// RFC 3339.
+	EndsAt string `json:"endsAt"`
 	Reason string `json:"reason"`
 	// RFC 3339; now when omitted (freezes only).
 	StartsAt OptNilString `json:"startsAt"`
-	// RFC 3339.
-	EndsAt string `json:"endsAt"`
-	// Silences only: one app of the environment.
-	App OptNilString `json:"app"`
+}
+
+// GetApp returns the value of App.
+func (s *CreateWindow) GetApp() OptNilString {
+	return s.App
+}
+
+// GetEndsAt returns the value of EndsAt.
+func (s *CreateWindow) GetEndsAt() string {
+	return s.EndsAt
 }
 
 // GetReason returns the value of Reason.
@@ -2024,14 +2034,14 @@ func (s *CreateWindow) GetStartsAt() OptNilString {
 	return s.StartsAt
 }
 
-// GetEndsAt returns the value of EndsAt.
-func (s *CreateWindow) GetEndsAt() string {
-	return s.EndsAt
+// SetApp sets the value of App.
+func (s *CreateWindow) SetApp(val OptNilString) {
+	s.App = val
 }
 
-// GetApp returns the value of App.
-func (s *CreateWindow) GetApp() OptNilString {
-	return s.App
+// SetEndsAt sets the value of EndsAt.
+func (s *CreateWindow) SetEndsAt(val string) {
+	s.EndsAt = val
 }
 
 // SetReason sets the value of Reason.
@@ -2044,26 +2054,11 @@ func (s *CreateWindow) SetStartsAt(val OptNilString) {
 	s.StartsAt = val
 }
 
-// SetEndsAt sets the value of EndsAt.
-func (s *CreateWindow) SetEndsAt(val string) {
-	s.EndsAt = val
-}
-
-// SetApp sets the value of App.
-func (s *CreateWindow) SetApp(val OptNilString) {
-	s.App = val
-}
-
 // Ref: #/components/schemas/CreatedToken
 type CreatedToken struct {
+	Info TokenDto `json:"info"`
 	// The token itself. Shown exactly once; only its hash is stored.
-	Token string   `json:"token"`
-	Info  TokenDto `json:"info"`
-}
-
-// GetToken returns the value of Token.
-func (s *CreatedToken) GetToken() string {
-	return s.Token
+	Token string `json:"token"`
 }
 
 // GetInfo returns the value of Info.
@@ -2071,9 +2066,9 @@ func (s *CreatedToken) GetInfo() TokenDto {
 	return s.Info
 }
 
-// SetToken sets the value of Token.
-func (s *CreatedToken) SetToken(val string) {
-	s.Token = val
+// GetToken returns the value of Token.
+func (s *CreatedToken) GetToken() string {
+	return s.Token
 }
 
 // SetInfo sets the value of Info.
@@ -2081,19 +2076,19 @@ func (s *CreatedToken) SetInfo(val TokenDto) {
 	s.Info = val
 }
 
+// SetToken sets the value of Token.
+func (s *CreatedToken) SetToken(val string) {
+	s.Token = val
+}
+
 func (*CreatedToken) createTokenRes() {}
 
 // Ref: #/components/schemas/DecideRequest
 type DecideRequest struct {
-	// The plan hash shown with the deployment (hex).
-	PlanHash string `json:"planHash"`
 	// Why, for the record; at most 1024 characters.
 	Comment OptNilString `json:"comment"`
-}
-
-// GetPlanHash returns the value of PlanHash.
-func (s *DecideRequest) GetPlanHash() string {
-	return s.PlanHash
+	// The plan hash shown with the deployment (hex).
+	PlanHash string `json:"planHash"`
 }
 
 // GetComment returns the value of Comment.
@@ -2101,9 +2096,9 @@ func (s *DecideRequest) GetComment() OptNilString {
 	return s.Comment
 }
 
-// SetPlanHash sets the value of PlanHash.
-func (s *DecideRequest) SetPlanHash(val string) {
-	s.PlanHash = val
+// GetPlanHash returns the value of PlanHash.
+func (s *DecideRequest) GetPlanHash() string {
+	return s.PlanHash
 }
 
 // SetComment sets the value of Comment.
@@ -2111,24 +2106,24 @@ func (s *DecideRequest) SetComment(val OptNilString) {
 	s.Comment = val
 }
 
+// SetPlanHash sets the value of PlanHash.
+func (s *DecideRequest) SetPlanHash(val string) {
+	s.PlanHash = val
+}
+
 // Ref: #/components/schemas/DecisionDto
 type DecisionDto struct {
 	// Email of whoever decided.
-	Approver string `json:"approver"`
-	// `approved` or `rejected`.
-	Decision  string       `json:"decision"`
+	Approver  string       `json:"approver"`
 	Comment   OptNilString `json:"comment"`
 	DecidedAt int64        `json:"decidedAt"`
+	// `approved` or `rejected`.
+	Decision string `json:"decision"`
 }
 
 // GetApprover returns the value of Approver.
 func (s *DecisionDto) GetApprover() string {
 	return s.Approver
-}
-
-// GetDecision returns the value of Decision.
-func (s *DecisionDto) GetDecision() string {
-	return s.Decision
 }
 
 // GetComment returns the value of Comment.
@@ -2141,14 +2136,14 @@ func (s *DecisionDto) GetDecidedAt() int64 {
 	return s.DecidedAt
 }
 
+// GetDecision returns the value of Decision.
+func (s *DecisionDto) GetDecision() string {
+	return s.Decision
+}
+
 // SetApprover sets the value of Approver.
 func (s *DecisionDto) SetApprover(val string) {
 	s.Approver = val
-}
-
-// SetDecision sets the value of Decision.
-func (s *DecisionDto) SetDecision(val string) {
-	s.Decision = val
 }
 
 // SetComment sets the value of Comment.
@@ -2159,6 +2154,11 @@ func (s *DecisionDto) SetComment(val OptNilString) {
 // SetDecidedAt sets the value of DecidedAt.
 func (s *DecisionDto) SetDecidedAt(val int64) {
 	s.DecidedAt = val
+}
+
+// SetDecision sets the value of Decision.
+func (s *DecisionDto) SetDecision(val string) {
+	s.Decision = val
 }
 
 type DeleteAppConflict Problem
@@ -2247,30 +2247,15 @@ func (*DeleteStatusPageNoContent) deleteStatusPageRes() {}
 
 // Ref: #/components/schemas/DeliveryDto
 type DeliveryDto struct {
-	ID    uuid.UUID `json:"id"`
-	Event string    `json:"event"`
-	// `pending`, `delivered` or `failed`.
-	Status     string       `json:"status"`
 	Attempts   int32        `json:"attempts"`
-	LastStatus OptNilInt32  `json:"lastStatus"`
-	LastError  OptNilString `json:"lastError"`
 	CreatedAt  string       `json:"createdAt"`
+	Event      string       `json:"event"`
 	FinishedAt OptNilString `json:"finishedAt"`
-}
-
-// GetID returns the value of ID.
-func (s *DeliveryDto) GetID() uuid.UUID {
-	return s.ID
-}
-
-// GetEvent returns the value of Event.
-func (s *DeliveryDto) GetEvent() string {
-	return s.Event
-}
-
-// GetStatus returns the value of Status.
-func (s *DeliveryDto) GetStatus() string {
-	return s.Status
+	ID         uuid.UUID    `json:"id"`
+	LastError  OptNilString `json:"lastError"`
+	LastStatus OptNilInt32  `json:"lastStatus"`
+	// `pending`, `delivered` or `failed`.
+	Status string `json:"status"`
 }
 
 // GetAttempts returns the value of Attempts.
@@ -2278,19 +2263,14 @@ func (s *DeliveryDto) GetAttempts() int32 {
 	return s.Attempts
 }
 
-// GetLastStatus returns the value of LastStatus.
-func (s *DeliveryDto) GetLastStatus() OptNilInt32 {
-	return s.LastStatus
-}
-
-// GetLastError returns the value of LastError.
-func (s *DeliveryDto) GetLastError() OptNilString {
-	return s.LastError
-}
-
 // GetCreatedAt returns the value of CreatedAt.
 func (s *DeliveryDto) GetCreatedAt() string {
 	return s.CreatedAt
+}
+
+// GetEvent returns the value of Event.
+func (s *DeliveryDto) GetEvent() string {
+	return s.Event
 }
 
 // GetFinishedAt returns the value of FinishedAt.
@@ -2298,19 +2278,24 @@ func (s *DeliveryDto) GetFinishedAt() OptNilString {
 	return s.FinishedAt
 }
 
-// SetID sets the value of ID.
-func (s *DeliveryDto) SetID(val uuid.UUID) {
-	s.ID = val
+// GetID returns the value of ID.
+func (s *DeliveryDto) GetID() uuid.UUID {
+	return s.ID
 }
 
-// SetEvent sets the value of Event.
-func (s *DeliveryDto) SetEvent(val string) {
-	s.Event = val
+// GetLastError returns the value of LastError.
+func (s *DeliveryDto) GetLastError() OptNilString {
+	return s.LastError
 }
 
-// SetStatus sets the value of Status.
-func (s *DeliveryDto) SetStatus(val string) {
-	s.Status = val
+// GetLastStatus returns the value of LastStatus.
+func (s *DeliveryDto) GetLastStatus() OptNilInt32 {
+	return s.LastStatus
+}
+
+// GetStatus returns the value of Status.
+func (s *DeliveryDto) GetStatus() string {
+	return s.Status
 }
 
 // SetAttempts sets the value of Attempts.
@@ -2318,9 +2303,24 @@ func (s *DeliveryDto) SetAttempts(val int32) {
 	s.Attempts = val
 }
 
-// SetLastStatus sets the value of LastStatus.
-func (s *DeliveryDto) SetLastStatus(val OptNilInt32) {
-	s.LastStatus = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *DeliveryDto) SetCreatedAt(val string) {
+	s.CreatedAt = val
+}
+
+// SetEvent sets the value of Event.
+func (s *DeliveryDto) SetEvent(val string) {
+	s.Event = val
+}
+
+// SetFinishedAt sets the value of FinishedAt.
+func (s *DeliveryDto) SetFinishedAt(val OptNilString) {
+	s.FinishedAt = val
+}
+
+// SetID sets the value of ID.
+func (s *DeliveryDto) SetID(val uuid.UUID) {
+	s.ID = val
 }
 
 // SetLastError sets the value of LastError.
@@ -2328,14 +2328,14 @@ func (s *DeliveryDto) SetLastError(val OptNilString) {
 	s.LastError = val
 }
 
-// SetCreatedAt sets the value of CreatedAt.
-func (s *DeliveryDto) SetCreatedAt(val string) {
-	s.CreatedAt = val
+// SetLastStatus sets the value of LastStatus.
+func (s *DeliveryDto) SetLastStatus(val OptNilInt32) {
+	s.LastStatus = val
 }
 
-// SetFinishedAt sets the value of FinishedAt.
-func (s *DeliveryDto) SetFinishedAt(val OptNilString) {
-	s.FinishedAt = val
+// SetStatus sets the value of Status.
+func (s *DeliveryDto) SetStatus(val string) {
+	s.Status = val
 }
 
 // Why a run exists.
@@ -2419,10 +2419,10 @@ func (*DeployTemplateUnprocessableEntity) deployTemplateRes() {}
 // Ref: #/components/schemas/DeployedTemplate
 type DeployedTemplate struct {
 	App AppDto `json:"app"`
-	// Secret with the generated credentials, e.g. `db-credentials`.
-	CredentialsSecret string `json:"credentials_secret"`
 	// Reference it from other apps as `KEY=@<secret>/<key>`.
 	ConnectionKeys []string `json:"connection_keys"`
+	// Secret with the generated credentials, e.g. `db-credentials`.
+	CredentialsSecret string `json:"credentials_secret"`
 }
 
 // GetApp returns the value of App.
@@ -2430,14 +2430,14 @@ func (s *DeployedTemplate) GetApp() AppDto {
 	return s.App
 }
 
-// GetCredentialsSecret returns the value of CredentialsSecret.
-func (s *DeployedTemplate) GetCredentialsSecret() string {
-	return s.CredentialsSecret
-}
-
 // GetConnectionKeys returns the value of ConnectionKeys.
 func (s *DeployedTemplate) GetConnectionKeys() []string {
 	return s.ConnectionKeys
+}
+
+// GetCredentialsSecret returns the value of CredentialsSecret.
+func (s *DeployedTemplate) GetCredentialsSecret() string {
+	return s.CredentialsSecret
 }
 
 // SetApp sets the value of App.
@@ -2445,14 +2445,14 @@ func (s *DeployedTemplate) SetApp(val AppDto) {
 	s.App = val
 }
 
-// SetCredentialsSecret sets the value of CredentialsSecret.
-func (s *DeployedTemplate) SetCredentialsSecret(val string) {
-	s.CredentialsSecret = val
-}
-
 // SetConnectionKeys sets the value of ConnectionKeys.
 func (s *DeployedTemplate) SetConnectionKeys(val []string) {
 	s.ConnectionKeys = val
+}
+
+// SetCredentialsSecret sets the value of CredentialsSecret.
+func (s *DeployedTemplate) SetCredentialsSecret(val string) {
+	s.CredentialsSecret = val
 }
 
 func (*DeployedTemplate) deployTemplateRes() {}
@@ -2460,46 +2460,21 @@ func (*DeployedTemplate) deployTemplateRes() {}
 // A deployment run and where it stands.
 // Ref: #/components/schemas/DeploymentDto
 type DeploymentDto struct {
-	Run       uuid.UUID `json:"run"`
-	Operation uuid.UUID `json:"operation"`
+	// When a run waiting for approval is cancelled (Unix milliseconds).
+	ApprovalExpiresAt OptNilInt64 `json:"approval_expires_at"`
+	// Distinct approvals the environment's policy requires before delivery.
+	ApprovalsRequired OptInt32 `json:"approvals_required"`
 	// The target generation this run owns.
-	Generation int64 `json:"generation"`
+	Generation int64     `json:"generation"`
+	Operation  uuid.UUID `json:"operation"`
 	// `planned`, `awaitingApproval`, `pendingDelivery`, `acceptedByCluster`, `applying`, `succeeded`,
 	// `failed`, `superseded`, `cancelled`, ….
 	Phase string `json:"phase"`
-	// Distinct approvals the environment's policy requires before delivery.
-	ApprovalsRequired OptInt32 `json:"approvals_required"`
-	// When a run waiting for approval is cancelled (Unix milliseconds).
-	ApprovalExpiresAt OptNilInt64 `json:"approval_expires_at"`
 	// The hash approvers confirm (hex), when approvals are required.
 	PlanHash OptNilString `json:"plan_hash"`
+	Run      uuid.UUID    `json:"run"`
 	// What admission could not check, e.g. that the pods will be scheduled.
 	Warnings []string `json:"warnings"`
-}
-
-// GetRun returns the value of Run.
-func (s *DeploymentDto) GetRun() uuid.UUID {
-	return s.Run
-}
-
-// GetOperation returns the value of Operation.
-func (s *DeploymentDto) GetOperation() uuid.UUID {
-	return s.Operation
-}
-
-// GetGeneration returns the value of Generation.
-func (s *DeploymentDto) GetGeneration() int64 {
-	return s.Generation
-}
-
-// GetPhase returns the value of Phase.
-func (s *DeploymentDto) GetPhase() string {
-	return s.Phase
-}
-
-// GetApprovalsRequired returns the value of ApprovalsRequired.
-func (s *DeploymentDto) GetApprovalsRequired() OptInt32 {
-	return s.ApprovalsRequired
 }
 
 // GetApprovalExpiresAt returns the value of ApprovalExpiresAt.
@@ -2507,9 +2482,34 @@ func (s *DeploymentDto) GetApprovalExpiresAt() OptNilInt64 {
 	return s.ApprovalExpiresAt
 }
 
+// GetApprovalsRequired returns the value of ApprovalsRequired.
+func (s *DeploymentDto) GetApprovalsRequired() OptInt32 {
+	return s.ApprovalsRequired
+}
+
+// GetGeneration returns the value of Generation.
+func (s *DeploymentDto) GetGeneration() int64 {
+	return s.Generation
+}
+
+// GetOperation returns the value of Operation.
+func (s *DeploymentDto) GetOperation() uuid.UUID {
+	return s.Operation
+}
+
+// GetPhase returns the value of Phase.
+func (s *DeploymentDto) GetPhase() string {
+	return s.Phase
+}
+
 // GetPlanHash returns the value of PlanHash.
 func (s *DeploymentDto) GetPlanHash() OptNilString {
 	return s.PlanHash
+}
+
+// GetRun returns the value of Run.
+func (s *DeploymentDto) GetRun() uuid.UUID {
+	return s.Run
 }
 
 // GetWarnings returns the value of Warnings.
@@ -2517,24 +2517,9 @@ func (s *DeploymentDto) GetWarnings() []string {
 	return s.Warnings
 }
 
-// SetRun sets the value of Run.
-func (s *DeploymentDto) SetRun(val uuid.UUID) {
-	s.Run = val
-}
-
-// SetOperation sets the value of Operation.
-func (s *DeploymentDto) SetOperation(val uuid.UUID) {
-	s.Operation = val
-}
-
-// SetGeneration sets the value of Generation.
-func (s *DeploymentDto) SetGeneration(val int64) {
-	s.Generation = val
-}
-
-// SetPhase sets the value of Phase.
-func (s *DeploymentDto) SetPhase(val string) {
-	s.Phase = val
+// SetApprovalExpiresAt sets the value of ApprovalExpiresAt.
+func (s *DeploymentDto) SetApprovalExpiresAt(val OptNilInt64) {
+	s.ApprovalExpiresAt = val
 }
 
 // SetApprovalsRequired sets the value of ApprovalsRequired.
@@ -2542,14 +2527,29 @@ func (s *DeploymentDto) SetApprovalsRequired(val OptInt32) {
 	s.ApprovalsRequired = val
 }
 
-// SetApprovalExpiresAt sets the value of ApprovalExpiresAt.
-func (s *DeploymentDto) SetApprovalExpiresAt(val OptNilInt64) {
-	s.ApprovalExpiresAt = val
+// SetGeneration sets the value of Generation.
+func (s *DeploymentDto) SetGeneration(val int64) {
+	s.Generation = val
+}
+
+// SetOperation sets the value of Operation.
+func (s *DeploymentDto) SetOperation(val uuid.UUID) {
+	s.Operation = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *DeploymentDto) SetPhase(val string) {
+	s.Phase = val
 }
 
 // SetPlanHash sets the value of PlanHash.
 func (s *DeploymentDto) SetPlanHash(val OptNilString) {
 	s.PlanHash = val
+}
+
+// SetRun sets the value of Run.
+func (s *DeploymentDto) SetRun(val uuid.UUID) {
+	s.Run = val
 }
 
 // SetWarnings sets the value of Warnings.
@@ -2564,50 +2564,20 @@ func (*DeploymentDto) startDeploymentRes()   {}
 // A deployment run with how it went.
 // Ref: #/components/schemas/DeploymentSummary
 type DeploymentSummary struct {
-	Run uuid.UUID `json:"run"`
+	CreatedAt int64 `json:"created_at"`
 	// The target generation (the app's revision) this run owns.
-	Generation int64 `json:"generation"`
-	// `deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or `rotation`.
-	Reason string `json:"reason"`
-	Phase  string `json:"phase"`
+	Generation int64        `json:"generation"`
+	Image      OptNilString `json:"image"`
 	// `succeeded`, `failed` or `cancelled` once it ended.
 	Outcome OptNilString `json:"outcome"`
+	Phase   string       `json:"phase"`
+	// `deploy`, `rollback`, `promotion`, `restart`, `handover`, `build` or `rotation`.
+	Reason string `json:"reason"`
 	// Email of whoever asked for it.
-	RequestedBy string       `json:"requested_by"`
-	CreatedAt   int64        `json:"created_at"`
-	Image       OptNilString `json:"image"`
+	RequestedBy string    `json:"requested_by"`
+	Run         uuid.UUID `json:"run"`
 	// Every phase it entered, oldest first.
 	Timeline []PhaseStep `json:"timeline"`
-}
-
-// GetRun returns the value of Run.
-func (s *DeploymentSummary) GetRun() uuid.UUID {
-	return s.Run
-}
-
-// GetGeneration returns the value of Generation.
-func (s *DeploymentSummary) GetGeneration() int64 {
-	return s.Generation
-}
-
-// GetReason returns the value of Reason.
-func (s *DeploymentSummary) GetReason() string {
-	return s.Reason
-}
-
-// GetPhase returns the value of Phase.
-func (s *DeploymentSummary) GetPhase() string {
-	return s.Phase
-}
-
-// GetOutcome returns the value of Outcome.
-func (s *DeploymentSummary) GetOutcome() OptNilString {
-	return s.Outcome
-}
-
-// GetRequestedBy returns the value of RequestedBy.
-func (s *DeploymentSummary) GetRequestedBy() string {
-	return s.RequestedBy
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -2615,9 +2585,39 @@ func (s *DeploymentSummary) GetCreatedAt() int64 {
 	return s.CreatedAt
 }
 
+// GetGeneration returns the value of Generation.
+func (s *DeploymentSummary) GetGeneration() int64 {
+	return s.Generation
+}
+
 // GetImage returns the value of Image.
 func (s *DeploymentSummary) GetImage() OptNilString {
 	return s.Image
+}
+
+// GetOutcome returns the value of Outcome.
+func (s *DeploymentSummary) GetOutcome() OptNilString {
+	return s.Outcome
+}
+
+// GetPhase returns the value of Phase.
+func (s *DeploymentSummary) GetPhase() string {
+	return s.Phase
+}
+
+// GetReason returns the value of Reason.
+func (s *DeploymentSummary) GetReason() string {
+	return s.Reason
+}
+
+// GetRequestedBy returns the value of RequestedBy.
+func (s *DeploymentSummary) GetRequestedBy() string {
+	return s.RequestedBy
+}
+
+// GetRun returns the value of Run.
+func (s *DeploymentSummary) GetRun() uuid.UUID {
+	return s.Run
 }
 
 // GetTimeline returns the value of Timeline.
@@ -2625,9 +2625,9 @@ func (s *DeploymentSummary) GetTimeline() []PhaseStep {
 	return s.Timeline
 }
 
-// SetRun sets the value of Run.
-func (s *DeploymentSummary) SetRun(val uuid.UUID) {
-	s.Run = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *DeploymentSummary) SetCreatedAt(val int64) {
+	s.CreatedAt = val
 }
 
 // SetGeneration sets the value of Generation.
@@ -2635,14 +2635,9 @@ func (s *DeploymentSummary) SetGeneration(val int64) {
 	s.Generation = val
 }
 
-// SetReason sets the value of Reason.
-func (s *DeploymentSummary) SetReason(val string) {
-	s.Reason = val
-}
-
-// SetPhase sets the value of Phase.
-func (s *DeploymentSummary) SetPhase(val string) {
-	s.Phase = val
+// SetImage sets the value of Image.
+func (s *DeploymentSummary) SetImage(val OptNilString) {
+	s.Image = val
 }
 
 // SetOutcome sets the value of Outcome.
@@ -2650,19 +2645,24 @@ func (s *DeploymentSummary) SetOutcome(val OptNilString) {
 	s.Outcome = val
 }
 
+// SetPhase sets the value of Phase.
+func (s *DeploymentSummary) SetPhase(val string) {
+	s.Phase = val
+}
+
+// SetReason sets the value of Reason.
+func (s *DeploymentSummary) SetReason(val string) {
+	s.Reason = val
+}
+
 // SetRequestedBy sets the value of RequestedBy.
 func (s *DeploymentSummary) SetRequestedBy(val string) {
 	s.RequestedBy = val
 }
 
-// SetCreatedAt sets the value of CreatedAt.
-func (s *DeploymentSummary) SetCreatedAt(val int64) {
-	s.CreatedAt = val
-}
-
-// SetImage sets the value of Image.
-func (s *DeploymentSummary) SetImage(val OptNilString) {
-	s.Image = val
+// SetRun sets the value of Run.
+func (s *DeploymentSummary) SetRun(val uuid.UUID) {
+	s.Run = val
 }
 
 // SetTimeline sets the value of Timeline.
@@ -2717,28 +2717,38 @@ func (s *DetachRequest) SetReason(val string) {
 
 // Ref: #/components/schemas/DetachedAppDto
 type DetachedAppDto struct {
-	ID          uuid.UUID `json:"id"`
-	App         string    `json:"app"`
-	Namespace   string    `json:"namespace"`
-	Reason      string    `json:"reason"`
-	RequestedBy string    `json:"requestedBy"`
-	RequestedAt string    `json:"requestedAt"`
+	App string `json:"app"`
 	// Set once the objects are orphaned.
 	CompletedAt OptNilString `json:"completedAt"`
-	ReleasedAt  OptNilString `json:"releasedAt"`
-	ReleasedBy  OptNilString `json:"releasedBy"`
 	// The export frozen with the request (only when one app is read).
-	Export OptDetachedAppDtoExport `json:"export"`
-}
-
-// GetID returns the value of ID.
-func (s *DetachedAppDto) GetID() uuid.UUID {
-	return s.ID
+	Export      OptNilDetachedAppDtoExport `json:"export"`
+	ID          uuid.UUID                  `json:"id"`
+	Namespace   string                     `json:"namespace"`
+	Reason      string                     `json:"reason"`
+	ReleasedAt  OptNilString               `json:"releasedAt"`
+	ReleasedBy  OptNilString               `json:"releasedBy"`
+	RequestedAt string                     `json:"requestedAt"`
+	RequestedBy string                     `json:"requestedBy"`
 }
 
 // GetApp returns the value of App.
 func (s *DetachedAppDto) GetApp() string {
 	return s.App
+}
+
+// GetCompletedAt returns the value of CompletedAt.
+func (s *DetachedAppDto) GetCompletedAt() OptNilString {
+	return s.CompletedAt
+}
+
+// GetExport returns the value of Export.
+func (s *DetachedAppDto) GetExport() OptNilDetachedAppDtoExport {
+	return s.Export
+}
+
+// GetID returns the value of ID.
+func (s *DetachedAppDto) GetID() uuid.UUID {
+	return s.ID
 }
 
 // GetNamespace returns the value of Namespace.
@@ -2751,21 +2761,6 @@ func (s *DetachedAppDto) GetReason() string {
 	return s.Reason
 }
 
-// GetRequestedBy returns the value of RequestedBy.
-func (s *DetachedAppDto) GetRequestedBy() string {
-	return s.RequestedBy
-}
-
-// GetRequestedAt returns the value of RequestedAt.
-func (s *DetachedAppDto) GetRequestedAt() string {
-	return s.RequestedAt
-}
-
-// GetCompletedAt returns the value of CompletedAt.
-func (s *DetachedAppDto) GetCompletedAt() OptNilString {
-	return s.CompletedAt
-}
-
 // GetReleasedAt returns the value of ReleasedAt.
 func (s *DetachedAppDto) GetReleasedAt() OptNilString {
 	return s.ReleasedAt
@@ -2776,19 +2771,34 @@ func (s *DetachedAppDto) GetReleasedBy() OptNilString {
 	return s.ReleasedBy
 }
 
-// GetExport returns the value of Export.
-func (s *DetachedAppDto) GetExport() OptDetachedAppDtoExport {
-	return s.Export
+// GetRequestedAt returns the value of RequestedAt.
+func (s *DetachedAppDto) GetRequestedAt() string {
+	return s.RequestedAt
 }
 
-// SetID sets the value of ID.
-func (s *DetachedAppDto) SetID(val uuid.UUID) {
-	s.ID = val
+// GetRequestedBy returns the value of RequestedBy.
+func (s *DetachedAppDto) GetRequestedBy() string {
+	return s.RequestedBy
 }
 
 // SetApp sets the value of App.
 func (s *DetachedAppDto) SetApp(val string) {
 	s.App = val
+}
+
+// SetCompletedAt sets the value of CompletedAt.
+func (s *DetachedAppDto) SetCompletedAt(val OptNilString) {
+	s.CompletedAt = val
+}
+
+// SetExport sets the value of Export.
+func (s *DetachedAppDto) SetExport(val OptNilDetachedAppDtoExport) {
+	s.Export = val
+}
+
+// SetID sets the value of ID.
+func (s *DetachedAppDto) SetID(val uuid.UUID) {
+	s.ID = val
 }
 
 // SetNamespace sets the value of Namespace.
@@ -2801,21 +2811,6 @@ func (s *DetachedAppDto) SetReason(val string) {
 	s.Reason = val
 }
 
-// SetRequestedBy sets the value of RequestedBy.
-func (s *DetachedAppDto) SetRequestedBy(val string) {
-	s.RequestedBy = val
-}
-
-// SetRequestedAt sets the value of RequestedAt.
-func (s *DetachedAppDto) SetRequestedAt(val string) {
-	s.RequestedAt = val
-}
-
-// SetCompletedAt sets the value of CompletedAt.
-func (s *DetachedAppDto) SetCompletedAt(val OptNilString) {
-	s.CompletedAt = val
-}
-
 // SetReleasedAt sets the value of ReleasedAt.
 func (s *DetachedAppDto) SetReleasedAt(val OptNilString) {
 	s.ReleasedAt = val
@@ -2826,16 +2821,30 @@ func (s *DetachedAppDto) SetReleasedBy(val OptNilString) {
 	s.ReleasedBy = val
 }
 
-// SetExport sets the value of Export.
-func (s *DetachedAppDto) SetExport(val OptDetachedAppDtoExport) {
-	s.Export = val
+// SetRequestedAt sets the value of RequestedAt.
+func (s *DetachedAppDto) SetRequestedAt(val string) {
+	s.RequestedAt = val
+}
+
+// SetRequestedBy sets the value of RequestedBy.
+func (s *DetachedAppDto) SetRequestedBy(val string) {
+	s.RequestedBy = val
 }
 
 func (*DetachedAppDto) detachAppRes()      {}
 func (*DetachedAppDto) getDetachedAppRes() {}
 
 // The export frozen with the request (only when one app is read).
-type DetachedAppDtoExport struct{}
+type DetachedAppDtoExport map[string]jx.Raw
+
+func (s *DetachedAppDtoExport) init() DetachedAppDtoExport {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 // DisableWebhookNoContent is response for DisableWebhook operation.
 type DisableWebhookNoContent struct{}
@@ -2844,12 +2853,27 @@ func (*DisableWebhookNoContent) disableWebhookRes() {}
 
 // Ref: #/components/schemas/DnsChangeDto
 type DnsChangeDto struct {
+	// `created`, `updated`, `unchanged`, `deleted`, `conflict`, `skipped` or `failed`.
+	Action     string       `json:"action"`
+	Content    OptNilString `json:"content"`
+	Detail     OptNilString `json:"detail"`
 	Host       string       `json:"host"`
 	RecordType OptNilString `json:"recordType"`
-	Content    OptNilString `json:"content"`
-	// `created`, `updated`, `unchanged`, `deleted`, `conflict`, `skipped` or `failed`.
-	Action string       `json:"action"`
-	Detail OptNilString `json:"detail"`
+}
+
+// GetAction returns the value of Action.
+func (s *DnsChangeDto) GetAction() string {
+	return s.Action
+}
+
+// GetContent returns the value of Content.
+func (s *DnsChangeDto) GetContent() OptNilString {
+	return s.Content
+}
+
+// GetDetail returns the value of Detail.
+func (s *DnsChangeDto) GetDetail() OptNilString {
+	return s.Detail
 }
 
 // GetHost returns the value of Host.
@@ -2862,19 +2886,19 @@ func (s *DnsChangeDto) GetRecordType() OptNilString {
 	return s.RecordType
 }
 
-// GetContent returns the value of Content.
-func (s *DnsChangeDto) GetContent() OptNilString {
-	return s.Content
+// SetAction sets the value of Action.
+func (s *DnsChangeDto) SetAction(val string) {
+	s.Action = val
 }
 
-// GetAction returns the value of Action.
-func (s *DnsChangeDto) GetAction() string {
-	return s.Action
+// SetContent sets the value of Content.
+func (s *DnsChangeDto) SetContent(val OptNilString) {
+	s.Content = val
 }
 
-// GetDetail returns the value of Detail.
-func (s *DnsChangeDto) GetDetail() OptNilString {
-	return s.Detail
+// SetDetail sets the value of Detail.
+func (s *DnsChangeDto) SetDetail(val OptNilString) {
+	s.Detail = val
 }
 
 // SetHost sets the value of Host.
@@ -2887,49 +2911,14 @@ func (s *DnsChangeDto) SetRecordType(val OptNilString) {
 	s.RecordType = val
 }
 
-// SetContent sets the value of Content.
-func (s *DnsChangeDto) SetContent(val OptNilString) {
-	s.Content = val
-}
-
-// SetAction sets the value of Action.
-func (s *DnsChangeDto) SetAction(val string) {
-	s.Action = val
-}
-
-// SetDetail sets the value of Detail.
-func (s *DnsChangeDto) SetDetail(val OptNilString) {
-	s.Detail = val
-}
-
 // Ref: #/components/schemas/DnsProviderDto
 type DnsProviderDto struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	CreatedAt string    `json:"createdAt"`
+	CreatedBy string    `json:"createdBy"`
+	ID        uuid.UUID `json:"id"`
 	// `cloudflare`.
-	Kind      string `json:"kind"`
-	CreatedBy string `json:"createdBy"`
-	CreatedAt string `json:"createdAt"`
-}
-
-// GetID returns the value of ID.
-func (s *DnsProviderDto) GetID() uuid.UUID {
-	return s.ID
-}
-
-// GetName returns the value of Name.
-func (s *DnsProviderDto) GetName() string {
-	return s.Name
-}
-
-// GetKind returns the value of Kind.
-func (s *DnsProviderDto) GetKind() string {
-	return s.Kind
-}
-
-// GetCreatedBy returns the value of CreatedBy.
-func (s *DnsProviderDto) GetCreatedBy() string {
-	return s.CreatedBy
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -2937,24 +2926,24 @@ func (s *DnsProviderDto) GetCreatedAt() string {
 	return s.CreatedAt
 }
 
-// SetID sets the value of ID.
-func (s *DnsProviderDto) SetID(val uuid.UUID) {
-	s.ID = val
+// GetCreatedBy returns the value of CreatedBy.
+func (s *DnsProviderDto) GetCreatedBy() string {
+	return s.CreatedBy
 }
 
-// SetName sets the value of Name.
-func (s *DnsProviderDto) SetName(val string) {
-	s.Name = val
+// GetID returns the value of ID.
+func (s *DnsProviderDto) GetID() uuid.UUID {
+	return s.ID
 }
 
-// SetKind sets the value of Kind.
-func (s *DnsProviderDto) SetKind(val string) {
-	s.Kind = val
+// GetKind returns the value of Kind.
+func (s *DnsProviderDto) GetKind() string {
+	return s.Kind
 }
 
-// SetCreatedBy sets the value of CreatedBy.
-func (s *DnsProviderDto) SetCreatedBy(val string) {
-	s.CreatedBy = val
+// GetName returns the value of Name.
+func (s *DnsProviderDto) GetName() string {
+	return s.Name
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -2962,35 +2951,40 @@ func (s *DnsProviderDto) SetCreatedAt(val string) {
 	s.CreatedAt = val
 }
 
+// SetCreatedBy sets the value of CreatedBy.
+func (s *DnsProviderDto) SetCreatedBy(val string) {
+	s.CreatedBy = val
+}
+
+// SetID sets the value of ID.
+func (s *DnsProviderDto) SetID(val uuid.UUID) {
+	s.ID = val
+}
+
+// SetKind sets the value of Kind.
+func (s *DnsProviderDto) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetName sets the value of Name.
+func (s *DnsProviderDto) SetName(val string) {
+	s.Name = val
+}
+
 func (*DnsProviderDto) createDnsProviderRes() {}
 
 // Ref: #/components/schemas/DoctorCheck
 type DoctorCheck struct {
-	// `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`, `certificate`, `dns`, `claim`,
-	// `delegation`, `proxy` or `agent`.
-	ID string `json:"id"`
-	// What was checked (a host, a class, a port), when there are several.
-	Subject string `json:"subject"`
-	// `ok`, `warn`, `unknown` (could not be checked) or `fail`.
-	Status string `json:"status"`
 	Detail string `json:"detail"`
 	// What to do about it.
 	Hint OptNilString `json:"hint"`
-}
-
-// GetID returns the value of ID.
-func (s *DoctorCheck) GetID() string {
-	return s.ID
-}
-
-// GetSubject returns the value of Subject.
-func (s *DoctorCheck) GetSubject() string {
-	return s.Subject
-}
-
-// GetStatus returns the value of Status.
-func (s *DoctorCheck) GetStatus() string {
-	return s.Status
+	// `gateway-class`, `gateway`, `issuer`, `port-80`, `port-443`, `route`, `certificate`, `dns`, `claim`,
+	// `delegation`, `proxy` or `agent`.
+	ID string `json:"id"`
+	// `ok`, `warn`, `unknown` (could not be checked) or `fail`.
+	Status string `json:"status"`
+	// What was checked (a host, a class, a port), when there are several.
+	Subject string `json:"subject"`
 }
 
 // GetDetail returns the value of Detail.
@@ -3003,19 +2997,19 @@ func (s *DoctorCheck) GetHint() OptNilString {
 	return s.Hint
 }
 
-// SetID sets the value of ID.
-func (s *DoctorCheck) SetID(val string) {
-	s.ID = val
+// GetID returns the value of ID.
+func (s *DoctorCheck) GetID() string {
+	return s.ID
 }
 
-// SetSubject sets the value of Subject.
-func (s *DoctorCheck) SetSubject(val string) {
-	s.Subject = val
+// GetStatus returns the value of Status.
+func (s *DoctorCheck) GetStatus() string {
+	return s.Status
 }
 
-// SetStatus sets the value of Status.
-func (s *DoctorCheck) SetStatus(val string) {
-	s.Status = val
+// GetSubject returns the value of Subject.
+func (s *DoctorCheck) GetSubject() string {
+	return s.Subject
 }
 
 // SetDetail sets the value of Detail.
@@ -3028,20 +3022,30 @@ func (s *DoctorCheck) SetHint(val OptNilString) {
 	s.Hint = val
 }
 
-// Ref: #/components/schemas/DoctorReport
-type DoctorReport struct {
-	// The worst status of the checks; `unknown` is never `ok`.
-	Status string        `json:"status"`
-	Checks []DoctorCheck `json:"checks"`
-	// Every layer from the build to the visitor, with what was observed (M5.5).
-	Graph DoctorReportGraph `json:"graph"`
-	// Conclusions, root causes first; nothing unobserved counts as fine.
-	Findings []DoctorReportFindingsItem `json:"findings"`
+// SetID sets the value of ID.
+func (s *DoctorCheck) SetID(val string) {
+	s.ID = val
 }
 
-// GetStatus returns the value of Status.
-func (s *DoctorReport) GetStatus() string {
-	return s.Status
+// SetStatus sets the value of Status.
+func (s *DoctorCheck) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetSubject sets the value of Subject.
+func (s *DoctorCheck) SetSubject(val string) {
+	s.Subject = val
+}
+
+// Ref: #/components/schemas/DoctorReport
+type DoctorReport struct {
+	Checks []DoctorCheck `json:"checks"`
+	// Conclusions, root causes first; nothing unobserved counts as fine.
+	Findings []DoctorReportFindingsItem `json:"findings"`
+	// Every layer from the build to the visitor, with what was observed (M5.5).
+	Graph DoctorReportGraph `json:"graph"`
+	// The worst status of the checks; `unknown` is never `ok`.
+	Status string `json:"status"`
 }
 
 // GetChecks returns the value of Checks.
@@ -3049,19 +3053,19 @@ func (s *DoctorReport) GetChecks() []DoctorCheck {
 	return s.Checks
 }
 
-// GetGraph returns the value of Graph.
-func (s *DoctorReport) GetGraph() DoctorReportGraph {
-	return s.Graph
-}
-
 // GetFindings returns the value of Findings.
 func (s *DoctorReport) GetFindings() []DoctorReportFindingsItem {
 	return s.Findings
 }
 
-// SetStatus sets the value of Status.
-func (s *DoctorReport) SetStatus(val string) {
-	s.Status = val
+// GetGraph returns the value of Graph.
+func (s *DoctorReport) GetGraph() DoctorReportGraph {
+	return s.Graph
+}
+
+// GetStatus returns the value of Status.
+func (s *DoctorReport) GetStatus() string {
+	return s.Status
 }
 
 // SetChecks sets the value of Checks.
@@ -3069,38 +3073,56 @@ func (s *DoctorReport) SetChecks(val []DoctorCheck) {
 	s.Checks = val
 }
 
-// SetGraph sets the value of Graph.
-func (s *DoctorReport) SetGraph(val DoctorReportGraph) {
-	s.Graph = val
-}
-
 // SetFindings sets the value of Findings.
 func (s *DoctorReport) SetFindings(val []DoctorReportFindingsItem) {
 	s.Findings = val
 }
 
+// SetGraph sets the value of Graph.
+func (s *DoctorReport) SetGraph(val DoctorReportGraph) {
+	s.Graph = val
+}
+
+// SetStatus sets the value of Status.
+func (s *DoctorReport) SetStatus(val string) {
+	s.Status = val
+}
+
 func (*DoctorReport) getAppDoctorRes() {}
 
-type DoctorReportFindingsItem struct{}
+type DoctorReportFindingsItem map[string]jx.Raw
+
+func (s *DoctorReportFindingsItem) init() DoctorReportFindingsItem {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 // Every layer from the build to the visitor, with what was observed (M5.5).
-type DoctorReportGraph struct{}
+type DoctorReportGraph map[string]jx.Raw
+
+func (s *DoctorReportGraph) init() DoctorReportGraph {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 // Ref: #/components/schemas/DomainCheck
 type DomainCheck struct {
-	Host string `json:"host"`
 	// Addresses the host currently resolves to.
 	Addresses []string `json:"addresses"`
 	// Addresses of the gateway.
 	Expected []string `json:"expected"`
+	Host     string   `json:"host"`
+	Message  string   `json:"message"`
 	// `ok`, `mismatch`, `unresolved` or `unknown`.
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-// GetHost returns the value of Host.
-func (s *DomainCheck) GetHost() string {
-	return s.Host
+	Status string `json:"status"`
 }
 
 // GetAddresses returns the value of Addresses.
@@ -3113,9 +3135,9 @@ func (s *DomainCheck) GetExpected() []string {
 	return s.Expected
 }
 
-// GetStatus returns the value of Status.
-func (s *DomainCheck) GetStatus() string {
-	return s.Status
+// GetHost returns the value of Host.
+func (s *DomainCheck) GetHost() string {
+	return s.Host
 }
 
 // GetMessage returns the value of Message.
@@ -3123,9 +3145,9 @@ func (s *DomainCheck) GetMessage() string {
 	return s.Message
 }
 
-// SetHost sets the value of Host.
-func (s *DomainCheck) SetHost(val string) {
-	s.Host = val
+// GetStatus returns the value of Status.
+func (s *DomainCheck) GetStatus() string {
+	return s.Status
 }
 
 // SetAddresses sets the value of Addresses.
@@ -3138,14 +3160,19 @@ func (s *DomainCheck) SetExpected(val []string) {
 	s.Expected = val
 }
 
-// SetStatus sets the value of Status.
-func (s *DomainCheck) SetStatus(val string) {
-	s.Status = val
+// SetHost sets the value of Host.
+func (s *DomainCheck) SetHost(val string) {
+	s.Host = val
 }
 
 // SetMessage sets the value of Message.
 func (s *DomainCheck) SetMessage(val string) {
 	s.Message = val
+}
+
+// SetStatus sets the value of Status.
+func (s *DomainCheck) SetStatus(val string) {
+	s.Status = val
 }
 
 // Ref: #/components/schemas/EmergencyRollback
@@ -3190,17 +3217,42 @@ func (*EmergencyRollbackNotFound) emergencyRollbackRes() {}
 
 // Ref: #/components/schemas/EndpointDto
 type EndpointDto struct {
-	ID         uuid.UUID    `json:"id"`
-	Name       string       `json:"name"`
-	URL        string       `json:"url"`
-	Events     []string     `json:"events"`
-	CreatedBy  string       `json:"createdBy"`
 	CreatedAt  string       `json:"createdAt"`
+	CreatedBy  string       `json:"createdBy"`
 	DisabledAt OptNilString `json:"disabledAt"`
+	Events     []string     `json:"events"`
 	// Deliveries given up in a row; the endpoint is disabled at 20.
-	Failures int32 `json:"failures"`
+	Failures int32     `json:"failures"`
+	ID       uuid.UUID `json:"id"`
+	Name     string    `json:"name"`
 	// The signing secret: shown once, when the endpoint is made.
 	Secret OptNilString `json:"secret"`
+	URL    string       `json:"url"`
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *EndpointDto) GetCreatedAt() string {
+	return s.CreatedAt
+}
+
+// GetCreatedBy returns the value of CreatedBy.
+func (s *EndpointDto) GetCreatedBy() string {
+	return s.CreatedBy
+}
+
+// GetDisabledAt returns the value of DisabledAt.
+func (s *EndpointDto) GetDisabledAt() OptNilString {
+	return s.DisabledAt
+}
+
+// GetEvents returns the value of Events.
+func (s *EndpointDto) GetEvents() []string {
+	return s.Events
+}
+
+// GetFailures returns the value of Failures.
+func (s *EndpointDto) GetFailures() int32 {
+	return s.Failures
 }
 
 // GetID returns the value of ID.
@@ -3213,39 +3265,39 @@ func (s *EndpointDto) GetName() string {
 	return s.Name
 }
 
+// GetSecret returns the value of Secret.
+func (s *EndpointDto) GetSecret() OptNilString {
+	return s.Secret
+}
+
 // GetURL returns the value of URL.
 func (s *EndpointDto) GetURL() string {
 	return s.URL
 }
 
-// GetEvents returns the value of Events.
-func (s *EndpointDto) GetEvents() []string {
-	return s.Events
+// SetCreatedAt sets the value of CreatedAt.
+func (s *EndpointDto) SetCreatedAt(val string) {
+	s.CreatedAt = val
 }
 
-// GetCreatedBy returns the value of CreatedBy.
-func (s *EndpointDto) GetCreatedBy() string {
-	return s.CreatedBy
+// SetCreatedBy sets the value of CreatedBy.
+func (s *EndpointDto) SetCreatedBy(val string) {
+	s.CreatedBy = val
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *EndpointDto) GetCreatedAt() string {
-	return s.CreatedAt
+// SetDisabledAt sets the value of DisabledAt.
+func (s *EndpointDto) SetDisabledAt(val OptNilString) {
+	s.DisabledAt = val
 }
 
-// GetDisabledAt returns the value of DisabledAt.
-func (s *EndpointDto) GetDisabledAt() OptNilString {
-	return s.DisabledAt
+// SetEvents sets the value of Events.
+func (s *EndpointDto) SetEvents(val []string) {
+	s.Events = val
 }
 
-// GetFailures returns the value of Failures.
-func (s *EndpointDto) GetFailures() int32 {
-	return s.Failures
-}
-
-// GetSecret returns the value of Secret.
-func (s *EndpointDto) GetSecret() OptNilString {
-	return s.Secret
+// SetFailures sets the value of Failures.
+func (s *EndpointDto) SetFailures(val int32) {
+	s.Failures = val
 }
 
 // SetID sets the value of ID.
@@ -3258,39 +3310,14 @@ func (s *EndpointDto) SetName(val string) {
 	s.Name = val
 }
 
-// SetURL sets the value of URL.
-func (s *EndpointDto) SetURL(val string) {
-	s.URL = val
-}
-
-// SetEvents sets the value of Events.
-func (s *EndpointDto) SetEvents(val []string) {
-	s.Events = val
-}
-
-// SetCreatedBy sets the value of CreatedBy.
-func (s *EndpointDto) SetCreatedBy(val string) {
-	s.CreatedBy = val
-}
-
-// SetCreatedAt sets the value of CreatedAt.
-func (s *EndpointDto) SetCreatedAt(val string) {
-	s.CreatedAt = val
-}
-
-// SetDisabledAt sets the value of DisabledAt.
-func (s *EndpointDto) SetDisabledAt(val OptNilString) {
-	s.DisabledAt = val
-}
-
-// SetFailures sets the value of Failures.
-func (s *EndpointDto) SetFailures(val int32) {
-	s.Failures = val
-}
-
 // SetSecret sets the value of Secret.
 func (s *EndpointDto) SetSecret(val OptNilString) {
 	s.Secret = val
+}
+
+// SetURL sets the value of URL.
+func (s *EndpointDto) SetURL(val string) {
+	s.URL = val
 }
 
 func (*EndpointDto) createWebhookRes() {}
@@ -3348,8 +3375,8 @@ func (s *EnvType) UnmarshalText(data []byte) error {
 // Ref: #/components/schemas/EnvVarDto
 type EnvVarDto struct {
 	Name   string          `json:"name"`
-	Value  OptNilString    `json:"value"`
 	Secret OptNilSecretRef `json:"secret"`
+	Value  OptNilString    `json:"value"`
 }
 
 // GetName returns the value of Name.
@@ -3357,14 +3384,14 @@ func (s *EnvVarDto) GetName() string {
 	return s.Name
 }
 
-// GetValue returns the value of Value.
-func (s *EnvVarDto) GetValue() OptNilString {
-	return s.Value
-}
-
 // GetSecret returns the value of Secret.
 func (s *EnvVarDto) GetSecret() OptNilSecretRef {
 	return s.Secret
+}
+
+// GetValue returns the value of Value.
+func (s *EnvVarDto) GetValue() OptNilString {
+	return s.Value
 }
 
 // SetName sets the value of Name.
@@ -3372,74 +3399,39 @@ func (s *EnvVarDto) SetName(val string) {
 	s.Name = val
 }
 
-// SetValue sets the value of Value.
-func (s *EnvVarDto) SetValue(val OptNilString) {
-	s.Value = val
-}
-
 // SetSecret sets the value of Secret.
 func (s *EnvVarDto) SetSecret(val OptNilSecretRef) {
 	s.Secret = val
 }
 
+// SetValue sets the value of Value.
+func (s *EnvVarDto) SetValue(val OptNilString) {
+	s.Value = val
+}
+
 // Ref: #/components/schemas/EnvironmentDto
 type EnvironmentDto struct {
-	// Short name used in URLs, e.g. `prod`.
-	Name string `json:"name"`
-	// Kubernetes object name, e.g. `shop-prod`.
-	ResourceName string `json:"resource_name"`
-	Project      string `json:"project"`
-	// `standard`, `production` or `preview`.
-	EnvType   string `json:"env_type"`
-	Namespace string `json:"namespace"`
-	// `Pending`, `Ready`, `Terminating` or `Degraded`.
-	Phase    OptNilString `json:"phase"`
-	Ready    bool         `json:"ready"`
-	Message  OptNilString `json:"message"`
-	Deleting bool         `json:"deleting"`
+	CreatedAt OptNilString `json:"created_at"`
+	Deleting  bool         `json:"deleting"`
 	// When a soft-deleted environment will be purged.
 	DeletionScheduledAt OptNilString `json:"deletion_scheduled_at"`
-	CreatedAt           OptNilString `json:"created_at"`
+	// `standard`, `production` or `preview`.
+	EnvType string       `json:"env_type"`
+	Message OptNilString `json:"message"`
+	// Short name used in URLs, e.g. `prod`.
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	// `Pending`, `Ready`, `Terminating` or `Degraded`.
+	Phase   OptNilString `json:"phase"`
+	Project string       `json:"project"`
+	Ready   bool         `json:"ready"`
+	// Kubernetes object name, e.g. `shop-prod`.
+	ResourceName string `json:"resource_name"`
 }
 
-// GetName returns the value of Name.
-func (s *EnvironmentDto) GetName() string {
-	return s.Name
-}
-
-// GetResourceName returns the value of ResourceName.
-func (s *EnvironmentDto) GetResourceName() string {
-	return s.ResourceName
-}
-
-// GetProject returns the value of Project.
-func (s *EnvironmentDto) GetProject() string {
-	return s.Project
-}
-
-// GetEnvType returns the value of EnvType.
-func (s *EnvironmentDto) GetEnvType() string {
-	return s.EnvType
-}
-
-// GetNamespace returns the value of Namespace.
-func (s *EnvironmentDto) GetNamespace() string {
-	return s.Namespace
-}
-
-// GetPhase returns the value of Phase.
-func (s *EnvironmentDto) GetPhase() OptNilString {
-	return s.Phase
-}
-
-// GetReady returns the value of Ready.
-func (s *EnvironmentDto) GetReady() bool {
-	return s.Ready
-}
-
-// GetMessage returns the value of Message.
-func (s *EnvironmentDto) GetMessage() OptNilString {
-	return s.Message
+// GetCreatedAt returns the value of CreatedAt.
+func (s *EnvironmentDto) GetCreatedAt() OptNilString {
+	return s.CreatedAt
 }
 
 // GetDeleting returns the value of Deleting.
@@ -3452,49 +3444,49 @@ func (s *EnvironmentDto) GetDeletionScheduledAt() OptNilString {
 	return s.DeletionScheduledAt
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *EnvironmentDto) GetCreatedAt() OptNilString {
-	return s.CreatedAt
+// GetEnvType returns the value of EnvType.
+func (s *EnvironmentDto) GetEnvType() string {
+	return s.EnvType
 }
 
-// SetName sets the value of Name.
-func (s *EnvironmentDto) SetName(val string) {
-	s.Name = val
+// GetMessage returns the value of Message.
+func (s *EnvironmentDto) GetMessage() OptNilString {
+	return s.Message
 }
 
-// SetResourceName sets the value of ResourceName.
-func (s *EnvironmentDto) SetResourceName(val string) {
-	s.ResourceName = val
+// GetName returns the value of Name.
+func (s *EnvironmentDto) GetName() string {
+	return s.Name
 }
 
-// SetProject sets the value of Project.
-func (s *EnvironmentDto) SetProject(val string) {
-	s.Project = val
+// GetNamespace returns the value of Namespace.
+func (s *EnvironmentDto) GetNamespace() string {
+	return s.Namespace
 }
 
-// SetEnvType sets the value of EnvType.
-func (s *EnvironmentDto) SetEnvType(val string) {
-	s.EnvType = val
+// GetPhase returns the value of Phase.
+func (s *EnvironmentDto) GetPhase() OptNilString {
+	return s.Phase
 }
 
-// SetNamespace sets the value of Namespace.
-func (s *EnvironmentDto) SetNamespace(val string) {
-	s.Namespace = val
+// GetProject returns the value of Project.
+func (s *EnvironmentDto) GetProject() string {
+	return s.Project
 }
 
-// SetPhase sets the value of Phase.
-func (s *EnvironmentDto) SetPhase(val OptNilString) {
-	s.Phase = val
+// GetReady returns the value of Ready.
+func (s *EnvironmentDto) GetReady() bool {
+	return s.Ready
 }
 
-// SetReady sets the value of Ready.
-func (s *EnvironmentDto) SetReady(val bool) {
-	s.Ready = val
+// GetResourceName returns the value of ResourceName.
+func (s *EnvironmentDto) GetResourceName() string {
+	return s.ResourceName
 }
 
-// SetMessage sets the value of Message.
-func (s *EnvironmentDto) SetMessage(val OptNilString) {
-	s.Message = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *EnvironmentDto) SetCreatedAt(val OptNilString) {
+	s.CreatedAt = val
 }
 
 // SetDeleting sets the value of Deleting.
@@ -3507,9 +3499,44 @@ func (s *EnvironmentDto) SetDeletionScheduledAt(val OptNilString) {
 	s.DeletionScheduledAt = val
 }
 
-// SetCreatedAt sets the value of CreatedAt.
-func (s *EnvironmentDto) SetCreatedAt(val OptNilString) {
-	s.CreatedAt = val
+// SetEnvType sets the value of EnvType.
+func (s *EnvironmentDto) SetEnvType(val string) {
+	s.EnvType = val
+}
+
+// SetMessage sets the value of Message.
+func (s *EnvironmentDto) SetMessage(val OptNilString) {
+	s.Message = val
+}
+
+// SetName sets the value of Name.
+func (s *EnvironmentDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetNamespace sets the value of Namespace.
+func (s *EnvironmentDto) SetNamespace(val string) {
+	s.Namespace = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *EnvironmentDto) SetPhase(val OptNilString) {
+	s.Phase = val
+}
+
+// SetProject sets the value of Project.
+func (s *EnvironmentDto) SetProject(val string) {
+	s.Project = val
+}
+
+// SetReady sets the value of Ready.
+func (s *EnvironmentDto) SetReady(val bool) {
+	s.Ready = val
+}
+
+// SetResourceName sets the value of ResourceName.
+func (s *EnvironmentDto) SetResourceName(val string) {
+	s.ResourceName = val
 }
 
 func (*EnvironmentDto) createEnvironmentRes() {}
@@ -3517,17 +3544,37 @@ func (*EnvironmentDto) getEnvironmentRes()    {}
 
 // Ref: #/components/schemas/ExceptionDto
 type ExceptionDto struct {
+	// In force now.
+	Active        bool         `json:"active"`
+	CreatedAt     string       `json:"createdAt"`
+	CreatedBy     string       `json:"createdBy"`
+	ExpiresAt     string       `json:"expiresAt"`
 	ID            uuid.UUID    `json:"id"`
-	Vulnerability string       `json:"vulnerability"`
+	Owner         string       `json:"owner"`
 	Project       OptNilUUID   `json:"project"`
 	Reason        string       `json:"reason"`
-	Owner         string       `json:"owner"`
-	CreatedBy     string       `json:"createdBy"`
-	CreatedAt     string       `json:"createdAt"`
-	ExpiresAt     string       `json:"expiresAt"`
 	RevokedAt     OptNilString `json:"revokedAt"`
-	// In force now.
-	Active bool `json:"active"`
+	Vulnerability string       `json:"vulnerability"`
+}
+
+// GetActive returns the value of Active.
+func (s *ExceptionDto) GetActive() bool {
+	return s.Active
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *ExceptionDto) GetCreatedAt() string {
+	return s.CreatedAt
+}
+
+// GetCreatedBy returns the value of CreatedBy.
+func (s *ExceptionDto) GetCreatedBy() string {
+	return s.CreatedBy
+}
+
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *ExceptionDto) GetExpiresAt() string {
+	return s.ExpiresAt
 }
 
 // GetID returns the value of ID.
@@ -3535,9 +3582,9 @@ func (s *ExceptionDto) GetID() uuid.UUID {
 	return s.ID
 }
 
-// GetVulnerability returns the value of Vulnerability.
-func (s *ExceptionDto) GetVulnerability() string {
-	return s.Vulnerability
+// GetOwner returns the value of Owner.
+func (s *ExceptionDto) GetOwner() string {
+	return s.Owner
 }
 
 // GetProject returns the value of Project.
@@ -3550,34 +3597,34 @@ func (s *ExceptionDto) GetReason() string {
 	return s.Reason
 }
 
-// GetOwner returns the value of Owner.
-func (s *ExceptionDto) GetOwner() string {
-	return s.Owner
-}
-
-// GetCreatedBy returns the value of CreatedBy.
-func (s *ExceptionDto) GetCreatedBy() string {
-	return s.CreatedBy
-}
-
-// GetCreatedAt returns the value of CreatedAt.
-func (s *ExceptionDto) GetCreatedAt() string {
-	return s.CreatedAt
-}
-
-// GetExpiresAt returns the value of ExpiresAt.
-func (s *ExceptionDto) GetExpiresAt() string {
-	return s.ExpiresAt
-}
-
 // GetRevokedAt returns the value of RevokedAt.
 func (s *ExceptionDto) GetRevokedAt() OptNilString {
 	return s.RevokedAt
 }
 
-// GetActive returns the value of Active.
-func (s *ExceptionDto) GetActive() bool {
-	return s.Active
+// GetVulnerability returns the value of Vulnerability.
+func (s *ExceptionDto) GetVulnerability() string {
+	return s.Vulnerability
+}
+
+// SetActive sets the value of Active.
+func (s *ExceptionDto) SetActive(val bool) {
+	s.Active = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *ExceptionDto) SetCreatedAt(val string) {
+	s.CreatedAt = val
+}
+
+// SetCreatedBy sets the value of CreatedBy.
+func (s *ExceptionDto) SetCreatedBy(val string) {
+	s.CreatedBy = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *ExceptionDto) SetExpiresAt(val string) {
+	s.ExpiresAt = val
 }
 
 // SetID sets the value of ID.
@@ -3585,9 +3632,9 @@ func (s *ExceptionDto) SetID(val uuid.UUID) {
 	s.ID = val
 }
 
-// SetVulnerability sets the value of Vulnerability.
-func (s *ExceptionDto) SetVulnerability(val string) {
-	s.Vulnerability = val
+// SetOwner sets the value of Owner.
+func (s *ExceptionDto) SetOwner(val string) {
+	s.Owner = val
 }
 
 // SetProject sets the value of Project.
@@ -3600,34 +3647,14 @@ func (s *ExceptionDto) SetReason(val string) {
 	s.Reason = val
 }
 
-// SetOwner sets the value of Owner.
-func (s *ExceptionDto) SetOwner(val string) {
-	s.Owner = val
-}
-
-// SetCreatedBy sets the value of CreatedBy.
-func (s *ExceptionDto) SetCreatedBy(val string) {
-	s.CreatedBy = val
-}
-
-// SetCreatedAt sets the value of CreatedAt.
-func (s *ExceptionDto) SetCreatedAt(val string) {
-	s.CreatedAt = val
-}
-
-// SetExpiresAt sets the value of ExpiresAt.
-func (s *ExceptionDto) SetExpiresAt(val string) {
-	s.ExpiresAt = val
-}
-
 // SetRevokedAt sets the value of RevokedAt.
 func (s *ExceptionDto) SetRevokedAt(val OptNilString) {
 	s.RevokedAt = val
 }
 
-// SetActive sets the value of Active.
-func (s *ExceptionDto) SetActive(val bool) {
-	s.Active = val
+// SetVulnerability sets the value of Vulnerability.
+func (s *ExceptionDto) SetVulnerability(val string) {
+	s.Vulnerability = val
 }
 
 func (*ExceptionDto) createVulnerabilityExceptionRes() {}
@@ -3640,28 +3667,27 @@ type ExportAppNotFound Problem
 
 func (*ExportAppNotFound) exportAppRes() {}
 
-type ExportAppOK struct{}
+type ExportAppOK map[string]jx.Raw
+
+func (s *ExportAppOK) init() ExportAppOK {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 func (*ExportAppOK) exportAppRes() {}
 
 // How an app is reached through the gateway.
 // Ref: #/components/schemas/ExposureDto
 type ExposureDto struct {
+	Hosts   []HostDto    `json:"hosts"`
+	Message OptNilString `json:"message"`
 	// The gateway accepted the route and resolved its references; null until a gateway controller
 	// answered.
-	Routed  OptNilBool   `json:"routed"`
-	Message OptNilString `json:"message"`
-	Hosts   []HostDto    `json:"hosts"`
-}
-
-// GetRouted returns the value of Routed.
-func (s *ExposureDto) GetRouted() OptNilBool {
-	return s.Routed
-}
-
-// GetMessage returns the value of Message.
-func (s *ExposureDto) GetMessage() OptNilString {
-	return s.Message
+	Routed OptNilBool `json:"routed"`
 }
 
 // GetHosts returns the value of Hosts.
@@ -3669,9 +3695,19 @@ func (s *ExposureDto) GetHosts() []HostDto {
 	return s.Hosts
 }
 
-// SetRouted sets the value of Routed.
-func (s *ExposureDto) SetRouted(val OptNilBool) {
-	s.Routed = val
+// GetMessage returns the value of Message.
+func (s *ExposureDto) GetMessage() OptNilString {
+	return s.Message
+}
+
+// GetRouted returns the value of Routed.
+func (s *ExposureDto) GetRouted() OptNilBool {
+	return s.Routed
+}
+
+// SetHosts sets the value of Hosts.
+func (s *ExposureDto) SetHosts(val []HostDto) {
+	s.Hosts = val
 }
 
 // SetMessage sets the value of Message.
@@ -3679,9 +3715,9 @@ func (s *ExposureDto) SetMessage(val OptNilString) {
 	s.Message = val
 }
 
-// SetHosts sets the value of Hosts.
-func (s *ExposureDto) SetHosts(val []HostDto) {
-	s.Hosts = val
+// SetRouted sets the value of Routed.
+func (s *ExposureDto) SetRouted(val OptNilBool) {
+	s.Routed = val
 }
 
 // Ref: #/components/schemas/ExtendPreview
@@ -3790,22 +3826,12 @@ func (*HandOverAppNotFound) handOverAppRes() {}
 
 // Ref: #/components/schemas/HealthDetails
 type HealthDetails struct {
-	Ready      bool                    `json:"ready"`
-	Database   string                  `json:"database"`
 	Cluster    bool                    `json:"cluster"`
-	Seq        int64                   `json:"seq"`
+	Database   string                  `json:"database"`
 	Pods       int                     `json:"pods"`
+	Ready      bool                    `json:"ready"`
+	Seq        int64                   `json:"seq"`
 	Subsystems HealthDetailsSubsystems `json:"subsystems"`
-}
-
-// GetReady returns the value of Ready.
-func (s *HealthDetails) GetReady() bool {
-	return s.Ready
-}
-
-// GetDatabase returns the value of Database.
-func (s *HealthDetails) GetDatabase() string {
-	return s.Database
 }
 
 // GetCluster returns the value of Cluster.
@@ -3813,9 +3839,9 @@ func (s *HealthDetails) GetCluster() bool {
 	return s.Cluster
 }
 
-// GetSeq returns the value of Seq.
-func (s *HealthDetails) GetSeq() int64 {
-	return s.Seq
+// GetDatabase returns the value of Database.
+func (s *HealthDetails) GetDatabase() string {
+	return s.Database
 }
 
 // GetPods returns the value of Pods.
@@ -3823,19 +3849,19 @@ func (s *HealthDetails) GetPods() int {
 	return s.Pods
 }
 
+// GetReady returns the value of Ready.
+func (s *HealthDetails) GetReady() bool {
+	return s.Ready
+}
+
+// GetSeq returns the value of Seq.
+func (s *HealthDetails) GetSeq() int64 {
+	return s.Seq
+}
+
 // GetSubsystems returns the value of Subsystems.
 func (s *HealthDetails) GetSubsystems() HealthDetailsSubsystems {
 	return s.Subsystems
-}
-
-// SetReady sets the value of Ready.
-func (s *HealthDetails) SetReady(val bool) {
-	s.Ready = val
-}
-
-// SetDatabase sets the value of Database.
-func (s *HealthDetails) SetDatabase(val string) {
-	s.Database = val
 }
 
 // SetCluster sets the value of Cluster.
@@ -3843,9 +3869,9 @@ func (s *HealthDetails) SetCluster(val bool) {
 	s.Cluster = val
 }
 
-// SetSeq sets the value of Seq.
-func (s *HealthDetails) SetSeq(val int64) {
-	s.Seq = val
+// SetDatabase sets the value of Database.
+func (s *HealthDetails) SetDatabase(val string) {
+	s.Database = val
 }
 
 // SetPods sets the value of Pods.
@@ -3853,23 +3879,52 @@ func (s *HealthDetails) SetPods(val int) {
 	s.Pods = val
 }
 
+// SetReady sets the value of Ready.
+func (s *HealthDetails) SetReady(val bool) {
+	s.Ready = val
+}
+
+// SetSeq sets the value of Seq.
+func (s *HealthDetails) SetSeq(val int64) {
+	s.Seq = val
+}
+
 // SetSubsystems sets the value of Subsystems.
 func (s *HealthDetails) SetSubsystems(val HealthDetailsSubsystems) {
 	s.Subsystems = val
 }
 
-type HealthDetailsSubsystems struct{}
+type HealthDetailsSubsystems map[string]jx.Raw
+
+func (s *HealthDetailsSubsystems) init() HealthDetailsSubsystems {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 // One hostname of an app.
 // Ref: #/components/schemas/HostDto
 type HostDto struct {
-	Host string `json:"host"`
+	CertificateMessage OptNilString `json:"certificate_message"`
+	// For `auto` hosts with a certificate of their own: whether it is issued.
+	CertificateReady OptNilBool `json:"certificate_ready"`
+	Host             string     `json:"host"`
 	// `auto` (certificate from the cluster issuer), `secret` (the app's own certificate) or `none` (plain
 	// HTTP).
 	TLS string `json:"tls"`
-	// For `auto` hosts with a certificate of their own: whether it is issued.
-	CertificateReady   OptNilBool   `json:"certificate_ready"`
-	CertificateMessage OptNilString `json:"certificate_message"`
+}
+
+// GetCertificateMessage returns the value of CertificateMessage.
+func (s *HostDto) GetCertificateMessage() OptNilString {
+	return s.CertificateMessage
+}
+
+// GetCertificateReady returns the value of CertificateReady.
+func (s *HostDto) GetCertificateReady() OptNilBool {
+	return s.CertificateReady
 }
 
 // GetHost returns the value of Host.
@@ -3882,14 +3937,14 @@ func (s *HostDto) GetTLS() string {
 	return s.TLS
 }
 
-// GetCertificateReady returns the value of CertificateReady.
-func (s *HostDto) GetCertificateReady() OptNilBool {
-	return s.CertificateReady
+// SetCertificateMessage sets the value of CertificateMessage.
+func (s *HostDto) SetCertificateMessage(val OptNilString) {
+	s.CertificateMessage = val
 }
 
-// GetCertificateMessage returns the value of CertificateMessage.
-func (s *HostDto) GetCertificateMessage() OptNilString {
-	return s.CertificateMessage
+// SetCertificateReady sets the value of CertificateReady.
+func (s *HostDto) SetCertificateReady(val OptNilBool) {
+	s.CertificateReady = val
 }
 
 // SetHost sets the value of Host.
@@ -3902,42 +3957,22 @@ func (s *HostDto) SetTLS(val string) {
 	s.TLS = val
 }
 
-// SetCertificateReady sets the value of CertificateReady.
-func (s *HostDto) SetCertificateReady(val OptNilBool) {
-	s.CertificateReady = val
-}
-
-// SetCertificateMessage sets the value of CertificateMessage.
-func (s *HostDto) SetCertificateMessage(val OptNilString) {
-	s.CertificateMessage = val
-}
-
 // Ref: #/components/schemas/ImagePolicyDto
 type ImagePolicyDto struct {
-	Repository string `json:"repository"`
-	// `semver:<range>`, `tag:<glob>` or a tag.
-	Pattern       string       `json:"pattern"`
-	Enabled       bool         `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Failed checks in a row.
+	Failures      int32        `json:"failures"`
 	IntervalSecs  int32        `json:"intervalSecs"`
-	NextCheckAt   string       `json:"nextCheckAt"`
 	LastCheckedAt OptNilString `json:"lastCheckedAt"`
-	LastTag       OptNilString `json:"lastTag"`
 	LastDigest    OptNilString `json:"lastDigest"`
 	LastError     OptNilString `json:"lastError"`
-	// Failed checks in a row.
-	Failures int32 `json:"failures"`
 	// The run the policy started last.
-	LastRun OptNilUUID `json:"lastRun"`
-}
-
-// GetRepository returns the value of Repository.
-func (s *ImagePolicyDto) GetRepository() string {
-	return s.Repository
-}
-
-// GetPattern returns the value of Pattern.
-func (s *ImagePolicyDto) GetPattern() string {
-	return s.Pattern
+	LastRun     OptNilUUID   `json:"lastRun"`
+	LastTag     OptNilString `json:"lastTag"`
+	NextCheckAt string       `json:"nextCheckAt"`
+	// `semver:<range>`, `tag:<glob>` or a tag.
+	Pattern    string `json:"pattern"`
+	Repository string `json:"repository"`
 }
 
 // GetEnabled returns the value of Enabled.
@@ -3945,24 +3980,19 @@ func (s *ImagePolicyDto) GetEnabled() bool {
 	return s.Enabled
 }
 
+// GetFailures returns the value of Failures.
+func (s *ImagePolicyDto) GetFailures() int32 {
+	return s.Failures
+}
+
 // GetIntervalSecs returns the value of IntervalSecs.
 func (s *ImagePolicyDto) GetIntervalSecs() int32 {
 	return s.IntervalSecs
 }
 
-// GetNextCheckAt returns the value of NextCheckAt.
-func (s *ImagePolicyDto) GetNextCheckAt() string {
-	return s.NextCheckAt
-}
-
 // GetLastCheckedAt returns the value of LastCheckedAt.
 func (s *ImagePolicyDto) GetLastCheckedAt() OptNilString {
 	return s.LastCheckedAt
-}
-
-// GetLastTag returns the value of LastTag.
-func (s *ImagePolicyDto) GetLastTag() OptNilString {
-	return s.LastTag
 }
 
 // GetLastDigest returns the value of LastDigest.
@@ -3975,24 +4005,29 @@ func (s *ImagePolicyDto) GetLastError() OptNilString {
 	return s.LastError
 }
 
-// GetFailures returns the value of Failures.
-func (s *ImagePolicyDto) GetFailures() int32 {
-	return s.Failures
-}
-
 // GetLastRun returns the value of LastRun.
 func (s *ImagePolicyDto) GetLastRun() OptNilUUID {
 	return s.LastRun
 }
 
-// SetRepository sets the value of Repository.
-func (s *ImagePolicyDto) SetRepository(val string) {
-	s.Repository = val
+// GetLastTag returns the value of LastTag.
+func (s *ImagePolicyDto) GetLastTag() OptNilString {
+	return s.LastTag
 }
 
-// SetPattern sets the value of Pattern.
-func (s *ImagePolicyDto) SetPattern(val string) {
-	s.Pattern = val
+// GetNextCheckAt returns the value of NextCheckAt.
+func (s *ImagePolicyDto) GetNextCheckAt() string {
+	return s.NextCheckAt
+}
+
+// GetPattern returns the value of Pattern.
+func (s *ImagePolicyDto) GetPattern() string {
+	return s.Pattern
+}
+
+// GetRepository returns the value of Repository.
+func (s *ImagePolicyDto) GetRepository() string {
+	return s.Repository
 }
 
 // SetEnabled sets the value of Enabled.
@@ -4000,24 +4035,19 @@ func (s *ImagePolicyDto) SetEnabled(val bool) {
 	s.Enabled = val
 }
 
+// SetFailures sets the value of Failures.
+func (s *ImagePolicyDto) SetFailures(val int32) {
+	s.Failures = val
+}
+
 // SetIntervalSecs sets the value of IntervalSecs.
 func (s *ImagePolicyDto) SetIntervalSecs(val int32) {
 	s.IntervalSecs = val
 }
 
-// SetNextCheckAt sets the value of NextCheckAt.
-func (s *ImagePolicyDto) SetNextCheckAt(val string) {
-	s.NextCheckAt = val
-}
-
 // SetLastCheckedAt sets the value of LastCheckedAt.
 func (s *ImagePolicyDto) SetLastCheckedAt(val OptNilString) {
 	s.LastCheckedAt = val
-}
-
-// SetLastTag sets the value of LastTag.
-func (s *ImagePolicyDto) SetLastTag(val OptNilString) {
-	s.LastTag = val
 }
 
 // SetLastDigest sets the value of LastDigest.
@@ -4030,14 +4060,29 @@ func (s *ImagePolicyDto) SetLastError(val OptNilString) {
 	s.LastError = val
 }
 
-// SetFailures sets the value of Failures.
-func (s *ImagePolicyDto) SetFailures(val int32) {
-	s.Failures = val
-}
-
 // SetLastRun sets the value of LastRun.
 func (s *ImagePolicyDto) SetLastRun(val OptNilUUID) {
 	s.LastRun = val
+}
+
+// SetLastTag sets the value of LastTag.
+func (s *ImagePolicyDto) SetLastTag(val OptNilString) {
+	s.LastTag = val
+}
+
+// SetNextCheckAt sets the value of NextCheckAt.
+func (s *ImagePolicyDto) SetNextCheckAt(val string) {
+	s.NextCheckAt = val
+}
+
+// SetPattern sets the value of Pattern.
+func (s *ImagePolicyDto) SetPattern(val string) {
+	s.Pattern = val
+}
+
+// SetRepository sets the value of Repository.
+func (s *ImagePolicyDto) SetRepository(val string) {
+	s.Repository = val
 }
 
 func (*ImagePolicyDto) getImagePolicyRes() {}
@@ -4045,10 +4090,10 @@ func (*ImagePolicyDto) putImagePolicyRes() {}
 
 // Ref: #/components/schemas/ImageScanDto
 type ImageScanDto struct {
-	Digest string        `json:"digest"`
-	Scan   OptNilScanDto `json:"scan"`
+	Digest string `json:"digest"`
 	// An SBOM can be downloaded.
-	Sbom bool `json:"sbom"`
+	Sbom bool          `json:"sbom"`
+	Scan OptNilScanDto `json:"scan"`
 }
 
 // GetDigest returns the value of Digest.
@@ -4056,14 +4101,14 @@ func (s *ImageScanDto) GetDigest() string {
 	return s.Digest
 }
 
-// GetScan returns the value of Scan.
-func (s *ImageScanDto) GetScan() OptNilScanDto {
-	return s.Scan
-}
-
 // GetSbom returns the value of Sbom.
 func (s *ImageScanDto) GetSbom() bool {
 	return s.Sbom
+}
+
+// GetScan returns the value of Scan.
+func (s *ImageScanDto) GetScan() OptNilScanDto {
+	return s.Scan
 }
 
 // SetDigest sets the value of Digest.
@@ -4071,36 +4116,61 @@ func (s *ImageScanDto) SetDigest(val string) {
 	s.Digest = val
 }
 
-// SetScan sets the value of Scan.
-func (s *ImageScanDto) SetScan(val OptNilScanDto) {
-	s.Scan = val
-}
-
 // SetSbom sets the value of Sbom.
 func (s *ImageScanDto) SetSbom(val bool) {
 	s.Sbom = val
 }
 
+// SetScan sets the value of Scan.
+func (s *ImageScanDto) SetScan(val OptNilScanDto) {
+	s.Scan = val
+}
+
 // Ref: #/components/schemas/IncidentDto
 type IncidentDto struct {
-	ID   uuid.UUID `json:"id"`
-	Kind string    `json:"kind"`
-	// `critical`, `warning` or `info`.
-	Severity       string       `json:"severity"`
-	Title          string       `json:"title"`
-	Detail         OptNilString `json:"detail"`
-	Project        OptNilUUID   `json:"project"`
-	Environment    OptNilUUID   `json:"environment"`
-	App            OptNilUUID   `json:"app"`
-	OpenedAt       string       `json:"openedAt"`
-	LastSeenAt     string       `json:"lastSeenAt"`
-	Occurrences    int64        `json:"occurrences"`
 	AcknowledgedAt OptNilString `json:"acknowledgedAt"`
 	AcknowledgedBy OptNilString `json:"acknowledgedBy"`
+	App            OptNilUUID   `json:"app"`
+	Detail         OptNilString `json:"detail"`
+	Environment    OptNilUUID   `json:"environment"`
+	ID             uuid.UUID    `json:"id"`
+	Kind           string       `json:"kind"`
+	LastSeenAt     string       `json:"lastSeenAt"`
+	Occurrences    int64        `json:"occurrences"`
+	OpenedAt       string       `json:"openedAt"`
+	Project        OptNilUUID   `json:"project"`
 	ResolvedAt     OptNilString `json:"resolvedAt"`
 	ResolvedBy     OptNilString `json:"resolvedBy"`
 	// What to do about it.
 	Runbook OptNilString `json:"runbook"`
+	// `critical`, `warning` or `info`.
+	Severity string `json:"severity"`
+	Title    string `json:"title"`
+}
+
+// GetAcknowledgedAt returns the value of AcknowledgedAt.
+func (s *IncidentDto) GetAcknowledgedAt() OptNilString {
+	return s.AcknowledgedAt
+}
+
+// GetAcknowledgedBy returns the value of AcknowledgedBy.
+func (s *IncidentDto) GetAcknowledgedBy() OptNilString {
+	return s.AcknowledgedBy
+}
+
+// GetApp returns the value of App.
+func (s *IncidentDto) GetApp() OptNilUUID {
+	return s.App
+}
+
+// GetDetail returns the value of Detail.
+func (s *IncidentDto) GetDetail() OptNilString {
+	return s.Detail
+}
+
+// GetEnvironment returns the value of Environment.
+func (s *IncidentDto) GetEnvironment() OptNilUUID {
+	return s.Environment
 }
 
 // GetID returns the value of ID.
@@ -4113,41 +4183,6 @@ func (s *IncidentDto) GetKind() string {
 	return s.Kind
 }
 
-// GetSeverity returns the value of Severity.
-func (s *IncidentDto) GetSeverity() string {
-	return s.Severity
-}
-
-// GetTitle returns the value of Title.
-func (s *IncidentDto) GetTitle() string {
-	return s.Title
-}
-
-// GetDetail returns the value of Detail.
-func (s *IncidentDto) GetDetail() OptNilString {
-	return s.Detail
-}
-
-// GetProject returns the value of Project.
-func (s *IncidentDto) GetProject() OptNilUUID {
-	return s.Project
-}
-
-// GetEnvironment returns the value of Environment.
-func (s *IncidentDto) GetEnvironment() OptNilUUID {
-	return s.Environment
-}
-
-// GetApp returns the value of App.
-func (s *IncidentDto) GetApp() OptNilUUID {
-	return s.App
-}
-
-// GetOpenedAt returns the value of OpenedAt.
-func (s *IncidentDto) GetOpenedAt() string {
-	return s.OpenedAt
-}
-
 // GetLastSeenAt returns the value of LastSeenAt.
 func (s *IncidentDto) GetLastSeenAt() string {
 	return s.LastSeenAt
@@ -4158,14 +4193,14 @@ func (s *IncidentDto) GetOccurrences() int64 {
 	return s.Occurrences
 }
 
-// GetAcknowledgedAt returns the value of AcknowledgedAt.
-func (s *IncidentDto) GetAcknowledgedAt() OptNilString {
-	return s.AcknowledgedAt
+// GetOpenedAt returns the value of OpenedAt.
+func (s *IncidentDto) GetOpenedAt() string {
+	return s.OpenedAt
 }
 
-// GetAcknowledgedBy returns the value of AcknowledgedBy.
-func (s *IncidentDto) GetAcknowledgedBy() OptNilString {
-	return s.AcknowledgedBy
+// GetProject returns the value of Project.
+func (s *IncidentDto) GetProject() OptNilUUID {
+	return s.Project
 }
 
 // GetResolvedAt returns the value of ResolvedAt.
@@ -4183,6 +4218,41 @@ func (s *IncidentDto) GetRunbook() OptNilString {
 	return s.Runbook
 }
 
+// GetSeverity returns the value of Severity.
+func (s *IncidentDto) GetSeverity() string {
+	return s.Severity
+}
+
+// GetTitle returns the value of Title.
+func (s *IncidentDto) GetTitle() string {
+	return s.Title
+}
+
+// SetAcknowledgedAt sets the value of AcknowledgedAt.
+func (s *IncidentDto) SetAcknowledgedAt(val OptNilString) {
+	s.AcknowledgedAt = val
+}
+
+// SetAcknowledgedBy sets the value of AcknowledgedBy.
+func (s *IncidentDto) SetAcknowledgedBy(val OptNilString) {
+	s.AcknowledgedBy = val
+}
+
+// SetApp sets the value of App.
+func (s *IncidentDto) SetApp(val OptNilUUID) {
+	s.App = val
+}
+
+// SetDetail sets the value of Detail.
+func (s *IncidentDto) SetDetail(val OptNilString) {
+	s.Detail = val
+}
+
+// SetEnvironment sets the value of Environment.
+func (s *IncidentDto) SetEnvironment(val OptNilUUID) {
+	s.Environment = val
+}
+
 // SetID sets the value of ID.
 func (s *IncidentDto) SetID(val uuid.UUID) {
 	s.ID = val
@@ -4191,41 +4261,6 @@ func (s *IncidentDto) SetID(val uuid.UUID) {
 // SetKind sets the value of Kind.
 func (s *IncidentDto) SetKind(val string) {
 	s.Kind = val
-}
-
-// SetSeverity sets the value of Severity.
-func (s *IncidentDto) SetSeverity(val string) {
-	s.Severity = val
-}
-
-// SetTitle sets the value of Title.
-func (s *IncidentDto) SetTitle(val string) {
-	s.Title = val
-}
-
-// SetDetail sets the value of Detail.
-func (s *IncidentDto) SetDetail(val OptNilString) {
-	s.Detail = val
-}
-
-// SetProject sets the value of Project.
-func (s *IncidentDto) SetProject(val OptNilUUID) {
-	s.Project = val
-}
-
-// SetEnvironment sets the value of Environment.
-func (s *IncidentDto) SetEnvironment(val OptNilUUID) {
-	s.Environment = val
-}
-
-// SetApp sets the value of App.
-func (s *IncidentDto) SetApp(val OptNilUUID) {
-	s.App = val
-}
-
-// SetOpenedAt sets the value of OpenedAt.
-func (s *IncidentDto) SetOpenedAt(val string) {
-	s.OpenedAt = val
 }
 
 // SetLastSeenAt sets the value of LastSeenAt.
@@ -4238,14 +4273,14 @@ func (s *IncidentDto) SetOccurrences(val int64) {
 	s.Occurrences = val
 }
 
-// SetAcknowledgedAt sets the value of AcknowledgedAt.
-func (s *IncidentDto) SetAcknowledgedAt(val OptNilString) {
-	s.AcknowledgedAt = val
+// SetOpenedAt sets the value of OpenedAt.
+func (s *IncidentDto) SetOpenedAt(val string) {
+	s.OpenedAt = val
 }
 
-// SetAcknowledgedBy sets the value of AcknowledgedBy.
-func (s *IncidentDto) SetAcknowledgedBy(val OptNilString) {
-	s.AcknowledgedBy = val
+// SetProject sets the value of Project.
+func (s *IncidentDto) SetProject(val OptNilUUID) {
+	s.Project = val
 }
 
 // SetResolvedAt sets the value of ResolvedAt.
@@ -4263,17 +4298,22 @@ func (s *IncidentDto) SetRunbook(val OptNilString) {
 	s.Runbook = val
 }
 
-// Ref: #/components/schemas/InstallationDto
-type InstallationDto struct {
-	InstallationId int64 `json:"installationId"`
-	// The GitHub user or organization the App is installed on.
-	Account   string `json:"account"`
-	Suspended bool   `json:"suspended"`
+// SetSeverity sets the value of Severity.
+func (s *IncidentDto) SetSeverity(val string) {
+	s.Severity = val
 }
 
-// GetInstallationId returns the value of InstallationId.
-func (s *InstallationDto) GetInstallationId() int64 {
-	return s.InstallationId
+// SetTitle sets the value of Title.
+func (s *IncidentDto) SetTitle(val string) {
+	s.Title = val
+}
+
+// Ref: #/components/schemas/InstallationDto
+type InstallationDto struct {
+	// The GitHub user or organization the App is installed on.
+	Account        string `json:"account"`
+	InstallationId int64  `json:"installationId"`
+	Suspended      bool   `json:"suspended"`
 }
 
 // GetAccount returns the value of Account.
@@ -4281,19 +4321,24 @@ func (s *InstallationDto) GetAccount() string {
 	return s.Account
 }
 
+// GetInstallationId returns the value of InstallationId.
+func (s *InstallationDto) GetInstallationId() int64 {
+	return s.InstallationId
+}
+
 // GetSuspended returns the value of Suspended.
 func (s *InstallationDto) GetSuspended() bool {
 	return s.Suspended
 }
 
-// SetInstallationId sets the value of InstallationId.
-func (s *InstallationDto) SetInstallationId(val int64) {
-	s.InstallationId = val
-}
-
 // SetAccount sets the value of Account.
 func (s *InstallationDto) SetAccount(val string) {
 	s.Account = val
+}
+
+// SetInstallationId sets the value of InstallationId.
+func (s *InstallationDto) SetInstallationId(val int64) {
+	s.InstallationId = val
 }
 
 // SetSuspended sets the value of Suspended.
@@ -4305,15 +4350,10 @@ func (*InstallationDto) linkGitInstallationRes() {}
 
 // Ref: #/components/schemas/InviteMember
 type InviteMember struct {
-	Email       string       `json:"email"`
 	DisplayName OptNilString `json:"display_name"`
+	Email       string       `json:"email"`
 	// `viewer`, `developer`, `admin` or `owner`.
 	Role OptString `json:"role"`
-}
-
-// GetEmail returns the value of Email.
-func (s *InviteMember) GetEmail() string {
-	return s.Email
 }
 
 // GetDisplayName returns the value of DisplayName.
@@ -4321,19 +4361,24 @@ func (s *InviteMember) GetDisplayName() OptNilString {
 	return s.DisplayName
 }
 
+// GetEmail returns the value of Email.
+func (s *InviteMember) GetEmail() string {
+	return s.Email
+}
+
 // GetRole returns the value of Role.
 func (s *InviteMember) GetRole() OptString {
 	return s.Role
 }
 
-// SetEmail sets the value of Email.
-func (s *InviteMember) SetEmail(val string) {
-	s.Email = val
-}
-
 // SetDisplayName sets the value of DisplayName.
 func (s *InviteMember) SetDisplayName(val OptNilString) {
 	s.DisplayName = val
+}
+
+// SetEmail sets the value of Email.
+func (s *InviteMember) SetEmail(val string) {
+	s.Email = val
 }
 
 // SetRole sets the value of Role.
@@ -4573,38 +4618,13 @@ type LogoutNoContent struct{}
 
 // Ref: #/components/schemas/MemberDto
 type MemberDto struct {
-	ID          string       `json:"id"`
-	Email       string       `json:"email"`
+	Active      bool         `json:"active"`
 	DisplayName OptNilString `json:"display_name"`
-	Role        string       `json:"role"`
+	Email       string       `json:"email"`
+	ID          string       `json:"id"`
 	// Invited and has not replaced the temporary password yet.
-	MustChangePassword bool `json:"must_change_password"`
-	Active             bool `json:"active"`
-}
-
-// GetID returns the value of ID.
-func (s *MemberDto) GetID() string {
-	return s.ID
-}
-
-// GetEmail returns the value of Email.
-func (s *MemberDto) GetEmail() string {
-	return s.Email
-}
-
-// GetDisplayName returns the value of DisplayName.
-func (s *MemberDto) GetDisplayName() OptNilString {
-	return s.DisplayName
-}
-
-// GetRole returns the value of Role.
-func (s *MemberDto) GetRole() string {
-	return s.Role
-}
-
-// GetMustChangePassword returns the value of MustChangePassword.
-func (s *MemberDto) GetMustChangePassword() bool {
-	return s.MustChangePassword
+	MustChangePassword bool   `json:"must_change_password"`
+	Role               string `json:"role"`
 }
 
 // GetActive returns the value of Active.
@@ -4612,14 +4632,34 @@ func (s *MemberDto) GetActive() bool {
 	return s.Active
 }
 
-// SetID sets the value of ID.
-func (s *MemberDto) SetID(val string) {
-	s.ID = val
+// GetDisplayName returns the value of DisplayName.
+func (s *MemberDto) GetDisplayName() OptNilString {
+	return s.DisplayName
 }
 
-// SetEmail sets the value of Email.
-func (s *MemberDto) SetEmail(val string) {
-	s.Email = val
+// GetEmail returns the value of Email.
+func (s *MemberDto) GetEmail() string {
+	return s.Email
+}
+
+// GetID returns the value of ID.
+func (s *MemberDto) GetID() string {
+	return s.ID
+}
+
+// GetMustChangePassword returns the value of MustChangePassword.
+func (s *MemberDto) GetMustChangePassword() bool {
+	return s.MustChangePassword
+}
+
+// GetRole returns the value of Role.
+func (s *MemberDto) GetRole() string {
+	return s.Role
+}
+
+// SetActive sets the value of Active.
+func (s *MemberDto) SetActive(val bool) {
+	s.Active = val
 }
 
 // SetDisplayName sets the value of DisplayName.
@@ -4627,9 +4667,14 @@ func (s *MemberDto) SetDisplayName(val OptNilString) {
 	s.DisplayName = val
 }
 
-// SetRole sets the value of Role.
-func (s *MemberDto) SetRole(val string) {
-	s.Role = val
+// SetEmail sets the value of Email.
+func (s *MemberDto) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetID sets the value of ID.
+func (s *MemberDto) SetID(val string) {
+	s.ID = val
 }
 
 // SetMustChangePassword sets the value of MustChangePassword.
@@ -4637,9 +4682,9 @@ func (s *MemberDto) SetMustChangePassword(val bool) {
 	s.MustChangePassword = val
 }
 
-// SetActive sets the value of Active.
-func (s *MemberDto) SetActive(val bool) {
-	s.Active = val
+// SetRole sets the value of Role.
+func (s *MemberDto) SetRole(val string) {
+	s.Role = val
 }
 
 func (*MemberDto) putEnvironmentMemberRes() {}
@@ -4649,12 +4694,12 @@ func (*MemberDto) updateMemberRes()         {}
 // Ref: #/components/schemas/MetricPoint
 type MetricPoint struct {
 	// RFC 3339.
-	At          string `json:"at"`
-	CpuMillis   int64  `json:"cpuMillis"`
-	MemoryBytes int64  `json:"memoryBytes"`
+	At string `json:"at"`
 	// The hour's peaks (`7d` only).
-	CpuMax    OptNilInt64 `json:"cpuMax"`
-	MemoryMax OptNilInt64 `json:"memoryMax"`
+	CpuMax      OptNilInt64 `json:"cpuMax"`
+	CpuMillis   int64       `json:"cpuMillis"`
+	MemoryBytes int64       `json:"memoryBytes"`
+	MemoryMax   OptNilInt64 `json:"memoryMax"`
 	// Pods sampled (`1h` only).
 	Pods OptNilInt32 `json:"pods"`
 }
@@ -4662,6 +4707,11 @@ type MetricPoint struct {
 // GetAt returns the value of At.
 func (s *MetricPoint) GetAt() string {
 	return s.At
+}
+
+// GetCpuMax returns the value of CpuMax.
+func (s *MetricPoint) GetCpuMax() OptNilInt64 {
+	return s.CpuMax
 }
 
 // GetCpuMillis returns the value of CpuMillis.
@@ -4672,11 +4722,6 @@ func (s *MetricPoint) GetCpuMillis() int64 {
 // GetMemoryBytes returns the value of MemoryBytes.
 func (s *MetricPoint) GetMemoryBytes() int64 {
 	return s.MemoryBytes
-}
-
-// GetCpuMax returns the value of CpuMax.
-func (s *MetricPoint) GetCpuMax() OptNilInt64 {
-	return s.CpuMax
 }
 
 // GetMemoryMax returns the value of MemoryMax.
@@ -4694,6 +4739,11 @@ func (s *MetricPoint) SetAt(val string) {
 	s.At = val
 }
 
+// SetCpuMax sets the value of CpuMax.
+func (s *MetricPoint) SetCpuMax(val OptNilInt64) {
+	s.CpuMax = val
+}
+
 // SetCpuMillis sets the value of CpuMillis.
 func (s *MetricPoint) SetCpuMillis(val int64) {
 	s.CpuMillis = val
@@ -4702,11 +4752,6 @@ func (s *MetricPoint) SetCpuMillis(val int64) {
 // SetMemoryBytes sets the value of MemoryBytes.
 func (s *MetricPoint) SetMemoryBytes(val int64) {
 	s.MemoryBytes = val
-}
-
-// SetCpuMax sets the value of CpuMax.
-func (s *MetricPoint) SetCpuMax(val OptNilInt64) {
-	s.CpuMax = val
 }
 
 // SetMemoryMax sets the value of MemoryMax.
@@ -4721,17 +4766,12 @@ func (s *MetricPoint) SetPods(val OptNilInt32) {
 
 // Ref: #/components/schemas/MetricsDto
 type MetricsDto struct {
-	Window string `json:"window"`
 	// False when there is nothing to show: never read as zero.
-	Available bool `json:"available"`
+	Available bool          `json:"available"`
+	Points    []MetricPoint `json:"points"`
 	// Why it is unavailable.
-	Reason OptNilString  `json:"reason"`
-	Points []MetricPoint `json:"points"`
-}
-
-// GetWindow returns the value of Window.
-func (s *MetricsDto) GetWindow() string {
-	return s.Window
+	Reason OptNilString `json:"reason"`
+	Window string       `json:"window"`
 }
 
 // GetAvailable returns the value of Available.
@@ -4739,19 +4779,19 @@ func (s *MetricsDto) GetAvailable() bool {
 	return s.Available
 }
 
-// GetReason returns the value of Reason.
-func (s *MetricsDto) GetReason() OptNilString {
-	return s.Reason
-}
-
 // GetPoints returns the value of Points.
 func (s *MetricsDto) GetPoints() []MetricPoint {
 	return s.Points
 }
 
-// SetWindow sets the value of Window.
-func (s *MetricsDto) SetWindow(val string) {
-	s.Window = val
+// GetReason returns the value of Reason.
+func (s *MetricsDto) GetReason() OptNilString {
+	return s.Reason
+}
+
+// GetWindow returns the value of Window.
+func (s *MetricsDto) GetWindow() string {
+	return s.Window
 }
 
 // SetAvailable sets the value of Available.
@@ -4759,14 +4799,19 @@ func (s *MetricsDto) SetAvailable(val bool) {
 	s.Available = val
 }
 
+// SetPoints sets the value of Points.
+func (s *MetricsDto) SetPoints(val []MetricPoint) {
+	s.Points = val
+}
+
 // SetReason sets the value of Reason.
 func (s *MetricsDto) SetReason(val OptNilString) {
 	s.Reason = val
 }
 
-// SetPoints sets the value of Points.
-func (s *MetricsDto) SetPoints(val []MetricPoint) {
-	s.Points = val
+// SetWindow sets the value of Window.
+func (s *MetricsDto) SetWindow(val string) {
+	s.Window = val
 }
 
 func (*MetricsDto) getAppMetricsRes() {}
@@ -4905,52 +4950,6 @@ func (o OptDeployReason) Get() (v DeployReason, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptDeployReason) Or(d DeployReason) DeployReason {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptDetachedAppDtoExport returns new OptDetachedAppDtoExport with value set to v.
-func NewOptDetachedAppDtoExport(v *DetachedAppDtoExport) OptDetachedAppDtoExport {
-	return OptDetachedAppDtoExport{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptDetachedAppDtoExport is optional *DetachedAppDtoExport.
-type OptDetachedAppDtoExport struct {
-	Value *DetachedAppDtoExport
-	Set   bool
-}
-
-// IsSet returns true if OptDetachedAppDtoExport was set.
-func (o OptDetachedAppDtoExport) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptDetachedAppDtoExport) Reset() {
-	var v *DetachedAppDtoExport
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptDetachedAppDtoExport) SetTo(v *DetachedAppDtoExport) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptDetachedAppDtoExport) Get() (v *DetachedAppDtoExport, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptDetachedAppDtoExport) Or(d *DetachedAppDtoExport) *DetachedAppDtoExport {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -5225,6 +5224,74 @@ func (o OptNilBool) Get() (v bool, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptNilBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilDetachedAppDtoExport returns new OptNilDetachedAppDtoExport with value set to v.
+func NewOptNilDetachedAppDtoExport(v DetachedAppDtoExport) OptNilDetachedAppDtoExport {
+	return OptNilDetachedAppDtoExport{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilDetachedAppDtoExport is optional nullable DetachedAppDtoExport.
+type OptNilDetachedAppDtoExport struct {
+	Value DetachedAppDtoExport
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilDetachedAppDtoExport was set.
+func (o OptNilDetachedAppDtoExport) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilDetachedAppDtoExport) Reset() {
+	var v DetachedAppDtoExport
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilDetachedAppDtoExport) SetTo(v DetachedAppDtoExport) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilDetachedAppDtoExport) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilDetachedAppDtoExport) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v DetachedAppDtoExport
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilDetachedAppDtoExport) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilDetachedAppDtoExport) Get() (v DetachedAppDtoExport, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilDetachedAppDtoExport) Or(d DetachedAppDtoExport) DetachedAppDtoExport {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -5911,6 +5978,74 @@ func (o OptNilSecretRef) Or(d SecretRef) SecretRef {
 	return d
 }
 
+// NewOptNilStartDeploymentRequestConfig returns new OptNilStartDeploymentRequestConfig with value set to v.
+func NewOptNilStartDeploymentRequestConfig(v StartDeploymentRequestConfig) OptNilStartDeploymentRequestConfig {
+	return OptNilStartDeploymentRequestConfig{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilStartDeploymentRequestConfig is optional nullable StartDeploymentRequestConfig.
+type OptNilStartDeploymentRequestConfig struct {
+	Value StartDeploymentRequestConfig
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilStartDeploymentRequestConfig was set.
+func (o OptNilStartDeploymentRequestConfig) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilStartDeploymentRequestConfig) Reset() {
+	var v StartDeploymentRequestConfig
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilStartDeploymentRequestConfig) SetTo(v StartDeploymentRequestConfig) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilStartDeploymentRequestConfig) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilStartDeploymentRequestConfig) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v StartDeploymentRequestConfig
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilStartDeploymentRequestConfig) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilStartDeploymentRequestConfig) Get() (v StartDeploymentRequestConfig, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilStartDeploymentRequestConfig) Or(d StartDeploymentRequestConfig) StartDeploymentRequestConfig {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptNilString returns new OptNilString with value set to v.
 func NewOptNilString(v string) OptNilString {
 	return OptNilString{
@@ -6229,52 +6364,6 @@ func (o OptProtocolDto) Or(d ProtocolDto) ProtocolDto {
 	return d
 }
 
-// NewOptStartDeploymentRequestConfig returns new OptStartDeploymentRequestConfig with value set to v.
-func NewOptStartDeploymentRequestConfig(v *StartDeploymentRequestConfig) OptStartDeploymentRequestConfig {
-	return OptStartDeploymentRequestConfig{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptStartDeploymentRequestConfig is optional *StartDeploymentRequestConfig.
-type OptStartDeploymentRequestConfig struct {
-	Value *StartDeploymentRequestConfig
-	Set   bool
-}
-
-// IsSet returns true if OptStartDeploymentRequestConfig was set.
-func (o OptStartDeploymentRequestConfig) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptStartDeploymentRequestConfig) Reset() {
-	var v *StartDeploymentRequestConfig
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptStartDeploymentRequestConfig) SetTo(v *StartDeploymentRequestConfig) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptStartDeploymentRequestConfig) Get() (v *StartDeploymentRequestConfig, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptStartDeploymentRequestConfig) Or(d *StartDeploymentRequestConfig) *StartDeploymentRequestConfig {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
 // NewOptStrategyDto returns new OptStrategyDto with value set to v.
 func NewOptStrategyDto(v StrategyDto) OptStrategyDto {
 	return OptStrategyDto{
@@ -6369,16 +6458,11 @@ func (o OptString) Or(d string) string {
 
 // Ref: #/components/schemas/OwnerDto
 type OwnerDto struct {
-	// A team or a person.
-	Owner string `json:"owner"`
 	// How to reach them: an email, a chat channel, an on-call rotation.
-	Contact    OptNilString `json:"contact"`
+	Contact OptNilString `json:"contact"`
+	// A team or a person.
+	Owner      string       `json:"owner"`
 	RunbookUrl OptNilString `json:"runbookUrl"`
-}
-
-// GetOwner returns the value of Owner.
-func (s *OwnerDto) GetOwner() string {
-	return s.Owner
 }
 
 // GetContact returns the value of Contact.
@@ -6386,19 +6470,24 @@ func (s *OwnerDto) GetContact() OptNilString {
 	return s.Contact
 }
 
+// GetOwner returns the value of Owner.
+func (s *OwnerDto) GetOwner() string {
+	return s.Owner
+}
+
 // GetRunbookUrl returns the value of RunbookUrl.
 func (s *OwnerDto) GetRunbookUrl() OptNilString {
 	return s.RunbookUrl
 }
 
-// SetOwner sets the value of Owner.
-func (s *OwnerDto) SetOwner(val string) {
-	s.Owner = val
-}
-
 // SetContact sets the value of Contact.
 func (s *OwnerDto) SetContact(val OptNilString) {
 	s.Contact = val
+}
+
+// SetOwner sets the value of Owner.
+func (s *OwnerDto) SetOwner(val string) {
+	s.Owner = val
 }
 
 // SetRunbookUrl sets the value of RunbookUrl.
@@ -6417,14 +6506,9 @@ func (*PauseAppNoContent) pauseAppRes() {}
 // One step of a run's timeline.
 // Ref: #/components/schemas/PhaseStep
 type PhaseStep struct {
-	Phase string `json:"phase"`
 	// When the run entered it, Unix milliseconds.
-	At int64 `json:"at"`
-}
-
-// GetPhase returns the value of Phase.
-func (s *PhaseStep) GetPhase() string {
-	return s.Phase
+	At    int64  `json:"at"`
+	Phase string `json:"phase"`
 }
 
 // GetAt returns the value of At.
@@ -6432,14 +6516,19 @@ func (s *PhaseStep) GetAt() int64 {
 	return s.At
 }
 
-// SetPhase sets the value of Phase.
-func (s *PhaseStep) SetPhase(val string) {
-	s.Phase = val
+// GetPhase returns the value of Phase.
+func (s *PhaseStep) GetPhase() string {
+	return s.Phase
 }
 
 // SetAt sets the value of At.
 func (s *PhaseStep) SetAt(val int64) {
 	s.At = val
+}
+
+// SetPhase sets the value of Phase.
+func (s *PhaseStep) SetPhase(val string) {
+	s.Phase = val
 }
 
 // PingWebhookAccepted is response for PingWebhook operation.
@@ -6449,14 +6538,14 @@ func (*PingWebhookAccepted) pingWebhookRes() {}
 
 // Ref: #/components/schemas/PodDto
 type PodDto struct {
-	Name    string       `json:"name"`
-	Process OptNilString `json:"process"`
+	Name string       `json:"name"`
+	Node OptNilString `json:"node"`
 	// `pending`, `running`, `succeeded`, `failed` or `unknown`.
 	Phase     string       `json:"phase"`
+	Process   OptNilString `json:"process"`
 	Ready     bool         `json:"ready"`
-	Restarts  int32        `json:"restarts"`
 	Reason    OptNilString `json:"reason"`
-	Node      OptNilString `json:"node"`
+	Restarts  int32        `json:"restarts"`
 	StartedAt OptNilString `json:"started_at"`
 }
 
@@ -6465,9 +6554,9 @@ func (s *PodDto) GetName() string {
 	return s.Name
 }
 
-// GetProcess returns the value of Process.
-func (s *PodDto) GetProcess() OptNilString {
-	return s.Process
+// GetNode returns the value of Node.
+func (s *PodDto) GetNode() OptNilString {
+	return s.Node
 }
 
 // GetPhase returns the value of Phase.
@@ -6475,14 +6564,14 @@ func (s *PodDto) GetPhase() string {
 	return s.Phase
 }
 
+// GetProcess returns the value of Process.
+func (s *PodDto) GetProcess() OptNilString {
+	return s.Process
+}
+
 // GetReady returns the value of Ready.
 func (s *PodDto) GetReady() bool {
 	return s.Ready
-}
-
-// GetRestarts returns the value of Restarts.
-func (s *PodDto) GetRestarts() int32 {
-	return s.Restarts
 }
 
 // GetReason returns the value of Reason.
@@ -6490,9 +6579,9 @@ func (s *PodDto) GetReason() OptNilString {
 	return s.Reason
 }
 
-// GetNode returns the value of Node.
-func (s *PodDto) GetNode() OptNilString {
-	return s.Node
+// GetRestarts returns the value of Restarts.
+func (s *PodDto) GetRestarts() int32 {
+	return s.Restarts
 }
 
 // GetStartedAt returns the value of StartedAt.
@@ -6505,9 +6594,9 @@ func (s *PodDto) SetName(val string) {
 	s.Name = val
 }
 
-// SetProcess sets the value of Process.
-func (s *PodDto) SetProcess(val OptNilString) {
-	s.Process = val
+// SetNode sets the value of Node.
+func (s *PodDto) SetNode(val OptNilString) {
+	s.Node = val
 }
 
 // SetPhase sets the value of Phase.
@@ -6515,14 +6604,14 @@ func (s *PodDto) SetPhase(val string) {
 	s.Phase = val
 }
 
+// SetProcess sets the value of Process.
+func (s *PodDto) SetProcess(val OptNilString) {
+	s.Process = val
+}
+
 // SetReady sets the value of Ready.
 func (s *PodDto) SetReady(val bool) {
 	s.Ready = val
-}
-
-// SetRestarts sets the value of Restarts.
-func (s *PodDto) SetRestarts(val int32) {
-	s.Restarts = val
 }
 
 // SetReason sets the value of Reason.
@@ -6530,9 +6619,9 @@ func (s *PodDto) SetReason(val OptNilString) {
 	s.Reason = val
 }
 
-// SetNode sets the value of Node.
-func (s *PodDto) SetNode(val OptNilString) {
-	s.Node = val
+// SetRestarts sets the value of Restarts.
+func (s *PodDto) SetRestarts(val int32) {
+	s.Restarts = val
 }
 
 // SetStartedAt sets the value of StartedAt.
@@ -6542,11 +6631,21 @@ func (s *PodDto) SetStartedAt(val OptNilString) {
 
 // Ref: #/components/schemas/PodLogs
 type PodLogs struct {
+	// Why no logs could be read (e.g. the container is still starting).
+	Error   OptNilString `json:"error"`
+	Lines   []string     `json:"lines"`
 	Pod     string       `json:"pod"`
 	Process OptNilString `json:"process"`
-	Lines   []string     `json:"lines"`
-	// Why no logs could be read (e.g. the container is still starting).
-	Error OptNilString `json:"error"`
+}
+
+// GetError returns the value of Error.
+func (s *PodLogs) GetError() OptNilString {
+	return s.Error
+}
+
+// GetLines returns the value of Lines.
+func (s *PodLogs) GetLines() []string {
+	return s.Lines
 }
 
 // GetPod returns the value of Pod.
@@ -6559,14 +6658,14 @@ func (s *PodLogs) GetProcess() OptNilString {
 	return s.Process
 }
 
-// GetLines returns the value of Lines.
-func (s *PodLogs) GetLines() []string {
-	return s.Lines
+// SetError sets the value of Error.
+func (s *PodLogs) SetError(val OptNilString) {
+	s.Error = val
 }
 
-// GetError returns the value of Error.
-func (s *PodLogs) GetError() OptNilString {
-	return s.Error
+// SetLines sets the value of Lines.
+func (s *PodLogs) SetLines(val []string) {
+	s.Lines = val
 }
 
 // SetPod sets the value of Pod.
@@ -6579,47 +6678,17 @@ func (s *PodLogs) SetProcess(val OptNilString) {
 	s.Process = val
 }
 
-// SetLines sets the value of Lines.
-func (s *PodLogs) SetLines(val []string) {
-	s.Lines = val
-}
-
-// SetError sets the value of Error.
-func (s *PodLogs) SetError(val OptNilString) {
-	s.Error = val
-}
-
 // Ref: #/components/schemas/PolicyDto
 type PolicyDto struct {
+	ApprovalTtlSecs   int32  `json:"approvalTtlSecs"`
+	ApproveRole       string `json:"approveRole"`
+	DeployRole        string `json:"deployRole"`
+	RequiredApprovals int32  `json:"requiredApprovals"`
 	// 0 when the environment has no policy of its own yet.
-	Revision          int64        `json:"revision"`
-	RequiredApprovals int32        `json:"requiredApprovals"`
-	DeployRole        string       `json:"deployRole"`
-	ApproveRole       string       `json:"approveRole"`
-	ApprovalTtlSecs   int32        `json:"approvalTtlSecs"`
-	Scan              ScanGateDto  `json:"scan"`
-	UpdatedBy         OptNilString `json:"updatedBy"`
-	UpdatedAt         OptNilInt64  `json:"updatedAt"`
-}
-
-// GetRevision returns the value of Revision.
-func (s *PolicyDto) GetRevision() int64 {
-	return s.Revision
-}
-
-// GetRequiredApprovals returns the value of RequiredApprovals.
-func (s *PolicyDto) GetRequiredApprovals() int32 {
-	return s.RequiredApprovals
-}
-
-// GetDeployRole returns the value of DeployRole.
-func (s *PolicyDto) GetDeployRole() string {
-	return s.DeployRole
-}
-
-// GetApproveRole returns the value of ApproveRole.
-func (s *PolicyDto) GetApproveRole() string {
-	return s.ApproveRole
+	Revision  int64        `json:"revision"`
+	Scan      ScanGateDto  `json:"scan"`
+	UpdatedAt OptNilInt64  `json:"updatedAt"`
+	UpdatedBy OptNilString `json:"updatedBy"`
 }
 
 // GetApprovalTtlSecs returns the value of ApprovalTtlSecs.
@@ -6627,14 +6696,29 @@ func (s *PolicyDto) GetApprovalTtlSecs() int32 {
 	return s.ApprovalTtlSecs
 }
 
+// GetApproveRole returns the value of ApproveRole.
+func (s *PolicyDto) GetApproveRole() string {
+	return s.ApproveRole
+}
+
+// GetDeployRole returns the value of DeployRole.
+func (s *PolicyDto) GetDeployRole() string {
+	return s.DeployRole
+}
+
+// GetRequiredApprovals returns the value of RequiredApprovals.
+func (s *PolicyDto) GetRequiredApprovals() int32 {
+	return s.RequiredApprovals
+}
+
+// GetRevision returns the value of Revision.
+func (s *PolicyDto) GetRevision() int64 {
+	return s.Revision
+}
+
 // GetScan returns the value of Scan.
 func (s *PolicyDto) GetScan() ScanGateDto {
 	return s.Scan
-}
-
-// GetUpdatedBy returns the value of UpdatedBy.
-func (s *PolicyDto) GetUpdatedBy() OptNilString {
-	return s.UpdatedBy
 }
 
 // GetUpdatedAt returns the value of UpdatedAt.
@@ -6642,24 +6726,9 @@ func (s *PolicyDto) GetUpdatedAt() OptNilInt64 {
 	return s.UpdatedAt
 }
 
-// SetRevision sets the value of Revision.
-func (s *PolicyDto) SetRevision(val int64) {
-	s.Revision = val
-}
-
-// SetRequiredApprovals sets the value of RequiredApprovals.
-func (s *PolicyDto) SetRequiredApprovals(val int32) {
-	s.RequiredApprovals = val
-}
-
-// SetDeployRole sets the value of DeployRole.
-func (s *PolicyDto) SetDeployRole(val string) {
-	s.DeployRole = val
-}
-
-// SetApproveRole sets the value of ApproveRole.
-func (s *PolicyDto) SetApproveRole(val string) {
-	s.ApproveRole = val
+// GetUpdatedBy returns the value of UpdatedBy.
+func (s *PolicyDto) GetUpdatedBy() OptNilString {
+	return s.UpdatedBy
 }
 
 // SetApprovalTtlSecs sets the value of ApprovalTtlSecs.
@@ -6667,14 +6736,29 @@ func (s *PolicyDto) SetApprovalTtlSecs(val int32) {
 	s.ApprovalTtlSecs = val
 }
 
+// SetApproveRole sets the value of ApproveRole.
+func (s *PolicyDto) SetApproveRole(val string) {
+	s.ApproveRole = val
+}
+
+// SetDeployRole sets the value of DeployRole.
+func (s *PolicyDto) SetDeployRole(val string) {
+	s.DeployRole = val
+}
+
+// SetRequiredApprovals sets the value of RequiredApprovals.
+func (s *PolicyDto) SetRequiredApprovals(val int32) {
+	s.RequiredApprovals = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *PolicyDto) SetRevision(val int64) {
+	s.Revision = val
+}
+
 // SetScan sets the value of Scan.
 func (s *PolicyDto) SetScan(val ScanGateDto) {
 	s.Scan = val
-}
-
-// SetUpdatedBy sets the value of UpdatedBy.
-func (s *PolicyDto) SetUpdatedBy(val OptNilString) {
-	s.UpdatedBy = val
 }
 
 // SetUpdatedAt sets the value of UpdatedAt.
@@ -6682,76 +6766,36 @@ func (s *PolicyDto) SetUpdatedAt(val OptNilInt64) {
 	s.UpdatedAt = val
 }
 
+// SetUpdatedBy sets the value of UpdatedBy.
+func (s *PolicyDto) SetUpdatedBy(val OptNilString) {
+	s.UpdatedBy = val
+}
+
 func (*PolicyDto) getEnvironmentPolicyRes() {}
 func (*PolicyDto) putEnvironmentPolicyRes() {}
 
 // Ref: #/components/schemas/PreviewDto
 type PreviewDto struct {
-	// The preview's environment (`pr<n>-<epoch>`).
-	Environment    string `json:"environment"`
-	Repository     string `json:"repository"`
-	PullRequest    int64  `json:"pullRequest"`
-	Epoch          int64  `json:"epoch"`
-	HeadRepository string `json:"headRepository"`
-	Branch         string `json:"branch"`
-	Commit         string `json:"commit"`
-	// False for a fork's preview: it gets no secrets.
-	Trusted bool `json:"trusted"`
-	// `active` or `closed`.
-	State      string `json:"state"`
 	AutoDelete bool   `json:"autoDelete"`
-	ExpiresAt  string `json:"expiresAt"`
-	// Seconds until it expires (0 once it has).
-	RemainingSeconds int64        `json:"remainingSeconds"`
-	CreatedAt        string       `json:"createdAt"`
-	ClosedAt         OptNilString `json:"closedAt"`
+	Branch     string `json:"branch"`
 	// `closed`, `expired`, `manual` or `deleted`.
 	CloseReason OptNilString `json:"closeReason"`
-}
-
-// GetEnvironment returns the value of Environment.
-func (s *PreviewDto) GetEnvironment() string {
-	return s.Environment
-}
-
-// GetRepository returns the value of Repository.
-func (s *PreviewDto) GetRepository() string {
-	return s.Repository
-}
-
-// GetPullRequest returns the value of PullRequest.
-func (s *PreviewDto) GetPullRequest() int64 {
-	return s.PullRequest
-}
-
-// GetEpoch returns the value of Epoch.
-func (s *PreviewDto) GetEpoch() int64 {
-	return s.Epoch
-}
-
-// GetHeadRepository returns the value of HeadRepository.
-func (s *PreviewDto) GetHeadRepository() string {
-	return s.HeadRepository
-}
-
-// GetBranch returns the value of Branch.
-func (s *PreviewDto) GetBranch() string {
-	return s.Branch
-}
-
-// GetCommit returns the value of Commit.
-func (s *PreviewDto) GetCommit() string {
-	return s.Commit
-}
-
-// GetTrusted returns the value of Trusted.
-func (s *PreviewDto) GetTrusted() bool {
-	return s.Trusted
-}
-
-// GetState returns the value of State.
-func (s *PreviewDto) GetState() string {
-	return s.State
+	ClosedAt    OptNilString `json:"closedAt"`
+	Commit      string       `json:"commit"`
+	CreatedAt   string       `json:"createdAt"`
+	// The preview's environment (`pr<n>-<epoch>`).
+	Environment    string `json:"environment"`
+	Epoch          int64  `json:"epoch"`
+	ExpiresAt      string `json:"expiresAt"`
+	HeadRepository string `json:"headRepository"`
+	PullRequest    int64  `json:"pullRequest"`
+	// Seconds until it expires (0 once it has).
+	RemainingSeconds int64  `json:"remainingSeconds"`
+	Repository       string `json:"repository"`
+	// `active` or `closed`.
+	State string `json:"state"`
+	// False for a fork's preview: it gets no secrets.
+	Trusted bool `json:"trusted"`
 }
 
 // GetAutoDelete returns the value of AutoDelete.
@@ -6759,24 +6803,9 @@ func (s *PreviewDto) GetAutoDelete() bool {
 	return s.AutoDelete
 }
 
-// GetExpiresAt returns the value of ExpiresAt.
-func (s *PreviewDto) GetExpiresAt() string {
-	return s.ExpiresAt
-}
-
-// GetRemainingSeconds returns the value of RemainingSeconds.
-func (s *PreviewDto) GetRemainingSeconds() int64 {
-	return s.RemainingSeconds
-}
-
-// GetCreatedAt returns the value of CreatedAt.
-func (s *PreviewDto) GetCreatedAt() string {
-	return s.CreatedAt
-}
-
-// GetClosedAt returns the value of ClosedAt.
-func (s *PreviewDto) GetClosedAt() OptNilString {
-	return s.ClosedAt
+// GetBranch returns the value of Branch.
+func (s *PreviewDto) GetBranch() string {
+	return s.Branch
 }
 
 // GetCloseReason returns the value of CloseReason.
@@ -6784,49 +6813,64 @@ func (s *PreviewDto) GetCloseReason() OptNilString {
 	return s.CloseReason
 }
 
-// SetEnvironment sets the value of Environment.
-func (s *PreviewDto) SetEnvironment(val string) {
-	s.Environment = val
+// GetClosedAt returns the value of ClosedAt.
+func (s *PreviewDto) GetClosedAt() OptNilString {
+	return s.ClosedAt
 }
 
-// SetRepository sets the value of Repository.
-func (s *PreviewDto) SetRepository(val string) {
-	s.Repository = val
+// GetCommit returns the value of Commit.
+func (s *PreviewDto) GetCommit() string {
+	return s.Commit
 }
 
-// SetPullRequest sets the value of PullRequest.
-func (s *PreviewDto) SetPullRequest(val int64) {
-	s.PullRequest = val
+// GetCreatedAt returns the value of CreatedAt.
+func (s *PreviewDto) GetCreatedAt() string {
+	return s.CreatedAt
 }
 
-// SetEpoch sets the value of Epoch.
-func (s *PreviewDto) SetEpoch(val int64) {
-	s.Epoch = val
+// GetEnvironment returns the value of Environment.
+func (s *PreviewDto) GetEnvironment() string {
+	return s.Environment
 }
 
-// SetHeadRepository sets the value of HeadRepository.
-func (s *PreviewDto) SetHeadRepository(val string) {
-	s.HeadRepository = val
+// GetEpoch returns the value of Epoch.
+func (s *PreviewDto) GetEpoch() int64 {
+	return s.Epoch
 }
 
-// SetBranch sets the value of Branch.
-func (s *PreviewDto) SetBranch(val string) {
-	s.Branch = val
+// GetExpiresAt returns the value of ExpiresAt.
+func (s *PreviewDto) GetExpiresAt() string {
+	return s.ExpiresAt
 }
 
-// SetCommit sets the value of Commit.
-func (s *PreviewDto) SetCommit(val string) {
-	s.Commit = val
+// GetHeadRepository returns the value of HeadRepository.
+func (s *PreviewDto) GetHeadRepository() string {
+	return s.HeadRepository
 }
 
-// SetTrusted sets the value of Trusted.
-func (s *PreviewDto) SetTrusted(val bool) {
-	s.Trusted = val
+// GetPullRequest returns the value of PullRequest.
+func (s *PreviewDto) GetPullRequest() int64 {
+	return s.PullRequest
 }
 
-// SetState sets the value of State.
-func (s *PreviewDto) SetState(val string) {
-	s.State = val
+// GetRemainingSeconds returns the value of RemainingSeconds.
+func (s *PreviewDto) GetRemainingSeconds() int64 {
+	return s.RemainingSeconds
+}
+
+// GetRepository returns the value of Repository.
+func (s *PreviewDto) GetRepository() string {
+	return s.Repository
+}
+
+// GetState returns the value of State.
+func (s *PreviewDto) GetState() string {
+	return s.State
+}
+
+// GetTrusted returns the value of Trusted.
+func (s *PreviewDto) GetTrusted() bool {
+	return s.Trusted
 }
 
 // SetAutoDelete sets the value of AutoDelete.
@@ -6834,24 +6878,9 @@ func (s *PreviewDto) SetAutoDelete(val bool) {
 	s.AutoDelete = val
 }
 
-// SetExpiresAt sets the value of ExpiresAt.
-func (s *PreviewDto) SetExpiresAt(val string) {
-	s.ExpiresAt = val
-}
-
-// SetRemainingSeconds sets the value of RemainingSeconds.
-func (s *PreviewDto) SetRemainingSeconds(val int64) {
-	s.RemainingSeconds = val
-}
-
-// SetCreatedAt sets the value of CreatedAt.
-func (s *PreviewDto) SetCreatedAt(val string) {
-	s.CreatedAt = val
-}
-
-// SetClosedAt sets the value of ClosedAt.
-func (s *PreviewDto) SetClosedAt(val OptNilString) {
-	s.ClosedAt = val
+// SetBranch sets the value of Branch.
+func (s *PreviewDto) SetBranch(val string) {
+	s.Branch = val
 }
 
 // SetCloseReason sets the value of CloseReason.
@@ -6859,24 +6888,94 @@ func (s *PreviewDto) SetCloseReason(val OptNilString) {
 	s.CloseReason = val
 }
 
+// SetClosedAt sets the value of ClosedAt.
+func (s *PreviewDto) SetClosedAt(val OptNilString) {
+	s.ClosedAt = val
+}
+
+// SetCommit sets the value of Commit.
+func (s *PreviewDto) SetCommit(val string) {
+	s.Commit = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *PreviewDto) SetCreatedAt(val string) {
+	s.CreatedAt = val
+}
+
+// SetEnvironment sets the value of Environment.
+func (s *PreviewDto) SetEnvironment(val string) {
+	s.Environment = val
+}
+
+// SetEpoch sets the value of Epoch.
+func (s *PreviewDto) SetEpoch(val int64) {
+	s.Epoch = val
+}
+
+// SetExpiresAt sets the value of ExpiresAt.
+func (s *PreviewDto) SetExpiresAt(val string) {
+	s.ExpiresAt = val
+}
+
+// SetHeadRepository sets the value of HeadRepository.
+func (s *PreviewDto) SetHeadRepository(val string) {
+	s.HeadRepository = val
+}
+
+// SetPullRequest sets the value of PullRequest.
+func (s *PreviewDto) SetPullRequest(val int64) {
+	s.PullRequest = val
+}
+
+// SetRemainingSeconds sets the value of RemainingSeconds.
+func (s *PreviewDto) SetRemainingSeconds(val int64) {
+	s.RemainingSeconds = val
+}
+
+// SetRepository sets the value of Repository.
+func (s *PreviewDto) SetRepository(val string) {
+	s.Repository = val
+}
+
+// SetState sets the value of State.
+func (s *PreviewDto) SetState(val string) {
+	s.State = val
+}
+
+// SetTrusted sets the value of Trusted.
+func (s *PreviewDto) SetTrusted(val bool) {
+	s.Trusted = val
+}
+
 func (*PreviewDto) extendPreviewRes() {}
 
 // Ref: #/components/schemas/PreviewPolicyDto
 type PreviewPolicyDto struct {
-	Enabled bool `json:"enabled"`
+	// Pull requests from forks get (untrusted) previews too.
+	AllowForks bool  `json:"allowForks"`
+	Enabled    bool  `json:"enabled"`
+	MaxActive  int32 `json:"maxActive"`
 	// The environment whose Git-built apps previews copy.
 	SourceEnvironment OptNilString `json:"sourceEnvironment"`
 	TtlHours          int32        `json:"ttlHours"`
-	MaxActive         int32        `json:"maxActive"`
-	// Pull requests from forks get (untrusted) previews too.
-	AllowForks bool         `json:"allowForks"`
-	UpdatedBy  OptNilString `json:"updatedBy"`
-	UpdatedAt  OptNilString `json:"updatedAt"`
+	UpdatedAt         OptNilString `json:"updatedAt"`
+	UpdatedBy         OptNilString `json:"updatedBy"`
+}
+
+// GetAllowForks returns the value of AllowForks.
+func (s *PreviewPolicyDto) GetAllowForks() bool {
+	return s.AllowForks
 }
 
 // GetEnabled returns the value of Enabled.
 func (s *PreviewPolicyDto) GetEnabled() bool {
 	return s.Enabled
+}
+
+// GetMaxActive returns the value of MaxActive.
+func (s *PreviewPolicyDto) GetMaxActive() int32 {
+	return s.MaxActive
 }
 
 // GetSourceEnvironment returns the value of SourceEnvironment.
@@ -6889,14 +6988,9 @@ func (s *PreviewPolicyDto) GetTtlHours() int32 {
 	return s.TtlHours
 }
 
-// GetMaxActive returns the value of MaxActive.
-func (s *PreviewPolicyDto) GetMaxActive() int32 {
-	return s.MaxActive
-}
-
-// GetAllowForks returns the value of AllowForks.
-func (s *PreviewPolicyDto) GetAllowForks() bool {
-	return s.AllowForks
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *PreviewPolicyDto) GetUpdatedAt() OptNilString {
+	return s.UpdatedAt
 }
 
 // GetUpdatedBy returns the value of UpdatedBy.
@@ -6904,14 +6998,19 @@ func (s *PreviewPolicyDto) GetUpdatedBy() OptNilString {
 	return s.UpdatedBy
 }
 
-// GetUpdatedAt returns the value of UpdatedAt.
-func (s *PreviewPolicyDto) GetUpdatedAt() OptNilString {
-	return s.UpdatedAt
+// SetAllowForks sets the value of AllowForks.
+func (s *PreviewPolicyDto) SetAllowForks(val bool) {
+	s.AllowForks = val
 }
 
 // SetEnabled sets the value of Enabled.
 func (s *PreviewPolicyDto) SetEnabled(val bool) {
 	s.Enabled = val
+}
+
+// SetMaxActive sets the value of MaxActive.
+func (s *PreviewPolicyDto) SetMaxActive(val int32) {
+	s.MaxActive = val
 }
 
 // SetSourceEnvironment sets the value of SourceEnvironment.
@@ -6924,24 +7023,14 @@ func (s *PreviewPolicyDto) SetTtlHours(val int32) {
 	s.TtlHours = val
 }
 
-// SetMaxActive sets the value of MaxActive.
-func (s *PreviewPolicyDto) SetMaxActive(val int32) {
-	s.MaxActive = val
-}
-
-// SetAllowForks sets the value of AllowForks.
-func (s *PreviewPolicyDto) SetAllowForks(val bool) {
-	s.AllowForks = val
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *PreviewPolicyDto) SetUpdatedAt(val OptNilString) {
+	s.UpdatedAt = val
 }
 
 // SetUpdatedBy sets the value of UpdatedBy.
 func (s *PreviewPolicyDto) SetUpdatedBy(val OptNilString) {
 	s.UpdatedBy = val
-}
-
-// SetUpdatedAt sets the value of UpdatedAt.
-func (s *PreviewPolicyDto) SetUpdatedAt(val OptNilString) {
-	s.UpdatedAt = val
 }
 
 func (*PreviewPolicyDto) getPreviewPolicyRes() {}
@@ -6952,12 +7041,12 @@ func (*PreviewPolicyDto) putPreviewPolicyRes() {}
 type Problem struct {
 	// Stable machine-readable code, e.g. `forbidden`.
 	Code string `json:"code"`
-	// Short human readable title.
-	Title string `json:"title"`
-	// HTTP status.
-	Status int32 `json:"status"`
 	// Details, if safe to expose.
 	Detail OptNilString `json:"detail"`
+	// HTTP status.
+	Status int32 `json:"status"`
+	// Short human readable title.
+	Title string `json:"title"`
 }
 
 // GetCode returns the value of Code.
@@ -6965,9 +7054,9 @@ func (s *Problem) GetCode() string {
 	return s.Code
 }
 
-// GetTitle returns the value of Title.
-func (s *Problem) GetTitle() string {
-	return s.Title
+// GetDetail returns the value of Detail.
+func (s *Problem) GetDetail() OptNilString {
+	return s.Detail
 }
 
 // GetStatus returns the value of Status.
@@ -6975,9 +7064,9 @@ func (s *Problem) GetStatus() int32 {
 	return s.Status
 }
 
-// GetDetail returns the value of Detail.
-func (s *Problem) GetDetail() OptNilString {
-	return s.Detail
+// GetTitle returns the value of Title.
+func (s *Problem) GetTitle() string {
+	return s.Title
 }
 
 // SetCode sets the value of Code.
@@ -6985,9 +7074,9 @@ func (s *Problem) SetCode(val string) {
 	s.Code = val
 }
 
-// SetTitle sets the value of Title.
-func (s *Problem) SetTitle(val string) {
-	s.Title = val
+// SetDetail sets the value of Detail.
+func (s *Problem) SetDetail(val OptNilString) {
+	s.Detail = val
 }
 
 // SetStatus sets the value of Status.
@@ -6995,9 +7084,9 @@ func (s *Problem) SetStatus(val int32) {
 	s.Status = val
 }
 
-// SetDetail sets the value of Detail.
-func (s *Problem) SetDetail(val OptNilString) {
-	s.Detail = val
+// SetTitle sets the value of Title.
+func (s *Problem) SetTitle(val string) {
+	s.Title = val
 }
 
 func (*Problem) acknowledgeIncidentRes()         {}
@@ -7050,21 +7139,16 @@ func (*Problem) syncAppDnsRes()                  {}
 
 // Ref: #/components/schemas/ProcessDto
 type ProcessDto struct {
-	Name        string      `json:"name"`
 	Command     []string    `json:"command"`
-	Port        OptNilInt32 `json:"port"`
-	Size        string      `json:"size"`
-	MinReplicas int32       `json:"min_replicas"`
 	MaxReplicas int32       `json:"max_replicas"`
-	// Cron expression of scheduled processes.
-	Schedule OptNilString `json:"schedule"`
+	MinReplicas int32       `json:"min_replicas"`
+	Name        string      `json:"name"`
+	Port        OptNilInt32 `json:"port"`
 	// `http` or `tcp`.
 	Protocol string `json:"protocol"`
-}
-
-// GetName returns the value of Name.
-func (s *ProcessDto) GetName() string {
-	return s.Name
+	// Cron expression of scheduled processes.
+	Schedule OptNilString `json:"schedule"`
+	Size     string       `json:"size"`
 }
 
 // GetCommand returns the value of Command.
@@ -7072,14 +7156,9 @@ func (s *ProcessDto) GetCommand() []string {
 	return s.Command
 }
 
-// GetPort returns the value of Port.
-func (s *ProcessDto) GetPort() OptNilInt32 {
-	return s.Port
-}
-
-// GetSize returns the value of Size.
-func (s *ProcessDto) GetSize() string {
-	return s.Size
+// GetMaxReplicas returns the value of MaxReplicas.
+func (s *ProcessDto) GetMaxReplicas() int32 {
+	return s.MaxReplicas
 }
 
 // GetMinReplicas returns the value of MinReplicas.
@@ -7087,14 +7166,14 @@ func (s *ProcessDto) GetMinReplicas() int32 {
 	return s.MinReplicas
 }
 
-// GetMaxReplicas returns the value of MaxReplicas.
-func (s *ProcessDto) GetMaxReplicas() int32 {
-	return s.MaxReplicas
+// GetName returns the value of Name.
+func (s *ProcessDto) GetName() string {
+	return s.Name
 }
 
-// GetSchedule returns the value of Schedule.
-func (s *ProcessDto) GetSchedule() OptNilString {
-	return s.Schedule
+// GetPort returns the value of Port.
+func (s *ProcessDto) GetPort() OptNilInt32 {
+	return s.Port
 }
 
 // GetProtocol returns the value of Protocol.
@@ -7102,9 +7181,14 @@ func (s *ProcessDto) GetProtocol() string {
 	return s.Protocol
 }
 
-// SetName sets the value of Name.
-func (s *ProcessDto) SetName(val string) {
-	s.Name = val
+// GetSchedule returns the value of Schedule.
+func (s *ProcessDto) GetSchedule() OptNilString {
+	return s.Schedule
+}
+
+// GetSize returns the value of Size.
+func (s *ProcessDto) GetSize() string {
+	return s.Size
 }
 
 // SetCommand sets the value of Command.
@@ -7112,14 +7196,9 @@ func (s *ProcessDto) SetCommand(val []string) {
 	s.Command = val
 }
 
-// SetPort sets the value of Port.
-func (s *ProcessDto) SetPort(val OptNilInt32) {
-	s.Port = val
-}
-
-// SetSize sets the value of Size.
-func (s *ProcessDto) SetSize(val string) {
-	s.Size = val
+// SetMaxReplicas sets the value of MaxReplicas.
+func (s *ProcessDto) SetMaxReplicas(val int32) {
+	s.MaxReplicas = val
 }
 
 // SetMinReplicas sets the value of MinReplicas.
@@ -7127,14 +7206,14 @@ func (s *ProcessDto) SetMinReplicas(val int32) {
 	s.MinReplicas = val
 }
 
-// SetMaxReplicas sets the value of MaxReplicas.
-func (s *ProcessDto) SetMaxReplicas(val int32) {
-	s.MaxReplicas = val
+// SetName sets the value of Name.
+func (s *ProcessDto) SetName(val string) {
+	s.Name = val
 }
 
-// SetSchedule sets the value of Schedule.
-func (s *ProcessDto) SetSchedule(val OptNilString) {
-	s.Schedule = val
+// SetPort sets the value of Port.
+func (s *ProcessDto) SetPort(val OptNilInt32) {
+	s.Port = val
 }
 
 // SetProtocol sets the value of Protocol.
@@ -7142,58 +7221,28 @@ func (s *ProcessDto) SetProtocol(val string) {
 	s.Protocol = val
 }
 
+// SetSchedule sets the value of Schedule.
+func (s *ProcessDto) SetSchedule(val OptNilString) {
+	s.Schedule = val
+}
+
+// SetSize sets the value of Size.
+func (s *ProcessDto) SetSize(val string) {
+	s.Size = val
+}
+
 // Ref: #/components/schemas/ProjectDto
 type ProjectDto struct {
-	Name string `json:"name"`
-	// The project's id.
-	UID          OptNilString `json:"uid"`
-	DisplayName  string       `json:"display_name"`
-	Description  OptNilString `json:"description"`
-	Org          OptNilString `json:"org"`
-	Environments int32        `json:"environments"`
-	Ready        bool         `json:"ready"`
-	Deleting     bool         `json:"deleting"`
 	CreatedAt    OptNilString `json:"created_at"`
-}
-
-// GetName returns the value of Name.
-func (s *ProjectDto) GetName() string {
-	return s.Name
-}
-
-// GetUID returns the value of UID.
-func (s *ProjectDto) GetUID() OptNilString {
-	return s.UID
-}
-
-// GetDisplayName returns the value of DisplayName.
-func (s *ProjectDto) GetDisplayName() string {
-	return s.DisplayName
-}
-
-// GetDescription returns the value of Description.
-func (s *ProjectDto) GetDescription() OptNilString {
-	return s.Description
-}
-
-// GetOrg returns the value of Org.
-func (s *ProjectDto) GetOrg() OptNilString {
-	return s.Org
-}
-
-// GetEnvironments returns the value of Environments.
-func (s *ProjectDto) GetEnvironments() int32 {
-	return s.Environments
-}
-
-// GetReady returns the value of Ready.
-func (s *ProjectDto) GetReady() bool {
-	return s.Ready
-}
-
-// GetDeleting returns the value of Deleting.
-func (s *ProjectDto) GetDeleting() bool {
-	return s.Deleting
+	Deleting     bool         `json:"deleting"`
+	Description  OptNilString `json:"description"`
+	DisplayName  string       `json:"display_name"`
+	Environments int32        `json:"environments"`
+	Name         string       `json:"name"`
+	Org          OptNilString `json:"org"`
+	Ready        bool         `json:"ready"`
+	// The project's id.
+	UID OptNilString `json:"uid"`
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -7201,44 +7250,44 @@ func (s *ProjectDto) GetCreatedAt() OptNilString {
 	return s.CreatedAt
 }
 
-// SetName sets the value of Name.
-func (s *ProjectDto) SetName(val string) {
-	s.Name = val
+// GetDeleting returns the value of Deleting.
+func (s *ProjectDto) GetDeleting() bool {
+	return s.Deleting
 }
 
-// SetUID sets the value of UID.
-func (s *ProjectDto) SetUID(val OptNilString) {
-	s.UID = val
+// GetDescription returns the value of Description.
+func (s *ProjectDto) GetDescription() OptNilString {
+	return s.Description
 }
 
-// SetDisplayName sets the value of DisplayName.
-func (s *ProjectDto) SetDisplayName(val string) {
-	s.DisplayName = val
+// GetDisplayName returns the value of DisplayName.
+func (s *ProjectDto) GetDisplayName() string {
+	return s.DisplayName
 }
 
-// SetDescription sets the value of Description.
-func (s *ProjectDto) SetDescription(val OptNilString) {
-	s.Description = val
+// GetEnvironments returns the value of Environments.
+func (s *ProjectDto) GetEnvironments() int32 {
+	return s.Environments
 }
 
-// SetOrg sets the value of Org.
-func (s *ProjectDto) SetOrg(val OptNilString) {
-	s.Org = val
+// GetName returns the value of Name.
+func (s *ProjectDto) GetName() string {
+	return s.Name
 }
 
-// SetEnvironments sets the value of Environments.
-func (s *ProjectDto) SetEnvironments(val int32) {
-	s.Environments = val
+// GetOrg returns the value of Org.
+func (s *ProjectDto) GetOrg() OptNilString {
+	return s.Org
 }
 
-// SetReady sets the value of Ready.
-func (s *ProjectDto) SetReady(val bool) {
-	s.Ready = val
+// GetReady returns the value of Ready.
+func (s *ProjectDto) GetReady() bool {
+	return s.Ready
 }
 
-// SetDeleting sets the value of Deleting.
-func (s *ProjectDto) SetDeleting(val bool) {
-	s.Deleting = val
+// GetUID returns the value of UID.
+func (s *ProjectDto) GetUID() OptNilString {
+	return s.UID
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -7246,20 +7295,55 @@ func (s *ProjectDto) SetCreatedAt(val OptNilString) {
 	s.CreatedAt = val
 }
 
+// SetDeleting sets the value of Deleting.
+func (s *ProjectDto) SetDeleting(val bool) {
+	s.Deleting = val
+}
+
+// SetDescription sets the value of Description.
+func (s *ProjectDto) SetDescription(val OptNilString) {
+	s.Description = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *ProjectDto) SetDisplayName(val string) {
+	s.DisplayName = val
+}
+
+// SetEnvironments sets the value of Environments.
+func (s *ProjectDto) SetEnvironments(val int32) {
+	s.Environments = val
+}
+
+// SetName sets the value of Name.
+func (s *ProjectDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetOrg sets the value of Org.
+func (s *ProjectDto) SetOrg(val OptNilString) {
+	s.Org = val
+}
+
+// SetReady sets the value of Ready.
+func (s *ProjectDto) SetReady(val bool) {
+	s.Ready = val
+}
+
+// SetUID sets the value of UID.
+func (s *ProjectDto) SetUID(val OptNilString) {
+	s.UID = val
+}
+
 func (*ProjectDto) createProjectRes() {}
 func (*ProjectDto) getProjectRes()    {}
 
 // Ref: #/components/schemas/Promote
 type Promote struct {
-	// Target environment (short name) in the same project.
-	ToEnvironment string `json:"to_environment"`
 	// Only report what would change.
 	DryRun OptBool `json:"dry_run"`
-}
-
-// GetToEnvironment returns the value of ToEnvironment.
-func (s *Promote) GetToEnvironment() string {
-	return s.ToEnvironment
+	// Target environment (short name) in the same project.
+	ToEnvironment string `json:"to_environment"`
 }
 
 // GetDryRun returns the value of DryRun.
@@ -7267,14 +7351,19 @@ func (s *Promote) GetDryRun() OptBool {
 	return s.DryRun
 }
 
-// SetToEnvironment sets the value of ToEnvironment.
-func (s *Promote) SetToEnvironment(val string) {
-	s.ToEnvironment = val
+// GetToEnvironment returns the value of ToEnvironment.
+func (s *Promote) GetToEnvironment() string {
+	return s.ToEnvironment
 }
 
 // SetDryRun sets the value of DryRun.
 func (s *Promote) SetDryRun(val OptBool) {
 	s.DryRun = val
+}
+
+// SetToEnvironment sets the value of ToEnvironment.
+func (s *Promote) SetToEnvironment(val string) {
+	s.ToEnvironment = val
 }
 
 type PromoteAppConflict Problem
@@ -7295,34 +7384,14 @@ func (*PromoteAppUnprocessableEntity) promoteAppRes() {}
 
 // Ref: #/components/schemas/PromoteResult
 type PromoteResult struct {
-	DryRun bool `json:"dry_run"`
-	// The app did not exist in the target and was (or would be) created.
-	Created bool `json:"created"`
+	App OptNilAppDto `json:"app"`
 	// Human-readable diff; values of environment variables are never shown.
 	Changes []string `json:"changes"`
+	// The app did not exist in the target and was (or would be) created.
+	Created bool `json:"created"`
+	DryRun  bool `json:"dry_run"`
 	// E.g. secrets referenced by the app that are missing in the target.
-	Warnings []string     `json:"warnings"`
-	App      OptNilAppDto `json:"app"`
-}
-
-// GetDryRun returns the value of DryRun.
-func (s *PromoteResult) GetDryRun() bool {
-	return s.DryRun
-}
-
-// GetCreated returns the value of Created.
-func (s *PromoteResult) GetCreated() bool {
-	return s.Created
-}
-
-// GetChanges returns the value of Changes.
-func (s *PromoteResult) GetChanges() []string {
-	return s.Changes
-}
-
-// GetWarnings returns the value of Warnings.
-func (s *PromoteResult) GetWarnings() []string {
-	return s.Warnings
+	Warnings []string `json:"warnings"`
 }
 
 // GetApp returns the value of App.
@@ -7330,14 +7399,29 @@ func (s *PromoteResult) GetApp() OptNilAppDto {
 	return s.App
 }
 
-// SetDryRun sets the value of DryRun.
-func (s *PromoteResult) SetDryRun(val bool) {
-	s.DryRun = val
+// GetChanges returns the value of Changes.
+func (s *PromoteResult) GetChanges() []string {
+	return s.Changes
 }
 
-// SetCreated sets the value of Created.
-func (s *PromoteResult) SetCreated(val bool) {
-	s.Created = val
+// GetCreated returns the value of Created.
+func (s *PromoteResult) GetCreated() bool {
+	return s.Created
+}
+
+// GetDryRun returns the value of DryRun.
+func (s *PromoteResult) GetDryRun() bool {
+	return s.DryRun
+}
+
+// GetWarnings returns the value of Warnings.
+func (s *PromoteResult) GetWarnings() []string {
+	return s.Warnings
+}
+
+// SetApp sets the value of App.
+func (s *PromoteResult) SetApp(val OptNilAppDto) {
+	s.App = val
 }
 
 // SetChanges sets the value of Changes.
@@ -7345,14 +7429,19 @@ func (s *PromoteResult) SetChanges(val []string) {
 	s.Changes = val
 }
 
+// SetCreated sets the value of Created.
+func (s *PromoteResult) SetCreated(val bool) {
+	s.Created = val
+}
+
+// SetDryRun sets the value of DryRun.
+func (s *PromoteResult) SetDryRun(val bool) {
+	s.DryRun = val
+}
+
 // SetWarnings sets the value of Warnings.
 func (s *PromoteResult) SetWarnings(val []string) {
 	s.Warnings = val
-}
-
-// SetApp sets the value of App.
-func (s *PromoteResult) SetApp(val OptNilAppDto) {
-	s.App = val
 }
 
 func (*PromoteResult) promoteAppRes() {}
@@ -7428,16 +7517,21 @@ func (s *PublicComponent) SetStatus(val string) {
 // Ref: #/components/schemas/PublicIncidentDto
 type PublicIncidentDto struct {
 	// The affected component.
-	Component string `json:"component"`
-	// `critical`, `warning` or `info`.
-	Severity   string       `json:"severity"`
-	StartedAt  string       `json:"startedAt"`
+	Component  string       `json:"component"`
 	ResolvedAt OptNilString `json:"resolvedAt"`
+	// `critical`, `warning` or `info`.
+	Severity  string `json:"severity"`
+	StartedAt string `json:"startedAt"`
 }
 
 // GetComponent returns the value of Component.
 func (s *PublicIncidentDto) GetComponent() string {
 	return s.Component
+}
+
+// GetResolvedAt returns the value of ResolvedAt.
+func (s *PublicIncidentDto) GetResolvedAt() OptNilString {
+	return s.ResolvedAt
 }
 
 // GetSeverity returns the value of Severity.
@@ -7450,14 +7544,14 @@ func (s *PublicIncidentDto) GetStartedAt() string {
 	return s.StartedAt
 }
 
-// GetResolvedAt returns the value of ResolvedAt.
-func (s *PublicIncidentDto) GetResolvedAt() OptNilString {
-	return s.ResolvedAt
-}
-
 // SetComponent sets the value of Component.
 func (s *PublicIncidentDto) SetComponent(val string) {
 	s.Component = val
+}
+
+// SetResolvedAt sets the value of ResolvedAt.
+func (s *PublicIncidentDto) SetResolvedAt(val OptNilString) {
+	s.ResolvedAt = val
 }
 
 // SetSeverity sets the value of Severity.
@@ -7470,29 +7564,14 @@ func (s *PublicIncidentDto) SetStartedAt(val string) {
 	s.StartedAt = val
 }
 
-// SetResolvedAt sets the value of ResolvedAt.
-func (s *PublicIncidentDto) SetResolvedAt(val OptNilString) {
-	s.ResolvedAt = val
-}
-
 // Ref: #/components/schemas/PublicStatus
 type PublicStatus struct {
-	Title string `json:"title"`
-	// `operational`, `degraded` or `majorOutage`.
-	Status     string              `json:"status"`
 	Components []PublicComponent   `json:"components"`
 	Incidents  []PublicIncidentDto `json:"incidents"`
-	UpdatedAt  string              `json:"updatedAt"`
-}
-
-// GetTitle returns the value of Title.
-func (s *PublicStatus) GetTitle() string {
-	return s.Title
-}
-
-// GetStatus returns the value of Status.
-func (s *PublicStatus) GetStatus() string {
-	return s.Status
+	// `operational`, `degraded` or `majorOutage`.
+	Status    string `json:"status"`
+	Title     string `json:"title"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // GetComponents returns the value of Components.
@@ -7505,19 +7584,19 @@ func (s *PublicStatus) GetIncidents() []PublicIncidentDto {
 	return s.Incidents
 }
 
+// GetStatus returns the value of Status.
+func (s *PublicStatus) GetStatus() string {
+	return s.Status
+}
+
+// GetTitle returns the value of Title.
+func (s *PublicStatus) GetTitle() string {
+	return s.Title
+}
+
 // GetUpdatedAt returns the value of UpdatedAt.
 func (s *PublicStatus) GetUpdatedAt() string {
 	return s.UpdatedAt
-}
-
-// SetTitle sets the value of Title.
-func (s *PublicStatus) SetTitle(val string) {
-	s.Title = val
-}
-
-// SetStatus sets the value of Status.
-func (s *PublicStatus) SetStatus(val string) {
-	s.Status = val
 }
 
 // SetComponents sets the value of Components.
@@ -7528,6 +7607,16 @@ func (s *PublicStatus) SetComponents(val []PublicComponent) {
 // SetIncidents sets the value of Incidents.
 func (s *PublicStatus) SetIncidents(val []PublicIncidentDto) {
 	s.Incidents = val
+}
+
+// SetStatus sets the value of Status.
+func (s *PublicStatus) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetTitle sets the value of Title.
+func (s *PublicStatus) SetTitle(val string) {
+	s.Title = val
 }
 
 // SetUpdatedAt sets the value of UpdatedAt.
@@ -7591,21 +7680,11 @@ func (*PutEnvironmentPolicyUnprocessableEntity) putEnvironmentPolicyRes() {}
 
 // Ref: #/components/schemas/PutImagePolicy
 type PutImagePolicy struct {
+	Enabled      OptBool  `json:"enabled"`
+	IntervalSecs OptInt32 `json:"intervalSecs"`
+	Pattern      string   `json:"pattern"`
 	// The repository to watch; the app's current image repository when unset.
-	Repository   OptNilString `json:"repository"`
-	Pattern      string       `json:"pattern"`
-	Enabled      OptBool      `json:"enabled"`
-	IntervalSecs OptInt32     `json:"intervalSecs"`
-}
-
-// GetRepository returns the value of Repository.
-func (s *PutImagePolicy) GetRepository() OptNilString {
-	return s.Repository
-}
-
-// GetPattern returns the value of Pattern.
-func (s *PutImagePolicy) GetPattern() string {
-	return s.Pattern
+	Repository OptNilString `json:"repository"`
 }
 
 // GetEnabled returns the value of Enabled.
@@ -7618,14 +7697,14 @@ func (s *PutImagePolicy) GetIntervalSecs() OptInt32 {
 	return s.IntervalSecs
 }
 
-// SetRepository sets the value of Repository.
-func (s *PutImagePolicy) SetRepository(val OptNilString) {
-	s.Repository = val
+// GetPattern returns the value of Pattern.
+func (s *PutImagePolicy) GetPattern() string {
+	return s.Pattern
 }
 
-// SetPattern sets the value of Pattern.
-func (s *PutImagePolicy) SetPattern(val string) {
-	s.Pattern = val
+// GetRepository returns the value of Repository.
+func (s *PutImagePolicy) GetRepository() OptNilString {
+	return s.Repository
 }
 
 // SetEnabled sets the value of Enabled.
@@ -7638,6 +7717,16 @@ func (s *PutImagePolicy) SetIntervalSecs(val OptInt32) {
 	s.IntervalSecs = val
 }
 
+// SetPattern sets the value of Pattern.
+func (s *PutImagePolicy) SetPattern(val string) {
+	s.Pattern = val
+}
+
+// SetRepository sets the value of Repository.
+func (s *PutImagePolicy) SetRepository(val OptNilString) {
+	s.Repository = val
+}
+
 type PutImagePolicyConflict Problem
 
 func (*PutImagePolicyConflict) putImagePolicyRes() {}
@@ -7648,30 +7737,15 @@ func (*PutImagePolicyUnprocessableEntity) putImagePolicyRes() {}
 
 // Ref: #/components/schemas/PutPolicy
 type PutPolicy struct {
-	// Distinct approvers a deployment needs (0–5).
-	RequiredApprovals int32 `json:"requiredApprovals"`
-	// The weakest role that may deploy: `developer`, `admin` or `owner`.
-	DeployRole string `json:"deployRole"`
+	// How long a deployment waits for approvals (300 s – 30 days).
+	ApprovalTtlSecs OptInt32 `json:"approvalTtlSecs"`
 	// The weakest role that may approve: `admin` or `owner`.
 	ApproveRole string `json:"approveRole"`
-	// How long a deployment waits for approvals (300 s – 30 days).
-	ApprovalTtlSecs OptInt32          `json:"approvalTtlSecs"`
-	Scan            OptNilScanGateDto `json:"scan"`
-}
-
-// GetRequiredApprovals returns the value of RequiredApprovals.
-func (s *PutPolicy) GetRequiredApprovals() int32 {
-	return s.RequiredApprovals
-}
-
-// GetDeployRole returns the value of DeployRole.
-func (s *PutPolicy) GetDeployRole() string {
-	return s.DeployRole
-}
-
-// GetApproveRole returns the value of ApproveRole.
-func (s *PutPolicy) GetApproveRole() string {
-	return s.ApproveRole
+	// The weakest role that may deploy: `developer`, `admin` or `owner`.
+	DeployRole string `json:"deployRole"`
+	// Distinct approvers a deployment needs (0–5).
+	RequiredApprovals int32             `json:"requiredApprovals"`
+	Scan              OptNilScanGateDto `json:"scan"`
 }
 
 // GetApprovalTtlSecs returns the value of ApprovalTtlSecs.
@@ -7679,19 +7753,29 @@ func (s *PutPolicy) GetApprovalTtlSecs() OptInt32 {
 	return s.ApprovalTtlSecs
 }
 
+// GetApproveRole returns the value of ApproveRole.
+func (s *PutPolicy) GetApproveRole() string {
+	return s.ApproveRole
+}
+
+// GetDeployRole returns the value of DeployRole.
+func (s *PutPolicy) GetDeployRole() string {
+	return s.DeployRole
+}
+
+// GetRequiredApprovals returns the value of RequiredApprovals.
+func (s *PutPolicy) GetRequiredApprovals() int32 {
+	return s.RequiredApprovals
+}
+
 // GetScan returns the value of Scan.
 func (s *PutPolicy) GetScan() OptNilScanGateDto {
 	return s.Scan
 }
 
-// SetRequiredApprovals sets the value of RequiredApprovals.
-func (s *PutPolicy) SetRequiredApprovals(val int32) {
-	s.RequiredApprovals = val
-}
-
-// SetDeployRole sets the value of DeployRole.
-func (s *PutPolicy) SetDeployRole(val string) {
-	s.DeployRole = val
+// SetApprovalTtlSecs sets the value of ApprovalTtlSecs.
+func (s *PutPolicy) SetApprovalTtlSecs(val OptInt32) {
+	s.ApprovalTtlSecs = val
 }
 
 // SetApproveRole sets the value of ApproveRole.
@@ -7699,9 +7783,14 @@ func (s *PutPolicy) SetApproveRole(val string) {
 	s.ApproveRole = val
 }
 
-// SetApprovalTtlSecs sets the value of ApprovalTtlSecs.
-func (s *PutPolicy) SetApprovalTtlSecs(val OptInt32) {
-	s.ApprovalTtlSecs = val
+// SetDeployRole sets the value of DeployRole.
+func (s *PutPolicy) SetDeployRole(val string) {
+	s.DeployRole = val
+}
+
+// SetRequiredApprovals sets the value of RequiredApprovals.
+func (s *PutPolicy) SetRequiredApprovals(val int32) {
+	s.RequiredApprovals = val
 }
 
 // SetScan sets the value of Scan.
@@ -7711,16 +7800,26 @@ func (s *PutPolicy) SetScan(val OptNilScanGateDto) {
 
 // Ref: #/components/schemas/PutPreviewPolicy
 type PutPreviewPolicy struct {
+	AllowForks        OptBool  `json:"allowForks"`
 	Enabled           bool     `json:"enabled"`
+	MaxActive         OptInt32 `json:"maxActive"`
 	SourceEnvironment string   `json:"sourceEnvironment"`
 	TtlHours          OptInt32 `json:"ttlHours"`
-	MaxActive         OptInt32 `json:"maxActive"`
-	AllowForks        OptBool  `json:"allowForks"`
+}
+
+// GetAllowForks returns the value of AllowForks.
+func (s *PutPreviewPolicy) GetAllowForks() OptBool {
+	return s.AllowForks
 }
 
 // GetEnabled returns the value of Enabled.
 func (s *PutPreviewPolicy) GetEnabled() bool {
 	return s.Enabled
+}
+
+// GetMaxActive returns the value of MaxActive.
+func (s *PutPreviewPolicy) GetMaxActive() OptInt32 {
+	return s.MaxActive
 }
 
 // GetSourceEnvironment returns the value of SourceEnvironment.
@@ -7733,19 +7832,19 @@ func (s *PutPreviewPolicy) GetTtlHours() OptInt32 {
 	return s.TtlHours
 }
 
-// GetMaxActive returns the value of MaxActive.
-func (s *PutPreviewPolicy) GetMaxActive() OptInt32 {
-	return s.MaxActive
-}
-
-// GetAllowForks returns the value of AllowForks.
-func (s *PutPreviewPolicy) GetAllowForks() OptBool {
-	return s.AllowForks
+// SetAllowForks sets the value of AllowForks.
+func (s *PutPreviewPolicy) SetAllowForks(val OptBool) {
+	s.AllowForks = val
 }
 
 // SetEnabled sets the value of Enabled.
 func (s *PutPreviewPolicy) SetEnabled(val bool) {
 	s.Enabled = val
+}
+
+// SetMaxActive sets the value of MaxActive.
+func (s *PutPreviewPolicy) SetMaxActive(val OptInt32) {
+	s.MaxActive = val
 }
 
 // SetSourceEnvironment sets the value of SourceEnvironment.
@@ -7756,16 +7855,6 @@ func (s *PutPreviewPolicy) SetSourceEnvironment(val string) {
 // SetTtlHours sets the value of TtlHours.
 func (s *PutPreviewPolicy) SetTtlHours(val OptInt32) {
 	s.TtlHours = val
-}
-
-// SetMaxActive sets the value of MaxActive.
-func (s *PutPreviewPolicy) SetMaxActive(val OptInt32) {
-	s.MaxActive = val
-}
-
-// SetAllowForks sets the value of AllowForks.
-func (s *PutPreviewPolicy) SetAllowForks(val OptBool) {
-	s.AllowForks = val
 }
 
 type PutPreviewPolicyForbidden Problem
@@ -7802,11 +7891,16 @@ func (*PutProjectOwnerUnprocessableEntity) putProjectOwnerRes() {}
 
 // Ref: #/components/schemas/PutRegistryLogin
 type PutRegistryLogin struct {
+	// A password or access token; write-only.
+	Password string `json:"password"`
 	// `ghcr.io`, `docker.io`, `registry.example.com:5000`.
 	Registry string `json:"registry"`
 	Username string `json:"username"`
-	// A password or access token; write-only.
-	Password string `json:"password"`
+}
+
+// GetPassword returns the value of Password.
+func (s *PutRegistryLogin) GetPassword() string {
+	return s.Password
 }
 
 // GetRegistry returns the value of Registry.
@@ -7819,9 +7913,9 @@ func (s *PutRegistryLogin) GetUsername() string {
 	return s.Username
 }
 
-// GetPassword returns the value of Password.
-func (s *PutRegistryLogin) GetPassword() string {
-	return s.Password
+// SetPassword sets the value of Password.
+func (s *PutRegistryLogin) SetPassword(val string) {
+	s.Password = val
 }
 
 // SetRegistry sets the value of Registry.
@@ -7832,11 +7926,6 @@ func (s *PutRegistryLogin) SetRegistry(val string) {
 // SetUsername sets the value of Username.
 func (s *PutRegistryLogin) SetUsername(val string) {
 	s.Username = val
-}
-
-// SetPassword sets the value of Password.
-func (s *PutRegistryLogin) SetPassword(val string) {
-	s.Password = val
 }
 
 type PutRegistryLoginConflict Problem
@@ -7929,37 +8018,22 @@ func (*PutSecretUnprocessableEntity) putSecretRes() {}
 
 // Ref: #/components/schemas/PutSource
 type PutSource struct {
-	// A GitHub App installation linked to this organization.
-	InstallationId int64          `json:"installationId"`
-	Repository     string         `json:"repository"`
-	Branch         string         `json:"branch"`
-	Strategy       OptStrategyDto `json:"strategy"`
+	Branch string `json:"branch"`
 	// Build context inside the repository; the root when empty.
 	Context OptString `json:"context"`
 	// Dockerfile relative to the context; `Dockerfile` when unset.
 	Dockerfile OptNilString `json:"dockerfile"`
 	// Where builds push, without tag or digest.
 	ImageRepository string `json:"imageRepository"`
-}
-
-// GetInstallationId returns the value of InstallationId.
-func (s *PutSource) GetInstallationId() int64 {
-	return s.InstallationId
-}
-
-// GetRepository returns the value of Repository.
-func (s *PutSource) GetRepository() string {
-	return s.Repository
+	// A GitHub App installation linked to this organization.
+	InstallationId int64          `json:"installationId"`
+	Repository     string         `json:"repository"`
+	Strategy       OptStrategyDto `json:"strategy"`
 }
 
 // GetBranch returns the value of Branch.
 func (s *PutSource) GetBranch() string {
 	return s.Branch
-}
-
-// GetStrategy returns the value of Strategy.
-func (s *PutSource) GetStrategy() OptStrategyDto {
-	return s.Strategy
 }
 
 // GetContext returns the value of Context.
@@ -7977,24 +8051,24 @@ func (s *PutSource) GetImageRepository() string {
 	return s.ImageRepository
 }
 
-// SetInstallationId sets the value of InstallationId.
-func (s *PutSource) SetInstallationId(val int64) {
-	s.InstallationId = val
+// GetInstallationId returns the value of InstallationId.
+func (s *PutSource) GetInstallationId() int64 {
+	return s.InstallationId
 }
 
-// SetRepository sets the value of Repository.
-func (s *PutSource) SetRepository(val string) {
-	s.Repository = val
+// GetRepository returns the value of Repository.
+func (s *PutSource) GetRepository() string {
+	return s.Repository
+}
+
+// GetStrategy returns the value of Strategy.
+func (s *PutSource) GetStrategy() OptStrategyDto {
+	return s.Strategy
 }
 
 // SetBranch sets the value of Branch.
 func (s *PutSource) SetBranch(val string) {
 	s.Branch = val
-}
-
-// SetStrategy sets the value of Strategy.
-func (s *PutSource) SetStrategy(val OptStrategyDto) {
-	s.Strategy = val
 }
 
 // SetContext sets the value of Context.
@@ -8012,23 +8086,28 @@ func (s *PutSource) SetImageRepository(val string) {
 	s.ImageRepository = val
 }
 
+// SetInstallationId sets the value of InstallationId.
+func (s *PutSource) SetInstallationId(val int64) {
+	s.InstallationId = val
+}
+
+// SetRepository sets the value of Repository.
+func (s *PutSource) SetRepository(val string) {
+	s.Repository = val
+}
+
+// SetStrategy sets the value of Strategy.
+func (s *PutSource) SetStrategy(val OptStrategyDto) {
+	s.Strategy = val
+}
+
 // Ref: #/components/schemas/PutStatusPage
 type PutStatusPage struct {
-	Slug    string  `json:"slug"`
-	Title   string  `json:"title"`
 	Enabled OptBool `json:"enabled"`
 	// The environments whose apps the page lists.
 	Environments []string `json:"environments"`
-}
-
-// GetSlug returns the value of Slug.
-func (s *PutStatusPage) GetSlug() string {
-	return s.Slug
-}
-
-// GetTitle returns the value of Title.
-func (s *PutStatusPage) GetTitle() string {
-	return s.Title
+	Slug         string   `json:"slug"`
+	Title        string   `json:"title"`
 }
 
 // GetEnabled returns the value of Enabled.
@@ -8041,14 +8120,14 @@ func (s *PutStatusPage) GetEnvironments() []string {
 	return s.Environments
 }
 
-// SetSlug sets the value of Slug.
-func (s *PutStatusPage) SetSlug(val string) {
-	s.Slug = val
+// GetSlug returns the value of Slug.
+func (s *PutStatusPage) GetSlug() string {
+	return s.Slug
 }
 
-// SetTitle sets the value of Title.
-func (s *PutStatusPage) SetTitle(val string) {
-	s.Title = val
+// GetTitle returns the value of Title.
+func (s *PutStatusPage) GetTitle() string {
+	return s.Title
 }
 
 // SetEnabled sets the value of Enabled.
@@ -8059,6 +8138,16 @@ func (s *PutStatusPage) SetEnabled(val OptBool) {
 // SetEnvironments sets the value of Environments.
 func (s *PutStatusPage) SetEnvironments(val []string) {
 	s.Environments = val
+}
+
+// SetSlug sets the value of Slug.
+func (s *PutStatusPage) SetSlug(val string) {
+	s.Slug = val
+}
+
+// SetTitle sets the value of Title.
+func (s *PutStatusPage) SetTitle(val string) {
+	s.Title = val
 }
 
 type PutStatusPageConflict Problem
@@ -8215,36 +8304,16 @@ func (*ReleaseDetachedAppNotFound) releaseDetachedAppRes() {}
 
 // Ref: #/components/schemas/ReleaseDto
 type ReleaseDto struct {
-	Revision int64        `json:"revision"`
-	Image    OptNilString `json:"image"`
-	// `create`, `deploy`, `config`, `rollback`, `promote`, `restart` or `handover`.
-	Reason string       `json:"reason"`
-	Note   OptNilString `json:"note"`
 	// Email of whoever made the change.
 	Actor     OptNilString `json:"actor"`
 	CreatedAt int64        `json:"created_at"`
 	// The newest revision (what should be running).
-	Current bool `json:"current"`
-}
-
-// GetRevision returns the value of Revision.
-func (s *ReleaseDto) GetRevision() int64 {
-	return s.Revision
-}
-
-// GetImage returns the value of Image.
-func (s *ReleaseDto) GetImage() OptNilString {
-	return s.Image
-}
-
-// GetReason returns the value of Reason.
-func (s *ReleaseDto) GetReason() string {
-	return s.Reason
-}
-
-// GetNote returns the value of Note.
-func (s *ReleaseDto) GetNote() OptNilString {
-	return s.Note
+	Current bool         `json:"current"`
+	Image   OptNilString `json:"image"`
+	Note    OptNilString `json:"note"`
+	// `create`, `deploy`, `config`, `rollback`, `promote`, `restart` or `handover`.
+	Reason   string `json:"reason"`
+	Revision int64  `json:"revision"`
 }
 
 // GetActor returns the value of Actor.
@@ -8262,24 +8331,24 @@ func (s *ReleaseDto) GetCurrent() bool {
 	return s.Current
 }
 
-// SetRevision sets the value of Revision.
-func (s *ReleaseDto) SetRevision(val int64) {
-	s.Revision = val
+// GetImage returns the value of Image.
+func (s *ReleaseDto) GetImage() OptNilString {
+	return s.Image
 }
 
-// SetImage sets the value of Image.
-func (s *ReleaseDto) SetImage(val OptNilString) {
-	s.Image = val
+// GetNote returns the value of Note.
+func (s *ReleaseDto) GetNote() OptNilString {
+	return s.Note
 }
 
-// SetReason sets the value of Reason.
-func (s *ReleaseDto) SetReason(val string) {
-	s.Reason = val
+// GetReason returns the value of Reason.
+func (s *ReleaseDto) GetReason() string {
+	return s.Reason
 }
 
-// SetNote sets the value of Note.
-func (s *ReleaseDto) SetNote(val OptNilString) {
-	s.Note = val
+// GetRevision returns the value of Revision.
+func (s *ReleaseDto) GetRevision() int64 {
+	return s.Revision
 }
 
 // SetActor sets the value of Actor.
@@ -8295,6 +8364,26 @@ func (s *ReleaseDto) SetCreatedAt(val int64) {
 // SetCurrent sets the value of Current.
 func (s *ReleaseDto) SetCurrent(val bool) {
 	s.Current = val
+}
+
+// SetImage sets the value of Image.
+func (s *ReleaseDto) SetImage(val OptNilString) {
+	s.Image = val
+}
+
+// SetNote sets the value of Note.
+func (s *ReleaseDto) SetNote(val OptNilString) {
+	s.Note = val
+}
+
+// SetReason sets the value of Reason.
+func (s *ReleaseDto) SetReason(val string) {
+	s.Reason = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *ReleaseDto) SetRevision(val int64) {
+	s.Revision = val
 }
 
 type RemoveEnvironmentMemberConflict Problem
@@ -8448,10 +8537,10 @@ func (*RollbackAppUnprocessableEntity) rollbackAppRes() {}
 // One app's rollout of a new secret value.
 // Ref: #/components/schemas/RolloutDto
 type RolloutDto struct {
-	App string `json:"app"`
+	App               string `json:"app"`
+	ApprovalsRequired int32  `json:"approvals_required"`
 	// The rotation run; `None` when the app could not take one now.
-	Run               OptNilUUID `json:"run"`
-	ApprovalsRequired int32      `json:"approvals_required"`
+	Run OptNilUUID `json:"run"`
 	// Why there is no run.
 	Skipped OptNilString `json:"skipped"`
 }
@@ -8461,14 +8550,14 @@ func (s *RolloutDto) GetApp() string {
 	return s.App
 }
 
-// GetRun returns the value of Run.
-func (s *RolloutDto) GetRun() OptNilUUID {
-	return s.Run
-}
-
 // GetApprovalsRequired returns the value of ApprovalsRequired.
 func (s *RolloutDto) GetApprovalsRequired() int32 {
 	return s.ApprovalsRequired
+}
+
+// GetRun returns the value of Run.
+func (s *RolloutDto) GetRun() OptNilUUID {
+	return s.Run
 }
 
 // GetSkipped returns the value of Skipped.
@@ -8481,14 +8570,14 @@ func (s *RolloutDto) SetApp(val string) {
 	s.App = val
 }
 
-// SetRun sets the value of Run.
-func (s *RolloutDto) SetRun(val OptNilUUID) {
-	s.Run = val
-}
-
 // SetApprovalsRequired sets the value of ApprovalsRequired.
 func (s *RolloutDto) SetApprovalsRequired(val int32) {
 	s.ApprovalsRequired = val
+}
+
+// SetRun sets the value of Run.
+func (s *RolloutDto) SetRun(val OptNilUUID) {
+	s.Run = val
 }
 
 // SetSkipped sets the value of Skipped.
@@ -8522,39 +8611,19 @@ func (s *RunJob) SetProcess(val OptNilString) {
 
 // Ref: #/components/schemas/ScanDto
 type ScanDto struct {
-	// `ok`, or `unavailable` when the scanner, its feed or the image was not reachable (never "clean").
-	Status  string `json:"status"`
-	Scanner string `json:"scanner"`
+	Critical int32 `json:"critical"`
 	// When the vulnerability database was built.
 	DatabaseUpdatedAt OptNilString `json:"databaseUpdatedAt"`
-	ScannedAt         string       `json:"scannedAt"`
-	Critical          int32        `json:"critical"`
-	High              int32        `json:"high"`
-	Medium            int32        `json:"medium"`
-	Low               int32        `json:"low"`
-	Unknown           int32        `json:"unknown"`
 	// `severity:id` of the most severe findings.
-	Findings []string `json:"findings"`
-}
-
-// GetStatus returns the value of Status.
-func (s *ScanDto) GetStatus() string {
-	return s.Status
-}
-
-// GetScanner returns the value of Scanner.
-func (s *ScanDto) GetScanner() string {
-	return s.Scanner
-}
-
-// GetDatabaseUpdatedAt returns the value of DatabaseUpdatedAt.
-func (s *ScanDto) GetDatabaseUpdatedAt() OptNilString {
-	return s.DatabaseUpdatedAt
-}
-
-// GetScannedAt returns the value of ScannedAt.
-func (s *ScanDto) GetScannedAt() string {
-	return s.ScannedAt
+	Findings  []string `json:"findings"`
+	High      int32    `json:"high"`
+	Low       int32    `json:"low"`
+	Medium    int32    `json:"medium"`
+	ScannedAt string   `json:"scannedAt"`
+	Scanner   string   `json:"scanner"`
+	// `ok`, or `unavailable` when the scanner, its feed or the image was not reachable (never "clean").
+	Status  string `json:"status"`
+	Unknown int32  `json:"unknown"`
 }
 
 // GetCritical returns the value of Critical.
@@ -8562,24 +8631,9 @@ func (s *ScanDto) GetCritical() int32 {
 	return s.Critical
 }
 
-// GetHigh returns the value of High.
-func (s *ScanDto) GetHigh() int32 {
-	return s.High
-}
-
-// GetMedium returns the value of Medium.
-func (s *ScanDto) GetMedium() int32 {
-	return s.Medium
-}
-
-// GetLow returns the value of Low.
-func (s *ScanDto) GetLow() int32 {
-	return s.Low
-}
-
-// GetUnknown returns the value of Unknown.
-func (s *ScanDto) GetUnknown() int32 {
-	return s.Unknown
+// GetDatabaseUpdatedAt returns the value of DatabaseUpdatedAt.
+func (s *ScanDto) GetDatabaseUpdatedAt() OptNilString {
+	return s.DatabaseUpdatedAt
 }
 
 // GetFindings returns the value of Findings.
@@ -8587,24 +8641,39 @@ func (s *ScanDto) GetFindings() []string {
 	return s.Findings
 }
 
-// SetStatus sets the value of Status.
-func (s *ScanDto) SetStatus(val string) {
-	s.Status = val
+// GetHigh returns the value of High.
+func (s *ScanDto) GetHigh() int32 {
+	return s.High
 }
 
-// SetScanner sets the value of Scanner.
-func (s *ScanDto) SetScanner(val string) {
-	s.Scanner = val
+// GetLow returns the value of Low.
+func (s *ScanDto) GetLow() int32 {
+	return s.Low
 }
 
-// SetDatabaseUpdatedAt sets the value of DatabaseUpdatedAt.
-func (s *ScanDto) SetDatabaseUpdatedAt(val OptNilString) {
-	s.DatabaseUpdatedAt = val
+// GetMedium returns the value of Medium.
+func (s *ScanDto) GetMedium() int32 {
+	return s.Medium
 }
 
-// SetScannedAt sets the value of ScannedAt.
-func (s *ScanDto) SetScannedAt(val string) {
-	s.ScannedAt = val
+// GetScannedAt returns the value of ScannedAt.
+func (s *ScanDto) GetScannedAt() string {
+	return s.ScannedAt
+}
+
+// GetScanner returns the value of Scanner.
+func (s *ScanDto) GetScanner() string {
+	return s.Scanner
+}
+
+// GetStatus returns the value of Status.
+func (s *ScanDto) GetStatus() string {
+	return s.Status
+}
+
+// GetUnknown returns the value of Unknown.
+func (s *ScanDto) GetUnknown() int32 {
+	return s.Unknown
 }
 
 // SetCritical sets the value of Critical.
@@ -8612,24 +8681,9 @@ func (s *ScanDto) SetCritical(val int32) {
 	s.Critical = val
 }
 
-// SetHigh sets the value of High.
-func (s *ScanDto) SetHigh(val int32) {
-	s.High = val
-}
-
-// SetMedium sets the value of Medium.
-func (s *ScanDto) SetMedium(val int32) {
-	s.Medium = val
-}
-
-// SetLow sets the value of Low.
-func (s *ScanDto) SetLow(val int32) {
-	s.Low = val
-}
-
-// SetUnknown sets the value of Unknown.
-func (s *ScanDto) SetUnknown(val int32) {
-	s.Unknown = val
+// SetDatabaseUpdatedAt sets the value of DatabaseUpdatedAt.
+func (s *ScanDto) SetDatabaseUpdatedAt(val OptNilString) {
+	s.DatabaseUpdatedAt = val
 }
 
 // SetFindings sets the value of Findings.
@@ -8637,32 +8691,52 @@ func (s *ScanDto) SetFindings(val []string) {
 	s.Findings = val
 }
 
+// SetHigh sets the value of High.
+func (s *ScanDto) SetHigh(val int32) {
+	s.High = val
+}
+
+// SetLow sets the value of Low.
+func (s *ScanDto) SetLow(val int32) {
+	s.Low = val
+}
+
+// SetMedium sets the value of Medium.
+func (s *ScanDto) SetMedium(val int32) {
+	s.Medium = val
+}
+
+// SetScannedAt sets the value of ScannedAt.
+func (s *ScanDto) SetScannedAt(val string) {
+	s.ScannedAt = val
+}
+
+// SetScanner sets the value of Scanner.
+func (s *ScanDto) SetScanner(val string) {
+	s.Scanner = val
+}
+
+// SetStatus sets the value of Status.
+func (s *ScanDto) SetStatus(val string) {
+	s.Status = val
+}
+
+// SetUnknown sets the value of Unknown.
+func (s *ScanDto) SetUnknown(val int32) {
+	s.Unknown = val
+}
+
 // What vulnerability findings a deployment may carry.
 // Ref: #/components/schemas/ScanGateDto
 type ScanGateDto struct {
-	// `off`, `warn` or `block`.
-	Mode string `json:"mode"`
-	// Findings at or above this severity count: `high` or `critical`.
-	Severity string `json:"severity"`
-	// An image without a fresh successful scan counts as a finding.
-	RequireScan OptBool `json:"requireScan"`
 	// A scan older than this no longer counts (1 hour – 90 days).
 	MaxAgeSecs OptInt32 `json:"maxAgeSecs"`
-}
-
-// GetMode returns the value of Mode.
-func (s *ScanGateDto) GetMode() string {
-	return s.Mode
-}
-
-// GetSeverity returns the value of Severity.
-func (s *ScanGateDto) GetSeverity() string {
-	return s.Severity
-}
-
-// GetRequireScan returns the value of RequireScan.
-func (s *ScanGateDto) GetRequireScan() OptBool {
-	return s.RequireScan
+	// `off`, `warn` or `block`.
+	Mode string `json:"mode"`
+	// An image without a fresh successful scan counts as a finding.
+	RequireScan OptBool `json:"requireScan"`
+	// Findings at or above this severity count: `high` or `critical`.
+	Severity string `json:"severity"`
 }
 
 // GetMaxAgeSecs returns the value of MaxAgeSecs.
@@ -8670,19 +8744,19 @@ func (s *ScanGateDto) GetMaxAgeSecs() OptInt32 {
 	return s.MaxAgeSecs
 }
 
-// SetMode sets the value of Mode.
-func (s *ScanGateDto) SetMode(val string) {
-	s.Mode = val
+// GetMode returns the value of Mode.
+func (s *ScanGateDto) GetMode() string {
+	return s.Mode
 }
 
-// SetSeverity sets the value of Severity.
-func (s *ScanGateDto) SetSeverity(val string) {
-	s.Severity = val
+// GetRequireScan returns the value of RequireScan.
+func (s *ScanGateDto) GetRequireScan() OptBool {
+	return s.RequireScan
 }
 
-// SetRequireScan sets the value of RequireScan.
-func (s *ScanGateDto) SetRequireScan(val OptBool) {
-	s.RequireScan = val
+// GetSeverity returns the value of Severity.
+func (s *ScanGateDto) GetSeverity() string {
+	return s.Severity
 }
 
 // SetMaxAgeSecs sets the value of MaxAgeSecs.
@@ -8690,30 +8764,35 @@ func (s *ScanGateDto) SetMaxAgeSecs(val OptInt32) {
 	s.MaxAgeSecs = val
 }
 
+// SetMode sets the value of Mode.
+func (s *ScanGateDto) SetMode(val string) {
+	s.Mode = val
+}
+
+// SetRequireScan sets the value of RequireScan.
+func (s *ScanGateDto) SetRequireScan(val OptBool) {
+	s.RequireScan = val
+}
+
+// SetSeverity sets the value of Severity.
+func (s *ScanGateDto) SetSeverity(val string) {
+	s.Severity = val
+}
+
 // Ref: #/components/schemas/SecretDto
 type SecretDto struct {
-	Name string `json:"name"`
+	CreatedAt OptNilString `json:"created_at"`
 	// Key names only; values are never returned.
-	Keys      []string      `json:"keys"`
-	CreatedAt OptNilString  `json:"created_at"`
-	Storage   SecretStorage `json:"storage"`
+	Keys []string `json:"keys"`
+	Name string   `json:"name"`
 	// The current revision of an encrypted secret.
 	Revision OptNilInt64 `json:"revision"`
 	// The current revision is revoked: set a new value before deploying.
-	Revoked   bool         `json:"revoked"`
-	UpdatedAt OptNilString `json:"updated_at"`
+	Revoked bool `json:"revoked"`
 	// The runs that roll a new value out, after a change.
-	Rollouts []RolloutDto `json:"rollouts"`
-}
-
-// GetName returns the value of Name.
-func (s *SecretDto) GetName() string {
-	return s.Name
-}
-
-// GetKeys returns the value of Keys.
-func (s *SecretDto) GetKeys() []string {
-	return s.Keys
+	Rollouts  []RolloutDto  `json:"rollouts"`
+	Storage   SecretStorage `json:"storage"`
+	UpdatedAt OptNilString  `json:"updated_at"`
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -8721,9 +8800,14 @@ func (s *SecretDto) GetCreatedAt() OptNilString {
 	return s.CreatedAt
 }
 
-// GetStorage returns the value of Storage.
-func (s *SecretDto) GetStorage() SecretStorage {
-	return s.Storage
+// GetKeys returns the value of Keys.
+func (s *SecretDto) GetKeys() []string {
+	return s.Keys
+}
+
+// GetName returns the value of Name.
+func (s *SecretDto) GetName() string {
+	return s.Name
 }
 
 // GetRevision returns the value of Revision.
@@ -8736,24 +8820,19 @@ func (s *SecretDto) GetRevoked() bool {
 	return s.Revoked
 }
 
-// GetUpdatedAt returns the value of UpdatedAt.
-func (s *SecretDto) GetUpdatedAt() OptNilString {
-	return s.UpdatedAt
-}
-
 // GetRollouts returns the value of Rollouts.
 func (s *SecretDto) GetRollouts() []RolloutDto {
 	return s.Rollouts
 }
 
-// SetName sets the value of Name.
-func (s *SecretDto) SetName(val string) {
-	s.Name = val
+// GetStorage returns the value of Storage.
+func (s *SecretDto) GetStorage() SecretStorage {
+	return s.Storage
 }
 
-// SetKeys sets the value of Keys.
-func (s *SecretDto) SetKeys(val []string) {
-	s.Keys = val
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *SecretDto) GetUpdatedAt() OptNilString {
+	return s.UpdatedAt
 }
 
 // SetCreatedAt sets the value of CreatedAt.
@@ -8761,9 +8840,14 @@ func (s *SecretDto) SetCreatedAt(val OptNilString) {
 	s.CreatedAt = val
 }
 
-// SetStorage sets the value of Storage.
-func (s *SecretDto) SetStorage(val SecretStorage) {
-	s.Storage = val
+// SetKeys sets the value of Keys.
+func (s *SecretDto) SetKeys(val []string) {
+	s.Keys = val
+}
+
+// SetName sets the value of Name.
+func (s *SecretDto) SetName(val string) {
+	s.Name = val
 }
 
 // SetRevision sets the value of Revision.
@@ -8776,27 +8860,27 @@ func (s *SecretDto) SetRevoked(val bool) {
 	s.Revoked = val
 }
 
-// SetUpdatedAt sets the value of UpdatedAt.
-func (s *SecretDto) SetUpdatedAt(val OptNilString) {
-	s.UpdatedAt = val
-}
-
 // SetRollouts sets the value of Rollouts.
 func (s *SecretDto) SetRollouts(val []RolloutDto) {
 	s.Rollouts = val
+}
+
+// SetStorage sets the value of Storage.
+func (s *SecretDto) SetStorage(val SecretStorage) {
+	s.Storage = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *SecretDto) SetUpdatedAt(val OptNilString) {
+	s.UpdatedAt = val
 }
 
 func (*SecretDto) putSecretRes() {}
 
 // Ref: #/components/schemas/SecretRef
 type SecretRef struct {
-	Name string `json:"name"`
 	Key  string `json:"key"`
-}
-
-// GetName returns the value of Name.
-func (s *SecretRef) GetName() string {
-	return s.Name
+	Name string `json:"name"`
 }
 
 // GetKey returns the value of Key.
@@ -8804,9 +8888,9 @@ func (s *SecretRef) GetKey() string {
 	return s.Key
 }
 
-// SetName sets the value of Name.
-func (s *SecretRef) SetName(val string) {
-	s.Name = val
+// GetName returns the value of Name.
+func (s *SecretRef) GetName() string {
+	return s.Name
 }
 
 // SetKey sets the value of Key.
@@ -8814,30 +8898,25 @@ func (s *SecretRef) SetKey(val string) {
 	s.Key = val
 }
 
+// SetName sets the value of Name.
+func (s *SecretRef) SetName(val string) {
+	s.Name = val
+}
+
 // Ref: #/components/schemas/SecretRevisionDto
 type SecretRevisionDto struct {
-	Revision  int64        `json:"revision"`
-	Keys      []string     `json:"keys"`
-	Current   bool         `json:"current"`
-	CreatedBy string       `json:"created_by"`
 	CreatedAt string       `json:"created_at"`
+	CreatedBy string       `json:"created_by"`
+	Current   bool         `json:"current"`
+	Keys      []string     `json:"keys"`
+	Revision  int64        `json:"revision"`
 	RevokedAt OptNilString `json:"revoked_at"`
 	RevokedBy OptNilString `json:"revoked_by"`
 }
 
-// GetRevision returns the value of Revision.
-func (s *SecretRevisionDto) GetRevision() int64 {
-	return s.Revision
-}
-
-// GetKeys returns the value of Keys.
-func (s *SecretRevisionDto) GetKeys() []string {
-	return s.Keys
-}
-
-// GetCurrent returns the value of Current.
-func (s *SecretRevisionDto) GetCurrent() bool {
-	return s.Current
+// GetCreatedAt returns the value of CreatedAt.
+func (s *SecretRevisionDto) GetCreatedAt() string {
+	return s.CreatedAt
 }
 
 // GetCreatedBy returns the value of CreatedBy.
@@ -8845,9 +8924,19 @@ func (s *SecretRevisionDto) GetCreatedBy() string {
 	return s.CreatedBy
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *SecretRevisionDto) GetCreatedAt() string {
-	return s.CreatedAt
+// GetCurrent returns the value of Current.
+func (s *SecretRevisionDto) GetCurrent() bool {
+	return s.Current
+}
+
+// GetKeys returns the value of Keys.
+func (s *SecretRevisionDto) GetKeys() []string {
+	return s.Keys
+}
+
+// GetRevision returns the value of Revision.
+func (s *SecretRevisionDto) GetRevision() int64 {
+	return s.Revision
 }
 
 // GetRevokedAt returns the value of RevokedAt.
@@ -8860,19 +8949,9 @@ func (s *SecretRevisionDto) GetRevokedBy() OptNilString {
 	return s.RevokedBy
 }
 
-// SetRevision sets the value of Revision.
-func (s *SecretRevisionDto) SetRevision(val int64) {
-	s.Revision = val
-}
-
-// SetKeys sets the value of Keys.
-func (s *SecretRevisionDto) SetKeys(val []string) {
-	s.Keys = val
-}
-
-// SetCurrent sets the value of Current.
-func (s *SecretRevisionDto) SetCurrent(val bool) {
-	s.Current = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *SecretRevisionDto) SetCreatedAt(val string) {
+	s.CreatedAt = val
 }
 
 // SetCreatedBy sets the value of CreatedBy.
@@ -8880,9 +8959,19 @@ func (s *SecretRevisionDto) SetCreatedBy(val string) {
 	s.CreatedBy = val
 }
 
-// SetCreatedAt sets the value of CreatedAt.
-func (s *SecretRevisionDto) SetCreatedAt(val string) {
-	s.CreatedAt = val
+// SetCurrent sets the value of Current.
+func (s *SecretRevisionDto) SetCurrent(val bool) {
+	s.Current = val
+}
+
+// SetKeys sets the value of Keys.
+func (s *SecretRevisionDto) SetKeys(val []string) {
+	s.Keys = val
+}
+
+// SetRevision sets the value of Revision.
+func (s *SecretRevisionDto) SetRevision(val int64) {
+	s.Revision = val
 }
 
 // SetRevokedAt sets the value of RevokedAt.
@@ -8948,21 +9037,21 @@ func (*SetupNotFound) setupRes() {}
 
 // Ref: #/components/schemas/SetupRequest
 type SetupRequest struct {
-	OrgName  string `json:"org_name"`
 	Email    string `json:"email"`
+	OrgName  string `json:"org_name"`
 	Password string `json:"password"`
 	// The setup token from the installer's link, when required.
 	Token OptNilString `json:"token"`
 }
 
-// GetOrgName returns the value of OrgName.
-func (s *SetupRequest) GetOrgName() string {
-	return s.OrgName
-}
-
 // GetEmail returns the value of Email.
 func (s *SetupRequest) GetEmail() string {
 	return s.Email
+}
+
+// GetOrgName returns the value of OrgName.
+func (s *SetupRequest) GetOrgName() string {
+	return s.OrgName
 }
 
 // GetPassword returns the value of Password.
@@ -8975,14 +9064,14 @@ func (s *SetupRequest) GetToken() OptNilString {
 	return s.Token
 }
 
-// SetOrgName sets the value of OrgName.
-func (s *SetupRequest) SetOrgName(val string) {
-	s.OrgName = val
-}
-
 // SetEmail sets the value of Email.
 func (s *SetupRequest) SetEmail(val string) {
 	s.Email = val
+}
+
+// SetOrgName sets the value of OrgName.
+func (s *SetupRequest) SetOrgName(val string) {
+	s.OrgName = val
 }
 
 // SetPassword sets the value of Password.
@@ -8999,11 +9088,11 @@ func (s *SetupRequest) SetToken(val OptNilString) {
 type SetupStatus struct {
 	// No admin account exists yet; the console shows `/setup`.
 	Needed bool `json:"needed"`
-	// `POST /setup` must carry the token the installer printed.
-	TokenRequired bool `json:"token_required"`
 	// The admin may be created over this connection (HTTPS, this machine, or allowed by configuration);
 	// otherwise `POST /setup` answers 403.
 	Secure bool `json:"secure"`
+	// `POST /setup` must carry the token the installer printed.
+	TokenRequired bool `json:"token_required"`
 }
 
 // GetNeeded returns the value of Needed.
@@ -9011,14 +9100,14 @@ func (s *SetupStatus) GetNeeded() bool {
 	return s.Needed
 }
 
-// GetTokenRequired returns the value of TokenRequired.
-func (s *SetupStatus) GetTokenRequired() bool {
-	return s.TokenRequired
-}
-
 // GetSecure returns the value of Secure.
 func (s *SetupStatus) GetSecure() bool {
 	return s.Secure
+}
+
+// GetTokenRequired returns the value of TokenRequired.
+func (s *SetupStatus) GetTokenRequired() bool {
+	return s.TokenRequired
 }
 
 // SetNeeded sets the value of Needed.
@@ -9026,14 +9115,14 @@ func (s *SetupStatus) SetNeeded(val bool) {
 	s.Needed = val
 }
 
-// SetTokenRequired sets the value of TokenRequired.
-func (s *SetupStatus) SetTokenRequired(val bool) {
-	s.TokenRequired = val
-}
-
 // SetSecure sets the value of Secure.
 func (s *SetupStatus) SetSecure(val bool) {
 	s.Secure = val
+}
+
+// SetTokenRequired sets the value of TokenRequired.
+func (s *SetupStatus) SetTokenRequired(val bool) {
+	s.TokenRequired = val
 }
 
 type SetupUnprocessableEntity Problem
@@ -9042,37 +9131,22 @@ func (*SetupUnprocessableEntity) setupRes() {}
 
 // Ref: #/components/schemas/SourceDto
 type SourceDto struct {
+	Branch     string       `json:"branch"`
+	Context    string       `json:"context"`
+	Dockerfile OptNilString `json:"dockerfile"`
+	// The last head read from GitHub.
+	Head            OptNilString `json:"head"`
+	ImageRepository string       `json:"imageRepository"`
 	InstallationId  int64        `json:"installationId"`
 	Repository      string       `json:"repository"`
-	Branch          string       `json:"branch"`
 	Strategy        StrategyDto  `json:"strategy"`
-	Context         string       `json:"context"`
-	Dockerfile      OptNilString `json:"dockerfile"`
-	ImageRepository string       `json:"imageRepository"`
-	// The last head read from GitHub.
-	Head OptNilString `json:"head"`
 	// The sync this change or request queued, if any.
 	SyncOperation OptNilString `json:"syncOperation"`
-}
-
-// GetInstallationId returns the value of InstallationId.
-func (s *SourceDto) GetInstallationId() int64 {
-	return s.InstallationId
-}
-
-// GetRepository returns the value of Repository.
-func (s *SourceDto) GetRepository() string {
-	return s.Repository
 }
 
 // GetBranch returns the value of Branch.
 func (s *SourceDto) GetBranch() string {
 	return s.Branch
-}
-
-// GetStrategy returns the value of Strategy.
-func (s *SourceDto) GetStrategy() StrategyDto {
-	return s.Strategy
 }
 
 // GetContext returns the value of Context.
@@ -9085,14 +9159,29 @@ func (s *SourceDto) GetDockerfile() OptNilString {
 	return s.Dockerfile
 }
 
+// GetHead returns the value of Head.
+func (s *SourceDto) GetHead() OptNilString {
+	return s.Head
+}
+
 // GetImageRepository returns the value of ImageRepository.
 func (s *SourceDto) GetImageRepository() string {
 	return s.ImageRepository
 }
 
-// GetHead returns the value of Head.
-func (s *SourceDto) GetHead() OptNilString {
-	return s.Head
+// GetInstallationId returns the value of InstallationId.
+func (s *SourceDto) GetInstallationId() int64 {
+	return s.InstallationId
+}
+
+// GetRepository returns the value of Repository.
+func (s *SourceDto) GetRepository() string {
+	return s.Repository
+}
+
+// GetStrategy returns the value of Strategy.
+func (s *SourceDto) GetStrategy() StrategyDto {
+	return s.Strategy
 }
 
 // GetSyncOperation returns the value of SyncOperation.
@@ -9100,24 +9189,9 @@ func (s *SourceDto) GetSyncOperation() OptNilString {
 	return s.SyncOperation
 }
 
-// SetInstallationId sets the value of InstallationId.
-func (s *SourceDto) SetInstallationId(val int64) {
-	s.InstallationId = val
-}
-
-// SetRepository sets the value of Repository.
-func (s *SourceDto) SetRepository(val string) {
-	s.Repository = val
-}
-
 // SetBranch sets the value of Branch.
 func (s *SourceDto) SetBranch(val string) {
 	s.Branch = val
-}
-
-// SetStrategy sets the value of Strategy.
-func (s *SourceDto) SetStrategy(val StrategyDto) {
-	s.Strategy = val
 }
 
 // SetContext sets the value of Context.
@@ -9130,14 +9204,29 @@ func (s *SourceDto) SetDockerfile(val OptNilString) {
 	s.Dockerfile = val
 }
 
+// SetHead sets the value of Head.
+func (s *SourceDto) SetHead(val OptNilString) {
+	s.Head = val
+}
+
 // SetImageRepository sets the value of ImageRepository.
 func (s *SourceDto) SetImageRepository(val string) {
 	s.ImageRepository = val
 }
 
-// SetHead sets the value of Head.
-func (s *SourceDto) SetHead(val OptNilString) {
-	s.Head = val
+// SetInstallationId sets the value of InstallationId.
+func (s *SourceDto) SetInstallationId(val int64) {
+	s.InstallationId = val
+}
+
+// SetRepository sets the value of Repository.
+func (s *SourceDto) SetRepository(val string) {
+	s.Repository = val
+}
+
+// SetStrategy sets the value of Strategy.
+func (s *SourceDto) SetStrategy(val StrategyDto) {
+	s.Strategy = val
 }
 
 // SetSyncOperation sets the value of SyncOperation.
@@ -9151,16 +9240,11 @@ func (*SourceDto) syncAppSourceRes() {}
 
 // Ref: #/components/schemas/SsoInfo
 type SsoInfo struct {
-	Enabled bool `json:"enabled"`
 	// The sign-in button's label.
 	DisplayName OptNilString `json:"displayName"`
+	Enabled     bool         `json:"enabled"`
 	// Where the button leads.
 	StartUrl OptNilString `json:"startUrl"`
-}
-
-// GetEnabled returns the value of Enabled.
-func (s *SsoInfo) GetEnabled() bool {
-	return s.Enabled
 }
 
 // GetDisplayName returns the value of DisplayName.
@@ -9168,19 +9252,24 @@ func (s *SsoInfo) GetDisplayName() OptNilString {
 	return s.DisplayName
 }
 
+// GetEnabled returns the value of Enabled.
+func (s *SsoInfo) GetEnabled() bool {
+	return s.Enabled
+}
+
 // GetStartUrl returns the value of StartUrl.
 func (s *SsoInfo) GetStartUrl() OptNilString {
 	return s.StartUrl
 }
 
-// SetEnabled sets the value of Enabled.
-func (s *SsoInfo) SetEnabled(val bool) {
-	s.Enabled = val
-}
-
 // SetDisplayName sets the value of DisplayName.
 func (s *SsoInfo) SetDisplayName(val OptNilString) {
 	s.DisplayName = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *SsoInfo) SetEnabled(val bool) {
+	s.Enabled = val
 }
 
 // SetStartUrl sets the value of StartUrl.
@@ -9202,37 +9291,22 @@ func (*StartDeploymentNotFound) startDeploymentRes() {}
 
 // Ref: #/components/schemas/StartDeploymentRequest
 type StartDeploymentRequest struct {
-	// Image by digest: `registry/repository@sha256:…`. Give either `image` or `release`.
-	Image OptNilString `json:"image"`
-	// An existing release of this app: a rollback or a redeploy.
-	Release OptNilUUID `json:"release"`
 	// The app configuration: the app spec without its image. Omitted, the app's latest configuration is
 	// used.
-	Config OptStartDeploymentRequestConfig `json:"config"`
-	Reason OptDeployReason                 `json:"reason"`
+	Config OptNilStartDeploymentRequestConfig `json:"config"`
 	// The target generation the caller last saw. A deploy never silently replaces a newer one: a stale
 	// value is refused with `409`.
 	ExpectedGeneration int64 `json:"expected_generation"`
-}
-
-// GetImage returns the value of Image.
-func (s *StartDeploymentRequest) GetImage() OptNilString {
-	return s.Image
-}
-
-// GetRelease returns the value of Release.
-func (s *StartDeploymentRequest) GetRelease() OptNilUUID {
-	return s.Release
+	// Image by digest: `registry/repository@sha256:…`. Give either `image` or `release`.
+	Image  OptNilString    `json:"image"`
+	Reason OptDeployReason `json:"reason"`
+	// An existing release of this app: a rollback or a redeploy.
+	Release OptNilUUID `json:"release"`
 }
 
 // GetConfig returns the value of Config.
-func (s *StartDeploymentRequest) GetConfig() OptStartDeploymentRequestConfig {
+func (s *StartDeploymentRequest) GetConfig() OptNilStartDeploymentRequestConfig {
 	return s.Config
-}
-
-// GetReason returns the value of Reason.
-func (s *StartDeploymentRequest) GetReason() OptDeployReason {
-	return s.Reason
 }
 
 // GetExpectedGeneration returns the value of ExpectedGeneration.
@@ -9240,24 +9314,24 @@ func (s *StartDeploymentRequest) GetExpectedGeneration() int64 {
 	return s.ExpectedGeneration
 }
 
-// SetImage sets the value of Image.
-func (s *StartDeploymentRequest) SetImage(val OptNilString) {
-	s.Image = val
+// GetImage returns the value of Image.
+func (s *StartDeploymentRequest) GetImage() OptNilString {
+	return s.Image
 }
 
-// SetRelease sets the value of Release.
-func (s *StartDeploymentRequest) SetRelease(val OptNilUUID) {
-	s.Release = val
+// GetReason returns the value of Reason.
+func (s *StartDeploymentRequest) GetReason() OptDeployReason {
+	return s.Reason
+}
+
+// GetRelease returns the value of Release.
+func (s *StartDeploymentRequest) GetRelease() OptNilUUID {
+	return s.Release
 }
 
 // SetConfig sets the value of Config.
-func (s *StartDeploymentRequest) SetConfig(val OptStartDeploymentRequestConfig) {
+func (s *StartDeploymentRequest) SetConfig(val OptNilStartDeploymentRequestConfig) {
 	s.Config = val
-}
-
-// SetReason sets the value of Reason.
-func (s *StartDeploymentRequest) SetReason(val OptDeployReason) {
-	s.Reason = val
 }
 
 // SetExpectedGeneration sets the value of ExpectedGeneration.
@@ -9265,9 +9339,33 @@ func (s *StartDeploymentRequest) SetExpectedGeneration(val int64) {
 	s.ExpectedGeneration = val
 }
 
+// SetImage sets the value of Image.
+func (s *StartDeploymentRequest) SetImage(val OptNilString) {
+	s.Image = val
+}
+
+// SetReason sets the value of Reason.
+func (s *StartDeploymentRequest) SetReason(val OptDeployReason) {
+	s.Reason = val
+}
+
+// SetRelease sets the value of Release.
+func (s *StartDeploymentRequest) SetRelease(val OptNilUUID) {
+	s.Release = val
+}
+
 // The app configuration: the app spec without its image. Omitted, the app's latest configuration is
 // used.
-type StartDeploymentRequestConfig struct{}
+type StartDeploymentRequestConfig map[string]jx.Raw
+
+func (s *StartDeploymentRequestConfig) init() StartDeploymentRequestConfig {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 type StartDeploymentUnprocessableEntity Problem
 
@@ -9288,24 +9386,14 @@ func (*StartSsoServiceUnavailable) startSsoRes() {}
 
 // Ref: #/components/schemas/StatusPageDto
 type StatusPageDto struct {
-	Slug         string   `json:"slug"`
-	Title        string   `json:"title"`
 	Enabled      bool     `json:"enabled"`
 	Environments []string `json:"environments"`
 	// Where the page is served: `/status/<slug>` on the console's address.
 	Path      string `json:"path"`
-	UpdatedBy string `json:"updatedBy"`
+	Slug      string `json:"slug"`
+	Title     string `json:"title"`
 	UpdatedAt string `json:"updatedAt"`
-}
-
-// GetSlug returns the value of Slug.
-func (s *StatusPageDto) GetSlug() string {
-	return s.Slug
-}
-
-// GetTitle returns the value of Title.
-func (s *StatusPageDto) GetTitle() string {
-	return s.Title
+	UpdatedBy string `json:"updatedBy"`
 }
 
 // GetEnabled returns the value of Enabled.
@@ -9323,9 +9411,14 @@ func (s *StatusPageDto) GetPath() string {
 	return s.Path
 }
 
-// GetUpdatedBy returns the value of UpdatedBy.
-func (s *StatusPageDto) GetUpdatedBy() string {
-	return s.UpdatedBy
+// GetSlug returns the value of Slug.
+func (s *StatusPageDto) GetSlug() string {
+	return s.Slug
+}
+
+// GetTitle returns the value of Title.
+func (s *StatusPageDto) GetTitle() string {
+	return s.Title
 }
 
 // GetUpdatedAt returns the value of UpdatedAt.
@@ -9333,14 +9426,9 @@ func (s *StatusPageDto) GetUpdatedAt() string {
 	return s.UpdatedAt
 }
 
-// SetSlug sets the value of Slug.
-func (s *StatusPageDto) SetSlug(val string) {
-	s.Slug = val
-}
-
-// SetTitle sets the value of Title.
-func (s *StatusPageDto) SetTitle(val string) {
-	s.Title = val
+// GetUpdatedBy returns the value of UpdatedBy.
+func (s *StatusPageDto) GetUpdatedBy() string {
+	return s.UpdatedBy
 }
 
 // SetEnabled sets the value of Enabled.
@@ -9358,14 +9446,24 @@ func (s *StatusPageDto) SetPath(val string) {
 	s.Path = val
 }
 
-// SetUpdatedBy sets the value of UpdatedBy.
-func (s *StatusPageDto) SetUpdatedBy(val string) {
-	s.UpdatedBy = val
+// SetSlug sets the value of Slug.
+func (s *StatusPageDto) SetSlug(val string) {
+	s.Slug = val
+}
+
+// SetTitle sets the value of Title.
+func (s *StatusPageDto) SetTitle(val string) {
+	s.Title = val
 }
 
 // SetUpdatedAt sets the value of UpdatedAt.
 func (s *StatusPageDto) SetUpdatedAt(val string) {
 	s.UpdatedAt = val
+}
+
+// SetUpdatedBy sets the value of UpdatedBy.
+func (s *StatusPageDto) SetUpdatedBy(val string) {
+	s.UpdatedBy = val
 }
 
 func (*StatusPageDto) getStatusPageRes() {}
@@ -9450,33 +9548,18 @@ func (s *SyncDns) SetProvider(val string) {
 
 // Ref: #/components/schemas/TemplateDto
 type TemplateDto struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Category    string `json:"category"`
-	Image       string `json:"image"`
-	Port        int32  `json:"port"`
+	Category string `json:"category"`
+	// Keys of the `<app>-credentials` secret, e.g. `url`.
+	ConnectionKeys []string `json:"connection_keys"`
+	Description    string   `json:"description"`
+	ID             string   `json:"id"`
+	Image          string   `json:"image"`
+	Name           string   `json:"name"`
+	Port           int32    `json:"port"`
 	// `http` (public route) or `tcp` (cluster-internal).
 	Protocol string `json:"protocol"`
 	// `mountPath (size)` of each volume.
 	Volumes []string `json:"volumes"`
-	// Keys of the `<app>-credentials` secret, e.g. `url`.
-	ConnectionKeys []string `json:"connection_keys"`
-}
-
-// GetID returns the value of ID.
-func (s *TemplateDto) GetID() string {
-	return s.ID
-}
-
-// GetName returns the value of Name.
-func (s *TemplateDto) GetName() string {
-	return s.Name
-}
-
-// GetDescription returns the value of Description.
-func (s *TemplateDto) GetDescription() string {
-	return s.Description
 }
 
 // GetCategory returns the value of Category.
@@ -9484,9 +9567,29 @@ func (s *TemplateDto) GetCategory() string {
 	return s.Category
 }
 
+// GetConnectionKeys returns the value of ConnectionKeys.
+func (s *TemplateDto) GetConnectionKeys() []string {
+	return s.ConnectionKeys
+}
+
+// GetDescription returns the value of Description.
+func (s *TemplateDto) GetDescription() string {
+	return s.Description
+}
+
+// GetID returns the value of ID.
+func (s *TemplateDto) GetID() string {
+	return s.ID
+}
+
 // GetImage returns the value of Image.
 func (s *TemplateDto) GetImage() string {
 	return s.Image
+}
+
+// GetName returns the value of Name.
+func (s *TemplateDto) GetName() string {
+	return s.Name
 }
 
 // GetPort returns the value of Port.
@@ -9504,19 +9607,14 @@ func (s *TemplateDto) GetVolumes() []string {
 	return s.Volumes
 }
 
-// GetConnectionKeys returns the value of ConnectionKeys.
-func (s *TemplateDto) GetConnectionKeys() []string {
-	return s.ConnectionKeys
+// SetCategory sets the value of Category.
+func (s *TemplateDto) SetCategory(val string) {
+	s.Category = val
 }
 
-// SetID sets the value of ID.
-func (s *TemplateDto) SetID(val string) {
-	s.ID = val
-}
-
-// SetName sets the value of Name.
-func (s *TemplateDto) SetName(val string) {
-	s.Name = val
+// SetConnectionKeys sets the value of ConnectionKeys.
+func (s *TemplateDto) SetConnectionKeys(val []string) {
+	s.ConnectionKeys = val
 }
 
 // SetDescription sets the value of Description.
@@ -9524,14 +9622,19 @@ func (s *TemplateDto) SetDescription(val string) {
 	s.Description = val
 }
 
-// SetCategory sets the value of Category.
-func (s *TemplateDto) SetCategory(val string) {
-	s.Category = val
+// SetID sets the value of ID.
+func (s *TemplateDto) SetID(val string) {
+	s.ID = val
 }
 
 // SetImage sets the value of Image.
 func (s *TemplateDto) SetImage(val string) {
 	s.Image = val
+}
+
+// SetName sets the value of Name.
+func (s *TemplateDto) SetName(val string) {
+	s.Name = val
 }
 
 // SetPort sets the value of Port.
@@ -9549,49 +9652,24 @@ func (s *TemplateDto) SetVolumes(val []string) {
 	s.Volumes = val
 }
 
-// SetConnectionKeys sets the value of ConnectionKeys.
-func (s *TemplateDto) SetConnectionKeys(val []string) {
-	s.ConnectionKeys = val
-}
-
 // Ref: #/components/schemas/TokenDto
 type TokenDto struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	// Non-secret prefix to recognise the token, e.g. `kbn_pat_0192f3a1`.
-	Prefix      string       `json:"prefix"`
-	Role        string       `json:"role"`
-	Project     OptNilString `json:"project"`
+	CreatedAt   int64        `json:"created_at"`
 	Environment OptNilString `json:"environment"`
 	ExpiresAt   OptNilInt64  `json:"expires_at"`
+	ID          string       `json:"id"`
 	LastUsedAt  OptNilInt64  `json:"last_used_at"`
-	Revoked     bool         `json:"revoked"`
-	CreatedAt   int64        `json:"created_at"`
+	Name        string       `json:"name"`
+	// Non-secret prefix to recognise the token, e.g. `kbn_pat_0192f3a1`.
+	Prefix  string       `json:"prefix"`
+	Project OptNilString `json:"project"`
+	Revoked bool         `json:"revoked"`
+	Role    string       `json:"role"`
 }
 
-// GetID returns the value of ID.
-func (s *TokenDto) GetID() string {
-	return s.ID
-}
-
-// GetName returns the value of Name.
-func (s *TokenDto) GetName() string {
-	return s.Name
-}
-
-// GetPrefix returns the value of Prefix.
-func (s *TokenDto) GetPrefix() string {
-	return s.Prefix
-}
-
-// GetRole returns the value of Role.
-func (s *TokenDto) GetRole() string {
-	return s.Role
-}
-
-// GetProject returns the value of Project.
-func (s *TokenDto) GetProject() OptNilString {
-	return s.Project
+// GetCreatedAt returns the value of CreatedAt.
+func (s *TokenDto) GetCreatedAt() int64 {
+	return s.CreatedAt
 }
 
 // GetEnvironment returns the value of Environment.
@@ -9604,9 +9682,29 @@ func (s *TokenDto) GetExpiresAt() OptNilInt64 {
 	return s.ExpiresAt
 }
 
+// GetID returns the value of ID.
+func (s *TokenDto) GetID() string {
+	return s.ID
+}
+
 // GetLastUsedAt returns the value of LastUsedAt.
 func (s *TokenDto) GetLastUsedAt() OptNilInt64 {
 	return s.LastUsedAt
+}
+
+// GetName returns the value of Name.
+func (s *TokenDto) GetName() string {
+	return s.Name
+}
+
+// GetPrefix returns the value of Prefix.
+func (s *TokenDto) GetPrefix() string {
+	return s.Prefix
+}
+
+// GetProject returns the value of Project.
+func (s *TokenDto) GetProject() OptNilString {
+	return s.Project
 }
 
 // GetRevoked returns the value of Revoked.
@@ -9614,34 +9712,14 @@ func (s *TokenDto) GetRevoked() bool {
 	return s.Revoked
 }
 
-// GetCreatedAt returns the value of CreatedAt.
-func (s *TokenDto) GetCreatedAt() int64 {
-	return s.CreatedAt
+// GetRole returns the value of Role.
+func (s *TokenDto) GetRole() string {
+	return s.Role
 }
 
-// SetID sets the value of ID.
-func (s *TokenDto) SetID(val string) {
-	s.ID = val
-}
-
-// SetName sets the value of Name.
-func (s *TokenDto) SetName(val string) {
-	s.Name = val
-}
-
-// SetPrefix sets the value of Prefix.
-func (s *TokenDto) SetPrefix(val string) {
-	s.Prefix = val
-}
-
-// SetRole sets the value of Role.
-func (s *TokenDto) SetRole(val string) {
-	s.Role = val
-}
-
-// SetProject sets the value of Project.
-func (s *TokenDto) SetProject(val OptNilString) {
-	s.Project = val
+// SetCreatedAt sets the value of CreatedAt.
+func (s *TokenDto) SetCreatedAt(val int64) {
+	s.CreatedAt = val
 }
 
 // SetEnvironment sets the value of Environment.
@@ -9654,9 +9732,29 @@ func (s *TokenDto) SetExpiresAt(val OptNilInt64) {
 	s.ExpiresAt = val
 }
 
+// SetID sets the value of ID.
+func (s *TokenDto) SetID(val string) {
+	s.ID = val
+}
+
 // SetLastUsedAt sets the value of LastUsedAt.
 func (s *TokenDto) SetLastUsedAt(val OptNilInt64) {
 	s.LastUsedAt = val
+}
+
+// SetName sets the value of Name.
+func (s *TokenDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetPrefix sets the value of Prefix.
+func (s *TokenDto) SetPrefix(val string) {
+	s.Prefix = val
+}
+
+// SetProject sets the value of Project.
+func (s *TokenDto) SetProject(val OptNilString) {
+	s.Project = val
 }
 
 // SetRevoked sets the value of Revoked.
@@ -9664,42 +9762,32 @@ func (s *TokenDto) SetRevoked(val bool) {
 	s.Revoked = val
 }
 
-// SetCreatedAt sets the value of CreatedAt.
-func (s *TokenDto) SetCreatedAt(val int64) {
-	s.CreatedAt = val
+// SetRole sets the value of Role.
+func (s *TokenDto) SetRole(val string) {
+	s.Role = val
 }
 
 // Partial update; omitted fields are left unchanged, lists are replaced.
 // Ref: #/components/schemas/UpdateApp
 type UpdateApp struct {
-	Image       OptNilString         `json:"image"`
-	Port        OptNilInt32          `json:"port"`
-	Command     OptNilStringArray    `json:"command"`
-	Replicas    OptNilInt32          `json:"replicas"`
-	MaxReplicas OptNilInt32          `json:"max_replicas"`
-	Size        OptNilString         `json:"size"`
-	Env         OptNilEnvVarDtoArray `json:"env"`
-	Domains     OptNilStringArray    `json:"domains"`
-	// Empty string removes the health check.
-	HealthCheckPath OptNilString `json:"health_check_path"`
-	// Empty string removes the schedule.
-	Schedule OptNilString      `json:"schedule"`
-	TimeZone OptNilString      `json:"time_zone"`
-	Protocol OptNilProtocolDto `json:"protocol"`
-	// Replaces the list. Removed volumes are unmounted, never deleted.
-	Volumes OptNilVolumeDtoArray `json:"volumes"`
+	Command OptNilStringArray    `json:"command"`
+	Domains OptNilStringArray    `json:"domains"`
+	Env     OptNilEnvVarDtoArray `json:"env"`
 	// `0` removes the fsGroup.
 	FsGroup OptNilInt64 `json:"fs_group"`
-}
-
-// GetImage returns the value of Image.
-func (s *UpdateApp) GetImage() OptNilString {
-	return s.Image
-}
-
-// GetPort returns the value of Port.
-func (s *UpdateApp) GetPort() OptNilInt32 {
-	return s.Port
+	// Empty string removes the health check.
+	HealthCheckPath OptNilString      `json:"health_check_path"`
+	Image           OptNilString      `json:"image"`
+	MaxReplicas     OptNilInt32       `json:"max_replicas"`
+	Port            OptNilInt32       `json:"port"`
+	Protocol        OptNilProtocolDto `json:"protocol"`
+	Replicas        OptNilInt32       `json:"replicas"`
+	// Empty string removes the schedule.
+	Schedule OptNilString `json:"schedule"`
+	Size     OptNilString `json:"size"`
+	TimeZone OptNilString `json:"time_zone"`
+	// Replaces the list. Removed volumes are unmounted, never deleted.
+	Volumes OptNilVolumeDtoArray `json:"volumes"`
 }
 
 // GetCommand returns the value of Command.
@@ -9707,19 +9795,9 @@ func (s *UpdateApp) GetCommand() OptNilStringArray {
 	return s.Command
 }
 
-// GetReplicas returns the value of Replicas.
-func (s *UpdateApp) GetReplicas() OptNilInt32 {
-	return s.Replicas
-}
-
-// GetMaxReplicas returns the value of MaxReplicas.
-func (s *UpdateApp) GetMaxReplicas() OptNilInt32 {
-	return s.MaxReplicas
-}
-
-// GetSize returns the value of Size.
-func (s *UpdateApp) GetSize() OptNilString {
-	return s.Size
+// GetDomains returns the value of Domains.
+func (s *UpdateApp) GetDomains() OptNilStringArray {
+	return s.Domains
 }
 
 // GetEnv returns the value of Env.
@@ -9727,9 +9805,9 @@ func (s *UpdateApp) GetEnv() OptNilEnvVarDtoArray {
 	return s.Env
 }
 
-// GetDomains returns the value of Domains.
-func (s *UpdateApp) GetDomains() OptNilStringArray {
-	return s.Domains
+// GetFsGroup returns the value of FsGroup.
+func (s *UpdateApp) GetFsGroup() OptNilInt64 {
+	return s.FsGroup
 }
 
 // GetHealthCheckPath returns the value of HealthCheckPath.
@@ -9737,14 +9815,19 @@ func (s *UpdateApp) GetHealthCheckPath() OptNilString {
 	return s.HealthCheckPath
 }
 
-// GetSchedule returns the value of Schedule.
-func (s *UpdateApp) GetSchedule() OptNilString {
-	return s.Schedule
+// GetImage returns the value of Image.
+func (s *UpdateApp) GetImage() OptNilString {
+	return s.Image
 }
 
-// GetTimeZone returns the value of TimeZone.
-func (s *UpdateApp) GetTimeZone() OptNilString {
-	return s.TimeZone
+// GetMaxReplicas returns the value of MaxReplicas.
+func (s *UpdateApp) GetMaxReplicas() OptNilInt32 {
+	return s.MaxReplicas
+}
+
+// GetPort returns the value of Port.
+func (s *UpdateApp) GetPort() OptNilInt32 {
+	return s.Port
 }
 
 // GetProtocol returns the value of Protocol.
@@ -9752,24 +9835,29 @@ func (s *UpdateApp) GetProtocol() OptNilProtocolDto {
 	return s.Protocol
 }
 
+// GetReplicas returns the value of Replicas.
+func (s *UpdateApp) GetReplicas() OptNilInt32 {
+	return s.Replicas
+}
+
+// GetSchedule returns the value of Schedule.
+func (s *UpdateApp) GetSchedule() OptNilString {
+	return s.Schedule
+}
+
+// GetSize returns the value of Size.
+func (s *UpdateApp) GetSize() OptNilString {
+	return s.Size
+}
+
+// GetTimeZone returns the value of TimeZone.
+func (s *UpdateApp) GetTimeZone() OptNilString {
+	return s.TimeZone
+}
+
 // GetVolumes returns the value of Volumes.
 func (s *UpdateApp) GetVolumes() OptNilVolumeDtoArray {
 	return s.Volumes
-}
-
-// GetFsGroup returns the value of FsGroup.
-func (s *UpdateApp) GetFsGroup() OptNilInt64 {
-	return s.FsGroup
-}
-
-// SetImage sets the value of Image.
-func (s *UpdateApp) SetImage(val OptNilString) {
-	s.Image = val
-}
-
-// SetPort sets the value of Port.
-func (s *UpdateApp) SetPort(val OptNilInt32) {
-	s.Port = val
 }
 
 // SetCommand sets the value of Command.
@@ -9777,19 +9865,9 @@ func (s *UpdateApp) SetCommand(val OptNilStringArray) {
 	s.Command = val
 }
 
-// SetReplicas sets the value of Replicas.
-func (s *UpdateApp) SetReplicas(val OptNilInt32) {
-	s.Replicas = val
-}
-
-// SetMaxReplicas sets the value of MaxReplicas.
-func (s *UpdateApp) SetMaxReplicas(val OptNilInt32) {
-	s.MaxReplicas = val
-}
-
-// SetSize sets the value of Size.
-func (s *UpdateApp) SetSize(val OptNilString) {
-	s.Size = val
+// SetDomains sets the value of Domains.
+func (s *UpdateApp) SetDomains(val OptNilStringArray) {
+	s.Domains = val
 }
 
 // SetEnv sets the value of Env.
@@ -9797,9 +9875,9 @@ func (s *UpdateApp) SetEnv(val OptNilEnvVarDtoArray) {
 	s.Env = val
 }
 
-// SetDomains sets the value of Domains.
-func (s *UpdateApp) SetDomains(val OptNilStringArray) {
-	s.Domains = val
+// SetFsGroup sets the value of FsGroup.
+func (s *UpdateApp) SetFsGroup(val OptNilInt64) {
+	s.FsGroup = val
 }
 
 // SetHealthCheckPath sets the value of HealthCheckPath.
@@ -9807,14 +9885,19 @@ func (s *UpdateApp) SetHealthCheckPath(val OptNilString) {
 	s.HealthCheckPath = val
 }
 
-// SetSchedule sets the value of Schedule.
-func (s *UpdateApp) SetSchedule(val OptNilString) {
-	s.Schedule = val
+// SetImage sets the value of Image.
+func (s *UpdateApp) SetImage(val OptNilString) {
+	s.Image = val
 }
 
-// SetTimeZone sets the value of TimeZone.
-func (s *UpdateApp) SetTimeZone(val OptNilString) {
-	s.TimeZone = val
+// SetMaxReplicas sets the value of MaxReplicas.
+func (s *UpdateApp) SetMaxReplicas(val OptNilInt32) {
+	s.MaxReplicas = val
+}
+
+// SetPort sets the value of Port.
+func (s *UpdateApp) SetPort(val OptNilInt32) {
+	s.Port = val
 }
 
 // SetProtocol sets the value of Protocol.
@@ -9822,14 +9905,29 @@ func (s *UpdateApp) SetProtocol(val OptNilProtocolDto) {
 	s.Protocol = val
 }
 
+// SetReplicas sets the value of Replicas.
+func (s *UpdateApp) SetReplicas(val OptNilInt32) {
+	s.Replicas = val
+}
+
+// SetSchedule sets the value of Schedule.
+func (s *UpdateApp) SetSchedule(val OptNilString) {
+	s.Schedule = val
+}
+
+// SetSize sets the value of Size.
+func (s *UpdateApp) SetSize(val OptNilString) {
+	s.Size = val
+}
+
+// SetTimeZone sets the value of TimeZone.
+func (s *UpdateApp) SetTimeZone(val OptNilString) {
+	s.TimeZone = val
+}
+
 // SetVolumes sets the value of Volumes.
 func (s *UpdateApp) SetVolumes(val OptNilVolumeDtoArray) {
 	s.Volumes = val
-}
-
-// SetFsGroup sets the value of FsGroup.
-func (s *UpdateApp) SetFsGroup(val OptNilInt64) {
-	s.FsGroup = val
 }
 
 type UpdateAppConflict Problem
@@ -9873,23 +9971,13 @@ func (*UpdateMemberForbidden) updateMemberRes() {}
 
 // Ref: #/components/schemas/UserDto
 type UserDto struct {
-	ID          string       `json:"id"`
-	Email       string       `json:"email"`
 	DisplayName OptNilString `json:"display_name"`
-	// How the request was authenticated: `session` or `token`.
-	Via string `json:"via"`
+	Email       string       `json:"email"`
+	ID          string       `json:"id"`
 	// The temporary password must be replaced (`POST /me/password`) before anything else is allowed.
 	MustChangePassword bool `json:"must_change_password"`
-}
-
-// GetID returns the value of ID.
-func (s *UserDto) GetID() string {
-	return s.ID
-}
-
-// GetEmail returns the value of Email.
-func (s *UserDto) GetEmail() string {
-	return s.Email
+	// How the request was authenticated: `session` or `token`.
+	Via string `json:"via"`
 }
 
 // GetDisplayName returns the value of DisplayName.
@@ -9897,9 +9985,14 @@ func (s *UserDto) GetDisplayName() OptNilString {
 	return s.DisplayName
 }
 
-// GetVia returns the value of Via.
-func (s *UserDto) GetVia() string {
-	return s.Via
+// GetEmail returns the value of Email.
+func (s *UserDto) GetEmail() string {
+	return s.Email
+}
+
+// GetID returns the value of ID.
+func (s *UserDto) GetID() string {
+	return s.ID
 }
 
 // GetMustChangePassword returns the value of MustChangePassword.
@@ -9907,14 +10000,9 @@ func (s *UserDto) GetMustChangePassword() bool {
 	return s.MustChangePassword
 }
 
-// SetID sets the value of ID.
-func (s *UserDto) SetID(val string) {
-	s.ID = val
-}
-
-// SetEmail sets the value of Email.
-func (s *UserDto) SetEmail(val string) {
-	s.Email = val
+// GetVia returns the value of Via.
+func (s *UserDto) GetVia() string {
+	return s.Via
 }
 
 // SetDisplayName sets the value of DisplayName.
@@ -9922,14 +10010,24 @@ func (s *UserDto) SetDisplayName(val OptNilString) {
 	s.DisplayName = val
 }
 
-// SetVia sets the value of Via.
-func (s *UserDto) SetVia(val string) {
-	s.Via = val
+// SetEmail sets the value of Email.
+func (s *UserDto) SetEmail(val string) {
+	s.Email = val
+}
+
+// SetID sets the value of ID.
+func (s *UserDto) SetID(val string) {
+	s.ID = val
 }
 
 // SetMustChangePassword sets the value of MustChangePassword.
 func (s *UserDto) SetMustChangePassword(val bool) {
 	s.MustChangePassword = val
+}
+
+// SetVia sets the value of Via.
+func (s *UserDto) SetVia(val string) {
+	s.Via = val
 }
 
 func (*UserDto) getMeRes() {}
@@ -9963,15 +10061,10 @@ func (*VerifyDomainClaimNotFound) verifyDomainClaimRes() {}
 // Persistent volume (kept when the app is deleted, unless requested).
 // Ref: #/components/schemas/VolumeDto
 type VolumeDto struct {
-	Name      string `json:"name"`
 	MountPath string `json:"mount_path"`
+	Name      string `json:"name"`
 	// Capacity such as `5Gi`. Can grow, never shrink.
 	Size OptString `json:"size"`
-}
-
-// GetName returns the value of Name.
-func (s *VolumeDto) GetName() string {
-	return s.Name
 }
 
 // GetMountPath returns the value of MountPath.
@@ -9979,19 +10072,24 @@ func (s *VolumeDto) GetMountPath() string {
 	return s.MountPath
 }
 
+// GetName returns the value of Name.
+func (s *VolumeDto) GetName() string {
+	return s.Name
+}
+
 // GetSize returns the value of Size.
 func (s *VolumeDto) GetSize() OptString {
 	return s.Size
 }
 
-// SetName sets the value of Name.
-func (s *VolumeDto) SetName(val string) {
-	s.Name = val
-}
-
 // SetMountPath sets the value of MountPath.
 func (s *VolumeDto) SetMountPath(val string) {
 	s.MountPath = val
+}
+
+// SetName sets the value of Name.
+func (s *VolumeDto) SetName(val string) {
+	s.Name = val
 }
 
 // SetSize sets the value of Size.
@@ -10001,26 +10099,21 @@ func (s *VolumeDto) SetSize(val OptString) {
 
 // Ref: #/components/schemas/WindowDto
 type WindowDto struct {
-	ID     uuid.UUID `json:"id"`
-	Reason string    `json:"reason"`
+	// In force now.
+	Active bool `json:"active"`
 	// Silences only: the app, when not the whole environment.
 	App       OptNilUUID   `json:"app"`
 	CreatedBy string       `json:"createdBy"`
-	StartsAt  string       `json:"startsAt"`
 	EndsAt    string       `json:"endsAt"`
+	ID        uuid.UUID    `json:"id"`
 	LiftedAt  OptNilString `json:"liftedAt"`
-	// In force now.
-	Active bool `json:"active"`
+	Reason    string       `json:"reason"`
+	StartsAt  string       `json:"startsAt"`
 }
 
-// GetID returns the value of ID.
-func (s *WindowDto) GetID() uuid.UUID {
-	return s.ID
-}
-
-// GetReason returns the value of Reason.
-func (s *WindowDto) GetReason() string {
-	return s.Reason
+// GetActive returns the value of Active.
+func (s *WindowDto) GetActive() bool {
+	return s.Active
 }
 
 // GetApp returns the value of App.
@@ -10033,14 +10126,14 @@ func (s *WindowDto) GetCreatedBy() string {
 	return s.CreatedBy
 }
 
-// GetStartsAt returns the value of StartsAt.
-func (s *WindowDto) GetStartsAt() string {
-	return s.StartsAt
-}
-
 // GetEndsAt returns the value of EndsAt.
 func (s *WindowDto) GetEndsAt() string {
 	return s.EndsAt
+}
+
+// GetID returns the value of ID.
+func (s *WindowDto) GetID() uuid.UUID {
+	return s.ID
 }
 
 // GetLiftedAt returns the value of LiftedAt.
@@ -10048,19 +10141,19 @@ func (s *WindowDto) GetLiftedAt() OptNilString {
 	return s.LiftedAt
 }
 
-// GetActive returns the value of Active.
-func (s *WindowDto) GetActive() bool {
-	return s.Active
+// GetReason returns the value of Reason.
+func (s *WindowDto) GetReason() string {
+	return s.Reason
 }
 
-// SetID sets the value of ID.
-func (s *WindowDto) SetID(val uuid.UUID) {
-	s.ID = val
+// GetStartsAt returns the value of StartsAt.
+func (s *WindowDto) GetStartsAt() string {
+	return s.StartsAt
 }
 
-// SetReason sets the value of Reason.
-func (s *WindowDto) SetReason(val string) {
-	s.Reason = val
+// SetActive sets the value of Active.
+func (s *WindowDto) SetActive(val bool) {
+	s.Active = val
 }
 
 // SetApp sets the value of App.
@@ -10073,14 +10166,14 @@ func (s *WindowDto) SetCreatedBy(val string) {
 	s.CreatedBy = val
 }
 
-// SetStartsAt sets the value of StartsAt.
-func (s *WindowDto) SetStartsAt(val string) {
-	s.StartsAt = val
-}
-
 // SetEndsAt sets the value of EndsAt.
 func (s *WindowDto) SetEndsAt(val string) {
 	s.EndsAt = val
+}
+
+// SetID sets the value of ID.
+func (s *WindowDto) SetID(val uuid.UUID) {
+	s.ID = val
 }
 
 // SetLiftedAt sets the value of LiftedAt.
@@ -10088,9 +10181,14 @@ func (s *WindowDto) SetLiftedAt(val OptNilString) {
 	s.LiftedAt = val
 }
 
-// SetActive sets the value of Active.
-func (s *WindowDto) SetActive(val bool) {
-	s.Active = val
+// SetReason sets the value of Reason.
+func (s *WindowDto) SetReason(val string) {
+	s.Reason = val
+}
+
+// SetStartsAt sets the value of StartsAt.
+func (s *WindowDto) SetStartsAt(val string) {
+	s.StartsAt = val
 }
 
 func (*WindowDto) createFreezeRes()  {}

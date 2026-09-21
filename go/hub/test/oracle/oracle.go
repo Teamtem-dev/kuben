@@ -116,6 +116,9 @@ func (c *Client) Do(s Step) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("%s: %w", s.Name, err)
 	}
+	if resp == nil {
+		return Result{}, fmt.Errorf("%s: no response", s.Name)
+	}
 	defer resp.Body.Close() //nolint:errcheck // read-only
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {

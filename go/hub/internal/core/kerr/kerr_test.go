@@ -31,6 +31,13 @@ func TestMessagesAndCodes(t *testing.T) {
 	}
 }
 
+func TestWrapOfNilIsStillAnError(t *testing.T) {
+	err := kerr.Wrap(nil, "waiting")
+	if err.Error() != "internal error: waiting" || errors.Unwrap(err) != nil {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestIsMatchesByCodeThroughWrapping(t *testing.T) {
 	err := fmt.Errorf("load: %w", kerr.New(kerr.NotFound, "release 7"))
 	if !errors.Is(err, kerr.ErrNotFound) {

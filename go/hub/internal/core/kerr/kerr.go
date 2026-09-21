@@ -90,7 +90,11 @@ func TooMany(retryAfterSecs uint64) *Error {
 // Wrap keeps err as the cause of an Internal error. The detail is what the
 // log gets; the API never shows it.
 func Wrap(err error, format string, args ...any) *Error {
-	return &Error{Code: Internal, Detail: fmt.Sprintf(format, args...) + ": " + err.Error(), cause: err}
+	detail := fmt.Sprintf(format, args...)
+	if err == nil {
+		return &Error{Code: Internal, Detail: detail}
+	}
+	return &Error{Code: Internal, Detail: detail + ": " + err.Error(), cause: err}
 }
 
 // CodeOf is the code of the first *Error in err's chain, or Internal.

@@ -71,15 +71,19 @@ func Write(w http.ResponseWriter, logger *slog.Logger, err error) {
 	if p.Status >= 500 && logger != nil {
 		logger.Error("request failed", "error", err)
 	}
+	if p.Code == string(kerr.RateLimited) {
+		w.Header().Set("Retry-After", strconv.FormatUint(retryAfter, 10))
+	}
+	WriteProblem(w, p)
+}
+
+// WriteProblem sends p as it is.
+func WriteProblem(w http.ResponseWriter, p Problem) {
 	var body bytes.Buffer
 	enc := json.NewEncoder(&body)
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(p) //nolint:errcheck // a Problem always encodes
-	h := w.Header()
-	h.Set("Content-Type", "application/problem+json")
-	if p.Code == string(kerr.RateLimited) {
-		h.Set("Retry-After", strconv.FormatUint(retryAfter, 10))
-	}
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(p.Status)
 	_, _ = w.Write(bytes.TrimSuffix(body.Bytes(), []byte("\n"))) //nolint:errcheck // the client is gone
 }

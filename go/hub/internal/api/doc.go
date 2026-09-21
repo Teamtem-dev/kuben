@@ -3,4 +3,5 @@
 // implement it, authentication, the event stream and the embedded console.
 package api
 
-//go:generate go tool ogen --config ogen.yml --target gen --package gen --clean ../../../../packages/api-client/openapi.json
+//go:generate go run ./genspec ../../../../packages/api-client/openapi.json gen/openapi.ogen.json
+//go:generate go tool ogen --config ogen.yml --target gen --package gen --clean gen/openapi.ogen.json
