@@ -112,7 +112,7 @@ export function EnvironmentPage() {
               <Link
                 to="/projects/$project/$environment/$app"
                 params={{ project, environment, app: a.name }}
-                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
+                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-brand/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span dir="auto" className="truncate font-medium">
@@ -531,7 +531,7 @@ function Templates({ project, environment }: { project: string; environment: str
               <span className="font-medium text-sm">{tpl.name}</span>
               <Badge>{tpl.protocol}</Badge>
             </div>
-            <p dir="auto" className="flex-1 text-muted text-xs">
+            <p dir="auto" className="flex-1 text-muted-foreground text-xs">
               {tpl.description}
             </p>
             <p dir="ltr" className="truncate text-start font-mono text-subtle text-xs">

@@ -49,7 +49,7 @@ export function UsageCard({ project, environment, app }: AppRef) {
     >
       <ErrorNote error={metrics.error} />
       {metrics.data && !metrics.data.available && (
-        <p role="status" dir="auto" className="text-muted text-sm">
+        <p role="status" dir="auto" className="text-muted-foreground text-sm">
           {t('usage.unavailable')} {metrics.data.reason}
         </p>
       )}
@@ -140,15 +140,15 @@ export function ImagePolicyCard({ project, environment, app }: AppRef) {
         <p className="text-subtle text-xs">{t('imagePolicy.approvalHint')}</p>
         {p && (
           <dl className="grid gap-1 text-sm sm:grid-cols-[auto_1fr]">
-            <dt className="text-muted">{t('imagePolicy.lastTag')}</dt>
+            <dt className="text-muted-foreground">{t('imagePolicy.lastTag')}</dt>
             <dd dir="ltr" className="text-start font-mono">
               {p.lastTag ?? '—'} {p.lastDigest && <Badge>{p.lastDigest.slice(7, 19)}</Badge>}
             </dd>
-            <dt className="text-muted">{t('imagePolicy.nextCheck')}</dt>
+            <dt className="text-muted-foreground">{t('imagePolicy.nextCheck')}</dt>
             <dd>{when(p.nextCheckAt, locale)}</dd>
             {p.lastError && (
               <>
-                <dt className="text-muted">{t('imagePolicy.lastError')}</dt>
+                <dt className="text-muted-foreground">{t('imagePolicy.lastError')}</dt>
                 <dd dir="auto" className="text-danger">
                   {p.lastError} {p.failures > 0 && <Pill tone="warning">{p.failures}</Pill>}
                 </dd>
@@ -219,7 +219,7 @@ export function DnsCard({ project, environment, app, domains }: AppRef & { domai
                 </span>
               </p>
               {c.detail && (
-                <p dir="auto" className="text-muted text-xs">
+                <p dir="auto" className="text-muted-foreground text-xs">
                   {c.detail}
                 </p>
               )}

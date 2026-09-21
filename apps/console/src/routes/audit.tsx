@@ -15,14 +15,16 @@ function Row({ e }: { e: AuditEvent }) {
   const { tOr, locale } = usePrefs()
   return (
     <tr>
-      <td className="whitespace-nowrap py-2 pe-4 text-muted">{new Date(e.at).toLocaleString(locale)}</td>
+      <td className="whitespace-nowrap py-2 pe-4 text-muted-foreground">
+        {new Date(e.at).toLocaleString(locale)}
+      </td>
       <td dir="auto" className="py-2 pe-4">
         {e.actor ?? e.actor_kind}
       </td>
       <td dir="ltr" className="py-2 pe-4 text-start font-mono text-xs">
         {e.action}
       </td>
-      <td dir="ltr" className="py-2 pe-4 text-start font-mono text-muted text-xs">
+      <td dir="ltr" className="py-2 pe-4 text-start font-mono text-muted-foreground text-xs">
         {e.target ?? '—'}
       </td>
       <td className={`py-2 pe-4 ${outcomeStyle[e.outcome] ?? ''}`}>

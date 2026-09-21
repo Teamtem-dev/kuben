@@ -1,9 +1,15 @@
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+const src = (path: string) => fileURLToPath(new URL(`./src/${path}`, import.meta.url))
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: [{ find: /^@\//, replacement: `${src('')}` }],
+  },
   server: {
     port: 5173,
     strictPort: true,

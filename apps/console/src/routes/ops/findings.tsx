@@ -38,7 +38,7 @@ function FindingRow({ finding }: { finding: Finding }) {
         {finding.summary}
       </p>
       {finding.evidence.length > 0 && (
-        <ul className="list-disc space-y-0.5 ps-5 text-muted text-xs">
+        <ul className="list-disc space-y-0.5 ps-5 text-muted-foreground text-xs">
           {finding.evidence.map((e) => (
             <li key={e} dir="auto">
               {e}

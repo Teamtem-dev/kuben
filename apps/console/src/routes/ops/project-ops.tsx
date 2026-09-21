@@ -122,7 +122,7 @@ function PreviewRow({ project, preview }: { project: string; preview: Preview })
           <Pill tone={preview.state}>{tOr(`previews.state.${preview.state}`, preview.state)}</Pill>
           {!preview.trusted && <Pill tone="warning">{t('previews.fork')}</Pill>}
         </p>
-        <p dir="ltr" className="text-start font-mono text-muted text-xs">
+        <p dir="ltr" className="text-start font-mono text-muted-foreground text-xs">
           {preview.repository}#{preview.pullRequest} · {preview.branch} · {preview.commit.slice(0, 12)}
         </p>
         <p className="text-subtle text-xs">
@@ -169,7 +169,9 @@ export function PreviewsCard({ project }: { project: string }) {
       <div className="space-y-4">
         <PolicyForm project={project} />
         <ErrorNote error={previews.error} />
-        {previews.data?.length === 0 && <p className="text-muted text-sm">{t('previews.empty')}</p>}
+        {previews.data?.length === 0 && (
+          <p className="text-muted-foreground text-sm">{t('previews.empty')}</p>
+        )}
         <ul className="divide-y divide-line-soft">
           {previews.data?.map((p) => (
             <PreviewRow key={`${p.environment}`} project={project} preview={p} />

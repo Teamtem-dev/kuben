@@ -88,7 +88,7 @@ export function TokensPage() {
               >
                 {created}
               </code>
-              <p className="text-muted text-xs">{t('tokens.githubActions')}</p>
+              <p className="text-muted-foreground text-xs">{t('tokens.githubActions')}</p>
               <pre
                 dir="ltr"
                 className="overflow-x-auto rounded bg-inset p-2 font-mono text-fg-soft text-xs"
@@ -131,8 +131,8 @@ export function TokensPage() {
                       <Badge>{token.role}</Badge>{' '}
                       {token.environment ?? token.project ?? t('tokens.organization')}
                     </td>
-                    <td className="py-2 pe-4 text-muted">{when(locale, token.last_used_at)}</td>
-                    <td className="py-2 pe-4 text-muted">{when(locale, token.expires_at)}</td>
+                    <td className="py-2 pe-4 text-muted-foreground">{when(locale, token.last_used_at)}</td>
+                    <td className="py-2 pe-4 text-muted-foreground">{when(locale, token.expires_at)}</td>
                     <td className="py-2 text-end">
                       {token.revoked ? (
                         <span className="text-subtle text-xs">{t('tokens.revoked')}</span>

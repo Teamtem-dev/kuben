@@ -14,10 +14,10 @@ import { Logo } from './brand'
 import { Preferences } from './preferences'
 
 const buttonVariants = {
-  primary: 'bg-accent text-on-accent hover:bg-accent-hover',
+  primary: 'bg-brand text-on-brand hover:bg-brand-hover',
   secondary: 'border border-line hover:bg-hover',
   danger: 'bg-danger-solid/90 text-white hover:bg-danger-solid',
-  ghost: 'text-muted hover:bg-hover hover:text-fg',
+  ghost: 'text-muted-foreground hover:bg-hover hover:text-fg',
 } as const
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof buttonVariants }
@@ -34,7 +34,7 @@ export function Button({ variant = 'primary', className = '', ...props }: Button
 
 /** The look of every text input, select and text area. */
 export const control =
-  'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none transition placeholder:text-subtle focus:border-accent focus:ring-2 focus:ring-accent/30'
+  'w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none transition placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand/30'
 
 interface FieldProps {
   label: string
@@ -130,7 +130,7 @@ export function PageHeader({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="truncate font-semibold text-xl">{title}</h1>
-          {subtitle && <p className="text-muted text-sm">{subtitle}</p>}
+          {subtitle && <p className="text-muted-foreground text-sm">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
       </div>
@@ -156,7 +156,7 @@ export function Badge({ children }: { children: ReactNode }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-line-strong border-dashed p-10 text-center text-muted text-sm">
+    <div className="rounded-xl border border-line-strong border-dashed p-10 text-center text-muted-foreground text-sm">
       {children}
     </div>
   )

@@ -25,7 +25,7 @@ function Timeline({ incident }: { incident: Incident }) {
   return (
     <ol className="space-y-1 border-line border-s ps-3 text-xs">
       {rows.map(([label, at, by]) => (
-        <li key={label} className="text-muted">
+        <li key={label} className="text-muted-foreground">
           <span className="font-medium text-fg-soft">{label}</span> · {at}
           {by && (
             <>

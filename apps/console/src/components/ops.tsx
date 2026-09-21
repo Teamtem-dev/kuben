@@ -26,7 +26,7 @@ export function Sparkline({ values, label }: { values: readonly number[]; label:
       <polyline
         points={points}
         fill="none"
-        className="stroke-accent"
+        className="stroke-brand"
         strokeWidth="2"
         vectorEffect="non-scaling-stroke"
         strokeLinejoin="round"

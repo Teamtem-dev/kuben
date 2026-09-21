@@ -47,7 +47,7 @@ function ClaimRow({ claim, providers }: { claim: Claim; providers: DnsProvider[]
       </p>
       {claim.status === 'pending' && (
         <div className="space-y-2 text-sm">
-          <p className="text-muted">{t('domains.txtHint')}</p>
+          <p className="text-muted-foreground">{t('domains.txtHint')}</p>
           <Copyable value={claim.challengeName} label={t('ops.copy')} />
           <Copyable value={claim.challengeValue} label={t('ops.copy')} />
           <div className="flex flex-wrap items-end gap-2">

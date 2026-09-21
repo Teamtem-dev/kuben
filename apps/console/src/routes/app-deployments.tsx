@@ -12,7 +12,7 @@ const tone = (phase: string) =>
       ? 'bg-danger-solid'
       : isFinalPhase(phase)
         ? 'bg-subtle'
-        : 'bg-accent'
+        : 'bg-brand'
 
 /** `12.4s`, `3m 05s`. */
 export function duration(ms: number): string {
@@ -68,7 +68,9 @@ export function DeploymentsCard({ project, environment, app }: Where) {
                   <span className="font-medium">
                     {t('deployments.revision')} {run.generation}
                   </span>
-                  <span className="text-muted">{tOr(`deployments.reason.${run.reason}`, run.reason)}</span>
+                  <span className="text-muted-foreground">
+                    {tOr(`deployments.reason.${run.reason}`, run.reason)}
+                  </span>
                   <span>{tOr(`phase.${run.phase}`, run.phase)}</span>
                   <span className="text-subtle text-xs">
                     {date.format(run.created_at)} · {t('deployments.by')} {run.requested_by}

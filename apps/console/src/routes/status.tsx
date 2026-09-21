@@ -44,7 +44,7 @@ function Page({ page }: { page: PublicStatus }) {
       </header>
       <Card title={t('status.components')}>
         {page.components.length === 0 ? (
-          <p className="text-muted text-sm">{t('status.noComponents')}</p>
+          <p className="text-muted-foreground text-sm">{t('status.noComponents')}</p>
         ) : (
           <ul className="divide-y divide-line-soft">
             {page.components.map((c) => (
@@ -60,7 +60,7 @@ function Page({ page }: { page: PublicStatus }) {
       </Card>
       <Card title={t('status.incidents')}>
         {page.incidents.length === 0 ? (
-          <p className="text-muted text-sm">{t('status.noIncidents')}</p>
+          <p className="text-muted-foreground text-sm">{t('status.noIncidents')}</p>
         ) : (
           <ul className="divide-y divide-line-soft">
             {page.incidents.map((i) => (
@@ -69,7 +69,7 @@ function Page({ page }: { page: PublicStatus }) {
                   <span dir="auto" className="font-medium">
                     {i.component}
                   </span>
-                  <span className="text-muted">
+                  <span className="text-muted-foreground">
                     {i.resolvedAt ? t('status.resolved') : t('status.ongoing')} ·{' '}
                     {t(`status.severity.${i.severity}` as 'status.severity.critical')}
                   </span>

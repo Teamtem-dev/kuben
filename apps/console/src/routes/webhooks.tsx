@@ -120,7 +120,8 @@ function Deliveries({ id }: { id: string }) {
   const deliveries = useQuery({ ...deliveriesQuery(id), refetchInterval: 10_000 })
   if (deliveries.error) return <ErrorNote error={deliveries.error} />
   if (!deliveries.data) return <p className="text-subtle text-sm">{t('common.loading')}</p>
-  if (deliveries.data.length === 0) return <p className="text-muted text-sm">{t('webhooks.noDeliveries')}</p>
+  if (deliveries.data.length === 0)
+    return <p className="text-muted-foreground text-sm">{t('webhooks.noDeliveries')}</p>
   return (
     <ul className="divide-y divide-line-soft">
       {deliveries.data.map((d) => (
@@ -153,7 +154,7 @@ function WebhookRow({ webhook }: { webhook: Webhook }) {
               <Pill tone="warning">{`${t('webhooks.failures')} ${webhook.failures}`}</Pill>
             )}
           </p>
-          <p dir="ltr" className="break-all text-start font-mono text-muted text-xs">
+          <p dir="ltr" className="break-all text-start font-mono text-muted-foreground text-xs">
             {webhook.url}
           </p>
           <p className="flex flex-wrap gap-1">

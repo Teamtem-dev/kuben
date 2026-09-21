@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { LOCALE_NAMES, LOCALES, type Locale, THEMES, type Theme, usePrefs } from '../lib/prefs'
 
 const select =
-  'rounded-md border border-line bg-canvas px-2 py-1 text-fg text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/30'
+  'rounded-md border border-line bg-canvas px-2 py-1 text-fg text-xs outline-none focus:border-brand focus:ring-2 focus:ring-brand/30'
 
 /** Language and theme pickers, for the top bar and the sign-in pages. */
 export function Preferences() {

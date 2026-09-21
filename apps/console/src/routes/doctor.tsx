@@ -11,7 +11,7 @@ const tones: Record<string, string> = {
   ok: 'border-ok/30 bg-ok/5 text-ok',
   warn: 'border-warn/30 bg-warn/10 text-warn',
   fail: 'border-danger/30 bg-danger/10 text-danger',
-  unknown: 'border-line-strong bg-hover text-muted',
+  unknown: 'border-line-strong bg-hover text-muted-foreground',
 }
 
 const marks: Record<string, string> = { ok: '✓', warn: '!', fail: '✕', unknown: '?' }
@@ -38,7 +38,7 @@ function CheckRow({ check }: { check: DoctorCheck }) {
       </div>
       <div className="min-w-0 space-y-1 text-sm">
         {check.subject && (
-          <p dir="ltr" className="text-start font-mono text-muted text-xs">
+          <p dir="ltr" className="text-start font-mono text-muted-foreground text-xs">
             {check.subject}
           </p>
         )}

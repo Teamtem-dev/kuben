@@ -39,7 +39,7 @@ export function LoginPage() {
       >
         <header className="space-y-1">
           <h1 className="font-semibold text-2xl tracking-tight">{t('login.title')}</h1>
-          <p className="text-muted text-sm">{t('login.lead')}</p>
+          <p className="text-muted-foreground text-sm">{t('login.lead')}</p>
         </header>
 
         <div className="space-y-1.5">
@@ -85,14 +85,14 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full rounded-lg bg-accent px-3 py-2 font-medium text-sm text-on-accent transition hover:bg-accent-hover disabled:opacity-60"
+          className="w-full rounded-lg bg-brand px-3 py-2 font-medium text-sm text-on-brand transition hover:bg-brand-hover disabled:opacity-60"
         >
           {mutation.isPending ? t('login.submitting') : t('login.submit')}
         </button>
 
         {sso.data?.enabled && sso.data.startUrl && (
           <>
-            <p className="text-center text-muted text-xs">{t('login.or')}</p>
+            <p className="text-center text-muted-foreground text-xs">{t('login.or')}</p>
             <a
               href={`${sso.data.startUrl}?returnTo=${encodeURIComponent(redirect ?? '/')}`}
               className="block w-full rounded-lg border border-line px-3 py-2 text-center font-medium text-sm transition hover:bg-hover"

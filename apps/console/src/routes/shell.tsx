@@ -34,7 +34,7 @@ function Navigation() {
           key={item.to}
           to={item.to}
           activeOptions={{ exact: item.exact }}
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted text-sm transition hover:bg-hover hover:text-fg"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground text-sm transition hover:bg-hover hover:text-fg"
           activeProps={{ className: 'bg-hover text-fg', 'aria-current': 'page' }}
         >
           <Icon name={item.icon} />
@@ -69,7 +69,7 @@ export function AppShell() {
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
       <a
         href="#content"
-        className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-30 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-on-accent"
+        className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-30 focus:rounded-md focus:bg-brand focus:px-3 focus:py-2 focus:text-on-brand"
       >
         {t('shell.skip')}
       </a>
@@ -83,7 +83,7 @@ export function AppShell() {
           <button
             type="button"
             onClick={() => setMenuOpen(false)}
-            className="rounded-md p-1.5 text-muted hover:bg-hover md:hidden"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-hover md:hidden"
             aria-label={t('shell.closeMenu')}
           >
             <Icon name="close" />
@@ -105,7 +105,7 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className="rounded-md p-1.5 text-muted hover:bg-hover md:hidden"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-hover md:hidden"
               aria-label={t('shell.menu')}
               aria-expanded={menuOpen}
             >
@@ -115,7 +115,7 @@ export function AppShell() {
               <Preferences />
               <Link
                 to="/account"
-                className="max-w-48 truncate text-muted hover:text-fg"
+                className="max-w-48 truncate text-muted-foreground hover:text-fg"
                 title={t('shell.account')}
               >
                 {me.display_name ?? me.email}

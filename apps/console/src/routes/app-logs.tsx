@@ -134,14 +134,17 @@ export function LiveLogs({ project, environment, app, processes }: Where & { pro
         <span className="flex items-center gap-2">
           {t('logs.title')}
           {status && (
-            <span role="status" className="rounded bg-hover px-1.5 py-0.5 font-normal text-muted text-xs">
+            <span
+              role="status"
+              className="rounded bg-hover px-1.5 py-0.5 font-normal text-muted-foreground text-xs"
+            >
               {status}
             </span>
           )}
         </span>
       }
       actions={
-        <div className="flex flex-wrap items-center gap-2 text-muted text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
           <fieldset className="flex overflow-hidden rounded-md border border-line">
             <legend className="sr-only">{t('logs.title')}</legend>
             {(['follow', 'recent', 'previous'] as const).map((m) => (

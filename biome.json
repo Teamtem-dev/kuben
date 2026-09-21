@@ -27,6 +27,23 @@
   },
   "overrides": [
     {
+      "includes": ["apps/console/src/components/ui/**", "apps/console/src/hooks/**"],
+      "formatter": { "enabled": false },
+      "assist": { "enabled": false },
+      "linter": {
+        "rules": {
+          "style": { "useImportType": "off" },
+          "a11y": {
+            "useSemanticElements": "off",
+            "useFocusableInteractive": "off",
+            "useKeyWithClickEvents": "off",
+            "noRedundantRoles": "off"
+          },
+          "suspicious": { "noDoubleEquals": "off", "noDocumentCookie": "off" }
+        }
+      }
+    },
+    {
       "includes": ["**/*.astro"],
       "linter": {
         "rules": {

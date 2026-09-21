@@ -63,7 +63,7 @@ export function ProjectPage() {
               <Link
                 to="/projects/$project/$environment"
                 params={{ project, environment: e.name }}
-                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
+                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-brand/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate font-medium">{e.name}</span>

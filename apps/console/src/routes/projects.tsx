@@ -38,7 +38,7 @@ export function ProjectsPage() {
               <Link
                 to="/projects/$project"
                 params={{ project: p.name }}
-                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-accent/40"
+                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-brand/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span dir="auto" className="truncate font-medium">
@@ -53,7 +53,7 @@ export function ProjectsPage() {
                     : fill(t('projects.environments'), { count: p.environments })}
                 </p>
                 {p.description && (
-                  <p dir="auto" className="mt-2 line-clamp-2 text-muted text-sm">
+                  <p dir="auto" className="mt-2 line-clamp-2 text-muted-foreground text-sm">
                     {p.description}
                   </p>
                 )}

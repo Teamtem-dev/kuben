@@ -120,7 +120,7 @@ export function AppPage() {
         }
       />
       {scheduled && (
-        <p className="text-muted text-sm">
+        <p className="text-muted-foreground text-sm">
           {t('app.scheduledJob')}{' '}
           <code dir="ltr" className="font-mono">
             {scheduled.schedule}
@@ -222,7 +222,7 @@ export function AppPage() {
       {a.volumes.length > 0 && <VolumesCard volumes={a.volumes} />}
 
       {a.volumes.length > 0 && (
-        <label className="flex items-center gap-2 text-muted text-sm">
+        <label className="flex items-center gap-2 text-muted-foreground text-sm">
           <input
             type="checkbox"
             checked={deleteVolumes}
@@ -388,7 +388,7 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
               <div className="min-w-0">
                 <p className="truncate">
                   <span className="font-mono">#{r.revision}</span> <Badge>{r.reason}</Badge>{' '}
-                  <span dir="ltr" className="font-mono text-muted text-xs">
+                  <span dir="ltr" className="font-mono text-muted-foreground text-xs">
                     {r.image ?? '—'}
                   </span>
                 </p>
@@ -502,7 +502,7 @@ const dnsColor: Record<string, string> = {
   ok: 'text-ok',
   mismatch: 'text-danger',
   unresolved: 'text-warn',
-  unknown: 'text-muted',
+  unknown: 'text-muted-foreground',
 }
 
 function DomainsCard({

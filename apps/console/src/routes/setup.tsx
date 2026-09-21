@@ -117,7 +117,7 @@ export function SetupPage() {
       >
         <header className="space-y-1">
           <h1 className="font-semibold text-2xl tracking-tight">{t('setup.title')}</h1>
-          <p className="text-muted text-sm">{t('setup.lead')}</p>
+          <p className="text-muted-foreground text-sm">{t('setup.lead')}</p>
         </header>
 
         <div className="space-y-1.5">
@@ -187,7 +187,7 @@ export function SetupPage() {
         <button
           type="submit"
           disabled={mutation.isPending || status.isPending}
-          className="w-full rounded-lg bg-accent px-3 py-2 font-medium text-sm text-on-accent transition hover:bg-accent-hover disabled:opacity-60"
+          className="w-full rounded-lg bg-brand px-3 py-2 font-medium text-sm text-on-brand transition hover:bg-brand-hover disabled:opacity-60"
         >
           {mutation.isPending ? t('ui.creating') : t('setup.submit')}
         </button>
