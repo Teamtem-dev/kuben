@@ -6,9 +6,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
@@ -67,43 +65,6 @@ func (s *Server) projectsOf(ctx context.Context, org ids.OrgID) ([]store.Project
 	}
 	defer t.Rollback(ctx)  //nolint:errcheck // read only
 	return t.Projects(ctx) //nolint:wrapcheck // a store error, answered as internal
-}
-
-// projectScope is routes/scope.rs ProjectScope: the project `name` in the
-// first of the caller's organizations that has one.
-type projectScope struct {
-	org     ids.OrgID
-	project store.Project
-}
-
-func (p projectScope) chain() authz.ScopeChain {
-	c := authz.ProjectChain(p.org, p.project.ID.UUID())
-	if legacy, ok := p.project.LegacyUID.Get(); ok {
-		c.Aliases = []authz.ScopeRef{{Level: authz.LevelProject, ID: legacy}}
-	}
-	return c
-}
-
-func (s *Server) findProject(ctx context.Context, a access.Access, name string) (projectScope, error) {
-	for _, org := range a.OrgIDs() {
-		found, ok, err := s.projectNamed(ctx, org, name)
-		if err != nil {
-			return projectScope{}, err
-		}
-		if ok {
-			return projectScope{org: org, project: found}, nil
-		}
-	}
-	return projectScope{}, kerr.New(kerr.NotFound, "project `%s`", name)
-}
-
-func (s *Server) projectNamed(ctx context.Context, org ids.OrgID, name string) (store.Project, bool, error) {
-	t, err := s.deps.Store.Tenant(ctx, org)
-	if err != nil {
-		return store.Project{}, false, err //nolint:wrapcheck // a store error, answered as internal
-	}
-	defer t.Rollback(ctx)       //nolint:errcheck // read only
-	return t.Project(ctx, name) //nolint:wrapcheck // a store error, answered as internal
 }
 
 // GetProject is one project.

@@ -18,6 +18,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store/pgtest"
 )
 
@@ -31,6 +32,13 @@ type client struct {
 }
 
 func newServer(t *testing.T, edit func(*config.Config)) *client {
+	t.Helper()
+	c, _ := newServerWithStore(t, edit)
+	return c
+}
+
+// newServerWithStore is newServer with its store, for tests that seed it.
+func newServerWithStore(t *testing.T, edit func(*config.Config)) (*client, *store.Store) {
 	t.Helper()
 	st := pgtest.Store(t)
 	cfg := config.Default()
@@ -57,7 +65,7 @@ func newServer(t *testing.T, edit func(*config.Config)) *client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &client{t: t, base: ts.URL, http: &http.Client{Jar: jar}}
+	return &client{t: t, base: ts.URL, http: &http.Client{Jar: jar}}, st
 }
 
 func (c *client) do(method, path string, body any, headers ...string) (int, map[string]any, http.Header) {
