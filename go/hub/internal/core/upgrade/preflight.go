@@ -3,9 +3,10 @@ package upgrade
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
+
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -148,13 +149,13 @@ func schemaFinding(facts Facts) Finding {
 			facts.Schema, facts.Target, facts.TargetSchema)}
 	default:
 		return Finding{LevelOk, "schema", fmt.Sprintf("%d → %d (%d migration(s))",
-			facts.Schema, facts.TargetSchema, saturatingSub(facts.TargetSchema, facts.Schema))}
+			facts.Schema, facts.TargetSchema, clock.SaturatingSub(facts.TargetSchema, facts.Schema))}
 	}
 }
 
 func backupFinding(facts Facts) Finding {
 	if at, ok := facts.LastBackup.Get(); ok {
-		if age := saturatingSub(facts.Now, at); age <= BackupFreshMs {
+		if age := clock.SaturatingSub(facts.Now, at); age <= BackupFreshMs {
 			return Finding{LevelOk, "backup", fmt.Sprintf("the newest good backup is %d h old", age/hourMs)}
 		}
 	}
@@ -199,17 +200,5 @@ func diskFinding(freeBytes opt.Val[uint64]) Finding {
 		return Finding{LevelWarn, "disk", fmt.Sprintf("only %d MiB free for backups and state", free>>20)}
 	default:
 		return Finding{LevelOk, "disk", fmt.Sprintf("%d GiB free", free>>30)}
-	}
-}
-
-// saturatingSub is a-b, clamped to the int64 range.
-func saturatingSub(a, b int64) int64 {
-	switch {
-	case b > 0 && a < math.MinInt64+b:
-		return math.MinInt64
-	case b < 0 && a > math.MaxInt64+b:
-		return math.MaxInt64
-	default:
-		return a - b
 	}
 }

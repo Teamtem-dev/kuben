@@ -194,13 +194,14 @@ func TestOrganizationQuotasAreQuantities(t *testing.T) {
 		t.Errorf("got %+v", limits)
 	}
 	quota.OrgMemory = opt.Some("lots")
-	var invalid *kerr.Error
-	if _, err := quota.OrgLimits(); !asError(err, &invalid) || invalid.Code != kerr.Validation ||
+	_, err = quota.OrgLimits()
+	if invalid, ok := kerrOf(err); !ok || invalid.Code != kerr.Validation ||
 		invalid.Detail != "quota.org_memory `lots` is not a quantity" {
 		t.Errorf("got %v", err)
 	}
 	quota.OrgCPU = opt.Some("many")
-	if _, err := quota.OrgLimits(); !asError(err, &invalid) || invalid.Detail != "quota.org_cpu `many` is not a quantity" {
+	_, err = quota.OrgLimits()
+	if invalid, ok := kerrOf(err); !ok || invalid.Detail != "quota.org_cpu `many` is not a quantity" {
 		t.Errorf("got %v", err)
 	}
 }

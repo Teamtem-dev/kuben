@@ -159,8 +159,10 @@ func (p *EnvironmentPolicy) UnmarshalJSON(data []byte) error {
 		name    string
 		present bool
 	}{
-		{"requiredApprovals", hasApprovals}, {"deployRole", hasDeploy},
-		{"approveRole", hasApprove}, {"approvalTtlSecs", hasTTL},
+		{"requiredApprovals", hasApprovals},
+		{"deployRole", hasDeploy},
+		{"approveRole", hasApprove},
+		{"approvalTtlSecs", hasTTL},
 	} {
 		if !field.present {
 			return kerr.New(kerr.Validation, "missing field `%s`", field.name)

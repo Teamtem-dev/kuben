@@ -45,3 +45,15 @@ func SaturatingAdd(a, b int64) int64 {
 		return a + b
 	}
 }
+
+// SaturatingSub is a-b, clamped to the int64 range.
+func SaturatingSub(a, b int64) int64 {
+	switch {
+	case b > 0 && a < math.MinInt64+b:
+		return math.MinInt64
+	case b < 0 && a > math.MaxInt64+b:
+		return math.MaxInt64
+	default:
+		return a - b
+	}
+}

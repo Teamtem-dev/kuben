@@ -2,8 +2,10 @@ package source
 
 import (
 	"encoding/json"
-	"strings"
 	"time"
+
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -69,17 +71,7 @@ type PullEvent struct {
 // FromFork reports that the head is in another repository than the base:
 // the change comes from outside the repository's writers.
 func (e PullEvent) FromFork() bool {
-	return asciiLower(e.HeadRepository) != asciiLower(e.Repository.String())
-}
-
-// asciiLower lowers A–Z only, for ASCII case-insensitive comparison.
-func asciiLower(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}, s)
+	return ascii.Lower(e.HeadRepository) != ascii.Lower(e.Repository.String())
 }
 
 // InstallationAction is an installation lifecycle event Kuben tracks.
@@ -129,43 +121,41 @@ func (InstallationEvent) webhookEvent() {}
 func (PullEvent) webhookEvent()         {}
 func (Ignored) webhookEvent()           {}
 
-// required is a field serde refused to miss: absent and null are errors.
-type required[T any] struct{ opt.Val[T] }
-
-func (r required[T]) get(field string) (T, error) {
-	v, ok := r.Get()
-	if !ok {
-		return v, &Invalid{Kind: InvalidPayload, Value: "missing field `" + field + "`"}
+// need is m's value, or an invalid-payload error naming the missing field.
+func need[T any](m wire.Must[T], field string) (T, error) {
+	v, err := m.Get(field)
+	if err != nil {
+		return v, &Invalid{Kind: InvalidPayload, Value: err.Error()}
 	}
 	return v, nil
 }
 
 type rawRepository struct {
-	ID       required[uint64] `json:"id"`
-	FullName required[string] `json:"full_name"`
+	ID       wire.Must[uint64] `json:"id"`
+	FullName wire.Must[string] `json:"full_name"`
 }
 
 func (r rawRepository) read() (uint64, string, error) {
-	id, err := r.ID.get("id")
+	id, err := need(r.ID, "id")
 	if err != nil {
 		return 0, "", err
 	}
-	name, err := r.FullName.get("full_name")
+	name, err := need(r.FullName, "full_name")
 	return id, name, err
 }
 
 type rawAccount struct {
-	Login required[string] `json:"login"`
+	Login wire.Must[string] `json:"login"`
 }
 
 type rawInstallation struct {
-	ID      required[uint64]    `json:"id"`
+	ID      wire.Must[uint64]   `json:"id"`
 	Account opt.Val[rawAccount] `json:"account"`
 }
 
 // read is the installation's id and the account login, empty without one.
 func (r rawInstallation) read() (uint64, string, error) {
-	id, err := r.ID.get("id")
+	id, err := need(r.ID, "id")
 	if err != nil {
 		return 0, "", err
 	}
@@ -173,7 +163,7 @@ func (r rawInstallation) read() (uint64, string, error) {
 	if !ok {
 		return id, "", nil
 	}
-	login, err := account.Login.get("login")
+	login, err := need(account.Login, "login")
 	return id, login, err
 }
 
@@ -204,11 +194,11 @@ func ParseGitHub(event string, body []byte) (WebhookEvent, error) {
 }
 
 type rawPush struct {
-	Ref          required[string]         `json:"ref"`
-	After        required[string]         `json:"after"`
+	Ref          wire.Must[string]        `json:"ref"`
+	After        wire.Must[string]        `json:"after"`
 	Forced       bool                     `json:"forced"`
 	Deleted      bool                     `json:"deleted"`
-	Repository   required[rawRepository]  `json:"repository"`
+	Repository   wire.Must[rawRepository] `json:"repository"`
 	Installation opt.Val[rawInstallation] `json:"installation"`
 }
 
@@ -217,15 +207,15 @@ func parsePush(body []byte) (WebhookEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	gitRef, err := raw.Ref.get("ref")
+	gitRef, err := need(raw.Ref, "ref")
 	if err != nil {
 		return nil, err
 	}
-	after, err := raw.After.get("after")
+	after, err := need(raw.After, "after")
 	if err != nil {
 		return nil, err
 	}
-	repository, err := raw.Repository.get("repository")
+	repository, err := need(raw.Repository, "repository")
 	if err != nil {
 		return nil, err
 	}
@@ -273,8 +263,8 @@ func (r rawInstallation) readIf(present bool) (uint64, string, error) {
 }
 
 type rawInstallationEvent struct {
-	Action       required[string]          `json:"action"`
-	Installation required[rawInstallation] `json:"installation"`
+	Action       wire.Must[string]          `json:"action"`
+	Installation wire.Must[rawInstallation] `json:"installation"`
 }
 
 func parseInstallation(body []byte) (WebhookEvent, error) {
@@ -282,11 +272,11 @@ func parseInstallation(body []byte) (WebhookEvent, error) {
 	if err != nil {
 		return nil, err
 	}
-	name, err := raw.Action.get("action")
+	name, err := need(raw.Action, "action")
 	if err != nil {
 		return nil, err
 	}
-	installation, err := raw.Installation.get("installation")
+	installation, err := need(raw.Installation, "installation")
 	if err != nil {
 		return nil, err
 	}
@@ -311,28 +301,28 @@ func parseInstallation(body []byte) (WebhookEvent, error) {
 }
 
 type rawPullRepo struct {
-	FullName required[string] `json:"full_name"`
+	FullName wire.Must[string] `json:"full_name"`
 }
 
 type rawPullSide struct {
-	Sha required[string] `json:"sha"`
-	Ref required[string] `json:"ref"`
+	Sha wire.Must[string] `json:"sha"`
+	Ref wire.Must[string] `json:"ref"`
 	// Repo is null when the fork was deleted.
 	Repo opt.Val[rawPullRepo] `json:"repo"`
 }
 
 type rawPull struct {
-	Number    required[uint64]      `json:"number"`
-	State     required[string]      `json:"state"`
-	Draft     bool                  `json:"draft"`
-	UpdatedAt required[string]      `json:"updated_at"`
-	Head      required[rawPullSide] `json:"head"`
+	Number    wire.Must[uint64]      `json:"number"`
+	State     wire.Must[string]      `json:"state"`
+	Draft     bool                   `json:"draft"`
+	UpdatedAt wire.Must[string]      `json:"updated_at"`
+	Head      wire.Must[rawPullSide] `json:"head"`
 }
 
 type rawPullEvent struct {
-	Action       required[string]         `json:"action"`
-	PullRequest  required[rawPull]        `json:"pull_request"`
-	Repository   required[rawRepository]  `json:"repository"`
+	Action       wire.Must[string]        `json:"action"`
+	PullRequest  wire.Must[rawPull]       `json:"pull_request"`
+	Repository   wire.Must[rawRepository] `json:"repository"`
 	Installation opt.Val[rawInstallation] `json:"installation"`
 }
 
@@ -352,41 +342,41 @@ func (raw rawPullEvent) read() (pullFields, error) {
 	var f pullFields
 	var err error
 	fail := func(e error) (pullFields, error) { return pullFields{}, e }
-	if f.action, err = raw.Action.get("action"); err != nil {
+	if f.action, err = need(raw.Action, "action"); err != nil {
 		return fail(err)
 	}
-	pull, err := raw.PullRequest.get("pull_request")
+	pull, err := need(raw.PullRequest, "pull_request")
 	if err != nil {
 		return fail(err)
 	}
-	if f.number, err = pull.Number.get("number"); err != nil {
+	if f.number, err = need(pull.Number, "number"); err != nil {
 		return fail(err)
 	}
-	if f.state, err = pull.State.get("state"); err != nil {
+	if f.state, err = need(pull.State, "state"); err != nil {
 		return fail(err)
 	}
-	if f.updatedAt, err = pull.UpdatedAt.get("updated_at"); err != nil {
+	if f.updatedAt, err = need(pull.UpdatedAt, "updated_at"); err != nil {
 		return fail(err)
 	}
 	f.draft = pull.Draft
-	head, err := pull.Head.get("head")
+	head, err := need(pull.Head, "head")
 	if err != nil {
 		return fail(err)
 	}
-	if f.sha, err = head.Sha.get("sha"); err != nil {
+	if f.sha, err = need(head.Sha, "sha"); err != nil {
 		return fail(err)
 	}
-	if f.headRef, err = head.Ref.get("ref"); err != nil {
+	if f.headRef, err = need(head.Ref, "ref"); err != nil {
 		return fail(err)
 	}
 	// A deleted fork is still a fork.
 	f.headRepo = "(deleted)"
 	if repo, ok := head.Repo.Get(); ok {
-		if f.headRepo, err = repo.FullName.get("full_name"); err != nil {
+		if f.headRepo, err = need(repo.FullName, "full_name"); err != nil {
 			return fail(err)
 		}
 	}
-	repository, err := raw.Repository.get("repository")
+	repository, err := need(raw.Repository, "repository")
 	if err != nil {
 		return fail(err)
 	}

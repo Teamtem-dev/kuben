@@ -1,6 +1,7 @@
 package perm_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
@@ -69,5 +70,17 @@ func TestRoleParses(t *testing.T) {
 	}
 	if perm.Role("root").Grants(perm.OrgRead) || perm.Role("root").Weaker(perm.Owner) != "root" {
 		t.Fatal("an unknown role grants nothing and is the weakest")
+	}
+}
+
+func TestRolesDecodeStrictly(t *testing.T) {
+	var got struct{ Role perm.Role }
+	if err := json.Unmarshal([]byte(`{"Role":"admin"}`), &got); err != nil || got.Role != perm.Admin {
+		t.Fatalf("got %v, %v", got.Role, err)
+	}
+	for _, bad := range []string{`"root"`, `"Admin"`, `""`} {
+		if err := json.Unmarshal([]byte(`{"Role":`+bad+`}`), &got); err == nil {
+			t.Errorf("%s must be refused", bad)
+		}
 	}
 }

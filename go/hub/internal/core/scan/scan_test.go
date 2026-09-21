@@ -399,11 +399,13 @@ func TestWireFormat(t *testing.T) {
 			`{"status":"unavailable","scanner":"","db":null,"counts":{"critical":0,"high":0,"medium":0,"low":0,"unknown":0},"findings":[],"detail":"no feed"}`,
 		},
 		{
-			"report without findings", scan.Report{Status: scan.StatusOK, Scanner: "trivy", DB: opt.Some("2026-09-17T00:00:00Z")},
+			"report without findings",
+			scan.Report{Status: scan.StatusOK, Scanner: "trivy", DB: opt.Some("2026-09-17T00:00:00Z")},
 			`{"status":"ok","scanner":"trivy","db":"2026-09-17T00:00:00Z","counts":{"critical":0,"high":0,"medium":0,"low":0,"unknown":0},"findings":[],"detail":null}`,
 		},
 		{
-			"report with findings", scan.Report{Status: scan.StatusOK, Counts: scan.Counts{High: 1}, Findings: []string{"HIGH:CVE-1"}},
+			"report with findings",
+			scan.Report{Status: scan.StatusOK, Counts: scan.Counts{High: 1}, Findings: []string{"HIGH:CVE-1"}},
 			`{"status":"ok","scanner":"","db":null,"counts":{"critical":0,"high":1,"medium":0,"low":0,"unknown":0},"findings":["HIGH:CVE-1"],"detail":null}`,
 		},
 	}

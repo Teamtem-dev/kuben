@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+
 	"github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
@@ -167,14 +169,14 @@ func (p envProvider) Read() (map[string]any, error) {
 // prefix goes (in any case), `__` nests, and the key is lowercased.
 func envEntry(name, value string) (string, any) {
 	name = strings.TrimSpace(name)
-	if len(name) < len(EnvPrefix) || asciiLower(name[:len(EnvPrefix)]) != asciiLower(EnvPrefix) {
+	if len(name) < len(EnvPrefix) || ascii.Lower(name[:len(EnvPrefix)]) != ascii.Lower(EnvPrefix) {
 		return "", nil
 	}
 	key := strings.TrimSpace(strings.ReplaceAll(name[len(EnvPrefix):], EnvSeparator, delim))
 	if slices.Contains(strings.Split(key, delim), "") {
 		return "", nil
 	}
-	return asciiLower(key), parseEnvValue(value)
+	return ascii.Lower(key), parseEnvValue(value)
 }
 
 // nest sets path in m to v; tables merge, anything else is replaced.

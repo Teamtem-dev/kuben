@@ -21,3 +21,18 @@ func TestPlusHoursSaturates(t *testing.T) {
 		t.Fatalf("got %d", got)
 	}
 }
+
+func TestSaturatingSub(t *testing.T) {
+	cases := []struct{ a, b, want int64 }{
+		{10, 3, 7},
+		{math.MinInt64 + 1, 5, math.MinInt64},
+		{math.MaxInt64 - 1, -5, math.MaxInt64},
+		{0, math.MinInt64, math.MaxInt64},
+		{-1, math.MaxInt64, math.MinInt64},
+	}
+	for _, c := range cases {
+		if got := clock.SaturatingSub(c.a, c.b); got != c.want {
+			t.Errorf("SaturatingSub(%d, %d) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}

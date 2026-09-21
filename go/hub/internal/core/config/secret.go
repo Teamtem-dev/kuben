@@ -32,7 +32,9 @@ func (Secret) GoString() string { return redacted }
 
 // Format hides the value from every verb, the ones that are wrong for text
 // (%d) included: fmt would print the value next to its complaint.
-func (Secret) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, redacted) }
+func (Secret) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, redacted) //nolint:errcheck // fmt.Formatter cannot report a write error
+}
 
 // MarshalText hides the value from text encoders (and from JSON map keys).
 func (Secret) MarshalText() ([]byte, error) { return []byte(redacted), nil }

@@ -18,6 +18,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 )
@@ -57,7 +60,7 @@ const (
 // ParseSeverity reads a severity name in any ASCII case, as scanners write
 // them ("HIGH", "high").
 func ParseSeverity(s string) (Severity, error) {
-	switch v := Severity(asciiLower(s)); v {
+	switch v := Severity(ascii.Lower(s)); v {
 	case SeverityUnknown, SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical:
 		return v, nil
 	}
@@ -426,7 +429,7 @@ func Evaluate(gate Gate, scans []Scanned, excepted map[string]struct{}, now int6
 		short := shorten(image.Digest)
 		scan, ok := image.Scan.Get()
 		fresh := ok && scan.Status == StatusOK &&
-			saturatingSub(now, scan.ScannedAt) <= int64(gate.MaxAgeSecs)*1000
+			clock.SaturatingSub(now, scan.ScannedAt) <= int64(gate.MaxAgeSecs)*1000
 		if !fresh {
 			if gate.RequireScan {
 				reasons = append(reasons, short+"… has no fresh vulnerability scan")
@@ -488,31 +491,9 @@ func shorten(digest string) string {
 	return digest[:shortDigest]
 }
 
-func asciiLower(s string) string {
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + ('a' - 'A')
-		}
-	}
-	return string(b)
-}
-
 func saturatingAddU32(a, b uint32) uint32 {
 	if a > math.MaxUint32-b {
 		return math.MaxUint32
 	}
 	return a + b
-}
-
-// saturatingSub is a-b, clamped to the int64 range.
-func saturatingSub(a, b int64) int64 {
-	switch {
-	case b > 0 && a < math.MinInt64+b:
-		return math.MinInt64
-	case b < 0 && a > math.MaxInt64+b:
-		return math.MaxInt64
-	default:
-		return a - b
-	}
 }

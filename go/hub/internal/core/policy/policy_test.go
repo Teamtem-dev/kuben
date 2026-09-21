@@ -58,23 +58,28 @@ func TestInvalidPoliciesAreRefused(t *testing.T) {
 	}{
 		{
 			"too many approvals", func(p *policy.EnvironmentPolicy) { p.RequiredApprovals = 6 },
-			policy.Error{Kind: policy.KindTooManyApprovals}, "at most 5 approvals can be required",
+			policy.Error{Kind: policy.KindTooManyApprovals},
+			"at most 5 approvals can be required",
 		},
 		{
 			"viewers cannot deploy", func(p *policy.EnvironmentPolicy) { p.DeployRole = perm.Viewer },
-			policy.Error{Kind: policy.KindDeployRole, Role: perm.Viewer}, "the deploy role `viewer` cannot deploy",
+			policy.Error{Kind: policy.KindDeployRole, Role: perm.Viewer},
+			"the deploy role `viewer` cannot deploy",
 		},
 		{
 			"developers cannot approve", func(p *policy.EnvironmentPolicy) { p.ApproveRole = perm.Developer },
-			policy.Error{Kind: policy.KindApproveRole, Role: perm.Developer}, "the approve role `developer` cannot approve releases",
+			policy.Error{Kind: policy.KindApproveRole, Role: perm.Developer},
+			"the approve role `developer` cannot approve releases",
 		},
 		{
 			"too short a wait", func(p *policy.EnvironmentPolicy) { p.ApprovalTTLSecs = 10 },
-			policy.Error{Kind: policy.KindApprovalTTL}, "approvals must wait between 300 and 2592000 seconds",
+			policy.Error{Kind: policy.KindApprovalTTL},
+			"approvals must wait between 300 and 2592000 seconds",
 		},
 		{
 			"too long a wait", func(p *policy.EnvironmentPolicy) { p.ApprovalTTLSecs = policy.MaxApprovalTTLSecs + 1 },
-			policy.Error{Kind: policy.KindApprovalTTL}, "approvals must wait between 300 and 2592000 seconds",
+			policy.Error{Kind: policy.KindApprovalTTL},
+			"approvals must wait between 300 and 2592000 seconds",
 		},
 		{
 			"a gate on low findings", func(p *policy.EnvironmentPolicy) { p.Scan.Severity = scan.SeverityLow },
@@ -83,7 +88,8 @@ func TestInvalidPoliciesAreRefused(t *testing.T) {
 		},
 		{
 			"an unknown role", func(p *policy.EnvironmentPolicy) { p.DeployRole = "root" },
-			policy.Error{Kind: policy.KindDeployRole, Role: "root"}, "the deploy role `root` cannot deploy",
+			policy.Error{Kind: policy.KindDeployRole, Role: "root"},
+			"the deploy role `root` cannot deploy",
 		},
 	}
 	for _, tt := range tests {

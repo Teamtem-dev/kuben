@@ -78,11 +78,13 @@ func TestDescribePinsEveryLine(t *testing.T) {
 	}{
 		{support.Minor{Major: 1, Minor: 33}, support.Supported, "Kubernetes 1.33 is supported (tested 1.31 to 1.36)"},
 		{
-			support.Minor{Major: 1, Minor: 40}, support.Untested,
+			support.Minor{Major: 1, Minor: 40},
+			support.Untested,
 			"Kubernetes 1.40 is outside the tested range 1.31 to 1.36; it may work, but it is not supported",
 		},
 		{
-			support.Minor{Major: 1, Minor: 28}, support.Unsupported,
+			support.Minor{Major: 1, Minor: 28},
+			support.Unsupported,
 			"Kubernetes 1.28 is not supported: use 1.29 or newer (tested 1.31 to 1.36)",
 		},
 	} {

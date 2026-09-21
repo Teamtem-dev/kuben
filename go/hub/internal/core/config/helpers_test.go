@@ -11,7 +11,14 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 )
 
-func asError(err error, target **kerr.Error) bool { return errors.As(err, target) }
+// kerrOf is the *kerr.Error in err's chain, by value, and whether there is one.
+func kerrOf(err error) (kerr.Error, bool) {
+	var e *kerr.Error
+	if errors.As(err, &e) && e != nil {
+		return *e, true
+	}
+	return kerr.Error{}, false
+}
 
 // jail is a configuration source that touches neither /etc nor the process
 // environment: a temporary directory holding `kuben.toml` (when local is not

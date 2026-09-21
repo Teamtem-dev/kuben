@@ -109,13 +109,38 @@ type and reproduce the exact wire form; add a test that pins it.
 - Functions stay under 100 lines; split along meaning, not to please the
   linter.
 
-## Local commands
+## Shared helpers (use them, do not copy them)
+
+- `internal/wire`: strict JSON decoding as serde did it (`Required`,
+  `Optional`, `Take`/`TakeOptional` for flattened payloads, `Must[T]` for
+  struct fields). Contract-exact encoding (canonical JSON for hashes) lands
+  here too.
+- `internal/core/ascii`: ASCII-only text operations (Rust's
+  `to_ascii_lowercase`); `strings.ToLower` folds all of Unicode.
+- `internal/core/clock`: time and saturating integer arithmetic.
+
+## Tools and checks
+
+Tool versions are pinned in `go/tools` (`go tool <name>` from anywhere in the
+workspace). golangci-lint is the exception: its authors advise against
+building it from source, so CI runs the official action at a pinned version
+with `.golangci.yml`.
 
 ```bash
-. $TMPDIR/env.sh            # GOPROXY mirror, caches, toolchain (sandbox only)
 cd go/hub
-gofmt -l . && go vet ./... && go test -race ./...
+go tool gofumpt -l .                                   # must print nothing
+go vet ./...
+go tool exhaustive -default-signifies-exhaustive=false -ignore-enum-types '^reflect\.Kind$' ./...
+go tool go-check-sumtype -default-signifies-exhaustive=false ./...
+go tool errcheck -blank -asserts -ignoretests ./...
+go tool nilaway -test=true ./...
+go test -race -shuffle=on ./...
+go tool govulncheck ./...
 ```
 
-Dependencies are added deliberately, by one person at a time: do not run
+In the sandbox only, load the mirror first: `. .cache/go/env.sh`
+(`/.cache` is gitignored; `.cache/go/gofetch.py` fills the module mirror).
+
+Dependencies are added deliberately, by one person at a time, each with a
+row in `go/SUBSTITUTIONS.md` when it replaces Rust behaviour: do not run
 `go get` or `go mod tidy` as a side effect of another change.

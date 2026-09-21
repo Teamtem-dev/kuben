@@ -181,7 +181,8 @@ func TestPreviewConfigEdgeCases(t *testing.T) {
 		{"nested keys are left alone", `{"a":{"imagePullSecrets":[1],"domains":[{"host":"h"}]}}`, `{"a":{"domains":[{"host":"h"}],"imagePullSecrets":[1]}}`, []string{}},
 		{
 			"removed in order", `{"imagePullSecrets":[],"domains":[{"host":"b"},{"host":"a"}],"env":[{"name":"Z","fromSecret":1},{"name":"Y","fromSecret":2}]}`,
-			`{"domains":[],"env":[]}`, []string{"env Z", "env Y", "domain b", "domain a", "image pull secrets"},
+			`{"domains":[],"env":[]}`,
+			[]string{"env Z", "env Y", "domain b", "domain a", "image pull secrets"},
 		},
 	}
 	for _, tt := range tests {

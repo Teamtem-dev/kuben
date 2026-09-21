@@ -10,6 +10,8 @@ package domain
 import (
 	"strings"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+
 	"golang.org/x/net/idna"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
@@ -76,7 +78,7 @@ func uts46() *idna.Profile {
 func Canonical(name string) (string, error) {
 	trimmed := strings.TrimRight(strings.TrimSpace(name), ".")
 	if rest, ok := strings.CutPrefix(trimmed, "*."); ok {
-		return "", &Error{Kind: Wildcard, Name: asciiLower(rest)}
+		return "", &Error{Kind: Wildcard, Name: ascii.Lower(rest)}
 	}
 	ascii, err := uts46().ToASCII(trimmed)
 	if err != nil || !validASCII(ascii) {
@@ -107,16 +109,6 @@ func validASCII(ascii string) bool {
 
 func isAlnum(b byte) bool {
 	return b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
-}
-
-// asciiLower lowers A–Z only, leaving every other byte as it is.
-func asciiLower(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}, s)
 }
 
 // Covers reports whether a claim on claim covers host (both canonical).

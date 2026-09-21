@@ -16,6 +16,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -242,20 +244,10 @@ func mentionsDisk(text opt.Val[string]) bool {
 	if !ok {
 		return false
 	}
-	t = asciiLower(t)
+	t = ascii.Lower(t)
 	return strings.Contains(t, "no space left on device") ||
 		strings.Contains(t, "ephemeral-storage") ||
 		strings.Contains(t, "ephemeral local storage")
-}
-
-// asciiLower lowers A-Z only, so no other letter can come to match.
-func asciiLower(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}, s)
 }
 
 func is(o opt.Val[string], s string) bool {

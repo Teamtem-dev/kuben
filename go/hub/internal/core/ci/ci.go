@@ -109,7 +109,7 @@ func (c GithubClaims) Check(issuer, audience string, now int64) error {
 	if clock.SaturatingAdd(now, ClockLeewaySecs) < notBefore {
 		return TokenNotYetValid
 	}
-	if saturatingSub(c.Exp, c.Iat) > MaxOIDCLifetimeSecs {
+	if clock.SaturatingSub(c.Exp, c.Iat) > MaxOIDCLifetimeSecs {
 		return TokenTooLong
 	}
 	return nil
@@ -255,17 +255,4 @@ func (p TrustPolicy) Evaluate(claims GithubClaims) error {
 		}
 	}
 	return nil
-}
-
-func saturatingSub(a, b int64) int64 {
-	diff := a - b
-	// Overflow exactly when the operands' signs differ and the result's sign
-	// is not a's.
-	if (a < 0) != (b < 0) && (diff < 0) != (a < 0) {
-		if a < 0 {
-			return -1 << 63
-		}
-		return 1<<63 - 1
-	}
-	return diff
 }

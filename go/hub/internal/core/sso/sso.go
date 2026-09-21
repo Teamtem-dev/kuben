@@ -14,6 +14,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
@@ -75,7 +77,7 @@ func (c IDClaims) Check(issuer, clientID, nonce string, now int64) error {
 	if got, ok := c.Nonce.Get(); !ok || got != nonce {
 		return DeniedNonce
 	}
-	if now >= clock.SaturatingAdd(c.Exp, ClockLeewaySecs) || saturatingSub(c.Exp, c.Iat) > MaxIDTokenLifetimeSecs {
+	if now >= clock.SaturatingAdd(c.Exp, ClockLeewaySecs) || clock.SaturatingSub(c.Exp, c.Iat) > MaxIDTokenLifetimeSecs {
 		return DeniedExpired
 	}
 	if clock.SaturatingAdd(now, ClockLeewaySecs) < c.Iat {
@@ -129,7 +131,7 @@ type Person struct {
 // Admit is the person claims names, with the role their groups earn: the
 // strongest mapped one, else the default. The error is a [Denied].
 func (p Policy) Admit(claims IDClaims, groups []string) (Person, error) {
-	email := asciiLower(strings.TrimSpace(claims.Email.Or("")))
+	email := ascii.Lower(strings.TrimSpace(claims.Email.Or("")))
 	if !strings.Contains(email, "@") {
 		return Person{}, DeniedIdentity
 	}
@@ -185,28 +187,4 @@ func SafeReturnTo(path string) string {
 		return path
 	}
 	return "/"
-}
-
-// asciiLower lowercases ASCII letters only, as the addresses are compared
-// byte by byte.
-func asciiLower(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}, s)
-}
-
-func saturatingSub(a, b int64) int64 {
-	diff := a - b
-	// Overflow exactly when the operands' signs differ and the result's sign
-	// is not a's.
-	if (a < 0) != (b < 0) && (diff < 0) != (a < 0) {
-		if a < 0 {
-			return -1 << 63
-		}
-		return 1<<63 - 1
-	}
-	return diff
 }

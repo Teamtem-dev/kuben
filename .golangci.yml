@@ -60,6 +60,8 @@ linters:
         - switch
         - map
       default-signifies-exhaustive: false
+      # Kinds of other packages' enums we deliberately switch on partially.
+      ignore-enum-types: ^reflect\.Kind$
     gochecksumtype:
       default-signifies-exhaustive: false
     funlen:

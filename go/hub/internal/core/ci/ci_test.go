@@ -211,11 +211,13 @@ func TestPoliciesAreValidated(t *testing.T) {
 	}{
 		{
 			with(func(p *ci.TrustPolicy) { p.Refs = nil }),
-			ci.InvalidPolicy{Reason: ci.InvalidRefCount}, "a policy names 1 to 20 refs",
+			ci.InvalidPolicy{Reason: ci.InvalidRefCount},
+			"a policy names 1 to 20 refs",
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.Refs = make([]string, 21) }),
-			ci.InvalidPolicy{Reason: ci.InvalidRefCount}, "a policy names 1 to 20 refs",
+			ci.InvalidPolicy{Reason: ci.InvalidRefCount},
+			"a policy names 1 to 20 refs",
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.Refs = []string{"main"} }),
@@ -239,11 +241,13 @@ func TestPoliciesAreValidated(t *testing.T) {
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.Events = nil }),
-			ci.InvalidPolicy{Reason: ci.InvalidListLength}, "a policy names at most 20 environments and events",
+			ci.InvalidPolicy{Reason: ci.InvalidListLength},
+			"a policy names at most 20 environments and events",
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.Events = []string{"pull_request"} }),
-			ci.InvalidPolicy{Reason: ci.InvalidEvent, Value: "pull_request"}, "unknown or unsafe event \"pull_request\"",
+			ci.InvalidPolicy{Reason: ci.InvalidEvent, Value: "pull_request"},
+			"unknown or unsafe event \"pull_request\"",
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.Role = perm.Owner }),
@@ -257,11 +261,13 @@ func TestPoliciesAreValidated(t *testing.T) {
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.TokenTTLSecs = 7200 }),
-			ci.InvalidPolicy{Reason: ci.InvalidTTL}, "CI tokens live between 60 and 3600 seconds",
+			ci.InvalidPolicy{Reason: ci.InvalidTTL},
+			"CI tokens live between 60 and 3600 seconds",
 		},
 		{
 			with(func(p *ci.TrustPolicy) { p.RepositoryID = 0 }),
-			ci.InvalidPolicy{Reason: ci.InvalidIDs}, "repository and owner ids must be set",
+			ci.InvalidPolicy{Reason: ci.InvalidIDs},
+			"repository and owner ids must be set",
 		},
 	}
 	for _, tc := range cases {

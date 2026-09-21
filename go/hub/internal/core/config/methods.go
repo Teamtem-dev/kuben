@@ -164,6 +164,9 @@ func (c Config) StateDir() string {
 	if dir := c.Server.StateDir.Or(""); dir != "" {
 		return dir
 	}
-	info, err := os.Stat(legacyDataDir)
-	return DefaultDataDir(err == nil && info.IsDir(), os.Getenv)
+	legacy := false
+	if info, err := os.Stat(legacyDataDir); err == nil {
+		legacy = info.IsDir()
+	}
+	return DefaultDataDir(legacy, os.Getenv)
 }

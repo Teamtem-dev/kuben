@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/capacity"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -170,7 +172,7 @@ func (s SsoCfg) Policy() (sso.Policy, error) {
 	}
 	domains := make([]string, 0, len(s.AllowedDomains))
 	for _, d := range s.AllowedDomains {
-		domains = append(domains, asciiLower(strings.TrimLeft(strings.TrimSpace(d), "@")))
+		domains = append(domains, ascii.Lower(strings.TrimLeft(strings.TrimSpace(d), "@")))
 	}
 	return sso.Policy{
 		Groups:               groups,
@@ -178,15 +180,6 @@ func (s SsoCfg) Policy() (sso.Policy, error) {
 		AllowedDomains:       domains,
 		RequireVerifiedEmail: s.RequireVerifiedEmail,
 	}, nil
-}
-
-func asciiLower(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}, s)
 }
 
 // QuotaCfg is `[quota]`: what every organization of the installation may

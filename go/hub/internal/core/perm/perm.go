@@ -108,3 +108,14 @@ func (r Role) Weaker(other Role) Role {
 func (r Role) Grants(p Perm) bool { return slices.Contains(r.Perms(), p) }
 
 func (r Role) String() string { return string(r) }
+
+// UnmarshalText accepts only the four role names, as serde did: JSON, TOML
+// and configuration decoding all go through it.
+func (r *Role) UnmarshalText(text []byte) error {
+	parsed, err := ParseRole(string(text))
+	if err != nil {
+		return err
+	}
+	*r = parsed
+	return nil
+}

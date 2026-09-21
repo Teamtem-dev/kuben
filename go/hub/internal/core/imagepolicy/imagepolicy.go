@@ -15,6 +15,7 @@ package imagepolicy
 
 import (
 	"cmp"
+	"errors"
 	"math"
 	"strings"
 
@@ -158,8 +159,8 @@ func (p Semver) Select(tags []string) opt.Val[string] {
 	var best *semver.Version
 	chosen := opt.None[string]()
 	for _, tag := range tags {
-		v, ok := tagVersion(tag)
-		if !ok || (!wantsPre && v.Prerelease() != "") || !p.Req.Matches(v) {
+		v, err := tagVersion(tag)
+		if err != nil || (!wantsPre && v.Prerelease() != "") || !p.Req.Matches(v) {
 			continue
 		}
 		if best == nil || compareVersions(v, best) >= 0 {
@@ -184,27 +185,29 @@ func (p Glob) Select(tags []string) opt.Val[string] {
 	return chosen
 }
 
+// errNotVersion: a tag that is no version.
+var errNotVersion = errors.New("not a version")
+
 // tagVersion reads a tag as a version: `1.2.3`, `v1.2.3`, `1.2` (as
 // `1.2.0`), `1` (as `1.0.0`). Parsing is strict SemVer 2.0, as in Rust;
 // Masterminds' lenient NewVersion is deliberately not used.
-func tagVersion(tag string) (*semver.Version, bool) {
+func tagVersion(tag string) (*semver.Version, error) {
 	t := strings.TrimPrefix(tag, "v")
 	if v, err := semver.StrictNewVersion(t); err == nil {
-		return v, true
+		return v, nil
 	}
 	switch strings.Count(t, ".") {
 	case 1:
 		t += ".0"
 	case 0:
 		if !allDigits(t) {
-			return nil, false
+			return nil, errNotVersion
 		}
 		t += ".0.0"
 	default:
-		return nil, false
+		return nil, errNotVersion
 	}
-	v, err := semver.StrictNewVersion(t)
-	return v, err == nil
+	return semver.StrictNewVersion(t)
 }
 
 // globMatches matches tag against glob, where `*` is any run of characters
@@ -255,7 +258,7 @@ type chunk struct {
 
 // chunks splits s into runs of ASCII digits and runs of everything else.
 func chunks(s string) []chunk {
-	var out []chunk
+	out := make([]chunk, 0, 4)
 	start := 0
 	for i := 1; i <= len(s); i++ {
 		if i == len(s) || isDigit(s[i]) != isDigit(s[start]) {

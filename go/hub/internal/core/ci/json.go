@@ -1,64 +1,32 @@
 package ci
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 )
 
-type object = map[string]json.RawMessage
-
-func isNull(raw json.RawMessage) bool {
-	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
-}
-
-// required decodes the member key, which must be there and not null.
-func required[T any](o object, key string, out *T) error {
-	raw, ok := o[key]
-	if !ok || isNull(raw) {
-		return fmt.Errorf("missing field `%s`", key)
-	}
-	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("field `%s`: %w", key, err)
-	}
-	return nil
-}
-
-// optional decodes the member key; absent and null are both absent.
-func optional[T any](o object, key string, out *opt.Val[T]) error {
-	raw, ok := o[key]
-	if !ok || isNull(raw) {
-		*out = opt.None[T]()
-		return nil
-	}
-	var v T
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return fmt.Errorf("field `%s`: %w", key, err)
-	}
-	*out = opt.Some(v)
-	return nil
-}
-
 // audiences reads `aud`: one string, or a list of them.
-func audiences(o object, out *[]string) error {
+func audiences(o wire.Object, out *[]string) error {
 	var one string
-	if required(o, "aud", &one) == nil {
+	if wire.Required(o, "aud", &one) == nil {
 		*out = []string{one}
 		return nil
 	}
-	return required(o, "aud", out)
+	return wire.Required(o, "aud", out)
 }
 
 // numericID reads an id GitHub sends as a string, or as a number.
-func numericID(o object, key string, out *uint64) error {
+func numericID(o wire.Object, key string, out *uint64) error {
 	var text string
-	if required(o, key, &text) != nil {
-		return required(o, key, out)
+	if wire.Required(o, key, &text) != nil {
+		return wire.Required(o, key, out)
 	}
 	// Rust's integer parser takes one leading `+`.
 	id, err := strconv.ParseUint(strings.TrimPrefix(text, "+"), 10, 64)
@@ -72,7 +40,7 @@ func numericID(o object, key string, out *uint64) error {
 // UnmarshalJSON reads the claims of a token; every claim without a default
 // must be there.
 func (c *GithubClaims) UnmarshalJSON(data []byte) error {
-	var o object
+	var o wire.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
@@ -81,12 +49,16 @@ func (c *GithubClaims) UnmarshalJSON(data []byte) error {
 		key string
 		out *string
 	}{
-		{"iss", &out.Iss}, {"sub", &out.Sub}, {"jti", &out.Jti},
-		{"repository", &out.Repository}, {"repository_owner", &out.RepositoryOwner},
-		{"ref", &out.GitRef}, {"event_name", &out.EventName},
+		{"iss", &out.Iss},
+		{"sub", &out.Sub},
+		{"jti", &out.Jti},
+		{"repository", &out.Repository},
+		{"repository_owner", &out.RepositoryOwner},
+		{"ref", &out.GitRef},
+		{"event_name", &out.EventName},
 	}
 	for _, f := range text {
-		if err := required(o, f.key, f.out); err != nil {
+		if err := wire.Required(o, f.key, f.out); err != nil {
 			return err
 		}
 	}
@@ -94,19 +66,21 @@ func (c *GithubClaims) UnmarshalJSON(data []byte) error {
 		key string
 		out *opt.Val[string]
 	}{
-		{"environment", &out.Environment}, {"workflow_ref", &out.WorkflowRef},
-		{"run_id", &out.RunID}, {"actor", &out.Actor},
+		{"environment", &out.Environment},
+		{"workflow_ref", &out.WorkflowRef},
+		{"run_id", &out.RunID},
+		{"actor", &out.Actor},
 	}
 	for _, f := range maybe {
-		if err := optional(o, f.key, f.out); err != nil {
+		if err := wire.Optional(o, f.key, f.out); err != nil {
 			return err
 		}
 	}
 	steps := []error{
 		audiences(o, &out.Aud),
-		required(o, "iat", &out.Iat),
-		optional(o, "nbf", &out.Nbf),
-		required(o, "exp", &out.Exp),
+		wire.Required(o, "iat", &out.Iat),
+		wire.Optional(o, "nbf", &out.Nbf),
+		wire.Required(o, "exp", &out.Exp),
 		numericID(o, "repository_id", &out.RepositoryID),
 		numericID(o, "repository_owner_id", &out.RepositoryOwnerID),
 	}
@@ -135,7 +109,7 @@ func (p TrustPolicy) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON reads a policy. Only `environments` may be left out, and
 // the role must be one.
 func (p *TrustPolicy) UnmarshalJSON(data []byte) error {
-	var o object
+	var o wire.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
@@ -144,12 +118,12 @@ func (p *TrustPolicy) UnmarshalJSON(data []byte) error {
 		role string
 	)
 	steps := []error{
-		required(o, "repositoryId", &out.RepositoryID),
-		required(o, "repositoryOwnerId", &out.RepositoryOwnerID),
-		required(o, "refs", &out.Refs),
-		required(o, "events", &out.Events),
-		required(o, "role", &role),
-		required(o, "tokenTtlSecs", &out.TokenTTLSecs),
+		wire.Required(o, "repositoryId", &out.RepositoryID),
+		wire.Required(o, "repositoryOwnerId", &out.RepositoryOwnerID),
+		wire.Required(o, "refs", &out.Refs),
+		wire.Required(o, "events", &out.Events),
+		wire.Required(o, "role", &role),
+		wire.Required(o, "tokenTtlSecs", &out.TokenTTLSecs),
 	}
 	for _, err := range steps {
 		if err != nil {
@@ -157,7 +131,7 @@ func (p *TrustPolicy) UnmarshalJSON(data []byte) error {
 		}
 	}
 	if raw, ok := o["environments"]; ok {
-		if err := required(object{"environments": raw}, "environments", &out.Environments); err != nil {
+		if err := wire.Required(wire.Object{"environments": raw}, "environments", &out.Environments); err != nil {
 			return err
 		}
 	}
