@@ -127,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	forbidden := func(w http.ResponseWriter) { problem.Write(w, s.deps.Logger, kerr.ErrForbidden) }
 
 	var rest http.Handler = s.routes
+	rest = s.gate(rest)
 	rest = s.audit(rest)
 	rest = http.TimeoutHandler(rest, time.Duration(s.deps.Config.Server.RequestTimeoutSecs)*time.Second,
 		`{"code":"timeout","title":"Request Timeout","status":408}`)

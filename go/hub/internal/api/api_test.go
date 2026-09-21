@@ -235,3 +235,18 @@ func TestSetupNeedsATokenOffLoopback(t *testing.T) {
 }
 
 func optString(s string) opt.Val[string] { return opt.Some(s) }
+
+// An anonymous client learns nothing from validation: authentication comes
+// before the body is read, as in the Rust extractors.
+func TestAnonymousRequestsAreRefusedBeforeDecoding(t *testing.T) {
+	c := newServer(t, nil)
+	if status, body, _ := c.do("POST", "/api/v1/tokens", map[string]any{"name": 42}); status != 401 || body["code"] != "unauthorized" {
+		t.Fatalf("got %d %v", status, body)
+	}
+	if status, _, _ := c.do("GET", "/api/v1/audit?limit=abc", nil); status != 401 {
+		t.Fatalf("got %d", status)
+	}
+	if status, body, _ := c.do("POST", "/api/v1/auth/login", map[string]any{"email": 1}); status != 422 || body["code"] != "validation_failed" {
+		t.Fatalf("a public operation still validates: %d %v", status, body)
+	}
+}
