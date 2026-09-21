@@ -1,0 +1,2 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"Project","metadata":{"name":"shop","labels":{"kuben.dev/org":"acme"}},
+ "spec":{ "displayName": "Shop" }}

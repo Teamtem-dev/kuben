@@ -1,0 +1,75 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "Release",
+  "metadata": {
+    "labels": {
+      "kuben.dev/app": "api"
+    },
+    "name": "api-7",
+    "namespace": "kb-shop-prod"
+  },
+  "spec": {
+    "app": "api",
+    "imageDigest": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "gitSha": "0123456789abcdef0123456789abcdef01234567",
+    "appSpec": {
+      "source": {
+        "git": {
+          "repo": "https://github.com/acme/shop",
+          "branch": "main",
+          "build": {
+            "strategy": "auto"
+          }
+        }
+      },
+      "runtime": {
+        "processes": {
+          "web": {
+            "port": 3000,
+            "size": "small",
+            "replicas": {
+              "min": 1,
+              "max": 1
+            },
+            "idle": {
+              "mode": "zero",
+              "after": "15m"
+            }
+          }
+        }
+      },
+      "env": [
+        {
+          "name": "DATABASE_URL",
+          "fromSecret": {
+            "name": "db",
+            "key": "url"
+          }
+        }
+      ],
+      "domains": [
+        {
+          "host": "api.acme.com",
+          "tls": "auto"
+        }
+      ]
+    },
+    "secretRefs": [
+      {
+        "name": "db",
+        "resourceVersion": "1234"
+      }
+    ],
+    "createdBy": "webhook:github"
+  },
+  "status": {
+    "phase": "Active",
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "reason": "RolledOut"
+      }
+    ]
+  }
+}

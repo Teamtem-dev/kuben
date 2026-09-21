@@ -1,0 +1,23 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "ApplicationRuntime",
+  "metadata": {
+    "name": "web",
+    "namespace": "kb-shop-prod"
+  },
+  "spec": {
+    "targetId": "t",
+    "lifecycleUid": "l",
+    "controlEpoch": 0,
+    "generation": 1,
+    "inputHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "releaseId": "r",
+    "plan": {
+      "id": "p",
+      "rendererVersion": "v",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "resources": "[]"
+    }
+  },
+  "status": {}
+}

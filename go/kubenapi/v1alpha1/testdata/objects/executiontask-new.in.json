@@ -1,0 +1,3 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"ExecutionTask","metadata":{"name":"build-1","namespace":"kb-shop-prod","finalizers":["kuben.dev/receipt"]},
+ "spec":{ "kind": "Build", "operationId": "0199a0c0-0000-7000-8000-000000000001", "attempt": 1,
+   "input": "{\"source\":\"git\"}", "inputHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "deadline": "2026-09-15T12:00:00Z" }}

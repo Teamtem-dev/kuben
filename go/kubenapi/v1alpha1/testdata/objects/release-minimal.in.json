@@ -1,0 +1,4 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"Release","metadata":{"name":"api-1","namespace":"kb-shop-prod"},
+ "spec":{ "app": "api", "imageDigest": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+   "appSpec": { "source": { "image": "ghcr.io/acme/api:1.0.0" }, "runtime": { "processes": { "web": { "port": 3000 } } } } },
+ "status": { "phase": "Pending" }}

@@ -1,0 +1,36 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "ExecutionTask",
+  "metadata": {
+    "name": "backup-2",
+    "namespace": "kb-shop-prod"
+  },
+  "spec": {
+    "kind": "PlatformChange",
+    "operationId": "0199a0c0-0000-7000-8000-000000000001",
+    "attempt": 2,
+    "input": "{}",
+    "inputHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "deadline": "2026-09-15T12:00:00Z",
+    "cancel": {
+      "requestedAt": "2026-09-15T11:00:00Z",
+      "reason": "user"
+    }
+  },
+  "status": {
+    "phase": "Cancelled",
+    "startedAt": "2026-09-15T10:00:00Z",
+    "receipt": {
+      "outcome": "Cancelled",
+      "finishedAt": "2026-09-15T11:30:00Z",
+      "result": "{\"partial\":true}",
+      "message": "stopped"
+    },
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "False"
+      }
+    ]
+  }
+}

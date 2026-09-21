@@ -1,0 +1,2 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"BuildRun","metadata":{"name":"x"},
+ "spec":{ "app": "a", "repo": "r", "gitRef": "g", "image": "i", "strategy": "buildpacks" }}

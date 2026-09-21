@@ -1,0 +1,13 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"App","metadata":{"name":"api","namespace":"kb-shop-prod","labels":{"kuben.dev/project":"shop","kuben.dev/environment":"shop-prod"}},
+ "spec":{
+  "source": { "image": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+  "runtime": { "processes": {
+      "web": { "port": 3000, "size": "small", "replicas": { "min": 2, "max": 4 } },
+      "worker": { "command": ["bin/worker"], "size": "nano" }
+  }, "healthCheck": { "path": "/healthz" } },
+  "env": [
+      { "name": "LOG_LEVEL", "value": "info" },
+      { "name": "DATABASE_URL", "fromSecret": { "name": "db", "key": "url" } }
+  ],
+  "domains": [{ "host": "api.acme.com" }]
+ }}

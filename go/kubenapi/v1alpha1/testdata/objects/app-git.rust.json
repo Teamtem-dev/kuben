@@ -1,0 +1,50 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "App",
+  "metadata": {
+    "name": "shop",
+    "namespace": "kb-shop-dev"
+  },
+  "spec": {
+    "source": {
+      "git": {
+        "repo": "https://github.com/acme/shop",
+        "branch": "main",
+        "build": {
+          "strategy": "auto"
+        }
+      }
+    },
+    "runtime": {
+      "processes": {
+        "web": {
+          "port": 8080,
+          "size": "small",
+          "replicas": {
+            "min": 2,
+            "max": 4
+          }
+        }
+      }
+    },
+    "env": [
+      {
+        "name": "LOG_LEVEL",
+        "value": "info"
+      }
+    ],
+    "domains": [
+      {
+        "host": "api.acme.com",
+        "tls": "auto"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "data",
+        "mountPath": "/data",
+        "size": "1Gi"
+      }
+    ]
+  }
+}

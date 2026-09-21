@@ -1,0 +1,137 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "App",
+  "metadata": {
+    "annotations": {
+      "a": "b"
+    },
+    "creationTimestamp": "2026-09-01T10:00:00Z",
+    "finalizers": [
+      "kuben.dev/app"
+    ],
+    "generation": 3,
+    "name": "full",
+    "namespace": "kb-shop-prod",
+    "resourceVersion": "42",
+    "uid": "8d7f0e9a-0000-4000-8000-000000000001"
+  },
+  "spec": {
+    "source": {
+      "git": {
+        "repo": "https://github.com/acme/shop",
+        "branch": "release",
+        "path": "services/api",
+        "build": {
+          "strategy": "dockerfile",
+          "dockerfile": "Dockerfile.prod"
+        }
+      }
+    },
+    "runtime": {
+      "processes": {
+        "cache": {
+          "port": 6379,
+          "size": "nano",
+          "replicas": {
+            "min": 1,
+            "max": 3
+          },
+          "idle": {
+            "mode": "off",
+            "after": "15m"
+          },
+          "protocol": "tcp"
+        },
+        "web": {
+          "command": [
+            "./server",
+            "--port",
+            "8080"
+          ],
+          "port": 8080,
+          "size": "medium",
+          "replicas": {
+            "min": 0,
+            "max": 10
+          },
+          "idle": {
+            "mode": "zero",
+            "after": "30m"
+          }
+        },
+        "worker": {
+          "size": "small",
+          "replicas": {
+            "min": 1,
+            "max": 1
+          },
+          "idle": {
+            "mode": "throttle",
+            "after": "15m"
+          }
+        }
+      },
+      "healthCheck": {
+        "path": "/healthz",
+        "port": 8081
+      },
+      "fsGroup": 1000
+    },
+    "env": [
+      {
+        "name": "A",
+        "value": ""
+      },
+      {
+        "name": "B",
+        "fromSecret": {
+          "name": "s",
+          "key": "k"
+        }
+      },
+      {
+        "name": "C",
+        "fromService": {
+          "name": "db",
+          "key": "url"
+        }
+      }
+    ],
+    "domains": [
+      {
+        "host": "a.example.com",
+        "tls": "none"
+      },
+      {
+        "host": "b.example.com",
+        "tls": "my-cert"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "data",
+        "mountPath": "/data",
+        "size": "10Gi",
+        "storageClass": "fast"
+      }
+    ],
+    "imagePullSecrets": [
+      "regcred"
+    ]
+  },
+  "status": {
+    "observedGeneration": 3,
+    "currentRelease": "full-7",
+    "url": "https://a.example.com",
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "reason": "Deployed",
+        "message": "ok",
+        "lastTransitionTime": "2026-09-01T10:05:00Z",
+        "observedGeneration": 3
+      }
+    ]
+  }
+}

@@ -130,18 +130,18 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-core | `ops/outcome.rs` | 564 | 9 | core/ops/outcome | ported | |
 | kuben-core | `ops/run.rs` | 431 | 10 | core/ops/run | ported | |
 | kuben-core | `ops/target.rs` | 358 | 8 | core/ops/target | ported | |
-| kuben-crd | `lib.rs` | 93 | 3 |  | todo | |
-| kuben-crd | `bin/crdgen.rs` | 24 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/app.rs` | 327 | 2 |  | todo | |
-| kuben-crd | `v1alpha1/buildrun.rs` | 55 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/common.rs` | 63 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/config.rs` | 133 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/environment.rs` | 112 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/mod.rs` | 21 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/project.rs` | 65 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/release.rs` | 57 | 0 |  | todo | |
-| kuben-crd | `v1alpha1/runtime.rs` | 228 | 6 |  | todo | |
-| kuben-crd | `v1alpha1/task.rs` | 228 | 4 |  | todo | |
+| kuben-crd | `lib.rs` | 93 | 3 | kubenapi/v1alpha1 (register.go, constants.go) | ported | 3/3 tests (register_test.go; the insta snapshot is compared with the manifest's App CRD) + names/scopes/printer columns, scheme, labels |
+| kuben-crd | `bin/crdgen.rs` | 24 | 0 |  | dropped | the manifest charts/kuben/crds/kuben.dev_all.yaml is frozen until 2.1, then controller-gen generates it from the markers |
+| kuben-crd | `v1alpha1/app.rs` | 327 | 2 | kubenapi/v1alpha1 (app.go) | ported | 2/2 tests (app_test.go) + 4 zero-value/enum tests; wire form pinned by testdata/objects against the Rust oracle |
+| kuben-crd | `v1alpha1/buildrun.rs` | 55 | 0 | kubenapi/v1alpha1 (buildrun.go) | ported | testdata/objects fixtures |
+| kuben-crd | `v1alpha1/common.rs` | 63 | 0 | kubenapi/v1alpha1 (common.go, enum.go) | ported | testdata/objects fixtures |
+| kuben-crd | `v1alpha1/config.rs` | 133 | 0 | kubenapi/v1alpha1 (config.go) | ported | testdata/objects fixtures; TestDefaultsAreFreshValues |
+| kuben-crd | `v1alpha1/environment.rs` | 112 | 0 | kubenapi/v1alpha1 (environment.go) | ported | testdata/objects fixtures |
+| kuben-crd | `v1alpha1/mod.rs` | 21 | 0 | kubenapi/v1alpha1 | ported | module list only |
+| kuben-crd | `v1alpha1/project.rs` | 65 | 0 | kubenapi/v1alpha1 (project.go) | ported | testdata/objects fixtures |
+| kuben-crd | `v1alpha1/release.rs` | 57 | 0 | kubenapi/v1alpha1 (release.go) | ported | testdata/objects fixtures |
+| kuben-crd | `v1alpha1/runtime.rs` | 228 | 6 | kubenapi/v1alpha1 (runtime.go) | ported | 6/6 tests (runtime_test.go): CEL and OpenAPI rules of the manifest run by the apiextensions-apiserver validators |
+| kuben-crd | `v1alpha1/task.rs` | 228 | 4 | kubenapi/v1alpha1 (task.go) | ported | 4/4 tests (task_test.go), same validators |
 | kuben-platform | `activator.rs` | 22 | 0 |  | todo | |
 | kuben-platform | `agentlink.rs` | 580 | 3 |  | todo | |
 | kuben-platform | `discovery.rs` | 734 | 5 |  | todo | |

@@ -1,0 +1,4 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"App","metadata":{"name":"s"},
+ "spec":{ "source": {}, "runtime": { "processes": {} }, "env": [], "domains": [], "volumes": [], "imagePullSecrets": [] },
+ "status": {}
+}

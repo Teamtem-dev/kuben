@@ -1,0 +1,8 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"App","metadata":{"name":"db","namespace":"kb-shop-dev"},
+ "spec":{
+  "source": { "image": "postgres:17-alpine" },
+  "runtime": { "processes": {
+    "db": { "port": 5432, "protocol": "tcp" },
+    "backup": { "schedule": "0 3 * * *", "timeZone": "Europe/Berlin", "protocol": "http" }
+  } }
+ }}

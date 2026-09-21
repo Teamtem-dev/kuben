@@ -1,0 +1,7 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"App","metadata":{"name":"api","namespace":"kb-shop-prod"},
+ "spec":{
+  "source": { "image": "busybox@sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+  "runtime": { "processes": {
+      "tick": { "command": ["sh", "-c", "echo tick"], "schedule": "*/30 * * * *", "size": "nano" }
+  } }
+ }}

@@ -1,0 +1,53 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "ApplicationRuntime",
+  "metadata": {
+    "name": "web",
+    "namespace": "kb-shop-prod"
+  },
+  "spec": {
+    "targetId": "0199a0c0-0000-7000-8000-000000000001",
+    "lifecycleUid": "0199a0c0-0000-7000-8000-000000000002",
+    "controlEpoch": 3,
+    "generation": 5,
+    "inputHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "releaseId": "0199a0c0-0000-7000-8000-000000000003",
+    "plan": {
+      "id": "0199a0c0-0000-7000-8000-000000000004",
+      "rendererVersion": "kuben-renderer/1",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "resources": "[{\"kind\":\"Deployment\"}]"
+    }
+  },
+  "status": {
+    "observedGeneration": 5,
+    "effectiveGeneration": 4,
+    "effectiveRelease": "0199a0c0-0000-7000-8000-000000000009",
+    "recoveryLatch": {
+      "generation": 5,
+      "reason": "RolloutFailed",
+      "since": "2026-09-15T11:00:00Z"
+    },
+    "inventory": [
+      {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "name": "web",
+        "uid": "u-1"
+      },
+      {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "name": "web"
+      }
+    ],
+    "inventoryHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "False",
+        "reason": "RolloutFailed"
+      }
+    ]
+  }
+}

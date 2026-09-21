@@ -1,0 +1,20 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "Project",
+  "metadata": {
+    "name": "shop"
+  },
+  "spec": {
+    "displayName": "Shop",
+    "description": "The shop",
+    "previews": {
+      "max": 10,
+      "template": "shop-dev"
+    }
+  },
+  "status": {
+    "observedGeneration": 2,
+    "environments": 3,
+    "conditions": []
+  }
+}

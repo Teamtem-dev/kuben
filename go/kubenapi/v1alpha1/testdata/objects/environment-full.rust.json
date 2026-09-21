@@ -1,0 +1,37 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "Environment",
+  "metadata": {
+    "name": "shop-pr-12"
+  },
+  "spec": {
+    "project": "shop",
+    "type": "preview",
+    "deletionPolicy": "Delete",
+    "protection": {
+      "requireApprovals": 0,
+      "deletionGrace": "168h"
+    },
+    "quota": {
+      "cpu": "4",
+      "memory": "8Gi",
+      "pods": 20
+    },
+    "ttl": {
+      "idle": "48h",
+      "max": "14d"
+    }
+  },
+  "status": {
+    "observedGeneration": 1,
+    "namespace": "kb-shop-pr-12",
+    "phase": "Ready",
+    "deletionScheduledAt": "2026-09-30T00:00:00Z",
+    "conditions": [
+      {
+        "type": "Ready",
+        "status": "True"
+      }
+    ]
+  }
+}
