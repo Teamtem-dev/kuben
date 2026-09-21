@@ -186,16 +186,16 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-platform | `projection/informer.rs` | 273 | 0 |  | todo | |
 | kuben-platform | `projection/mod.rs` | 792 | 7 |  | todo | |
 | kuben-platform | `projection/views.rs` | 526 | 2 |  | todo | |
-| kuben-store | `db.rs` | 195 | 2 |  | todo | |
-| kuben-store | `lib.rs` | 13 | 0 |  | todo | |
-| kuben-store | `testing.rs` | 55 | 0 |  | todo | |
+| kuben-store | `db.rs` | 195 | 2 | store (store.go, pool.go, errors.go) | ported | 2 → 4 Go tests (+ error messages, id encoding); acquire timeout via a pool wrapper |
+| kuben-store | `lib.rs` | 13 | 0 | store (package doc) | ported | |
+| kuben-store | `testing.rs` | 55 | 0 | store/pgtest | ported | skip → failure with KUBEN_REQUIRE_PG=1; schema dropped after the test; `Schema` for migrator tests |
 | kuben-store | `repo/acceptance.rs` | 451 | 3 |  | todo | |
 | kuben-store | `repo/agents.rs` | 875 | 7 |  | todo | |
-| kuben-store | `repo/audit.rs` | 130 | 0 |  | todo | |
+| kuben-store | `repo/audit.rs` | 130 | 0 | store (audit.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/backups.rs` | 357 | 2 |  | todo | |
 | kuben-store | `repo/builds.rs` | 1794 | 11 |  | todo | |
 | kuben-store | `repo/capabilities.rs` | 198 | 1 |  | todo | |
-| kuben-store | `repo/catalog.rs` | 711 | 2 |  | todo | |
+| kuben-store | `repo/catalog.rs` | 711 | 2 | store (catalog.go, partial) | todo | environments/environment ported with the projects half of lists_what_the_api_shows; apps, runs, run phases, config revisions, domains, application left |
 | kuben-store | `repo/ci.rs` | 471 | 3 |  | todo | |
 | kuben-store | `repo/controls.rs` | 707 | 2 |  | todo | |
 | kuben-store | `repo/deployments.rs` | 1290 | 4 |  | todo | |
@@ -208,25 +208,25 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-store | `repo/mod.rs` | 88 | 0 |  | todo | |
 | kuben-store | `repo/notify.rs` | 749 | 3 |  | todo | |
 | kuben-store | `repo/operations.rs` | 804 | 5 |  | todo | |
-| kuben-store | `repo/orgs.rs` | 320 | 0 |  | todo | |
+| kuben-store | `repo/orgs.rs` | 320 | 0 | store (orgs.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/policies.rs` | 888 | 8 |  | todo | |
 | kuben-store | `repo/previews.rs` | 740 | 2 |  | todo | |
-| kuben-store | `repo/product.rs` | 693 | 3 |  | todo | |
+| kuben-store | `repo/product.rs` | 693 | 3 | store (tenant.go) | ported | 3 → 3 |
 | kuben-store | `repo/releases.rs` | 144 | 0 |  | todo | |
 | kuben-store | `repo/resolve.rs` | 244 | 2 |  | todo | |
 | kuben-store | `repo/retention.rs` | 182 | 2 |  | todo | |
 | kuben-store | `repo/rollups.rs` | 145 | 1 |  | todo | |
 | kuben-store | `repo/scans.rs` | 683 | 3 |  | todo | |
 | kuben-store | `repo/secrets.rs` | 1283 | 5 |  | todo | |
-| kuben-store | `repo/sessions.rs` | 125 | 0 |  | todo | |
+| kuben-store | `repo/sessions.rs` | 125 | 0 | store (sessions.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/sso.rs` | 326 | 3 |  | todo | |
 | kuben-store | `repo/status.rs` | 244 | 1 |  | todo | |
 | kuben-store | `repo/support.rs` | 160 | 1 |  | todo | |
-| kuben-store | `repo/throttle.rs` | 64 | 0 |  | todo | |
-| kuben-store | `repo/tokens.rs` | 154 | 0 |  | todo | |
-| kuben-store | `repo/upgrades.rs` | 260 | 1 |  | todo | |
+| kuben-store | `repo/throttle.rs` | 64 | 0 | store (throttle.go) | ported | covered by the tests/matrix.rs port |
+| kuben-store | `repo/tokens.rs` | 154 | 0 | store (tokens.go) | ported | covered by the tests/matrix.rs port |
+| kuben-store | `repo/upgrades.rs` | 260 | 1 | store (upgrades.go) | ported | 1 → 3 Go tests (+ version order, char truncation) |
 | kuben-store | `repo/usage.rs` | 127 | 1 |  | todo | |
-| kuben-store | `repo/users.rs` | 140 | 0 |  | todo | |
+| kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 |  | todo | |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 |  | todo | |
 | kuben-api | `tests/http.rs` | 3927 | 44 |  | todo | |
@@ -235,7 +235,7 @@ Status: `todo` · `ported` (written, tests green, not yet reviewed) · `reviewed
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 |  | todo | |
 | kuben-platform | `tests/materializer.rs` | 633 | 5 |  | todo | |
 | kuben-platform | `tests/two_writer_cas.rs` | 185 | 3 |  | todo | |
-| kuben-store | `tests/matrix.rs` | 261 | 1 |  | todo | |
+| kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go, partial) | todo | every identity section ported; the releases section waits for repo/releases.rs |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; ported 27.
+Totals: 231 files, 87964 lines, 685 Rust tests; ported 38.
