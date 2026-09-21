@@ -8,7 +8,7 @@ fn main() -> std::io::Result<()> {
     let mut out = String::new();
     for crd in kuben_crd::all_crds() {
         out.push_str("---\n");
-        out.push_str(&serde_yaml_ng::to_string(&crd).expect("CRD serializes to YAML"));
+        out.push_str(&kuben_crd::manifest_yaml(&crd));
     }
     emit(std::env::args_os().nth(1), &out)
 }

@@ -571,9 +571,9 @@ spec:
                               description: Inactivity before sleeping, e.g. `15m`.
                               type: string
                             mode:
-                              default: off
+                              default: 'off'
                               enum:
-                              - off
+                              - 'off'
                               - zero
                               - throttle
                               type: string
@@ -886,9 +886,9 @@ spec:
                                   description: Inactivity before sleeping, e.g. `15m`.
                                   type: string
                                 mode:
-                                  default: off
+                                  default: 'off'
                                   enum:
-                                  - off
+                                  - 'off'
                                   - zero
                                   - throttle
                                   type: string
