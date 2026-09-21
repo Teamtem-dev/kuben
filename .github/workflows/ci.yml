@@ -178,6 +178,62 @@ jobs:
       - run: cd go/hub && go tool govulncheck ./...
       - run: scripts/rust-drift.sh
 
+  oracle:
+    name: Go matches Rust (oracle)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: kuben
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PG: postgres://postgres:kuben@localhost:5432
+      REFEREE: v1.2.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/hub/go.mod
+          cache-dependency-path: "go/*/go.sum"
+      - uses: $/.github/actions/setup
+      # The released Rust binary is the referee (plan §3, principle 4).
+      - name: Fetch the Rust referee
+        run: |
+          asset=kuben-x86_64-unknown-linux-musl.tar.gz
+          base=https://github.com/Teamtem-dev/kuben/releases/download/$REFEREE
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/$asset" && curl -fsSLO "$base/$asset.sha256"
+          echo "$(cut -d' ' -f1 "$asset.sha256")  $asset" | sha256sum -c -
+          mkdir rust && tar -xzf "$asset" -C rust && find rust -name kuben -type f -exec mv {} kuben-rust \;
+      - run: bun turbo run hub#build
+      - name: Start both servers on empty databases
+        run: |
+          psql "$PG/postgres" -c 'CREATE DATABASE rust' -c 'CREATE DATABASE go'
+          start() { # <binary> <db> <port>
+            KUBEN_DATABASE__URL="$PG/$2" KUBEN_SERVER__BIND="127.0.0.1:$3" KUBEN_SERVER__STATE_DIR="$RUNNER_TEMP/state-$2" \
+              "$1" serve >"$RUNNER_TEMP/$2.log" 2>&1 &
+          }
+          start "$RUNNER_TEMP/kuben-rust" rust 3001
+          start "$PWD/go/hub/bin/kuben" go 3002
+          for port in 3001 3002; do
+            for _ in $(seq 60); do curl -fs "http://127.0.0.1:$port/readyz" && break; sleep 1; done
+          done
+      - run: go test -run TestSkeletonMatchesRust -v ./test/oracle/
+        working-directory: go/hub
+        env:
+          KUBEN_ORACLE_RUST: http://127.0.0.1:3001
+          KUBEN_ORACLE_GO: http://127.0.0.1:3002
+      - if: failure()
+        run: tail -n 100 "$RUNNER_TEMP/rust.log" "$RUNNER_TEMP/go.log"
+
   postgres:
     name: Store matrix (PostgreSQL 17)
     needs: changes
@@ -585,7 +641,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, go, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
+    needs: [changes, fmt, clippy, test, go, oracle, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

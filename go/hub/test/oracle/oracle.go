@@ -131,7 +131,11 @@ func (c *Client) Do(s Step) (Result, error) {
 		}
 	}
 	var decoded any
-	if len(raw) > 0 && json.Unmarshal(raw, &decoded) == nil {
+	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+		// The console's page names hashed assets of its own build: only
+		// the headers are the contract.
+		r.Body = "<html>"
+	} else if len(raw) > 0 && json.Unmarshal(raw, &decoded) == nil {
 		r.Body = normalizeJSON(decoded)
 	} else if len(raw) > 0 {
 		r.Body = Normalize(string(raw))
