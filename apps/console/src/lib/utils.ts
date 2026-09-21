@@ -1,6 +1,7 @@
-/**
- * Class-name merging for Tailwind (shadcn's `cn`). The generated components
- * import it straight from the `cn` package; hand-written code imports it from
- * here so there is one implementation.
- */
-export { cn } from 'cn'
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+/** Class-name merging for Tailwind (shadcn's `cn`): later classes win. */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}

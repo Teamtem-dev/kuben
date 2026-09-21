@@ -60,3 +60,12 @@ first override), so the files stay byte-for-byte comparable with upstream.
 - The generated components import `cn` from the `cn` package (shadcn's
   compiled replacement for clsx + tailwind-merge); `src/lib/utils.ts`
   re-exports it for hand-written code.
+
+## `cn` import (all files)
+
+shadcn CLI 4.21 generates `import { cn } from "cn"`, a package first
+published on the day it was installed; ADR-024 waits seven days before
+taking a new release. The components import `cn` from `@/lib/utils`
+instead (clsx + tailwind-merge, shadcn's classic implementation), the
+alias `components.json` names. Re-apply after `shadcn add`:
+`sed -i '' 's#from "cn"#from "@/lib/utils"#' src/components/ui/*.tsx`.
