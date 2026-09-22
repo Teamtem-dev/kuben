@@ -16,14 +16,16 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/problem"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/stream"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/web"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -33,8 +35,13 @@ type Deps struct {
 	Store  *store.Store
 	Hasher *auth.Hasher
 	Health *health.Health
-	// Stream feeds /api/v1/stream; stream.Empty{} without a cluster.
-	Stream stream.Source
+	// Cluster is the registry of clusters, absent when Kuben runs without
+	// one (setup and diagnosis only).
+	Cluster opt.Val[*registry.Registry]
+	// Projections are the read models of the cluster; they feed
+	// /api/v1/stream and the readiness of projects, environments and apps.
+	// Empty without a cluster; a fresh set when nil.
+	Projections *projection.Projections
 	// Console serves every non-API path; web.New() in production.
 	Console http.Handler
 	Clock   clock.Clock
@@ -65,8 +72,8 @@ func New(deps Deps) (*Server, error) {
 	if deps.Clock == nil {
 		deps.Clock = clock.System{}
 	}
-	if deps.Stream == nil {
-		deps.Stream = stream.Empty{}
+	if deps.Projections == nil {
+		deps.Projections = projection.New()
 	}
 	if deps.Console == nil {
 		deps.Console = web.New()

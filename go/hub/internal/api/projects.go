@@ -7,7 +7,9 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -22,10 +24,10 @@ func Timestamp(ms int64) string {
 	return time.UnixMilli(ms).UTC().Format(time.RFC3339Nano)
 }
 
-// projectDto is routes/projects.rs ProjectDto::of. Readiness comes from the
-// projections of the cluster (slice S1); without them it is false, as in
-// Rust without a cluster.
-func projectDto(org ids.OrgID, p store.Project) gen.ProjectDto {
+// projectDto is routes/projects.rs ProjectDto::of: ready when the
+// project's projection is ready and the project is not being deleted.
+func projectDto(org ids.OrgID, p store.Project, view opt.Val[projection.ProjectView]) gen.ProjectDto {
+	v, seen := view.Get()
 	return gen.ProjectDto{
 		Name:         p.Slug,
 		UID:          gen.NewOptNilString(p.ID.String()),
@@ -33,7 +35,7 @@ func projectDto(org ids.OrgID, p store.Project) gen.ProjectDto {
 		Description:  optNilString(p.Description),
 		Org:          gen.NewOptNilString(org.String()),
 		Environments: int32(min(p.Environments, 1<<31-1)), //nolint:gosec // bounded
-		Ready:        false,
+		Ready:        seen && v.Ready && !p.Deleting,
 		Deleting:     p.Deleting,
 		CreatedAt:    gen.NewOptNilString(Timestamp(p.CreatedAt)),
 	}
@@ -52,7 +54,7 @@ func (s *Server) ListProjects(ctx context.Context) ([]gen.ProjectDto, error) {
 			return nil, err
 		}
 		for _, p := range projects {
-			items = append(items, projectDto(org, p))
+			items = append(items, projectDto(org, p, s.projectView(org, p.Slug)))
 		}
 	}
 	return items, nil
@@ -80,6 +82,6 @@ func (s *Server) GetProject(ctx context.Context, params gen.GetProjectParams) (g
 	if _, err := a.Require(perm.ProjectRead, p.chain()); err != nil {
 		return nil, err //nolint:wrapcheck // a kerr already
 	}
-	dto := projectDto(p.org, p.project)
+	dto := projectDto(p.org, p.project, p.view)
 	return &dto, nil
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 
 	"github.com/go-faster/jx"
@@ -46,9 +47,9 @@ func (s *Server) GetHealthDetails(ctx context.Context) (*gen.HealthDetails, erro
 	return &gen.HealthDetails{
 		Ready:      s.deps.Health.IsReady(),
 		Database:   s.deps.Store.Backend(),
-		Cluster:    false,
-		Seq:        0,
-		Pods:       0,
+		Cluster:    s.deps.Cluster.IsSome(),
+		Seq:        int64(min(s.deps.Projections.Seq(), math.MaxInt64)), //nolint:gosec // bounded
+		Pods:       s.deps.Projections.PodCount(),
 		Subsystems: subsystems,
 	}, nil
 }

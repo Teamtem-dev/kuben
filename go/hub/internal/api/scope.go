@@ -9,6 +9,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -48,6 +49,9 @@ func EnvironmentShortName(project, resource string) string {
 type projectScope struct {
 	org     ids.OrgID
 	project store.Project
+	// view is the project's projection, when the cluster has it for this
+	// organization.
+	view opt.Val[projection.ProjectView]
 }
 
 func (p projectScope) chain() authz.ScopeChain {
@@ -67,10 +71,20 @@ func (s *Server) findProject(ctx context.Context, a access.Access, name string) 
 			return projectScope{}, err
 		}
 		if ok {
-			return projectScope{org: org, project: found}, nil
+			return projectScope{org: org, project: found, view: s.projectView(org, found.Slug)}, nil
 		}
 	}
 	return projectScope{}, scopeNotFound("project", name)
+}
+
+// projectView is the projection of project slug, unless it belongs to
+// another organization than org.
+func (s *Server) projectView(org ids.OrgID, slug string) opt.Val[projection.ProjectView] {
+	v, ok := s.deps.Projections.Project(slug)
+	if !ok || v.Org != opt.Some(org.String()) {
+		return opt.None[projection.ProjectView]()
+	}
+	return opt.Some(*v)
 }
 
 func (s *Server) projectNamed(ctx context.Context, org ids.OrgID, name string) (store.Project, bool, error) {

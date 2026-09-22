@@ -9,7 +9,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `bootstrap.rs` | 301 | 3 |  | todo | |
 | kuben | `bundle.rs` | 184 | 3 |  | todo | |
 | kuben | `main.rs` | 85 | 0 | cmd/kuben | partial | serve, setup-token, version; the rest: G5 |
-| kuben | `serve.rs` | 867 | 0 | serve | partial | api role only; cluster, builds, background work: S1–S5 |
+| kuben | `serve.rs` | 867 | 0 | serve | partial | api role; with a cluster: informers, readiness on first sync, discovery (controller role), leader election settings (the Lease is campaigned for once reconcilers exist, S1-D). Left: materializer, controllers, AgentLink, builds, background work (S1–S5) |
 | kuben | `telemetry.rs` | 36 | 0 |  | todo | |
 | kuben | `cli/admin.rs` | 38 | 0 |  | todo | |
 | kuben | `cli/agent.rs` | 50 | 0 |  | todo | |
@@ -68,13 +68,13 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/domains.rs` | 703 | 0 |  | todo | |
 | kuben-api | `routes/environments.rs` | 326 | 0 |  | todo | |
 | kuben-api | `routes/git.rs` | 298 | 0 |  | todo | |
-| kuben-api | `routes/health.rs` | 54 | 0 | api (probes.go) | ported | seq/pods from projections (S1) |
+| kuben-api | `routes/health.rs` | 54 | 0 | api (probes.go) | ported | seq, pods and cluster from the projections and registry |
 | kuben-api | `routes/incidents.rs` | 511 | 2 |  | todo | |
 | kuben-api | `routes/members.rs` | 267 | 0 | api (members.go) | ported |  |
 | kuben-api | `routes/mod.rs` | 26 | 0 |  | todo | |
 | kuben-api | `routes/policy.rs` | 299 | 2 |  | todo | |
 | kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
-| kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | partial | list and get; create/delete with lifecycle (S1) |
+| kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | partial | list and get (readiness from the org's own projection); create/delete with lifecycle (S1) |
 | kuben-api | `routes/registries.rs` | 262 | 2 |  | todo | |
 | kuben-api | `routes/request.rs` | 64 | 1 | api (projects.go, access) | partial | duplicate(): S1 |
 | kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | partial | project and environment scopes; app scope, sql_target, cluster, kube_error with the app routes |

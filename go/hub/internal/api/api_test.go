@@ -18,6 +18,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store/pgtest"
 )
@@ -40,7 +41,16 @@ func newServer(t *testing.T, edit func(*config.Config)) *client {
 // newServerWithStore is newServer with its store, for tests that seed it.
 func newServerWithStore(t *testing.T, edit func(*config.Config)) (*client, *store.Store) {
 	t.Helper()
+	c, st, _ := newServerWithProjections(t, edit)
+	return c, st
+}
+
+// newServerWithProjections is newServerWithStore with the projections the
+// server reads, for tests that play the cluster.
+func newServerWithProjections(t *testing.T, edit func(*config.Config)) (*client, *store.Store, *projection.Projections) {
+	t.Helper()
 	st := pgtest.Store(t)
+	p := projection.New()
 	cfg := config.Default()
 	cfg.Server.Bind = "127.0.0.1:3000" // loopback: no setup token needed
 	cfg.Security.LoginMaxFailures = 3
@@ -50,11 +60,12 @@ func newServerWithStore(t *testing.T, edit func(*config.Config)) (*client, *stor
 	h := health.New(clock.System{})
 	h.SetReady(true)
 	server, err := api.New(api.Deps{
-		Config:  cfg,
-		Store:   st,
-		Hasher:  auth.InsecureForTests(),
-		Health:  h,
-		Console: web.NewFS(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>console")}}),
+		Config:      cfg,
+		Store:       st,
+		Hasher:      auth.InsecureForTests(),
+		Health:      h,
+		Projections: p,
+		Console:     web.NewFS(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>console")}}),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +76,7 @@ func newServerWithStore(t *testing.T, edit func(*config.Config)) (*client, *stor
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &client{t: t, base: ts.URL, http: &http.Client{Jar: jar}}, st
+	return &client{t: t, base: ts.URL, http: &http.Client{Jar: jar}}, st, p
 }
 
 func (c *client) do(method, path string, body any, headers ...string) (int, map[string]any, http.Header) {

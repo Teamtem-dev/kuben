@@ -14,6 +14,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -45,17 +46,19 @@ type fixture struct {
 	c     *client
 	store *store.Store
 	org   ids.OrgID
+	// projections play the cluster.
+	projections *projection.Projections
 }
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	c, st := newServerWithStore(t, nil)
+	c, st, p := newServerWithProjections(t, nil)
 	ctx := t.Context()
 	org, err := st.CreateOrg(ctx, "acme", "ACME")
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := fixture{t: t, c: c, store: st, org: org.ID}
+	f := fixture{t: t, c: c, store: st, org: org.ID, projections: p}
 	// As in Rust's setup, alice and bob hold org roles without a membership row.
 	f.user("alice@example.com", opt.Some("Alice"), perm.Owner, false)
 	f.user("bob@example.com", opt.None[string](), perm.Viewer, false)

@@ -16,6 +16,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/model"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -238,7 +239,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request) {
 	for _, o := range a.OrgIDs() {
 		orgs = append(orgs, o.String())
 	}
-	if err := stream.Serve(w, r, s.deps.Stream, orgs); err != nil {
+	if err := stream.Serve(w, r, projection.NewSource(s.deps.Projections), orgs); err != nil {
 		s.deps.Logger.Debug("event stream ended", "error", err)
 	}
 }
