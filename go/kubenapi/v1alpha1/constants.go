@@ -24,3 +24,23 @@ const (
 	// manages.
 	ManagedSelector = LabelManagedBy + "=" + LabelManagerValue
 )
+
+// Annotations the materializer writes on the objects it renders (the Rust
+// materializer::render::annotations module).
+const (
+	// AnnotationGeneration is the target generation an App object was
+	// written for: the generation fence.
+	AnnotationGeneration = "kuben.dev/generation"
+	// AnnotationOperation is the operation that wrote the object last.
+	AnnotationOperation = "kuben.dev/operation"
+	// AnnotationLifecycleUID is the target's lifecycle UID: a recreated
+	// target is another App.
+	AnnotationLifecycleUID = "kuben.dev/lifecycle-uid"
+	// AnnotationID is the SQL id the object was rendered from: project,
+	// environment or target.
+	AnnotationID = "kuben.dev/id"
+	// AnnotationHandover on an App handed over to the cluster's agent
+	// (M1.9) holds the target id. The App controller leaves such an App
+	// alone, so it never writes its workloads again while the App goes.
+	AnnotationHandover = "kuben.dev/handover"
+)
