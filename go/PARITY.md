@@ -144,17 +144,17 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-crd | `v1alpha1/task.rs` | 228 | 4 | kubenapi/v1alpha1 (task.go) | ported | 4/4 tests (task_test.go), same validators |
 | kuben-platform | `activator.rs` | 22 | 0 |  | todo | |
 | kuben-platform | `agentlink.rs` | 580 | 3 |  | todo | |
-| kuben-platform | `discovery.rs` | 734 | 5 |  | todo | |
+| kuben-platform | `discovery.rs` | 734 | 5 | platform/discovery | ported | 5 → 19 Go tests (+ probes over fake clientsets, the loop against its store, the Watch); tokio `watch` → `discovery.Watch` (SUBSTITUTIONS.md) |
 | kuben-platform | `doctor.rs` | 701 | 4 |  | todo | |
 | kuben-platform | `duration.rs` | 57 | 2 |  | todo | |
 | kuben-platform | `evidence.rs` | 391 | 5 |  | todo | |
 | kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
-| kuben-platform | `leader.rs` | 313 | 2 |  | todo | |
+| kuben-platform | `leader.rs` | 313 | 2 | platform/leader | ported | client-go leaderelection (SUBSTITUTIONS.md); `decisions` tested the hand-written protocol and `timing_is_consistent` the constants, which client-go itself refuses when inconsistent → 1 Go test: two replicas over a fake clientset, one leader, hand-over on release |
 | kuben-platform | `lib.rs` | 39 | 0 |  | todo | |
 | kuben-platform | `local_agent.rs` | 341 | 2 |  | todo | |
-| kuben-platform | `registry.rs` | 212 | 4 |  | todo | |
+| kuben-platform | `registry.rs` | 212 | 4 | platform/registry | ported | 4 → 4 |
 | kuben-platform | `secrets.rs` | 664 | 10 |  | todo | |
-| kuben-platform | `supervise.rs` | 133 | 3 |  | todo | |
+| kuben-platform | `supervise.rs` | 133 | 3 | platform/supervise | ported | 3 → 3 |
 | kuben-platform | `usage.rs` | 430 | 4 |  | todo | |
 | kuben-platform | `render/mod.rs` | 551 | 9 | platform/render | ported | 9 → 9 (+ 14 builder tests in build_test.go); the three insta snapshots match byte for byte (testdata/ holds copies, checked identical while the Rust tree exists); objects built as JSON maps, canonical text by wire.CanonicalValue |
 | kuben-platform | `materializer/agent.rs` | 365 | 2 |  | todo | |
