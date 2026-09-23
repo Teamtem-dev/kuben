@@ -8,6 +8,8 @@ package store
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 )
@@ -22,6 +24,25 @@ const recordObservation = "INSERT INTO runtime_observations " +
 	"SET generation = EXCLUDED.generation, phase = EXCLUDED.phase, reason = EXCLUDED.reason, " +
 	"message = EXCLUDED.message, observed_at = EXCLUDED.observed_at " +
 	"WHERE runtime_observations.generation <= EXCLUDED.generation"
+
+const (
+	targetDelivery = "SELECT delivery FROM application_targets WHERE id = $1 AND org_id = $2"
+	observation    = "SELECT generation, phase, reason, message, observed_at " +
+		"FROM runtime_observations WHERE target_id = $1 AND org_id = $2"
+)
+
+// RuntimeObservation is the latest observation an agent reported for a
+// target.
+type RuntimeObservation struct {
+	Generation int64
+	// Phase is `accepted`, `applying`, `ready`, `failed`, `rejected` or
+	// `unknown`.
+	Phase   string
+	Reason  opt.Val[string]
+	Message opt.Val[string]
+	// ObservedAt is unix milliseconds.
+	ObservedAt int64
+}
 
 // Delivery is how a target's runs reach its cluster.
 type Delivery string
@@ -57,4 +78,32 @@ func (t *Tenant) RecordRuntimeObservation(
 	n, err := exec(ctx, t.tx, "record a runtime observation", recordObservation,
 		target, cluster, generation, phase, reason.Ptr(), message.Ptr(), t.org.String())
 	return n == 1, err
+}
+
+// TargetDelivery is how tgt of this organization is delivered, if it
+// exists.
+func (t *Tenant) TargetDelivery(ctx context.Context, tgt ids.TargetID) (Delivery, bool, error) {
+	const op = "read a target's delivery"
+	return queryOpt(ctx, t.tx, op, targetDelivery, func(row pgx.CollectableRow) (Delivery, error) {
+		var d string
+		if err := row.Scan(&d); err != nil {
+			return "", err
+		}
+		return parseDelivery(op, d)
+	}, tgt, t.org.String())
+}
+
+// RuntimeObservation is the latest observation of tgt, if its agent
+// reported one.
+func (t *Tenant) RuntimeObservation(ctx context.Context, tgt ids.TargetID) (RuntimeObservation, bool, error) {
+	return queryOpt(ctx, t.tx, "read a runtime observation", observation,
+		func(row pgx.CollectableRow) (RuntimeObservation, error) {
+			var o RuntimeObservation
+			var reason, message *string
+			if err := row.Scan(&o.Generation, &o.Phase, &reason, &message, &o.ObservedAt); err != nil {
+				return RuntimeObservation{}, err
+			}
+			o.Reason, o.Message = opt.FromPtr(reason), opt.FromPtr(message)
+			return o, nil
+		}, tgt, t.org.String())
 }

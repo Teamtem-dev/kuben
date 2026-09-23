@@ -1,7 +1,8 @@
 package store
 
 // Change freezes, silences and ownership (M4.9); a partial port of
-// repo/controls.rs: the freeze a deployment checks. Creating and lifting
+// repo/controls.rs: the freeze a deployment checks and the pause the
+// materializer holds runs for. Creating and lifting
 // freezes, silences and owners follow with the control routes.
 
 import (
@@ -19,6 +20,7 @@ const (
 	activeFreeze = "SELECT reason FROM environment_freezes " +
 		"WHERE environment_id = $1 AND org_id = $2 AND lifted_at IS NULL AND starts_at <= $3 AND ends_at > $3 " +
 		"ORDER BY ends_at DESC LIMIT 1"
+	paused = "SELECT paused_at IS NOT NULL FROM application_targets WHERE id = $1 AND org_id = $2"
 )
 
 func (t *Tenant) environmentOf(ctx context.Context, tgt ids.TargetID) (ids.EnvironmentID, bool, error) {
@@ -35,4 +37,11 @@ func (t *Tenant) ActiveFreeze(ctx context.Context, tgt ids.TargetID, now int64) 
 	}
 	return queryOpt(ctx, t.tx, "read the active freeze", activeFreeze, pgx.RowTo[string],
 		environment, t.org.String(), now)
+}
+
+// TargetPaused is whether the delivery of tgt is held now; false for a
+// target that does not exist.
+func (t *Tenant) TargetPaused(ctx context.Context, tgt ids.TargetID) (bool, error) {
+	held, _, err := queryOpt(ctx, t.tx, "read a target's pause", paused, pgx.RowTo[bool], tgt, t.org.String())
+	return held, err
 }
