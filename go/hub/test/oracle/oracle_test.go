@@ -43,6 +43,35 @@ var skeleton = []oracle.Step{
 	{Name: "livez", Method: "GET", Path: "/livez"},
 }
 
+// Slice S1: templates, projects, environments, policies, status pages, tokens.
+var sliceS1 = []oracle.Step{
+	{Name: "templates list", Method: "GET", Path: "/api/v1/templates"},
+	{Name: "create project", Method: "POST", Path: "/api/v1/projects", Body: map[string]any{
+		"name": "shop", "displayName": "Shop",
+	}},
+	{Name: "get project", Method: "GET", Path: "/api/v1/projects/shop"},
+	{Name: "create environment", Method: "POST", Path: "/api/v1/projects/shop/environments", Body: map[string]any{
+		"name": "prod", "env_type": "production",
+	}},
+	{Name: "get environment", Method: "GET", Path: "/api/v1/projects/shop/environments/prod"},
+	{Name: "get policy", Method: "GET", Path: "/api/v1/projects/shop/environments/prod/policy"},
+	{Name: "put policy", Method: "PUT", Path: "/api/v1/projects/shop/environments/prod/policy", Body: map[string]any{
+		"requiredApprovals": 1, "deployRole": "developer", "approveRole": "admin",
+	}},
+	{Name: "status page not found", Method: "GET", Path: "/api/v1/projects/shop/status-page"},
+	{Name: "put status page", Method: "PUT", Path: "/api/v1/projects/shop/status-page", Body: map[string]any{
+		"slug": "shop-status", "title": "Shop", "environments": []string{"prod"},
+	}},
+	{Name: "get status page", Method: "GET", Path: "/api/v1/projects/shop/status-page"},
+	{Name: "public status", Method: "GET", Path: "/api/v1/public/status/shop-status"},
+	{Name: "delete status page", Method: "DELETE", Path: "/api/v1/projects/shop/status-page"},
+	{Name: "public status after delete", Method: "GET", Path: "/api/v1/public/status/shop-status"},
+	{Name: "create token", Method: "POST", Path: "/api/v1/tokens", Body: map[string]any{
+		"name": "test-token", "role": "admin",
+	}},
+	{Name: "list tokens", Method: "GET", Path: "/api/v1/tokens"},
+}
+
 // TestSkeletonMatchesRust needs both servers running on empty databases:
 // KUBEN_ORACLE_RUST and KUBEN_ORACLE_GO are their base URLs.
 func TestSkeletonMatchesRust(t *testing.T) {
@@ -58,7 +87,8 @@ func TestSkeletonMatchesRust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, step := range skeleton {
+	allSteps := append(skeleton, sliceS1...)
+	for _, step := range allSteps {
 		want, err := rust.Do(step)
 		if err != nil {
 			t.Fatal(err)
