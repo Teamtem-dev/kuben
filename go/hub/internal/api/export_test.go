@@ -25,6 +25,7 @@ var (
 	PromoteSpec     = promoteSpec
 	SpecChanges     = specChanges
 	MissingSecrets  = missingSecrets
+	ManualJobName   = manualJobName
 )
 
 // AnyImage is the image admission measures configurations with.
