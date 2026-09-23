@@ -80,11 +80,18 @@ type Server struct {
 	policy       authz.Policy
 	throttle     *loginThrottle
 	sessionCache *expirable.LRU[string, ids.UserID]
+	statusCache  *expirable.LRU[string, *gen.PublicStatus]
 	loginPermits chan struct{} // bounds concurrent password hashing
 	setupMu      sync.Mutex    // one first-run setup at a time
 	logStreams   *logStreams
 	routes       *gen.Server
 }
+
+// statusCacheTTL is how long a public status answer is reused (routes/status.rs CACHE_TTL).
+const statusCacheTTL = 15 * time.Second
+
+// statusCacheCapacity is how many public status responses are cached in memory.
+const statusCacheCapacity = 1_000
 
 // New builds the API on deps.
 func New(deps Deps) (*Server, error) {
@@ -112,6 +119,7 @@ func New(deps Deps) (*Server, error) {
 		policy:       authz.RolePolicy{},
 		throttle:     newLoginThrottle(sec, deps.Store, deps.Clock, deps.Logger),
 		sessionCache: expirable.NewLRU[string, ids.UserID](10_000, nil, time.Duration(sec.SessionCacheTTLSecs)*time.Second),
+		statusCache:  expirable.NewLRU[string, *gen.PublicStatus](statusCacheCapacity, nil, statusCacheTTL),
 		loginPermits: make(chan struct{}, max(sec.LoginConcurrency, 1)),
 		logStreams:   newLogStreams(),
 	}

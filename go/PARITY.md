@@ -79,7 +79,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/request.rs` | 64 | 1 | api (request.go, projects.go, access) | ported | 1 → 1 (`TestTimestampsAreRFC3339`); `actor` is `access.Access.Actor` |
 | kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | partial | project and environment scopes; app scope, sql_target, cluster, kube_error with the app routes |
 | kuben-api | `routes/secrets.rs` | 654 | 2 |  | todo | |
-| kuben-api | `routes/status.rs` | 322 | 0 |  | todo | |
+| kuben-api | `routes/status.rs` | 322 | 0 | api (status_routes.go) | ported | 0 unit tests in Rust; tests/http.rs `m5_public_status_pages_show_only_public_facts` + TestStatusPageDto ported |
 | kuben-api | `routes/templates.rs` | 543 | 2 | api (templates.go) | ported | 2 → 2 unit tests + tests/http.rs `scenario8_template_catalogue` |
 | kuben-api | `routes/tokens.rs` | 229 | 0 | api (tokens.go) | ported |  |
 | kuben-api | `routes/validate.rs` | 173 | 4 | api (validate.go) | ported | 4 → 4 |
@@ -220,7 +220,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets.go, partial) | partial | `secrets` (live secret summaries), `wanted_secrets`, `bind_run_secrets`, `run_secret_bindings`, `SecretBinding`; the secret store mutations and the 5 tests follow with the secret routes |
 | kuben-store | `repo/sessions.rs` | 125 | 0 | store (sessions.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/sso.rs` | 326 | 3 |  | todo | |
-| kuben-store | `repo/status.rs` | 244 | 1 |  | todo | |
+| kuben-store | `repo/status.rs` | 244 | 1 | store (status.go) | ported | 1 → 1 (`status_pages_are_found_by_slug_only_when_enabled`) |
 | kuben-store | `repo/support.rs` | 160 | 1 | store (support.go) | ported | 1 → 1; incidents written by hand until repo/notify.rs is ported |
 | kuben-store | `repo/throttle.rs` | 64 | 0 | store (throttle.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/tokens.rs` | 154 | 0 | store (tokens.go) | ported | covered by the tests/matrix.rs port |

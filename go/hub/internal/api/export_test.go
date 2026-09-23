@@ -37,6 +37,7 @@ var (
 	TemplatesCatalogue = templatesCatalogue
 	RenderTemplate     = renderTemplate
 	TemplateDtoOf      = templateDto
+	StatusPageDtoOf    = statusPageDto
 )
 
 type (

@@ -97,6 +97,13 @@ func (s *Store) AppendAudit(ctx context.Context, a NewAudit) (ids.AuditID, error
 	return a.insert(ctx, s.db, s.now())
 }
 
+// AppendAudit appends an audit record to the tenant's transaction.
+func (t *Tenant) AppendAudit(ctx context.Context, a NewAudit) error {
+	a.OrgID = opt.Some(t.org)
+	_, err := a.insert(ctx, t.tx, t.store.now())
+	return err
+}
+
 // ListAudit is one page of an org's audit log, newest first. before is the
 // seq of the last event of the previous page.
 func (s *Store) ListAudit(ctx context.Context, org ids.OrgID, before opt.Val[int64], limit int64) ([]model.AuditEvent, error) {
