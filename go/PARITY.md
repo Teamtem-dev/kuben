@@ -74,15 +74,15 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/mod.rs` | 26 | 0 |  | todo | |
 | kuben-api | `routes/policy.rs` | 299 | 2 |  | todo | |
 | kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
-| kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | partial | list and get (readiness from the org's own projection); create/delete with lifecycle (S1) |
+| kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | ported | list, get (readiness from the org's own projection), create, delete; tests/http.rs `projects_are_tenant_scoped` → `TestProjectsAreTenantScoped` (+ duplicate, delete twice, viewer) |
 | kuben-api | `routes/registries.rs` | 262 | 2 |  | todo | |
-| kuben-api | `routes/request.rs` | 64 | 1 | api (projects.go, access) | partial | duplicate(): S1 |
+| kuben-api | `routes/request.rs` | 64 | 1 | api (request.go, projects.go, access) | ported | 1 → 1 (`TestTimestampsAreRFC3339`); `actor` is `access.Access.Actor` |
 | kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | partial | project and environment scopes; app scope, sql_target, cluster, kube_error with the app routes |
 | kuben-api | `routes/secrets.rs` | 654 | 2 |  | todo | |
 | kuben-api | `routes/status.rs` | 322 | 0 |  | todo | |
 | kuben-api | `routes/templates.rs` | 543 | 2 |  | todo | |
 | kuben-api | `routes/tokens.rs` | 229 | 0 | api (tokens.go) | ported |  |
-| kuben-api | `routes/validate.rs` | 173 | 4 | api (members.go) | partial | email only; the rest with their routes |
+| kuben-api | `routes/validate.rs` | 173 | 4 | api (validate.go) | ported | 4 → 4 |
 | kuben-api | `routes/vulnerabilities.rs` | 267 | 1 |  | todo | |
 | kuben-api | `routes/apps/admission.rs` | 190 | 2 |  | todo | |
 | kuben-api | `routes/apps/approvals.rs` | 309 | 2 |  | todo | |

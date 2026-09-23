@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"strings"
-	"unicode"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
@@ -41,18 +40,6 @@ func memberDtos(members []model.Member) []gen.MemberDto {
 		out = append(out, memberDto(m))
 	}
 	return out
-}
-
-// ValidEmail is validate::email: at most 254 bytes, no whitespace, a
-// non-empty local part and a domain with a dot and no second `@`.
-func ValidEmail(value string) error {
-	local, domain, found := strings.Cut(value, "@")
-	ok := len(value) <= 254 && !strings.ContainsFunc(value, unicode.IsSpace) &&
-		found && local != "" && strings.Contains(domain, ".") && !strings.Contains(domain, "@")
-	if !ok {
-		return kerr.New(kerr.Validation, "`%s` is not a valid email address", value)
-	}
-	return nil
 }
 
 // orgOf is the organization member management acts on: the caller's
