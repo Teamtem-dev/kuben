@@ -146,7 +146,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `agentlink.rs` | 580 | 3 |  | todo | |
 | kuben-platform | `discovery.rs` | 734 | 5 | platform/discovery | ported | 5 → 19 Go tests (+ probes over fake clientsets, the loop against its store, the Watch); tokio `watch` → `discovery.Watch` (SUBSTITUTIONS.md) |
 | kuben-platform | `doctor.rs` | 701 | 4 |  | todo | |
-| kuben-platform | `duration.rs` | 57 | 2 |  | todo | |
+| kuben-platform | `duration.rs` | 57 | 2 | platform/controller (duration.go) | ported | 2 → 2 Go tests; unexported, returns whole seconds (u64) so huge grace periods saturate like Rust |
 | kuben-platform | `evidence.rs` | 391 | 5 |  | todo | |
 | kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
 | kuben-platform | `leader.rs` | 313 | 2 | platform/leader | ported | client-go leaderelection (SUBSTITUTIONS.md); `decisions` tested the hand-written protocol and `timing_is_consistent` the constants, which client-go itself refuses when inconsistent → 1 Go test: two replicas over a fake clientset, one leader, hand-over on release |
@@ -157,24 +157,24 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `supervise.rs` | 133 | 3 | platform/supervise | ported | 3 → 3 |
 | kuben-platform | `usage.rs` | 430 | 4 |  | todo | |
 | kuben-platform | `render/mod.rs` | 551 | 9 | platform/render | ported | 9 → 9 (+ 14 builder tests in build_test.go); the three insta snapshots match byte for byte (testdata/ holds copies, checked identical while the Rust tree exists); objects built as JSON maps, canonical text by wire.CanonicalValue |
-| kuben-platform | `materializer/agent.rs` | 365 | 2 |  | todo | |
-| kuben-platform | `materializer/detach.rs` | 166 | 0 |  | todo | |
-| kuben-platform | `materializer/drift.rs` | 311 | 2 |  | todo | |
-| kuben-platform | `materializer/fence.rs` | 99 | 2 |  | todo | |
-| kuben-platform | `materializer/lifecycle.rs` | 283 | 0 |  | todo | |
-| kuben-platform | `materializer/mod.rs` | 31 | 0 |  | todo | |
-| kuben-platform | `materializer/progress.rs` | 134 | 2 |  | todo | |
-| kuben-platform | `materializer/render.rs` | 652 | 7 |  | todo | |
-| kuben-platform | `materializer/secrets.rs` | 339 | 3 |  | todo | |
-| kuben-platform | `materializer/worker.rs` | 663 | 1 |  | todo | |
-| kuben-platform | `materializer/write.rs` | 100 | 1 |  | todo | |
-| kuben-platform | `controller/app.rs` | 357 | 1 | platform/render (Build) | partial | `build`/`Desired` only (the renderer's input); the reconciler and its test follow with the controllers |
-| kuben-platform | `controller/crd_apply.rs` | 21 | 0 |  | todo | |
-| kuben-platform | `controller/environment.rs` | 227 | 0 |  | todo | |
-| kuben-platform | `controller/gateway.rs` | 917 | 11 | platform/render (domains.go) | partial | listener and certificate names (`fnv1a`, `host_listener_name`, `host_secret_name`, `plain_listener_name`, `section_for*`), pinned by a render test; the gateway controller and its 11 tests follow |
-| kuben-platform | `controller/mod.rs` | 268 | 2 |  | todo | |
-| kuben-platform | `controller/project.rs` | 71 | 0 |  | todo | |
-| kuben-platform | `controller/resources.rs` | 1807 | 16 | platform/render (build.go, domains.go, platform.go, errors.go) | partial | the App half: Platform (from_spec, gated), BuildError, TlsMode, DomainClaim, validate, deployments, cron jobs, PVCs, HPAs, service, HTTPRoute, ReferenceGrant, hostnames, url; 12 of 16 tests in render/build_test.go. Environment objects (namespace, quota, limits, netpol), `demand`, `job_from_cron` and their 4 tests follow with the controllers |
+| kuben-platform | `materializer/agent.rs` | 365 | 2 | platform/materializer (agent.go) | ported | 2 → 2; the envelope test checks what `kuben_agent::runtime::check` checked (spec decodes, digest, names, namespace) until the agent is ported; `Apply` in kubenapi/protocol |
+| kuben-platform | `materializer/detach.rs` | 166 | 0 | platform/materializer (detach.go) | ported | covered by tests/materializer.rs (envtest, CI) |
+| kuben-platform | `materializer/drift.rs` | 311 | 2 | platform/materializer (drift.go) | ported | 2 → 2; the kube-rs watcher is a dynamic informer on the managed Apps, checked one at a time in its handler |
+| kuben-platform | `materializer/fence.rs` | 99 | 2 | platform/materializer (fence.go) | ported | 2 → 2 |
+| kuben-platform | `materializer/lifecycle.rs` | 283 | 0 | platform/materializer (lifecycle.go) | ported | covered by tests/materializer.rs (envtest, CI) |
+| kuben-platform | `materializer/mod.rs` | 31 | 0 | platform/materializer (materializer.go) | ported | |
+| kuben-platform | `materializer/progress.rs` | 134 | 2 | platform/materializer (progress.go) | ported | 2 → 2 |
+| kuben-platform | `materializer/render.rs` | 652 | 7 | platform/materializer (render.go) | ported | 7 → 7; the config revision is decoded by `v1alpha1.DecodeAppSpec`, which refuses missing or null required members as serde did |
+| kuben-platform | `materializer/secrets.rs` | 339 | 3 | platform/materializer (secrets.go) | partial | the keyring-less path only (a run bound to a secret fails `SecretsUnavailable`, as Rust without a keyring); writing and collecting revision Secrets and the 3 tests follow with `secrets.rs` (S2) |
+| kuben-platform | `materializer/worker.rs` | 663 | 1 | platform/materializer (worker.go, plan.go) | ported | 1 → 1; kube-rs typed Api → dynamic client + serde-compatible JSON of the kubenapi types, server-side apply as `kuben-materializer` |
+| kuben-platform | `materializer/write.rs` | 100 | 1 | platform/materializer (kube.go) | ported | 1 → 1 |
+| kuben-platform | `controller/app.rs` | 357 | 1 | platform/controller (app.go), platform/render (Build) | ported | 1 → 5 Go tests (+ fake-client reconciles: apply/prune/status, GatewayAPIMissing, build error, hand-over); reads Rust made live go through the API reader; `blockOwnerDeletion: false` stripped to match kube-rs owner refs |
+| kuben-platform | `controller/crd_apply.rs` | 21 | 0 | platform/controller (crds.go) | ported | 0 → 2 Go tests; embedded byte-identical copy of charts/kuben/crds/kuben.dev_all.yaml (pinned by a test while the chart file exists) |
+| kuben-platform | `controller/environment.rs` | 227 | 0 | platform/controller (environment.go) | ported | 0 → 4 Go tests (provision, conflict, Retain, Delete grace/purge) |
+| kuben-platform | `controller/gateway.rs` | 917 | 11 | platform/controller (gateway.go, gateway_run.go), platform/render (domains.go) | ported | 11 → 13 Go tests (+ 2 reconcile passes on the fake client) |
+| kuben-platform | `controller/mod.rs` | 268 | 2 | platform/controller (controller.go, run.go) | ported | 2 → 5 Go tests; controller-runtime manager (SUBSTITUTIONS.md); its process-wide logger is set by serve |
+| kuben-platform | `controller/project.rs` | 71 | 0 | platform/controller (project.go) | ported | 0 → 1 Go test |
+| kuben-platform | `controller/resources.rs` | 1807 | 16 | platform/render (build.go, domains.go, platform.go, errors.go, environment.go) | ported | 16 → 18 Go tests: the App half in build_test.go, the Environment half (namespace, quota, limits, netpol), `demand` and `job_from_cron` in environment_test.go |
 | kuben-platform | `build/evidence.rs` | 151 | 2 |  | todo | |
 | kuben-platform | `build/job.rs` | 837 | 9 |  | todo | |
 | kuben-platform | `build/mod.rs` | 120 | 0 |  | todo | |
@@ -190,16 +190,16 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `lib.rs` | 13 | 0 | store (package doc) | ported | |
 | kuben-store | `testing.rs` | 55 | 0 | store/pgtest | ported | skip → failure with KUBEN_REQUIRE_PG=1; schema dropped after the test; `Schema` for migrator tests |
 | kuben-store | `repo/acceptance.rs` | 451 | 3 | store (acceptance_test.go) | ported | 3 → 3; the panicking handler is a recovered panic with the deferred rollback a Go server runs |
-| kuben-store | `repo/agents.rs` | 875 | 7 | store (agents.go, partial) | partial | `Delivery` and `record_runtime_observation` (for the catalog and the materializer); enrollment, links, tokens, handover and the 7 tests follow with the agent work |
+| kuben-store | `repo/agents.rs` | 875 | 7 | store (agents.go, partial) | partial | `Delivery`, `record_runtime_observation`, `target_delivery`, `runtime_observation` (for the catalog and the materializer); enrollment, links, tokens, handover and the 7 tests follow with the agent work |
 | kuben-store | `repo/audit.rs` | 130 | 0 | store (audit.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/backups.rs` | 357 | 2 |  | todo | |
 | kuben-store | `repo/builds.rs` | 1794 | 11 |  | todo | |
 | kuben-store | `repo/capabilities.rs` | 198 | 1 | store (capabilities.go) | ported | 1 → 1 |
 | kuben-store | `repo/catalog.rs` | 711 | 2 | store (catalog.go) | ported | 2 → 2 |
 | kuben-store | `repo/ci.rs` | 471 | 3 |  | todo | |
-| kuben-store | `repo/controls.rs` | 707 | 2 | store (controls.go, partial) | partial | `active_freeze` (a deployment checks it); freezes, silences, owners and the 2 tests follow with the control routes |
+| kuben-store | `repo/controls.rs` | 707 | 2 | store (controls.go, partial) | partial | `active_freeze` (a deployment checks it), `target_paused` (the materializer holds runs); freezes, silences, owners and the 2 tests follow with the control routes |
 | kuben-store | `repo/deployments.rs` | 1290 | 4 | store (deployments.go) | ported | 4 → 7 Go tests (+ run reasons, emergency guard, serde content texts); INSERT_RUN casts $1, $5, $6, $7, $9, $10, $15 (SUBSTITUTIONS.md) |
-| kuben-store | `repo/detach.rs` | 285 | 0 |  | todo | |
+| kuben-store | `repo/detach.rs` | 285 | 0 | store (detach.go) | ported | covered by the detach scenarios of tests/http.rs (S4) and tests/materializer.rs |
 | kuben-store | `repo/domains.rs` | 503 | 2 |  | todo | |
 | kuben-store | `repo/image_policies.rs` | 357 | 1 |  | todo | |
 | kuben-store | `repo/installs.rs` | 84 | 1 |  | todo | |
