@@ -281,6 +281,12 @@ func (f ClusterFacts) Issuer(name string) Availability {
 	return find(f.ClusterIssuers, name, ProbeClusterIssuers, f.Unknown)
 }
 
+// IssuerUsableOrUnknown reports whether the ClusterIssuer name is usable,
+// or not proven otherwise: the capability gate of render.Platform.Gated.
+func (f ClusterFacts) IssuerUsableOrUnknown(name string) bool {
+	return UsableOrUnknown(f.Issuer(name))
+}
+
 // GatewayClass is the availability of the GatewayClass name.
 func (f ClusterFacts) GatewayClass(name string) Availability {
 	return find(f.GatewayClasses, name, ProbeGatewayClasses, f.Unknown)

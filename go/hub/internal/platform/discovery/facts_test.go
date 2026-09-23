@@ -367,3 +367,14 @@ func TestEqualIgnoresEmptyVersusAbsentAndKindOrder(t *testing.T) {
 		t.Fatal("gateway API differs")
 	}
 }
+
+func TestFactsGateTheIssuer(t *testing.T) {
+	facts := discovery.ClusterFacts{ClusterIssuers: []discovery.Readiness{{Name: "le", Ready: false}}}
+	if facts.IssuerUsableOrUnknown("le") || facts.IssuerUsableOrUnknown("other") {
+		t.Fatal("a not-ready or missing issuer is not usable")
+	}
+	facts.Unknown = []string{discovery.ProbeClusterIssuers}
+	if !facts.IssuerUsableOrUnknown("other") {
+		t.Fatal("unknown when the probe failed")
+	}
+}
