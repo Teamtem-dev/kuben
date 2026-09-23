@@ -80,7 +80,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | partial | project and environment scopes; app scope, sql_target, cluster, kube_error with the app routes |
 | kuben-api | `routes/secrets.rs` | 654 | 2 |  | todo | |
 | kuben-api | `routes/status.rs` | 322 | 0 |  | todo | |
-| kuben-api | `routes/templates.rs` | 543 | 2 |  | todo | |
+| kuben-api | `routes/templates.rs` | 543 | 2 | api (templates.go) | ported | 2 → 2 unit tests + tests/http.rs `scenario8_template_catalogue` |
 | kuben-api | `routes/tokens.rs` | 229 | 0 | api (tokens.go) | ported |  |
 | kuben-api | `routes/validate.rs` | 173 | 4 | api (validate.go) | ported | 4 → 4 |
 | kuben-api | `routes/vulnerabilities.rs` | 267 | 1 |  | todo | |
