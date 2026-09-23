@@ -26,6 +26,12 @@ const recordObservation = "INSERT INTO runtime_observations " +
 	"WHERE runtime_observations.generation <= EXCLUDED.generation"
 
 const (
+	handOver = "UPDATE application_targets t SET delivery = 'agent' " +
+		"FROM environment_placements p " +
+		"WHERE t.id = $1 AND t.org_id = $2 AND t.delivery = 'controller' AND NOT t.deleting " +
+		"AND p.id = t.placement_id AND p.org_id = t.org_id " +
+		"AND EXISTS (SELECT 1 FROM cluster_agents a WHERE a.cluster_id = p.cluster_id AND a.org_id = p.org_id " +
+		"AND a.revoked_at IS NULL AND a.features @> jsonb_build_array($3::text))"
 	targetDelivery = "SELECT delivery FROM application_targets WHERE id = $1 AND org_id = $2"
 	observation    = "SELECT generation, phase, reason, message, observed_at " +
 		"FROM runtime_observations WHERE target_id = $1 AND org_id = $2"
@@ -106,4 +112,14 @@ func (t *Tenant) RuntimeObservation(ctx context.Context, tgt ids.TargetID) (Runt
 			o.Reason, o.Message = opt.FromPtr(reason), opt.FromPtr(message)
 			return o, nil
 		}, tgt, t.org.String())
+}
+
+// HandOverToAgent hands tgt over from the App controller to its cluster's
+// agent: its runs go through the agent from now on, never back (migration
+// 0012). Only a live target the App controller delivers, and only when its
+// cluster has a linked, unrevoked agent that carries applications; false
+// otherwise.
+func (t *Tenant) HandOverToAgent(ctx context.Context, tgt ids.TargetID) (bool, error) {
+	n, err := exec(ctx, t.tx, "hand a target over to its agent", handOver, tgt, t.org.String(), RuntimeFeature)
+	return n == 1, err
 }
