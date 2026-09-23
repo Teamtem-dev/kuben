@@ -2,7 +2,8 @@
 // to listening socket, the shared state, background work, and the ordered
 // shutdown. Wired so far: the database, health, the API and the console,
 // and with a cluster the informers, the readiness gate, capability
-// discovery and (once reconcilers exist) the controller Lease.
+// discovery, the materializer and, behind the controller Lease, the
+// reconcilers and the drift watch.
 package serve
 
 import (
@@ -16,6 +17,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/go-logr/logr"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
@@ -46,6 +50,10 @@ func Logger(cfg config.TelemetryCfg) *slog.Logger {
 
 // Run serves until ctx ends (a signal), then shuts down in order.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	// controller-runtime's sources and caches log through its process-wide
+	// logger; unset, it warns on stderr and drops their logs. Set once, by
+	// the process owner.
+	ctrllog.SetLogger(logr.FromSlogHandler(logger.Handler()))
 	h := health.New(clock.System{})
 	watchdog(ctx, h)
 

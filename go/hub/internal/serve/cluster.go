@@ -10,9 +10,11 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/controller"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/leader"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/materializer"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/supervise"
@@ -66,10 +68,19 @@ func (c clusterWork) start(ctx context.Context) []<-chan struct{} {
 	done = append(done, discovery.Start(ctx, c.health, discovery.Deps{
 		Logger: c.logger, Cluster: primary, Store: c.store, Watch: c.facts, Clock: clock.System{},
 	}))
-	if ch, ok := c.controllers(ctx, c.leading()); ok {
-		done = append(done, ch)
-	}
-	return done
+	// SQL is the only desired-state writer; the materializer writes its
+	// resources (ADR-032). Its claims are fenced in SQL, so every replica
+	// runs one.
+	worker := materializer.New(materializer.Deps{
+		Store: c.store, Cluster: primary, ID: leader.Identity(), Logger: c.logger, Clock: clock.System{},
+		Facts: opt.Some(c.facts),
+	})
+	return append(done,
+		c.controllers(ctx, worker),
+		supervise.Go(ctx, materializer.Subsystem, c.health, c.logger, func(ctx context.Context) error {
+			return materializer.Run(ctx, worker, c.health)
+		}),
+	)
 }
 
 // readyWhenSynced makes the server ready once every informer has listed
@@ -89,34 +100,26 @@ func (c clusterWork) readyWhenSynced(ctx context.Context) <-chan struct{} {
 	return done
 }
 
-// leading is the work that runs on one replica at a time (serve.rs
-// leading): the controllers and the materializer's drift watch. None is
-// part of this build yet (slice S1-D).
-func (c clusterWork) leading() []func(context.Context) error {
-	return nil
-}
-
-// controllers runs work under the controllers subsystem: behind the
-// controller Lease when leader election is on, directly otherwise. Without
-// work it starts nothing, so this replica never holds the Lease while
-// reconciling nothing (a Rust replica would wait for it in vain).
-func (c clusterWork) controllers(ctx context.Context, work []func(context.Context) error) (<-chan struct{}, bool) {
-	if len(work) == 0 {
-		c.logger.Warn("the controller role has no reconcilers in this build yet; not campaigning for the controller lease")
-		return nil, false
-	}
-	all := func(ctx context.Context) error {
+// controllers runs what runs on one replica at a time (serve.rs leading)
+// under the controllers subsystem: the reconcilers and the materializer's
+// drift watch, behind the controller Lease when leader election is on.
+func (c clusterWork) controllers(ctx context.Context, worker *materializer.Worker) <-chan struct{} {
+	leading := func(ctx context.Context) error {
 		g, ctx := errgroup.WithContext(ctx)
-		for _, w := range work {
-			g.Go(func() error { return w(ctx) })
-		}
+		g.Go(func() error {
+			return controller.RunAll(ctx, controller.Deps{
+				Logger: c.logger, Cluster: c.registry.Primary(), Projections: c.projections, Facts: c.facts,
+				Health: c.health, Clock: clock.System{},
+			})
+		})
+		g.Go(func() error { return materializer.WatchDrift(ctx, worker) })
 		return g.Wait() //nolint:wrapcheck // the supervisor logs it under the subsystem name
 	}
 	e, elect := c.election.Get()
 	return supervise.Go(ctx, leader.Subsystem, c.health, c.logger, func(ctx context.Context) error {
 		if !elect {
-			return all(ctx)
+			return leading(ctx)
 		}
-		return leader.Run(ctx, c.registry.Primary().Typed, e, c.health, c.logger, all) //nolint:wrapcheck // says what failed
-	}), true
+		return leader.Run(ctx, c.registry.Primary().Typed, e, c.health, c.logger, leading) //nolint:wrapcheck // says what failed
+	})
 }
