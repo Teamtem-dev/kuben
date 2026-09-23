@@ -72,7 +72,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/incidents.rs` | 511 | 2 |  | todo | |
 | kuben-api | `routes/members.rs` | 267 | 0 | api (members.go) | ported |  |
 | kuben-api | `routes/mod.rs` | 26 | 0 |  | todo | |
-| kuben-api | `routes/policy.rs` | 299 | 2 |  | todo | |
+| kuben-api | `routes/policy.rs` | 299 | 2 | api (policy_routes.go) | ported | 2 → 2 unit tests + tests/http.rs `m4_weakening_protection_takes_an_owner` |
 | kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
 | kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | ported | list, get (readiness from the org's own projection), create, delete; tests/http.rs `projects_are_tenant_scoped` → `TestProjectsAreTenantScoped` (+ duplicate, delete twice, viewer) |
 | kuben-api | `routes/registries.rs` | 262 | 2 |  | todo | |

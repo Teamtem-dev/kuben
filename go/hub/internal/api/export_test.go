@@ -32,6 +32,8 @@ var (
 	DNSVerdict      = dnsVerdict
 	RefusalErr      = refusalErr
 	Eligible        = eligible
+	PolicyOf        = policyOf
+	PolicyDtoOf     = policyDto
 )
 
 type (
