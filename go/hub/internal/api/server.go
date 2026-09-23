@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -31,6 +32,19 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
+// DNSResolver resolves hostnames: net.DefaultResolver in production, mocked in tests.
+type DNSResolver interface {
+	LookupHost(ctx context.Context, host string) ([]string, error)
+}
+
+type systemResolver struct{}
+
+func (systemResolver) LookupHost(ctx context.Context, host string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return net.DefaultResolver.LookupHost(ctx, host)
+}
+
 // Deps are what the API needs from the rest of the server.
 type Deps struct {
 	Config config.Config
@@ -53,6 +67,8 @@ type Deps struct {
 	Logger  *slog.Logger
 	// InCluster is config.InCluster(), injectable for tests.
 	InCluster bool
+	// Resolver checks DNS records for apps/domains.rs; systemResolver when nil.
+	Resolver DNSResolver
 }
 
 // Server implements the generated handler interface. Operations not ported
@@ -86,6 +102,9 @@ func New(deps Deps) (*Server, error) {
 	}
 	if deps.Console == nil {
 		deps.Console = web.New()
+	}
+	if deps.Resolver == nil {
+		deps.Resolver = systemResolver{}
 	}
 	sec := deps.Config.Security
 	s := &Server{

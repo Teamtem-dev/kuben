@@ -29,6 +29,7 @@ var (
 	SplitLine       = splitLine
 	Belongs         = belongs
 	NewLogStreams   = newLogStreams
+	DNSVerdict      = dnsVerdict
 )
 
 type (

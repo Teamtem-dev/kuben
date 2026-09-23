@@ -90,7 +90,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/apps/crud.rs` | 419 | 0 | api (apps_crud.go) | partial | list, create (image), get, update, delete, restart, handover; `TestAppsReadFromSQL`, `TestViewersCanReadAppsButNotWrite`. Git-sourced create answers 501 until builds (S3) |
 | kuben-api | `routes/apps/deployments.rs` | 510 | 2 | api (apps_deployments.go) | ported | 2 → 2; `a_deployment_is_accepted_once_and_can_be_polled`, `a_lost_answer_is_given_again_without_a_second_run`, `deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql` → Go (PostgreSQL); the input hash is the text Rust hashed, so an Idempotency-Key replay matches across the cutover; `Location` through httpx.SetHeader |
 | kuben-api | `routes/apps/doctor.rs` | 231 | 0 |  | todo | |
-| kuben-api | `routes/apps/domains.rs` | 90 | 0 |  | todo | |
+| kuben-api | `routes/apps/domains.rs` | 90 | 0 | api (apps_domains.go) | ported | DNS hostname verification against Gateway addresses (ok, mismatch, unresolved, unknown); injectable DNSResolver |
 | kuben-api | `routes/apps/evidence.rs` | 296 | 2 |  | todo | |
 | kuben-api | `routes/apps/export.rs` | 544 | 2 |  | todo | |
 | kuben-api | `routes/apps/image_policy.rs` | 220 | 0 |  | todo | |
