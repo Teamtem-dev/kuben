@@ -45,6 +45,13 @@ const (
 	runBindings = "SELECT b.name, b.secret_id, b.revision, s.registry FROM run_secret_bindings b " +
 		"JOIN secrets s ON s.id = b.secret_id AND s.org_id = b.org_id " +
 		"WHERE b.run_id = $1 AND b.org_id = $2 ORDER BY b.name"
+	secretsSQL = "SELECT s.id, s.name, s.kind, s.registry, s.current_revision, r.keys, " +
+		"r.revoked_at IS NOT NULL AS revoked, " +
+		"s.created_at, s.updated_at FROM secrets s " +
+		"JOIN secret_revisions r ON r.secret_id = s.id AND r.revision = s.current_revision " +
+		"AND r.org_id = s.org_id " +
+		"WHERE s.environment_id = $1 AND s.org_id = $2 AND s.deleted_at IS NULL " +
+		"ORDER BY s.name"
 )
 
 // SecretBinding is the revision of a secret a run renders.
@@ -150,4 +157,60 @@ func (t *Tenant) RunSecretBindings(ctx context.Context, run ids.DeploymentRunID)
 		b.Registry = opt.FromPtr(registry)
 		return b, nil
 	}, run, t.org.String())
+}
+
+// SecretSummary is a live secret of an environment.
+type SecretSummary struct {
+	ID              uuid.UUID
+	Name            string
+	Kind            string
+	Registry        opt.Val[string]
+	CurrentRevision uint64
+	Keys            []string
+	Revoked         bool
+	CreatedAt       int64
+	UpdatedAt       int64
+}
+
+// Secrets returns the live secrets of environment, of every kind, by name.
+func (t *Tenant) Secrets(ctx context.Context, env ids.EnvironmentID) ([]SecretSummary, error) {
+	const op = "read an environment's secrets"
+	type summaryRow struct {
+		id              uuid.UUID
+		name            string
+		kind            string
+		registry        *string
+		currentRevision int64
+		keys            []string
+		revoked         bool
+		createdAt       int64
+		updatedAt       int64
+	}
+	rows, err := queryAll(ctx, t.tx, op, secretsSQL, func(row pgx.CollectableRow) (summaryRow, error) {
+		var r summaryRow
+		err := row.Scan(&r.id, &r.name, &r.kind, &r.registry, &r.currentRevision, &r.keys, &r.revoked, &r.createdAt, &r.updatedAt)
+		return r, err
+	}, env, t.org.String())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SecretSummary, 0, len(rows))
+	for _, r := range rows {
+		rev, err := counter(op, r.currentRevision)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, SecretSummary{
+			ID:              r.id,
+			Name:            r.name,
+			Kind:            r.kind,
+			Registry:        opt.FromPtr(r.registry),
+			CurrentRevision: rev,
+			Keys:            r.keys,
+			Revoked:         r.revoked,
+			CreatedAt:       r.createdAt,
+			UpdatedAt:       r.updatedAt,
+		})
+	}
+	return out, nil
 }

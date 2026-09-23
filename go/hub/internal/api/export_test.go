@@ -22,6 +22,9 @@ var (
 	RollbackSpec    = rollbackSpec
 	ReleaseReason   = releaseReason
 	ToDomains       = toDomains
+	PromoteSpec     = promoteSpec
+	SpecChanges     = specChanges
+	MissingSecrets  = missingSecrets
 )
 
 // AnyImage is the image admission measures configurations with.

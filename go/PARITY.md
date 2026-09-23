@@ -98,7 +98,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/apps/logs.rs` | 616 | 3 |  | todo | |
 | kuben-api | `routes/apps/metrics.rs` | 131 | 0 |  | todo | |
 | kuben-api | `routes/apps/mod.rs` | 758 | 2 | api (apps.go) | ported | 2 → 2; DTOs set every nullable member explicitly (ogen omits an unset one, serde wrote null); registry logins for resolution wait for the keyring (S2) |
-| kuben-api | `routes/apps/promote.rs` | 358 | 1 |  | todo | |
+| kuben-api | `routes/apps/promote.rs` | 358 | 1 | api (apps_promote.go) | ported | 1 → 1; `promotion_keeps_target_domains_and_scaling_and_reports_changes`, spec diffs without env values, missing secret warnings against live cluster Secrets and store, dry-run with null app |
 | kuben-api | `routes/apps/releases.rs` | 261 | 2 | api (apps_releases.go) | ported | 2 → 2; `scenario5_releases_are_newest_first_and_rollback_is_authorized` → Go (PostgreSQL) |
 | kuben-api | `routes/apps/scans.rs` | 192 | 0 |  | todo | |
 | kuben-api | `routes/apps/source.rs` | 453 | 3 |  | todo | |
@@ -217,7 +217,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/retention.rs` | 182 | 2 | store (retention.go) | ported | 2 → 2; the DB test writes its incidents and webhook deliveries by hand until repo/notify.rs is ported |
 | kuben-store | `repo/rollups.rs` | 145 | 1 |  | todo | |
 | kuben-store | `repo/scans.rs` | 683 | 3 | store (scans.go, partial) | partial | `scan_verdict`, `latest_scans` (a deployment checks the gate); recording scans, SBOMs, exceptions and the 3 tests follow with the scan work |
-| kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets.go, partial) | partial | `wanted_secrets`, `bind_run_secrets`, `run_secret_bindings`, `SecretBinding`; the secret store and the 5 tests follow with the secret routes |
+| kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets.go, partial) | partial | `secrets` (live secret summaries), `wanted_secrets`, `bind_run_secrets`, `run_secret_bindings`, `SecretBinding`; the secret store mutations and the 5 tests follow with the secret routes |
 | kuben-store | `repo/sessions.rs` | 125 | 0 | store (sessions.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/sso.rs` | 326 | 3 |  | todo | |
 | kuben-store | `repo/status.rs` | 244 | 1 |  | todo | |
