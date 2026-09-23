@@ -13,7 +13,9 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/web"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -45,6 +47,26 @@ func newServerWithStore(t *testing.T, edit func(*config.Config)) (*client, *stor
 	return c, st
 }
 
+// The digests tests/http.rs resolves nginx tags to.
+const (
+	nginx127 = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	nginx126 = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+)
+
+// testImages is tests/http.rs images(): fixed answers, no registry.
+func testImages(t *testing.T) oci.Fixed {
+	t.Helper()
+	images := oci.Fixed{}
+	for image, text := range map[string]string{"nginx:1.27": nginx127, "nginx:1.26": nginx126} {
+		d, err := artifact.ParseDigest(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		images[image] = d
+	}
+	return images
+}
+
 // newServerWithProjections is newServerWithStore with the projections the
 // server reads, for tests that play the cluster.
 func newServerWithProjections(t *testing.T, edit func(*config.Config)) (*client, *store.Store, *projection.Projections) {
@@ -65,6 +87,7 @@ func newServerWithProjections(t *testing.T, edit func(*config.Config)) (*client,
 		Hasher:      auth.InsecureForTests(),
 		Health:      h,
 		Projections: p,
+		Images:      testImages(t),
 		Console:     web.NewFS(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>console")}}),
 	})
 	if err != nil {

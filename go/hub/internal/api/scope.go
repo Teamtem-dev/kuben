@@ -10,6 +10,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -102,6 +103,12 @@ type envScope struct {
 	env     store.EnvironmentRecord
 	// view is the environment's projection, when the cluster has it.
 	view opt.Val[projection.EnvironmentView]
+}
+
+// namespace is the environment's namespace: its placement's, else the one
+// its controller creates.
+func (e envScope) namespace() string {
+	return e.env.Namespace.Or(render.NamespaceName(e.resourceName()))
 }
 
 // resourceName is the environment's Kubernetes object name.

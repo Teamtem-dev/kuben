@@ -15,6 +15,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/problem"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/web"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
@@ -42,6 +43,9 @@ type Deps struct {
 	// /api/v1/stream and the readiness of projects, environments and apps.
 	// Empty without a cluster; a fresh set when nil.
 	Projections *projection.Projections
+	// Images resolves image tags to digests: the images' registries
+	// (oci.Registry{}) when nil; tests give fixed answers (oci.Fixed).
+	Images oci.Resolver
 	// Console serves every non-API path; web.New() in production.
 	Console http.Handler
 	Clock   clock.Clock
@@ -74,6 +78,9 @@ func New(deps Deps) (*Server, error) {
 	}
 	if deps.Projections == nil {
 		deps.Projections = projection.New()
+	}
+	if deps.Images == nil {
+		deps.Images = oci.Registry{}
 	}
 	if deps.Console == nil {
 		deps.Console = web.New()
