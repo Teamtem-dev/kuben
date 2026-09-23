@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/run"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/policy"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
 )
@@ -37,6 +39,20 @@ const (
 		"(org_id, project_id, environment_id, revision, required_approvals, deploy_role, approve_role, " +
 		"approval_ttl_secs, created_by, created_at, scan_mode, scan_severity, scan_require, scan_max_age_secs) " +
 		"VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"
+	lockRun = "SELECT phase, requested_by, approvals_required, approval_expires_at, " +
+		"approval_plan_hash, operation_id FROM deployment_runs " +
+		"WHERE id = $1 AND target_id = $2 AND org_id = $3 FOR UPDATE"
+	selectRunApproval = "SELECT phase, requested_by, approvals_required, approval_expires_at, " +
+		"approval_plan_hash, operation_id FROM deployment_runs " +
+		"WHERE id = $1 AND target_id = $2 AND org_id = $3"
+	selectDecisions = "SELECT approver, decision, comment, decided_at FROM run_approvals " +
+		"WHERE run_id = $1 AND org_id = $2 ORDER BY decided_at, approver"
+	insertDecision = "INSERT INTO run_approvals " +
+		"(run_id, org_id, approver, decision, plan_hash, comment, decided_at) " +
+		"VALUES ($1, $2, $3, $4, $5, $6, $7)"
+	setRunPhaseAfterDecision = "UPDATE deployment_runs SET phase = $2, updated_at = $3, " +
+		"outcome = COALESCE(outcome, $4) WHERE id = $1"
+	wakeOperation = "UPDATE operations SET next_attempt_at = kuben_now_ms() WHERE id = $1 AND NOT done"
 )
 
 // PolicyRevision is one revision of an environment's policy.
@@ -148,4 +164,217 @@ func (t *Tenant) SetEnvironmentPolicy(
 	}
 	n, err := counter(op, revision)
 	return n, err == nil, err
+}
+
+// ApprovalRecord is one recorded approval decision.
+type ApprovalRecord struct {
+	Approver  string
+	Decision  policy.Decision
+	Comment   *string
+	DecidedAt int64
+}
+
+// RunApproval is a run's approval state, as the API shows it.
+type RunApproval struct {
+	Phase       run.Phase
+	RequestedBy string
+	Required    uint8
+	ExpiresAt   *int64
+	PlanHash    []byte
+	Decisions   []ApprovalRecord
+}
+
+// Approved reports the number of distinct approvals recorded.
+func (a RunApproval) Approved() uint8 {
+	var n uint8
+	for _, d := range a.Decisions {
+		if d.Decision == policy.Approve {
+			n++
+		}
+	}
+	return n
+}
+
+// Decided is the outcome of [Tenant.DecideRun].
+//
+//sumtype:decl
+type Decided interface{ decided() }
+
+type (
+	// DecidedRecorded: recorded; the run moved or waits for more approvals.
+	DecidedRecorded struct{ Tally policy.Tally }
+	// DecidedRefused: nothing was recorded.
+	DecidedRefused struct{ Err policy.ApprovalError }
+	// DecidedNotFound: no such run of the target.
+	DecidedNotFound struct{}
+)
+
+func (DecidedRecorded) decided() {}
+func (DecidedRefused) decided()  {}
+func (DecidedNotFound) decided() {}
+
+type runApprovalRow struct {
+	phase             string
+	requestedBy       string
+	approvalsRequired int16
+	approvalExpiresAt *int64
+	approvalPlanHash  []byte
+	operationID       ids.OperationID
+}
+
+func scanRunApprovalRow(row pgx.CollectableRow) (runApprovalRow, error) {
+	var r runApprovalRow
+	if err := row.Scan(&r.phase, &r.requestedBy, &r.approvalsRequired, &r.approvalExpiresAt, &r.approvalPlanHash, &r.operationID); err != nil {
+		return runApprovalRow{}, err
+	}
+	return r, nil
+}
+
+func scanDecision(row pgx.CollectableRow) (ApprovalRecord, error) {
+	const op = "read approval decisions"
+	var (
+		rec      ApprovalRecord
+		decision string
+	)
+	if err := row.Scan(&rec.Approver, &decision, &rec.Comment, &rec.DecidedAt); err != nil {
+		return ApprovalRecord{}, err
+	}
+	switch decision {
+	case "approved":
+		rec.Decision = policy.Approve
+	case "rejected":
+		rec.Decision = policy.Reject
+	default:
+		return ApprovalRecord{}, decodeErr(op, "unknown decision %s", rustQuote(decision))
+	}
+	return rec, nil
+}
+
+func (t *Tenant) decisions(ctx context.Context, runID ids.DeploymentRunID) ([]ApprovalRecord, error) {
+	const op = "read approval decisions"
+	return queryAll(ctx, t.tx, op, selectDecisions, scanDecision, runID, t.org.String())
+}
+
+// RunApproval returns the approval state of run of target, false if not found.
+func (t *Tenant) RunApproval(ctx context.Context, target ids.TargetID, runID ids.DeploymentRunID) (RunApproval, bool, error) {
+	const op = "read a run's approval"
+	row, found, err := queryOpt(ctx, t.tx, op, selectRunApproval, scanRunApprovalRow, runID, target, t.org.String())
+	if err != nil || !found {
+		return RunApproval{}, false, err
+	}
+	phase, err := run.ParsePhase(row.phase)
+	if err != nil {
+		return RunApproval{}, false, decodeErr(op, "%v", err)
+	}
+	if row.approvalsRequired < 0 || row.approvalsRequired > math.MaxUint8 {
+		return RunApproval{}, false, decodeErr(op, errOutOfRange)
+	}
+	decisions, err := t.decisions(ctx, runID)
+	if err != nil {
+		return RunApproval{}, false, err
+	}
+	return RunApproval{
+		Phase:       phase,
+		RequestedBy: row.requestedBy,
+		Required:    uint8(row.approvalsRequired),
+		ExpiresAt:   row.approvalExpiresAt,
+		PlanHash:    row.approvalPlanHash,
+		Decisions:   decisions,
+	}, true, nil
+}
+
+// DecideRun records approver's decision on run of target, having seen planHash,
+// and moves the run when the decision settles it.
+func (t *Tenant) DecideRun(
+	ctx context.Context,
+	target ids.TargetID,
+	runID ids.DeploymentRunID,
+	approver string,
+	decision policy.Decision,
+	planHash []byte,
+	comment opt.Val[string],
+) (Decided, error) {
+	const op = "decide an approval"
+	org := t.org.String()
+	row, found, err := queryOpt(ctx, t.tx, op, lockRun, scanRunApprovalRow, runID, target, org)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return DecidedNotFound{}, nil
+	}
+	phase, err := run.ParsePhase(row.phase)
+	if err != nil {
+		return nil, decodeErr(op, "%v", err)
+	}
+	if row.approvalExpiresAt == nil || len(row.approvalPlanHash) == 0 || phase != run.AwaitingApproval {
+		return DecidedRefused{Err: policy.ErrNotAwaiting}, nil
+	}
+	decisions, err := t.decisions(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	var approvals uint8
+	for _, d := range decisions {
+		if d.Decision == policy.Approve {
+			approvals++
+		}
+	}
+	if row.approvalsRequired < 0 || row.approvalsRequired > math.MaxUint8 {
+		return nil, decodeErr(op, errOutOfRange)
+	}
+	pending := policy.Pending{
+		RequestedBy: row.requestedBy,
+		Required:    uint8(row.approvalsRequired),
+		Approved:    approvals,
+		ExpiresAt:   *row.approvalExpiresAt,
+		PlanHash:    row.approvalPlanHash,
+	}
+	var decidedBefore bool
+	for _, d := range decisions {
+		if d.Approver == approver {
+			decidedBefore = true
+			break
+		}
+	}
+	now := t.store.now()
+	tally, err := policy.Decide(pending, approver, decidedBefore, decision, planHash, now)
+	if err != nil {
+		var appErr policy.ApprovalError
+		if errors.As(err, &appErr) {
+			return DecidedRefused{Err: appErr}, nil
+		}
+		return nil, err
+	}
+	if _, err := exec(ctx, t.tx, op, insertDecision, runID, org, approver, decision.Stored(), planHash, comment.Ptr(), now); err != nil {
+		return nil, err
+	}
+
+	var (
+		event   run.Event
+		outcome *string
+	)
+	switch tally.(type) {
+	case policy.Waiting:
+		return DecidedRecorded{Tally: tally}, nil
+	case policy.Approved:
+		event = run.EventApproved
+		outcome = nil
+	case policy.Rejected:
+		event = run.EventRejected
+		c := "cancelled"
+		outcome = &c
+	}
+
+	next, err := phase.Apply(event)
+	if err != nil {
+		return nil, &DatabaseError{Op: op, Err: err}
+	}
+	if _, err := exec(ctx, t.tx, op, setRunPhaseAfterDecision, runID, next.String(), now, outcome); err != nil {
+		return nil, err
+	}
+	if _, err := exec(ctx, t.tx, op, wakeOperation, row.operationID); err != nil {
+		return nil, err
+	}
+	return DecidedRecorded{Tally: tally}, nil
 }

@@ -85,7 +85,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/validate.rs` | 173 | 4 | api (validate.go) | ported | 4 → 4 |
 | kuben-api | `routes/vulnerabilities.rs` | 267 | 1 |  | todo | |
 | kuben-api | `routes/apps/admission.rs` | 190 | 2 | api (apps_admission.go, environments.go) | ported | 2 → 2 |
-| kuben-api | `routes/apps/approvals.rs` | 309 | 2 | api (apps.go) | partial | `ensure_may_deploy`; the approval routes and the 2 tests follow with the M4 scenarios |
+| kuben-api | `routes/apps/approvals.rs` | 309 | 2 | api (apps_approvals.go) | ported | 2 → 2; `GetDeploymentApproval`, `ApproveDeployment`, `RejectDeployment`; `TestRefusalsMapToHTTP`, `TestEligibleToDecide`, `TestM4ProtectedDeploysWaitForAnotherApprover` |
 | kuben-api | `routes/apps/builds.rs` | 273 | 2 |  | todo | |
 | kuben-api | `routes/apps/crud.rs` | 419 | 0 | api (apps_crud.go) | partial | list, create (image), get, update, delete, restart, handover; `TestAppsReadFromSQL`, `TestViewersCanReadAppsButNotWrite`. Git-sourced create answers 501 until builds (S3) |
 | kuben-api | `routes/apps/deployments.rs` | 510 | 2 | api (apps_deployments.go) | ported | 2 → 2; `a_deployment_is_accepted_once_and_can_be_polled`, `a_lost_answer_is_given_again_without_a_second_run`, `deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql` → Go (PostgreSQL); the input hash is the text Rust hashed, so an Idempotency-Key replay matches across the cutover; `Location` through httpx.SetHeader |
@@ -209,7 +209,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/notify.rs` | 749 | 3 |  | todo | |
 | kuben-store | `repo/operations.rs` | 804 | 5 | store (operations.go) | ported | 5 → 5 |
 | kuben-store | `repo/orgs.rs` | 320 | 0 | store (orgs.go) | ported | covered by the tests/matrix.rs port |
-| kuben-store | `repo/policies.rs` | 888 | 8 | store (policies.go, partial) | partial | `PolicyRevision`, `environment_policy`, `policy_of_target`, `set_environment_policy`; approvals and the 8 tests follow with the policy routes |
+| kuben-store | `repo/policies.rs` | 888 | 8 | store (policies.go) | ported | 8 → 8; `PolicyRevision`, `environment_policy`, `policy_of_target`, `set_environment_policy`, `RunApproval`, `DecideRun`; all 8 PostgreSQL tests ported in policies_test.go |
 | kuben-store | `repo/previews.rs` | 740 | 2 | store (previews.go, partial) | partial | `untrusted_target` (a deployment checks it), `close_preview`; previews and the 2 tests follow with the preview work |
 | kuben-store | `repo/product.rs` | 693 | 3 | store (tenant.go) | ported | 3 → 3 |
 | kuben-store | `repo/releases.rs` | 144 | 0 | store (releases.go) | ported | 0 tests in the file; covered by the releases section of the tests/matrix.rs port |

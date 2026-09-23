@@ -30,6 +30,8 @@ var (
 	Belongs         = belongs
 	NewLogStreams   = newLogStreams
 	DNSVerdict      = dnsVerdict
+	RefusalErr      = refusalErr
+	Eligible        = eligible
 )
 
 type (
