@@ -66,7 +66,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/ci.rs` | 443 | 3 |  | todo | |
 | kuben-api | `routes/controls.rs` | 731 | 2 |  | todo | |
 | kuben-api | `routes/domains.rs` | 703 | 0 |  | todo | |
-| kuben-api | `routes/environments.rs` | 326 | 0 |  | todo | |
+| kuben-api | `routes/environments.rs` | 326 | 0 | api (environments.go) | ported | list, get, create (placement on `primary`, initial policy, org environment quota), delete (closes a preview, `env-delete-protected` for production); `TestEnvironmentsReadAndWriteSQL` (the environment half of `environments_and_apps_read_from_sql` and `viewers_can_read_but_not_write`) |
 | kuben-api | `routes/git.rs` | 298 | 0 |  | todo | |
 | kuben-api | `routes/health.rs` | 54 | 0 | api (probes.go) | ported | seq, pods and cluster from the projections and registry |
 | kuben-api | `routes/incidents.rs` | 511 | 2 |  | todo | |
@@ -209,8 +209,8 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/notify.rs` | 749 | 3 |  | todo | |
 | kuben-store | `repo/operations.rs` | 804 | 5 | store (operations.go) | ported | 5 → 5 |
 | kuben-store | `repo/orgs.rs` | 320 | 0 | store (orgs.go) | ported | covered by the tests/matrix.rs port |
-| kuben-store | `repo/policies.rs` | 888 | 8 | store (policies.go, partial) | partial | `PolicyRevision`, `environment_policy`, `policy_of_target`; setting policies, approvals and the 8 tests follow with the policy routes |
-| kuben-store | `repo/previews.rs` | 740 | 2 | store (previews.go, partial) | partial | `untrusted_target` (a deployment checks it); previews and the 2 tests follow with the preview work |
+| kuben-store | `repo/policies.rs` | 888 | 8 | store (policies.go, partial) | partial | `PolicyRevision`, `environment_policy`, `policy_of_target`, `set_environment_policy`; approvals and the 8 tests follow with the policy routes |
+| kuben-store | `repo/previews.rs` | 740 | 2 | store (previews.go, partial) | partial | `untrusted_target` (a deployment checks it), `close_preview`; previews and the 2 tests follow with the preview work |
 | kuben-store | `repo/product.rs` | 693 | 3 | store (tenant.go) | ported | 3 → 3 |
 | kuben-store | `repo/releases.rs` | 144 | 0 | store (releases.go) | ported | 0 tests in the file; covered by the releases section of the tests/matrix.rs port |
 | kuben-store | `repo/resolve.rs` | 244 | 2 | store (resolve.go) | ported | 2 → 2; `SqlScope` is `SQLScope` |
@@ -225,7 +225,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/throttle.rs` | 64 | 0 | store (throttle.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/tokens.rs` | 154 | 0 | store (tokens.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/upgrades.rs` | 260 | 1 | store (upgrades.go) | ported | 1 → 3 Go tests (+ version order, char truncation) |
-| kuben-store | `repo/usage.rs` | 127 | 1 |  | todo | |
+| kuben-store | `repo/usage.rs` | 127 | 1 | store (usage.go, partial) | partial | `live_environment_count` (the environment quota); rollups and the test follow with usage (S5) |
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 |  | todo | |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 |  | todo | |

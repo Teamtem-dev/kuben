@@ -100,6 +100,13 @@ func (s *Server) projectNamed(ctx context.Context, org ids.OrgID, name string) (
 type envScope struct {
 	project projectScope
 	env     store.EnvironmentRecord
+	// view is the environment's projection, when the cluster has it.
+	view opt.Val[projection.EnvironmentView]
+}
+
+// resourceName is the environment's Kubernetes object name.
+func (e envScope) resourceName() string {
+	return EnvironmentResourceName(e.project.project.Slug, e.env.Slug)
 }
 
 func (e envScope) chain() authz.ScopeChain {
@@ -130,5 +137,16 @@ func (s *Server) findEnvironment(ctx context.Context, a access.Access, project, 
 	if !found {
 		return envScope{}, scopeNotFound("environment", env)
 	}
-	return envScope{project: p, env: record}, nil
+	return envScope{
+		project: p, env: record, view: s.environmentView(EnvironmentResourceName(p.project.Slug, record.Slug)),
+	}, nil
+}
+
+// environmentView is the projection of the environment object resource.
+func (s *Server) environmentView(resource string) opt.Val[projection.EnvironmentView] {
+	v, ok := s.deps.Projections.Environment(resource)
+	if !ok {
+		return opt.None[projection.EnvironmentView]()
+	}
+	return opt.Some(*v)
 }
