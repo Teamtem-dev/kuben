@@ -26,6 +26,14 @@ var (
 	SpecChanges     = specChanges
 	MissingSecrets  = missingSecrets
 	ManualJobName   = manualJobName
+	SplitLine       = splitLine
+	Belongs         = belongs
+	NewLogStreams   = newLogStreams
+)
+
+type (
+	LogStreams      = logStreams
+	LogStreamPermit = logStreamPermit
 )
 
 // AnyImage is the image admission measures configurations with.

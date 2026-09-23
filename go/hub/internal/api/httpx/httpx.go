@@ -109,6 +109,12 @@ func SetHeader(ctx context.Context, key, value string) {
 	}
 }
 
+// ResponseWriterFrom returns the wrapped ResponseWriter from the context.
+func ResponseWriterFrom(ctx context.Context) (http.ResponseWriter, bool) {
+	w, ok := ctx.Value(writerKey{}).(*Writer)
+	return w, ok
+}
+
 // Writer records the status and applies cookies and headers handlers asked
 // for before the header goes out.
 type Writer struct {

@@ -161,6 +161,12 @@ func TestAppsReadFromSQL(t *testing.T) {
 	if status := alice.status("GET", "/api/v1/projects/shop/environments/prod/apps/nope", nil); status != http.StatusNotFound {
 		t.Fatalf("unknown app: %d", status)
 	}
+	if status := alice.status("GET", "/api/v1/projects/shop/environments/prod/apps/api/logs", nil); status != http.StatusServiceUnavailable {
+		t.Fatalf("logs without cluster: %d", status)
+	}
+	if status := alice.status("GET", "/api/v1/projects/shop/environments/prod/apps/api/events", nil); status != http.StatusServiceUnavailable {
+		t.Fatalf("events without cluster: %d", status)
+	}
 
 	// Invalid input is rejected; a tag is resolved to a digest, and SQL
 	// needs no cluster.

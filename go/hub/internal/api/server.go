@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,6 +66,7 @@ type Server struct {
 	sessionCache *expirable.LRU[string, ids.UserID]
 	loginPermits chan struct{} // bounds concurrent password hashing
 	setupMu      sync.Mutex    // one first-run setup at a time
+	logStreams   *logStreams
 	routes       *gen.Server
 }
 
@@ -92,6 +94,7 @@ func New(deps Deps) (*Server, error) {
 		throttle:     newLoginThrottle(sec, deps.Store, deps.Clock, deps.Logger),
 		sessionCache: expirable.NewLRU[string, ids.UserID](10_000, nil, time.Duration(sec.SessionCacheTTLSecs)*time.Second),
 		loginPermits: make(chan struct{}, max(sec.LoginConcurrency, 1)),
+		logStreams:   newLogStreams(),
 	}
 	routes, err := gen.NewServer(s,
 		gen.WithErrorHandler(s.writeError),
@@ -114,6 +117,9 @@ func New(deps Deps) (*Server, error) {
 // generated decoder refuses (malformed JSON, missing or invalid members)
 // are validation failures.
 func (s *Server) writeError(ctx context.Context, w http.ResponseWriter, _ *http.Request, err error) {
+	if errors.Is(err, errStreamHandled) {
+		return
+	}
 	var decode *ogenerrors.DecodeRequestError
 	var params *ogenerrors.DecodeParamsError
 	switch {
@@ -143,8 +149,16 @@ func (s *Server) Handler() http.Handler {
 	var rest http.Handler = s.routes
 	rest = s.gate(rest)
 	rest = s.audit(rest)
-	rest = http.TimeoutHandler(rest, time.Duration(s.deps.Config.Server.RequestTimeoutSecs)*time.Second,
+	timed := http.TimeoutHandler(rest, time.Duration(s.deps.Config.Server.RequestTimeoutSecs)*time.Second,
 		`{"code":"timeout","title":"Request Timeout","status":408}`)
+	unwrapped := rest
+	rest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("follow") == "true" && strings.HasSuffix(r.URL.Path, "/logs") {
+			unwrapped.ServeHTTP(w, r)
+			return
+		}
+		timed.ServeHTTP(w, r)
+	})
 	rest = limitBody(int64(min(s.deps.Config.Server.MaxBodyBytes, 1<<40)), rest) //nolint:gosec // bounded
 
 	api := http.NewServeMux()

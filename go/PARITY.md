@@ -95,7 +95,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/apps/export.rs` | 544 | 2 |  | todo | |
 | kuben-api | `routes/apps/image_policy.rs` | 220 | 0 |  | todo | |
 | kuben-api | `routes/apps/jobs.rs` | 105 | 1 | api (apps_jobs.go) | ported | 1 → 1; `manual_job_names_fit_the_limit`, manual Job creation from live CronJob, 503 without a cluster |
-| kuben-api | `routes/apps/logs.rs` | 616 | 3 |  | todo | |
+| kuben-api | `routes/apps/logs.rs` | 616 | 3 | api (apps_logs.go) | ported | 3 → 3; `an_apps_objects_are_told_apart_from_its_neighbours`, `a_followed_log_line_keeps_its_time_and_is_cut_on_a_character`, `followed_logs_are_capped_per_user_and_freed_when_closed`, GetAppLogs (once or SSE followed, bounded per-user permit), GetAppEvents |
 | kuben-api | `routes/apps/metrics.rs` | 131 | 0 |  | todo | |
 | kuben-api | `routes/apps/mod.rs` | 758 | 2 | api (apps.go) | ported | 2 → 2; DTOs set every nullable member explicitly (ogen omits an unset one, serde wrote null); registry logins for resolution wait for the keyring (S2) |
 | kuben-api | `routes/apps/promote.rs` | 358 | 1 | api (apps_promote.go) | ported | 1 → 1; `promotion_keeps_target_domains_and_scaling_and_reports_changes`, spec diffs without env values, missing secret warnings against live cluster Secrets and store, dry-run with null app |
