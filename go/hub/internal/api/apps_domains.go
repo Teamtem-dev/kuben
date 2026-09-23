@@ -110,7 +110,7 @@ func (s *Server) CheckAppDomains(ctx context.Context, params gen.CheckAppDomains
 func (s *Server) readPlatform(ctx context.Context, cluster registry.Cluster) render.Platform {
 	gvr := v1alpha1.SchemeGroupVersion.WithResource("kubenconfigs")
 	obj, err := cluster.Dynamic.Resource(gvr).Get(ctx, controller.KubenConfigName, metav1.GetOptions{})
-	if err != nil {
+	if err != nil || obj == nil {
 		return render.DefaultPlatform()
 	}
 	spec, ok := obj.Object["spec"].(map[string]any)
@@ -139,7 +139,7 @@ func (s *Server) readGatewayAddresses(ctx context.Context, cluster registry.Clus
 		Resource: "gateways",
 	}
 	gwObj, err := cluster.Dynamic.Resource(gvr).Namespace(gw.Namespace).Get(ctx, gw.Name, metav1.GetOptions{})
-	if err != nil {
+	if err != nil || gwObj == nil {
 		return []string{}
 	}
 	status, ok := gwObj.Object["status"].(map[string]any)
