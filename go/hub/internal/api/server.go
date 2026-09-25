@@ -17,6 +17,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/problem"
@@ -88,6 +89,11 @@ type Deps struct {
 	// (M5.2); the public DNS and the real providers of Config.Domains when
 	// nil.
 	DNS dns.Backend
+
+	// GitHub is the GitHub App Git sources build from (M3), when
+	// `git.github_app_id` is configured; without it the Git routes answer
+	// 503 and the webhook 404.
+	GitHub opt.Val[*github.App]
 }
 
 // Server implements the generated handler interface. Operations not ported
@@ -227,6 +233,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/", guarded)
 	mux.Handle(apidocs.Path, apidocs.Handler(s.docs))
 	mux.Handle(ciExchangePath, s.ciExchange()) // signed by GitHub: outside the session and CSRF layers
+	// Signed by the GitHub App: outside the session and CSRF layers too.
+	mux.Handle(githubWebhookPath, s.githubWebhook())
 	mux.HandleFunc("GET /livez", s.livez)
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("/", s.deps.Console)

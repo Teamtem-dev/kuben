@@ -9,4 +9,8 @@ var (
 	ScanDtoOf      = scanDto
 	AppScansDtoOf  = appScansDto
 	SbomFile       = sbomFile
+	ProviderError  = providerError
 )
+
+// GithubWebhookPath is where GitHub delivers webhooks.
+const GithubWebhookPath = githubWebhookPath
