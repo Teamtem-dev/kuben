@@ -58,10 +58,12 @@ func normalizeJSON(v any) any {
 	case map[string]any:
 		out := make(map[string]any, len(x))
 		for k, val := range x {
-			if strings.HasSuffix(k, "_at") || strings.HasSuffix(k, "At") || k == "seq" {
-				if val != nil {
-					val = "<time-or-seq>"
-				}
+			switch {
+			case val == nil:
+			case k == "at" || k == "seq" || strings.HasSuffix(k, "_at") || strings.HasSuffix(k, "At"):
+				val = "<time-or-seq>"
+			case k == "temporary_password" || k == "token":
+				val = "<secret>" // random by design; its shape is checked by the unit tests
 			}
 			out[k] = normalizeJSON(val)
 		}

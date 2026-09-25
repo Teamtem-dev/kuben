@@ -43,7 +43,15 @@ var skeleton = []oracle.Step{
 	{Name: "livez", Method: "GET", Path: "/livez"},
 }
 
-// Slice S1: templates, projects, environments, policies, status pages, tokens.
+// apps is the app collection of the S1 scenario; pinned is an image by
+// digest, so neither server asks a registry.
+const (
+	apps   = "/api/v1/projects/shop/environments/prod/apps"
+	pinned = "docker.io/library/nginx@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+)
+
+// Slice S1: templates, projects, environments, policies, status pages,
+// apps and their deployments, members, tokens.
 var sliceS1 = []oracle.Step{
 	{Name: "templates list", Method: "GET", Path: "/api/v1/templates"},
 	{Name: "create project", Method: "POST", Path: "/api/v1/projects", Body: map[string]any{
@@ -66,6 +74,28 @@ var sliceS1 = []oracle.Step{
 	{Name: "public status", Method: "GET", Path: "/api/v1/public/status/shop-status"},
 	{Name: "delete status page", Method: "DELETE", Path: "/api/v1/projects/shop/status-page"},
 	{Name: "public status after delete", Method: "GET", Path: "/api/v1/public/status/shop-status"},
+	{Name: "create app", Method: "POST", Path: apps, Body: map[string]any{
+		"name": "web", "image": pinned, "port": 8080, "replicas": 2, "size": "small",
+		"env": []map[string]any{{"name": "MODE", "value": "prod"}}, "health_check_path": "/healthz",
+	}},
+	{Name: "create app again", Method: "POST", Path: apps, Body: map[string]any{"name": "web", "image": pinned, "port": 8080}},
+	{Name: "create app without an image", Method: "POST", Path: apps, Body: map[string]any{"name": "worker"}},
+	{Name: "create app with a bad name", Method: "POST", Path: apps, Body: map[string]any{"name": "Web!", "image": pinned}},
+	{Name: "list apps", Method: "GET", Path: apps},
+	{Name: "get app", Method: "GET", Path: apps + "/web"},
+	{Name: "unknown app", Method: "GET", Path: apps + "/nope"},
+	{Name: "update app", Method: "PATCH", Path: apps + "/web", Body: map[string]any{"replicas": 3, "expected_generation": 1}},
+	{Name: "update app stale", Method: "PATCH", Path: apps + "/web", Body: map[string]any{"replicas": 4, "expected_generation": 1}},
+	{Name: "get app after update", Method: "GET", Path: apps + "/web"},
+	{Name: "list deployments", Method: "GET", Path: apps + "/web/deployments"},
+	{Name: "list releases", Method: "GET", Path: apps + "/web/releases"},
+	{Name: "approval of an unknown run", Method: "GET", Path: apps + "/web/deployments/01a0d847-e59d-7aac-8b51-e3fa8881c73d/approval"},
+	{Name: "logs without a cluster", Method: "GET", Path: apps + "/web/logs"},
+	{Name: "delete app", Method: "DELETE", Path: apps + "/web"},
+	{Name: "get app after delete", Method: "GET", Path: apps + "/web"},
+	{Name: "list members", Method: "GET", Path: "/api/v1/members"},
+	{Name: "invite member", Method: "POST", Path: "/api/v1/members", Body: map[string]any{"email": "Dev@Example.com", "role": "developer"}},
+	{Name: "invite member again", Method: "POST", Path: "/api/v1/members", Body: map[string]any{"email": "dev@example.com", "role": "developer"}},
 	{Name: "create token", Method: "POST", Path: "/api/v1/tokens", Body: map[string]any{
 		"name": "test-token", "role": "admin",
 	}},
