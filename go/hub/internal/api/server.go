@@ -15,6 +15,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/apidocs"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
@@ -82,6 +83,11 @@ type Deps struct {
 	// SSO is single sign-on with an OpenID Connect provider (M4.3), when
 	// it is enabled.
 	SSO opt.Val[*sso.Client]
+
+	// DNS answers DNS-over-HTTPS lookups and opens DNS provider accounts
+	// (M5.2); the public DNS and the real providers of Config.Domains when
+	// nil.
+	DNS dns.Backend
 }
 
 // Server implements the generated handler interface. Operations not ported
@@ -127,6 +133,9 @@ func New(deps Deps) (*Server, error) {
 	}
 	if deps.Resolver == nil {
 		deps.Resolver = systemResolver{}
+	}
+	if deps.DNS == nil {
+		deps.DNS = dns.NewPublic(deps.Config.Domains)
 	}
 	docs, err := apidocs.HTML(version.Version)
 	if err != nil {
