@@ -55,7 +55,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `stream.rs` | 248 | 2 | api/stream, platform/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
 | kuben-api | `transport.rs` | 157 | 0 | api/outbound | ported | net/http with the same rules (https only unless allowed, proxy from env, header and body timeouts, body cap, no redirects); notify.rs is_private is outbound.IsPrivate |
 | kuben-api | `web.rs` | 106 | 1 | api/web | ported | 1 → 1; content types from a fixed table of mime_guess 2.0.5 (Go's mime package differs and reads /etc/mime.types) |
-| kuben-api | `bin/openapi.rs` | 23 | 0 |  | todo | |
+| kuben-api | `bin/openapi.rs` | 23 | 0 | api/gen (ogen) + api/genspec | dropped | spec first: packages/api-client/openapi.json is the frozen contract the server is generated from, so nothing writes it |
 | kuben-api | `auth/mod.rs` | 462 | 1 | api (session_routes.go), api/httpx | ported | SSO routes: S4 |
 | kuben-api | `auth/password.rs` | 75 | 1 | api/auth | ported |  |
 | kuben-api | `auth/session.rs` | 202 | 4 | api/auth, api (identity.go) | ported |  |
@@ -71,7 +71,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/health.rs` | 54 | 0 | api (probes.go) | ported | seq, pods and cluster from the projections and registry |
 | kuben-api | `routes/incidents.rs` | 511 | 2 |  | todo | |
 | kuben-api | `routes/members.rs` | 267 | 0 | api (members.go) | ported |  |
-| kuben-api | `routes/mod.rs` | 26 | 0 |  | todo | |
+| kuben-api | `routes/mod.rs` | 26 | 0 | api | ported | a module list: the routes are files of package api, mounted through the ogen handler (server.go) |
 | kuben-api | `routes/policy.rs` | 299 | 2 | api (policy_routes.go) | ported | 2 → 2 unit tests + tests/http.rs `m4_weakening_protection_takes_an_owner` |
 | kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
 | kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | ported | list, get (readiness from the org's own projection), create, delete; tests/http.rs `projects_are_tenant_scoped` → `TestProjectsAreTenantScoped` (+ duplicate, delete twice, viewer) |
@@ -150,7 +150,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `evidence.rs` | 391 | 5 | platform/evidence | ported | 5 → 6 |
 | kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
 | kuben-platform | `leader.rs` | 313 | 2 | platform/leader | ported | client-go leaderelection (SUBSTITUTIONS.md); `decisions` tested the hand-written protocol and `timing_is_consistent` the constants, which client-go itself refuses when inconsistent → 1 Go test: two replicas over a fake clientset, one leader, hand-over on release |
-| kuben-platform | `lib.rs` | 39 | 0 |  | todo | |
+| kuben-platform | `lib.rs` | 39 | 0 | internal/platform/* | ported | a module list: each Go package under internal/platform says in its package comment which Rust module it replaces |
 | kuben-platform | `local_agent.rs` | 341 | 2 | platform/agentlink (local.go) | ported | 2 → 2 |
 | kuben-platform | `registry.rs` | 212 | 4 | platform/registry | ported | 4 → 4 |
 | kuben-platform | `secrets.rs` | 664 | 10 | platform/secrets | ported | 10 → 12 (+ opening the Rust-sealed `testdata/compat/secrets.json`, + `Prepare` against PostgreSQL) |
@@ -205,7 +205,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/installs.rs` | 84 | 1 | store (installs.go) | ported | 1 → 1 |
 | kuben-store | `repo/lifecycle.rs` | 375 | 2 | store (lifecycle.go) | ported | 2 → 3 Go tests (+ the subject's wire form) |
 | kuben-store | `repo/materialize.rs` | 927 | 6 | store (materialize.go) | ported | 6 → 6 |
-| kuben-store | `repo/mod.rs` | 88 | 0 |  | todo | |
+| kuben-store | `repo/mod.rs` | 88 | 0 | store | ported | a module list and re-exports: the Go store is one package, the re-exported types are its exported ones |
 | kuben-store | `repo/notify.rs` | 749 | 3 |  | todo | |
 | kuben-store | `repo/operations.rs` | 804 | 5 | store (operations.go) | ported | 5 → 5 |
 | kuben-store | `repo/orgs.rs` | 320 | 0 | store (orgs.go) | ported | covered by the tests/matrix.rs port |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 11, ported 174, todo 44.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 11, ported 177, todo 40.
