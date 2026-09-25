@@ -20,6 +20,7 @@ import {
   setupQuery,
   tokensQuery,
 } from './lib/api'
+import { type AppTab, appTabFrom } from './lib/app-tabs'
 import { usePrefs } from './lib/prefs'
 import { problemMessage } from './lib/problem'
 import { AppShell } from './routes/shell'
@@ -163,6 +164,10 @@ const environmentRoute = createRoute({
 const appRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/projects/$project/$environment/$app',
+  // The open tab; the overview has none, so the plain app URL stays as it was.
+  validateSearch: (search: Record<string, unknown>): { tab?: Exclude<AppTab, 'overview'> } => ({
+    tab: appTabFrom(search.tab),
+  }),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(appQuery(params.project, params.environment, params.app)),
   component: page.AppPage,

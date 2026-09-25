@@ -1,18 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
-import { Card, ErrorNote } from '../components/ui'
-import { type Deployment, deploymentsQuery, isFinalPhase } from '../lib/api'
-import { usePrefs } from '../lib/prefs'
+import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
+import { useState } from 'react'
+import { ErrorAlert, Section } from '@/components/kit'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Skeleton } from '@/components/ui/skeleton'
+import { type Deployment, deploymentsQuery, isFinalPhase } from '@/lib/api'
+import { usePrefs } from '@/lib/prefs'
+import { cn } from '@/lib/utils'
 
 type Where = { project: string; environment: string; app: string }
 
 const tone = (phase: string) =>
   phase === 'succeeded' || phase === 'recovered'
-    ? 'bg-ok'
+    ? 'bg-success'
     : phase === 'failed' || phase === 'recoveryFailed' || phase === 'manualActionRequired'
-      ? 'bg-danger-solid'
+      ? 'bg-destructive'
       : isFinalPhase(phase)
-        ? 'bg-subtle'
-        : 'bg-brand'
+        ? 'bg-muted-foreground'
+        : 'bg-primary'
 
 /** `12.4s`, `3m 05s`. */
 export function duration(ms: number): string {
@@ -27,20 +32,20 @@ function Timeline({ run }: { run: Deployment }) {
   const phase = (p: string) => tOr(`phase.${p}`, p)
   const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   return (
-    <ol className="mt-3 space-y-2 border-line border-s ps-4">
+    <ol className="ms-1 mt-3 space-y-2 border-s ps-4">
       {run.timeline.map((step, i) => {
         const next = run.timeline[i + 1]
         return (
           <li key={`${step.phase}-${step.at}`} className="relative text-sm">
             <span
               aria-hidden="true"
-              className={`-start-[1.3rem] absolute top-1.5 size-2 rounded-full ${tone(step.phase)}`}
+              className={cn('-start-[1.3rem] absolute top-1.5 size-2 rounded-full', tone(step.phase))}
             />
             <span className="font-medium">{phase(step.phase)}</span>{' '}
-            <time dateTime={new Date(step.at).toISOString()} className="text-subtle text-xs">
+            <time dateTime={new Date(step.at).toISOString()} className="text-muted-foreground text-xs">
               {time.format(step.at)}
             </time>
-            {next && <span className="text-subtle text-xs"> · {duration(next.at - step.at)}</span>}
+            {next && <span className="text-muted-foreground text-xs"> · {duration(next.at - step.at)}</span>}
           </li>
         )
       })}
@@ -48,45 +53,62 @@ function Timeline({ run }: { run: Deployment }) {
   )
 }
 
-export function DeploymentsCard({ project, environment, app }: Where) {
+/** One run: its summary, and when open its image and timeline. */
+function Run({ run, defaultOpen }: { run: Deployment; defaultOpen: boolean }) {
   const { t, tOr, locale } = usePrefs()
-  const runs = useQuery({ ...deploymentsQuery(project, environment, app), retry: false })
+  const [open, setOpen] = useState(defaultOpen)
   const date = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' })
+  const Chevron = open ? ChevronDownIcon : ChevronRightIcon
   return (
-    <Card title={t('deployments.title')}>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-md text-start text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <Chevron aria-hidden="true" className="size-4 shrink-0 text-muted-foreground rtl:-scale-x-100" />
+        <span className={cn('size-2 shrink-0 rounded-full', tone(run.phase))} aria-hidden="true" />
+        <span className="font-medium">
+          {t('deployments.revision')} {run.generation}
+        </span>
+        <span className="text-muted-foreground">{tOr(`deployments.reason.${run.reason}`, run.reason)}</span>
+        <span>{tOr(`phase.${run.phase}`, run.phase)}</span>
+        <span className="text-muted-foreground text-xs">
+          {date.format(run.created_at)} · {t('deployments.by')} <span dir="ltr">{run.requested_by}</span>
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="ps-6">
+        {run.image && (
+          <p dir="ltr" className="mt-2 truncate text-start font-mono text-muted-foreground text-xs">
+            {run.image}
+          </p>
+        )}
+        <Timeline run={run} />
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/** The app's deployment runs, newest first, each with its phase timeline. */
+export function DeploymentsCard({ project, environment, app }: Where) {
+  const { t } = usePrefs()
+  const runs = useQuery({ ...deploymentsQuery(project, environment, app), retry: false })
+  return (
+    <Section title={t('deployments.title')}>
       {runs.isError ? (
-        <ErrorNote error={runs.error} />
+        <ErrorAlert error={runs.error} />
+      ) : runs.isLoading ? (
+        <div className="space-y-3" role="status" aria-label={t('common.loading')}>
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-6 w-1/2" />
+        </div>
       ) : !runs.data?.length ? (
-        <p className="text-subtle text-sm">{runs.isLoading ? t('common.loading') : t('deployments.empty')}</p>
+        <p className="text-muted-foreground text-sm">{t('deployments.empty')}</p>
       ) : (
-        <ul className="divide-y divide-line-soft">
+        <ul className="divide-y">
           {runs.data.map((run, i) => (
             <li key={run.run} className="py-3 first:pt-0 last:pb-0">
-              <details open={i === 0}>
-                <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                  <span className={`size-2 shrink-0 rounded-full ${tone(run.phase)}`} aria-hidden="true" />
-                  <span className="font-medium">
-                    {t('deployments.revision')} {run.generation}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {tOr(`deployments.reason.${run.reason}`, run.reason)}
-                  </span>
-                  <span>{tOr(`phase.${run.phase}`, run.phase)}</span>
-                  <span className="text-subtle text-xs">
-                    {date.format(run.created_at)} · {t('deployments.by')} {run.requested_by}
-                  </span>
-                </summary>
-                {run.image && (
-                  <p dir="ltr" className="mt-2 truncate text-start font-mono text-subtle text-xs">
-                    {run.image}
-                  </p>
-                )}
-                <Timeline run={run} />
-              </details>
+              <Run run={run} defaultOpen={i === 0} />
             </li>
           ))}
         </ul>
       )}
-    </Card>
+    </Section>
   )
 }

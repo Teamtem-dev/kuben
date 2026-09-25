@@ -128,6 +128,10 @@ const coreEn = {
   'ui.copy': 'Copy',
   'ui.copied': 'Copied',
   'ui.dangerZone': 'Danger zone',
+  'app.sections': 'App sections',
+  'app.tab.overview': 'Overview',
+  'app.tab.settings': 'Settings',
+  'logs.mode': 'Which logs',
 } as const
 
 const coreFa: Record<keyof typeof coreEn, string> = {
@@ -251,6 +255,10 @@ const coreFa: Record<keyof typeof coreEn, string> = {
   'ui.copy': 'کپی',
   'ui.copied': 'کپی شد',
   'ui.dangerZone': 'ناحیهٔ خطر',
+  'app.sections': 'بخش‌های اپ',
+  'app.tab.overview': 'نمای کلی',
+  'app.tab.settings': 'تنظیمات',
+  'logs.mode': 'کدام لاگ‌ها',
 }
 
 export const en = { ...coreEn, ...opsEn, ...pagesEn } as const
