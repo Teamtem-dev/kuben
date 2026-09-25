@@ -1,13 +1,18 @@
 package store
 
-// Environment policies (M4.1, migration 0019); a partial port of
-// repo/policies.rs: the policy revisions a deployment reads and recording
-// a new one. Deciding approvals follows with the policy routes.
+// Environment policies and deployment approvals (M4.1, migration 0019;
+// repo/policies.rs).
+//
+// A decision locks its run, applies [policy.Decide] and, in the same
+// transaction, records the decision and moves the run: enough approvals
+// release it to delivery, one rejection cancels it. Either way its operation
+// is woken, so the materializer acts at once.
 
 import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -170,7 +175,7 @@ func (t *Tenant) SetEnvironmentPolicy(
 type ApprovalRecord struct {
 	Approver  string
 	Decision  policy.Decision
-	Comment   *string
+	Comment   opt.Val[string]
 	DecidedAt int64
 }
 
@@ -179,16 +184,22 @@ type RunApproval struct {
 	Phase       run.Phase
 	RequestedBy string
 	Required    uint8
-	ExpiresAt   *int64
-	PlanHash    []byte
-	Decisions   []ApprovalRecord
+	ExpiresAt   opt.Val[int64]
+	// PlanHash is what an approver confirms; present (possibly empty) only
+	// while the run was parked for approval.
+	PlanHash  opt.Val[[]byte]
+	Decisions []ApprovalRecord
 }
 
-// Approved reports the number of distinct approvals recorded.
-func (a RunApproval) Approved() uint8 {
+// Approved reports the number of distinct approvals recorded, saturating at
+// 255 as Rust's u8::try_from(n).unwrap_or(u8::MAX).
+func (a RunApproval) Approved() uint8 { return approvals(a.Decisions) }
+
+// approvals counts the approving decisions, saturating at 255.
+func approvals(decisions []ApprovalRecord) uint8 {
 	var n uint8
-	for _, d := range a.Decisions {
-		if d.Decision == policy.Approve {
+	for _, d := range decisions {
+		if d.Decision == policy.Approve && n < math.MaxUint8 {
 			n++
 		}
 	}
@@ -218,8 +229,18 @@ type runApprovalRow struct {
 	requestedBy       string
 	approvalsRequired int16
 	approvalExpiresAt *int64
-	approvalPlanHash  []byte
-	operationID       ids.OperationID
+	// approvalPlanHash is nil for SQL NULL; pgx reads an empty bytea as a
+	// non-nil empty slice, so Rust's Some(empty) and None stay apart.
+	approvalPlanHash []byte
+	operationID      ids.OperationID
+}
+
+// planHashOf is a nullable bytea column as Rust's Option<Vec<u8>>.
+func planHashOf(column []byte) opt.Val[[]byte] {
+	if column == nil {
+		return opt.None[[]byte]()
+	}
+	return opt.Some(column)
 }
 
 func scanRunApprovalRow(row pgx.CollectableRow) (runApprovalRow, error) {
@@ -235,10 +256,12 @@ func scanDecision(row pgx.CollectableRow) (ApprovalRecord, error) {
 	var (
 		rec      ApprovalRecord
 		decision string
+		comment  *string
 	)
-	if err := row.Scan(&rec.Approver, &decision, &rec.Comment, &rec.DecidedAt); err != nil {
+	if err := row.Scan(&rec.Approver, &decision, &comment, &rec.DecidedAt); err != nil {
 		return ApprovalRecord{}, err
 	}
+	rec.Comment = opt.FromPtr(comment)
 	switch decision {
 	case "approved":
 		rec.Decision = policy.Approve
@@ -277,8 +300,8 @@ func (t *Tenant) RunApproval(ctx context.Context, target ids.TargetID, runID ids
 		Phase:       phase,
 		RequestedBy: row.requestedBy,
 		Required:    uint8(row.approvalsRequired),
-		ExpiresAt:   row.approvalExpiresAt,
-		PlanHash:    row.approvalPlanHash,
+		ExpiresAt:   opt.FromPtr(row.approvalExpiresAt),
+		PlanHash:    planHashOf(row.approvalPlanHash),
 		Decisions:   decisions,
 	}, true, nil
 }
@@ -307,18 +330,13 @@ func (t *Tenant) DecideRun(
 	if err != nil {
 		return nil, decodeErr(op, "%v", err)
 	}
-	if row.approvalExpiresAt == nil || len(row.approvalPlanHash) == 0 || phase != run.AwaitingApproval {
+	expected, hasHash := planHashOf(row.approvalPlanHash).Get()
+	if row.approvalExpiresAt == nil || !hasHash || phase != run.AwaitingApproval {
 		return DecidedRefused{Err: policy.ErrNotAwaiting}, nil
 	}
 	decisions, err := t.decisions(ctx, runID)
 	if err != nil {
 		return nil, err
-	}
-	var approvals uint8
-	for _, d := range decisions {
-		if d.Decision == policy.Approve {
-			approvals++
-		}
 	}
 	if row.approvalsRequired < 0 || row.approvalsRequired > math.MaxUint8 {
 		return nil, decodeErr(op, errOutOfRange)
@@ -326,17 +344,11 @@ func (t *Tenant) DecideRun(
 	pending := policy.Pending{
 		RequestedBy: row.requestedBy,
 		Required:    uint8(row.approvalsRequired),
-		Approved:    approvals,
+		Approved:    approvals(decisions),
 		ExpiresAt:   *row.approvalExpiresAt,
-		PlanHash:    row.approvalPlanHash,
+		PlanHash:    expected,
 	}
-	var decidedBefore bool
-	for _, d := range decisions {
-		if d.Approver == approver {
-			decidedBefore = true
-			break
-		}
-	}
+	decidedBefore := slices.ContainsFunc(decisions, func(d ApprovalRecord) bool { return d.Approver == approver })
 	now := t.store.now()
 	tally, err := policy.Decide(pending, approver, decidedBefore, decision, planHash, now)
 	if err != nil {
@@ -349,32 +361,39 @@ func (t *Tenant) DecideRun(
 	if _, err := exec(ctx, t.tx, op, insertDecision, runID, org, approver, decision.Stored(), planHash, comment.Ptr(), now); err != nil {
 		return nil, err
 	}
-
-	var (
-		event   run.Event
-		outcome *string
-	)
-	switch tally.(type) {
-	case policy.Waiting:
-		return DecidedRecorded{Tally: tally}, nil
-	case policy.Approved:
-		event = run.EventApproved
-		outcome = nil
-	case policy.Rejected:
-		event = run.EventRejected
-		c := "cancelled"
-		outcome = &c
-	}
-
-	next, err := phase.Apply(event)
-	if err != nil {
-		return nil, &DatabaseError{Op: op, Err: err}
-	}
-	if _, err := exec(ctx, t.tx, op, setRunPhaseAfterDecision, runID, next.String(), now, outcome); err != nil {
-		return nil, err
-	}
-	if _, err := exec(ctx, t.tx, op, wakeOperation, row.operationID); err != nil {
+	if err := t.settleRun(ctx, runID, row.operationID, phase, tally, now); err != nil {
 		return nil, err
 	}
 	return DecidedRecorded{Tally: tally}, nil
+}
+
+// settleRun moves a run a decision settled and wakes its operation: enough
+// approvals release it to delivery, a rejection cancels it. A run still
+// waiting stays as it is.
+func (t *Tenant) settleRun(
+	ctx context.Context, runID ids.DeploymentRunID, operation ids.OperationID, phase run.Phase, tally policy.Tally, now int64,
+) error {
+	const op = "decide an approval"
+	var (
+		event   run.Event
+		outcome opt.Val[string]
+	)
+	switch tally.(type) {
+	case policy.Waiting:
+		return nil
+	case policy.Approved:
+		event = run.EventApproved
+	case policy.Rejected:
+		event = run.EventRejected
+		outcome = opt.Some("cancelled")
+	}
+	next, err := phase.Apply(event)
+	if err != nil {
+		return protocolErr(op, "%v", err)
+	}
+	if _, err := exec(ctx, t.tx, op, setRunPhaseAfterDecision, runID, next.String(), now, outcome.Ptr()); err != nil {
+		return err
+	}
+	_, err = exec(ctx, t.tx, op, wakeOperation, operation)
+	return err
 }

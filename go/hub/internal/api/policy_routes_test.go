@@ -1,14 +1,15 @@
 package api_test
 
 import (
-	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/policy"
@@ -26,16 +27,19 @@ func putBody(approvals int32, deploy, approve string) *gen.PutPolicy {
 	}
 }
 
+// policy.rs bodies_become_valid_policies.
 func TestBodiesBecomeValidPolicies(t *testing.T) {
-	// Standard body
 	p, err := api.PolicyOf(putBody(2, "admin", "owner"), scan.Production())
-	require.NoError(t, err)
-	assert.Equal(t, uint8(2), p.RequiredApprovals)
-	assert.Equal(t, perm.Admin, p.DeployRole)
-	assert.Equal(t, perm.Owner, p.ApproveRole)
-	assert.Equal(t, scan.Production(), p.Scan, "an omitted gate is kept")
+	if err != nil {
+		t.Fatalf("valid body: %v", err)
+	}
+	if p.RequiredApprovals != 2 || p.DeployRole != perm.Admin || p.ApproveRole != perm.Owner {
+		t.Errorf("policy = %+v", p)
+	}
+	if p.Scan != scan.Production() {
+		t.Errorf("an omitted gate is kept: %+v", p.Scan)
+	}
 
-	// Gated body
 	gated := putBody(0, "developer", "admin")
 	gated.Scan = gen.NewOptNilScanGateDto(gen.ScanGateDto{
 		Mode:        "warn",
@@ -44,20 +48,23 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 		MaxAgeSecs:  gen.NewOptInt32(86_400),
 	})
 	p, err = api.PolicyOf(gated, scan.Off())
-	require.NoError(t, err)
-	assert.Equal(t, scan.ModeWarn, p.Scan.Mode)
-	assert.Equal(t, scan.SeverityHigh, p.Scan.Severity)
-	assert.True(t, p.Scan.RequireScan)
-	assert.Equal(t, uint32(86_400), p.Scan.MaxAgeSecs)
+	if err != nil {
+		t.Fatalf("gated body: %v", err)
+	}
+	want := scan.Gate{Mode: scan.ModeWarn, Severity: scan.SeverityHigh, RequireScan: true, MaxAgeSecs: 86_400}
+	if diff := cmp.Diff(want, p.Scan); diff != "" {
+		t.Errorf("gate (-want +got):\n%s", diff)
+	}
 
-	// Bad scan configurations
 	for _, tc := range []struct {
 		mode, severity string
 		age            int32
+		message        string
 	}{
-		{"strict", "high", 86_400},
-		{"block", "low", 86_400},
-		{"block", "high", 60},
+		{"strict", "high", 86_400, "unknown scan gate mode `strict`"},
+		{"block", "low", 86_400, "the scan gate counts `high` or `critical` findings, with a maximum age of an hour to 90 days"},
+		{"block", "high", 60, "the scan gate counts `high` or `critical` findings, with a maximum age of an hour to 90 days"},
+		{"block", "severe", 86_400, "unknown severity `severe`"},
 	} {
 		bad := putBody(0, "developer", "admin")
 		bad.Scan = gen.NewOptNilScanGateDto(gen.ScanGateDto{
@@ -67,53 +74,86 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 			MaxAgeSecs:  gen.NewOptInt32(tc.age),
 		})
 		_, err := api.PolicyOf(bad, scan.Off())
-		assert.Error(t, err, "bad scan: %s %s %d", tc.mode, tc.severity, tc.age)
+		expectValidation(t, err, tc.message)
 	}
 
-	// Bad role or approvals combinations
-	for _, bad := range []*gen.PutPolicy{
-		putBody(6, "developer", "admin"),
-		putBody(1, "viewer", "admin"),
-		putBody(1, "developer", "developer"),
-		putBody(1, "root", "admin"),
+	for _, tc := range []struct {
+		body    *gen.PutPolicy
+		message string
+	}{
+		{putBody(6, "developer", "admin"), "at most 5 approvals can be required"},
+		{putBody(255, "developer", "admin"), "at most 5 approvals can be required"},
+		{putBody(256, "developer", "admin"), "requiredApprovals: invalid value: integer `256`, expected u8"},
+		{putBody(1, "viewer", "admin"), "the deploy role `viewer` cannot deploy"},
+		{putBody(1, "developer", "developer"), "the approve role `developer` cannot approve releases"},
+		{putBody(1, "root", "admin"), ""},
 	} {
-		_, err := api.PolicyOf(bad, scan.Off())
-		assert.Error(t, err, "bad body: %+v", bad)
+		_, err := api.PolicyOf(tc.body, scan.Off())
+		expectValidation(t, err, tc.message)
 	}
 
-	// Parsed JSON with default TTL when omitted
 	var parsed gen.PutPolicy
-	err = json.Unmarshal([]byte(`{"requiredApprovals":1,"deployRole":"developer","approveRole":"admin"}`), &parsed)
-	require.NoError(t, err)
-	assert.False(t, parsed.ApprovalTtlSecs.IsSet(), "ttl is not set in input")
+	if err := parsed.UnmarshalJSON([]byte(`{"requiredApprovals":1,"deployRole":"developer","approveRole":"admin"}`)); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	p, err = api.PolicyOf(&parsed, scan.Off())
-	require.NoError(t, err)
-	assert.Equal(t, policy.DefaultApprovalTTLSecs, p.ApprovalTTLSecs, "defaults to DEFAULT_APPROVAL_TTL_SECS")
+	if err != nil {
+		t.Fatalf("parsed body: %v", err)
+	}
+	if p.ApprovalTTLSecs != policy.DefaultApprovalTTLSecs {
+		t.Errorf("ttl = %d, want the default", p.ApprovalTTLSecs)
+	}
 }
 
+// expectValidation checks err is a validation error; with a message, that
+// it is its detail.
+func expectValidation(t *testing.T, err error, message string) {
+	t.Helper()
+	var k *kerr.Error
+	if !errors.As(err, &k) || k.Code != kerr.Validation {
+		t.Errorf("%v is not a validation error (want %q)", err, message)
+		return
+	}
+	if message != "" && k.Detail != message {
+		t.Errorf("detail = %q, want %q", k.Detail, message)
+	}
+}
+
+// policy.rs environments_without_a_policy_show_the_open_one, plus the null
+// updatedBy and updatedAt Rust writes then.
 func TestEnvironmentsWithoutPolicyShowOpenOne(t *testing.T) {
 	dto := api.PolicyDtoOf(opt.None[store.PolicyRevision]())
-	assert.Equal(t, int64(0), dto.Revision)
-	assert.Equal(t, int32(0), dto.RequiredApprovals)
-	assert.Equal(t, "developer", dto.DeployRole)
-	assert.False(t, dto.UpdatedBy.Set)
-	assert.False(t, dto.UpdatedAt.Set)
+	if dto.Revision != 0 || dto.RequiredApprovals != 0 || dto.DeployRole != "developer" {
+		t.Errorf("open policy = %+v", dto)
+	}
+	if !dto.UpdatedBy.IsNull() || !dto.UpdatedAt.IsNull() {
+		t.Errorf("updatedBy/updatedAt = %+v %+v, want null", dto.UpdatedBy, dto.UpdatedAt)
+	}
+	data, err := dto.MarshalJSON()
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	for _, field := range []string{`"updatedBy":null`, `"updatedAt":null`} {
+		if !strings.Contains(string(data), field) {
+			t.Errorf("%s lacks %s", data, field)
+		}
+	}
 
-	revision := store.PolicyRevision{
+	dto = api.PolicyDtoOf(opt.Some(store.PolicyRevision{
 		Revision:  3,
 		Policy:    policy.Production(),
 		CreatedBy: "user:a",
 		CreatedAt: 7,
+	}))
+	if dto.Revision != 3 || dto.RequiredApprovals != 1 {
+		t.Errorf("revision = %+v", dto)
 	}
-	dto = api.PolicyDtoOf(opt.Some(revision))
-	assert.Equal(t, int64(3), dto.Revision)
-	assert.Equal(t, int32(1), dto.RequiredApprovals)
-	by, ok := dto.UpdatedBy.Get()
-	assert.True(t, ok)
-	assert.Equal(t, "user:a", by)
-	at, ok := dto.UpdatedAt.Get()
-	assert.True(t, ok)
-	assert.Equal(t, int64(7), at)
+	if by, ok := dto.UpdatedBy.Get(); !ok || by != "user:a" {
+		t.Errorf("updatedBy = %+v", dto.UpdatedBy)
+	}
+	if at, ok := dto.UpdatedAt.Get(); !ok || at != 7 {
+		t.Errorf("updatedAt = %+v", dto.UpdatedAt)
+	}
 }
 
 const policyURL = "/api/v1/projects/shop/environments/prod/policy"
@@ -133,71 +173,88 @@ func protected(t *testing.T, f fixture) (alice, bob, carol *client) {
 	bob = f.signIn("bob@example.com", seedPassword)
 	carol, _ = f.member("carol@example.com", perm.Admin)
 	status, open, _ := alice.do("GET", policyURL, nil)
-	require.Equal(t, 200, status)
-	require.Equal(t, float64(0), open["revision"])
-	require.Equal(t, 403, bob.status("PUT", policyURL, policyJSON(1)), "viewers cannot change protection")
+	if status != 200 || open["revision"] != float64(0) {
+		t.Fatalf("open policy = %d %v", status, open)
+	}
+	if by, ok := open["updatedBy"]; !ok || by != nil {
+		t.Fatalf("open policy = %v, want updatedBy null", open)
+	}
+	if status := bob.status("PUT", policyURL, policyJSON(1)); status != 403 {
+		t.Fatalf("viewers cannot change protection: %d", status)
+	}
 	status, set, _ := carol.do("PUT", policyURL, policyJSON(1))
-	require.Equal(t, 200, status, "%v", set)
-	require.Equal(t, float64(1), set["revision"])
+	if status != 200 || set["revision"] != float64(1) {
+		t.Fatalf("set policy = %d %v", status, set)
+	}
 	return alice, bob, carol
 }
 
+// tests/http.rs m4_weakening_protection_takes_an_owner.
 func TestM4WeakeningProtectionTakesAnOwner(t *testing.T) {
 	f := newFixture(t)
 	alice, _, carol := protected(t, f)
+	expect := func(what string, got, want int) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s: status %d, want %d", what, got, want)
+		}
+	}
 
-	// Invalid policy (too many approvals) returns 422 Unprocessable Entity
-	assert.Equal(t, 422, carol.status("PUT", policyURL, policyJSON(9)), "approvals > 5 rejected")
+	expect("approvals > 5 rejected", carol.status("PUT", policyURL, policyJSON(9)), 422)
 
-	// Admin sets stricter policy(2) -> 200 OK, revision 2
 	status, set2, _ := carol.do("PUT", policyURL, policyJSON(2))
-	assert.Equal(t, 200, status, "stricter is an admin's call")
-	assert.Equal(t, float64(2), set2["revision"])
-	assert.Equal(t, float64(2), set2["requiredApprovals"])
+	expect("stricter is an admin's call", status, 200)
+	if set2["revision"] != float64(2) || set2["requiredApprovals"] != float64(2) {
+		t.Errorf("stricter = %v", set2)
+	}
 
-	// Admin attempts to weaken policy(0) -> 403 Forbidden
-	assert.Equal(t, 403, carol.status("PUT", policyURL, policyJSON(0)), "weaker is an owner's")
+	expect("weaker is an owner's", carol.status("PUT", policyURL, policyJSON(0)), 403)
 
-	// Tokens cannot change policies even for an owner
-	status, createdToken, _ := alice.do("POST", "/api/v1/tokens", map[string]any{"name": "admin-tok", "role": "admin"})
-	require.Equal(t, 201, status)
-	tok, _ := createdToken["token"].(string)
-	require.NotEmpty(t, tok)
-	status, _ = f.bearer(tok, "PUT", policyURL, policyJSON(0))
-	assert.Equal(t, 403, status, "tokens cannot change policies")
+	status, created, _ := alice.do("POST", "/api/v1/tokens", map[string]any{"name": "admin-tok", "role": "admin"})
+	secret, _ := created["token"].(string)
+	if status != 201 || secret == "" {
+		t.Fatalf("token = %d %v", status, created)
+	}
+	status, _ = f.bearer(secret, "PUT", policyURL, policyJSON(0))
+	expect("tokens cannot change policies", status, 403)
 
-	// Owner (alice) weakens policy to 0 -> 200 OK, revision 3
 	status, set3, _ := alice.do("PUT", policyURL, policyJSON(0))
-	assert.Equal(t, 200, status)
-	assert.Equal(t, float64(3), set3["revision"])
-	assert.Equal(t, float64(0), set3["requiredApprovals"])
+	expect("the owner weakens", status, 200)
+	if set3["revision"] != float64(3) || set3["requiredApprovals"] != float64(0) {
+		t.Errorf("weaker = %v", set3)
+	}
 
-	// Deploying in an open environment goes straight to planned (no approval wait)
 	status, runMap, _ := alice.deploy(0, "")
-	require.Equal(t, 202, status, "%v", runMap)
-	assert.Equal(t, "planned", runMap["phase"])
-	assert.Equal(t, float64(0), runMap["approvals_required"])
+	if status != 202 || runMap["phase"] != "planned" || runMap["approvals_required"] != float64(0) {
+		t.Fatalf("an open environment deploys at once: %d %v", status, runMap)
+	}
 
-	// PUT with scan gate
 	gateBody := map[string]any{
 		"requiredApprovals": 0,
 		"deployRole":        "developer",
 		"approveRole":       "admin",
-		"scan": map[string]any{
-			"mode":     "block",
-			"severity": "critical",
-		},
+		"scan":              map[string]any{"mode": "block", "severity": "critical"},
 	}
 	status, gated, _ := alice.do("PUT", policyURL, gateBody)
-	assert.Equal(t, 200, status)
-	assert.Equal(t, float64(4), gated["revision"])
-	scanMap, ok := gated["scan"].(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, "block", scanMap["mode"])
-	assert.Equal(t, "critical", scanMap["severity"])
+	expect("gate", status, 200)
+	scanMap, _ := gated["scan"].(map[string]any)
+	if gated["revision"] != float64(4) || scanMap["mode"] != "block" || scanMap["severity"] != "critical" {
+		t.Errorf("gated = %v", gated)
+	}
 
-	// Idempotent PUT (same policy returns current revision without incrementing)
 	status, same, _ := alice.do("PUT", policyURL, gateBody)
-	assert.Equal(t, 200, status)
-	assert.Equal(t, gated["revision"], same["revision"], "same policy does not create new revision")
+	expect("same policy", status, 200)
+	if same["revision"] != gated["revision"] {
+		t.Errorf("the same policy made revision %v", same["revision"])
+	}
+
+	badMode := map[string]any{
+		"requiredApprovals": 0, "deployRole": "developer", "approveRole": "admin",
+		"scan": map[string]any{"mode": "strict", "severity": "critical"},
+	}
+	status, problem, _ := alice.do("PUT", policyURL, badMode)
+	expect("unknown mode", status, 422)
+	if problem["detail"] != "validation failed: unknown scan gate mode `strict`" {
+		t.Errorf("unknown mode = %v", problem)
+	}
 }

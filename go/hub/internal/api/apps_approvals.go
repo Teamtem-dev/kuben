@@ -11,7 +11,6 @@ package api
 
 import (
 	"context"
-	"encoding/hex"
 	"strings"
 	"unicode/utf8"
 
@@ -29,15 +28,15 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
+// refusalErr is the HTTP answer to a refused decision: the requester is
+// forbidden, every other refusal is a conflict carrying its message.
 func refusalErr(e policy.ApprovalError) error {
 	switch e {
 	case policy.ErrSelfApproval:
 		return kerr.ErrForbidden
 	case policy.ErrNotAwaiting, policy.ErrExpired, policy.ErrAlreadyDecided, policy.ErrStalePlan:
-		return kerr.New(kerr.Conflict, "%s", e)
-	default:
-		return kerr.New(kerr.Conflict, "%s", e)
 	}
+	return kerr.New(kerr.Conflict, "%s", e)
 }
 
 func eligible(acc access.Access, a store.RunApproval, mayApprove bool) bool {
@@ -63,24 +62,17 @@ func eligible(acc access.Access, a store.RunApproval, mayApprove bool) bool {
 }
 
 func approvalDto(runID uuid.UUID, a store.RunApproval, act actors, canDecide bool) *gen.ApprovalDto {
-	var planHash gen.OptNilString
-	if len(a.PlanHash) > 0 {
-		planHash = gen.NewOptNilString(hex.EncodeToString(a.PlanHash))
-	}
-	var expiresAt gen.OptNilInt64
-	if a.ExpiresAt != nil {
-		expiresAt = gen.NewOptNilInt64(*a.ExpiresAt)
+	// Rust writes expiresAt, planHash and comment as null when absent.
+	planHash := opt.None[string]()
+	if h, ok := a.PlanHash.Get(); ok {
+		planHash = opt.Some(policy.Hex(h))
 	}
 	decisions := make([]gen.DecisionDto, len(a.Decisions))
 	for i, d := range a.Decisions {
-		var comment gen.OptNilString
-		if d.Comment != nil {
-			comment = gen.NewOptNilString(*d.Comment)
-		}
 		decisions[i] = gen.DecisionDto{
 			Approver:  act.name("user:" + d.Approver),
 			Decision:  d.Decision.Stored(),
-			Comment:   comment,
+			Comment:   optNilString(d.Comment),
 			DecidedAt: d.DecidedAt,
 		}
 	}
@@ -88,9 +80,9 @@ func approvalDto(runID uuid.UUID, a store.RunApproval, act actors, canDecide boo
 		Approved:    int32(a.Approved()),
 		CanDecide:   canDecide,
 		Decisions:   decisions,
-		ExpiresAt:   expiresAt,
+		ExpiresAt:   optNilInt64(a.ExpiresAt),
 		Phase:       a.Phase.String(),
-		PlanHash:    planHash,
+		PlanHash:    optNilString(planHash),
 		RequestedBy: act.name(a.RequestedBy),
 		Required:    int32(a.Required),
 		Run:         runID,
@@ -127,8 +119,12 @@ func (s *Server) GetDeploymentApproval(ctx context.Context, params gen.GetDeploy
 		return nil, scopeNotFound("deployment", params.Run.String())
 	}
 
+	polRev, polFound, err := tenant.PolicyOfTarget(ctx, a.app.Target)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // a store error, answered as internal
+	}
 	mayApprove := false
-	if polRev, polFound, err := tenant.PolicyOfTarget(ctx, a.app.Target); err == nil && polFound {
+	if polFound {
 		if _, err := acc.Require(perm.ReleaseApprove, chain); err == nil {
 			mayApprove = polRev.Policy.MayApprove(authz.EffectiveRole(acc.Subject, chain))
 		}
@@ -165,20 +161,14 @@ func (s *Server) decideDeployment(
 		return nil, err //nolint:wrapcheck // a kerr already
 	}
 
-	var comment opt.Val[string]
-	if c, ok := req.Comment.Get(); ok {
-		c = strings.TrimSpace(c)
-		if c != "" {
-			if utf8.RuneCountInString(c) > policy.MaxCommentChars {
-				return nil, kerr.New(kerr.Validation, "a comment has at most %d characters", policy.MaxCommentChars)
-			}
-			comment = opt.Some(c)
-		}
+	comment, err := decisionComment(req.Comment)
+	if err != nil {
+		return nil, err
 	}
 
-	planHashHex := strings.TrimSpace(req.PlanHash)
-	planHash, err := hex.DecodeString(planHashHex)
-	if err != nil || len(planHash) == 0 {
+	// An empty hash is a hash: it is refused as a changed plan, not here.
+	planHash, ok := policy.Unhex(strings.TrimSpace(req.PlanHash))
+	if !ok {
 		return nil, kerr.New(kerr.Validation, "`planHash` is not a hex plan hash")
 	}
 
@@ -188,15 +178,8 @@ func (s *Server) decideDeployment(
 	}
 	defer tenant.Rollback(ctx) //nolint:errcheck // committed on success
 
-	polRev, polFound, err := tenant.PolicyOfTarget(ctx, a.app.Target)
-	if err != nil {
-		return nil, err //nolint:wrapcheck // a store error, answered as internal
-	}
-	if !polFound {
-		return nil, kerr.New(kerr.Conflict, "the environment requires no approvals")
-	}
-	if !polRev.Policy.MayApprove(authz.EffectiveRole(acc.Subject, chain)) {
-		return nil, kerr.ErrForbidden
+	if err := mayDecide(ctx, tenant, a.app.Target, acc, chain); err != nil {
+		return nil, err
 	}
 
 	depRunID := ids.From[ids.DeploymentRun](runID)
@@ -205,14 +188,8 @@ func (s *Server) decideDeployment(
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
-	switch d := decided.(type) {
-	case store.DecidedRecorded:
-		s.deps.Logger.InfoContext(ctx, "deployment decision recorded",
-			"run", runID, "approver", approver, "decision", decision.Stored(), "tally", d.Tally)
-	case store.DecidedRefused:
-		return nil, refusalErr(d.Err)
-	case store.DecidedNotFound:
-		return nil, scopeNotFound("deployment", runID.String())
+	if err := s.decidedErr(ctx, decided, runID, approver, decision); err != nil {
+		return nil, err
 	}
 
 	approval, found, err := tenant.RunApproval(ctx, a.app.Target, depRunID)
@@ -231,6 +208,54 @@ func (s *Server) decideDeployment(
 		return nil, err
 	}
 	return approvalDto(runID, approval, actors, false), nil
+}
+
+// mayDecide refuses a decision on target's runs when its environment has no
+// policy, or when the caller's role may not approve there. The role is
+// checked again at decision time: a demoted approver cannot use a page
+// opened earlier.
+func mayDecide(ctx context.Context, tenant *store.Tenant, target ids.TargetID, acc access.Access, chain authz.ScopeChain) error {
+	polRev, polFound, err := tenant.PolicyOfTarget(ctx, target)
+	if err != nil {
+		return err //nolint:wrapcheck // a store error, answered as internal
+	}
+	if !polFound {
+		return kerr.New(kerr.Conflict, "the environment requires no approvals")
+	}
+	if !polRev.Policy.MayApprove(authz.EffectiveRole(acc.Subject, chain)) {
+		return kerr.ErrForbidden
+	}
+	return nil
+}
+
+// decisionComment is the trimmed comment of a decision, absent when empty.
+func decisionComment(raw gen.OptNilString) (opt.Val[string], error) {
+	c, ok := raw.Get()
+	c = strings.TrimSpace(c)
+	if !ok || c == "" {
+		return opt.None[string](), nil
+	}
+	if utf8.RuneCountInString(c) > policy.MaxCommentChars {
+		return opt.None[string](), kerr.New(kerr.Validation, "a comment has at most %d characters", policy.MaxCommentChars)
+	}
+	return opt.Some(c), nil
+}
+
+// decidedErr logs a recorded decision and turns a refused or missing run
+// into its HTTP error.
+func (s *Server) decidedErr(
+	ctx context.Context, decided store.Decided, runID uuid.UUID, approver string, decision policy.Decision,
+) error {
+	switch d := decided.(type) {
+	case store.DecidedRecorded:
+		s.deps.Logger.InfoContext(ctx, "deployment decision recorded",
+			"run", runID, "approver", approver, "decision", decision.Stored(), "tally", d.Tally)
+	case store.DecidedRefused:
+		return refusalErr(d.Err)
+	case store.DecidedNotFound:
+		return scopeNotFound("deployment", runID.String())
+	}
+	return nil
 }
 
 // ApproveDeployment approves a deployment waiting for approval.

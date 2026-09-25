@@ -18,27 +18,26 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
+// scanGateFromDto is Rust's TryFrom<&ScanGateDto> for ScanGate. The
+// generated decoder already refused a negative maxAgeSecs (minimum: 0).
 func scanGateFromDto(d gen.ScanGateDto) (scan.Gate, error) {
 	mode, err := scan.ParseGateMode(d.Mode)
 	if err != nil {
-		return scan.Gate{}, err //nolint:wrapcheck // a kerr validation error
+		// The API names it a scan gate mode; the core parser's text differs.
+		return scan.Gate{}, kerr.New(kerr.Validation, "unknown scan gate mode `%s`", d.Mode)
 	}
 	severity, err := scan.ParseSeverity(d.Severity)
 	if err != nil {
 		return scan.Gate{}, err //nolint:wrapcheck // a kerr validation error
 	}
-	requireScan := d.RequireScan.Or(false)
 	maxAge := scan.DefaultMaxAgeSecs
-	if d.MaxAgeSecs.IsSet() {
-		if d.MaxAgeSecs.Value < 0 {
-			return scan.Gate{}, kerr.New(kerr.Validation, "maxAgeSecs must be non-negative")
-		}
-		maxAge = uint32(d.MaxAgeSecs.Value)
+	if v, ok := d.MaxAgeSecs.Get(); ok {
+		maxAge = uint32(v) //nolint:gosec // non-negative: the decoder enforces minimum 0
 	}
 	return scan.Gate{
 		Mode:        mode,
 		Severity:    severity,
-		RequireScan: requireScan,
+		RequireScan: d.RequireScan.Or(false),
 		MaxAgeSecs:  maxAge,
 	}, nil
 }
@@ -47,8 +46,12 @@ func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy,
 	if body == nil {
 		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation, "missing request body")
 	}
-	if body.RequiredApprovals < 0 || body.RequiredApprovals > math.MaxUint8 {
-		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation, "requiredApprovals out of range")
+	// Rust's u8 refused more than 255 while decoding the body (serde's
+	// message); 6 to 255 reach Validate below and get its message. The
+	// decoder already refused a negative count (minimum: 0).
+	if body.RequiredApprovals > math.MaxUint8 {
+		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation,
+			"requiredApprovals: invalid value: integer `%d`, expected u8", body.RequiredApprovals)
 	}
 	deployRole, err := perm.ParseRole(body.DeployRole)
 	if err != nil {
@@ -58,12 +61,12 @@ func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy,
 	if err != nil {
 		return policy.EnvironmentPolicy{}, err //nolint:wrapcheck // a kerr validation error
 	}
+	// The contract types approvalTtlSecs as int32 with minimum 0, so the
+	// decoder refused negative values and Rust's u32 values above int32 cannot
+	// be sent.
 	ttl := policy.DefaultApprovalTTLSecs
-	if body.ApprovalTtlSecs.IsSet() {
-		if body.ApprovalTtlSecs.Value < 0 {
-			return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation, "approvalTtlSecs must be non-negative")
-		}
-		ttl = uint32(body.ApprovalTtlSecs.Value)
+	if v, ok := body.ApprovalTtlSecs.Get(); ok {
+		ttl = uint32(v) //nolint:gosec // non-negative: the decoder enforces minimum 0
 	}
 	gate := current
 	if scanDto, ok := body.Scan.Get(); ok {
@@ -74,7 +77,7 @@ func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy,
 		gate = parsed
 	}
 	p := policy.EnvironmentPolicy{
-		RequiredApprovals: uint8(body.RequiredApprovals),
+		RequiredApprovals: uint8(body.RequiredApprovals), //nolint:gosec // 0..=255, checked above
 		DeployRole:        deployRole,
 		ApproveRole:       approveRole,
 		ApprovalTTLSecs:   ttl,
@@ -89,14 +92,12 @@ func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy,
 func policyDto(rev opt.Val[store.PolicyRevision]) *gen.PolicyDto {
 	p := policy.Open()
 	var revision int64
-	var updatedBy gen.OptNilString
-	var updatedAt gen.OptNilInt64
-
+	// Rust writes "updatedBy":null,"updatedAt":null without a revision.
+	updatedBy, updatedAt := opt.None[string](), opt.None[int64]()
 	if r, ok := rev.Get(); ok {
 		p = r.Policy
-		revision = int64(r.Revision)
-		updatedBy = gen.NewOptNilString(r.CreatedBy)
-		updatedAt = gen.NewOptNilInt64(r.CreatedAt)
+		revision = int64(r.Revision) //nolint:gosec // a revision counter, far below 2^63
+		updatedBy, updatedAt = opt.Some(r.CreatedBy), opt.Some(r.CreatedAt)
 	}
 
 	return &gen.PolicyDto{
@@ -104,15 +105,15 @@ func policyDto(rev opt.Val[store.PolicyRevision]) *gen.PolicyDto {
 		RequiredApprovals: int32(p.RequiredApprovals),
 		DeployRole:        p.DeployRole.String(),
 		ApproveRole:       p.ApproveRole.String(),
-		ApprovalTtlSecs:   int32(p.ApprovalTTLSecs),
+		ApprovalTtlSecs:   int32(p.ApprovalTTLSecs), //nolint:gosec // at most 30 days: stored policies are valid
 		Scan: gen.ScanGateDto{
 			Mode:        p.Scan.Mode.String(),
 			Severity:    p.Scan.Severity.String(),
 			RequireScan: gen.NewOptBool(p.Scan.RequireScan),
-			MaxAgeSecs:  gen.NewOptInt32(int32(p.Scan.MaxAgeSecs)),
+			MaxAgeSecs:  gen.NewOptInt32(int32(p.Scan.MaxAgeSecs)), //nolint:gosec // at most 90 days: stored gates are valid
 		},
-		UpdatedBy: updatedBy,
-		UpdatedAt: updatedAt,
+		UpdatedBy: optNilString(updatedBy),
+		UpdatedAt: optNilInt64(updatedAt),
 	}
 }
 
@@ -142,10 +143,15 @@ func (s *Server) GetEnvironmentPolicy(
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
+	return policyDto(revisionOf(rev, found)), nil
+}
+
+// revisionOf is a store lookup as Rust's Option<PolicyRevision>.
+func revisionOf(rev store.PolicyRevision, found bool) opt.Val[store.PolicyRevision] {
 	if !found {
-		return policyDto(opt.None[store.PolicyRevision]()), nil
+		return opt.None[store.PolicyRevision]()
 	}
-	return policyDto(opt.Some(rev)), nil
+	return opt.Some(rev)
 }
 
 // PutEnvironmentPolicy changes the environment's protection policy. Stricter
@@ -180,47 +186,47 @@ func (s *Server) PutEnvironmentPolicy(
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
-	current := policy.Open()
-	if found {
-		current = rev.Policy
+	current := revisionOf(rev, found)
+	currentPolicy := policy.Open()
+	if r, ok := current.Get(); ok {
+		currentPolicy = r.Policy
 	}
 
-	next, err := policyOf(req, current.Scan)
+	next, err := policyOf(req, currentPolicy.Scan)
 	if err != nil {
 		return nil, err
 	}
-
-	if next == current {
-		var r opt.Val[store.PolicyRevision]
-		if found {
-			r = opt.Some(rev)
-		}
-		return policyDto(r), nil
+	if next == currentPolicy {
+		return policyDto(current), nil
 	}
 
-	if next.Weakens(current) {
+	if next.Weakens(currentPolicy) {
 		if _, err := acc.Require(perm.EnvProtect, chain); err != nil {
 			return nil, err //nolint:wrapcheck // a kerr already
 		}
 	}
 
+	return recordPolicy(ctx, tenant, e, next, actor, params.Environment)
+}
+
+// recordPolicy stores next as the newest revision of e's policy, commits,
+// and answers with that revision.
+func recordPolicy(
+	ctx context.Context, tenant *store.Tenant, e envScope, next policy.EnvironmentPolicy, actor, name string,
+) (*gen.PolicyDto, error) {
 	_, set, err := tenant.SetEnvironmentPolicy(ctx, e.project.project.ID, e.env.ID, next, actor)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !set {
-		return nil, scopeNotFound("environment", params.Environment)
+		return nil, scopeNotFound("environment", name)
 	}
-
 	newRev, newFound, err := tenant.EnvironmentPolicy(ctx, e.env.ID)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
-	if !newFound {
-		return nil, scopeNotFound("environment", params.Environment)
-	}
 	if err := tenant.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
-	return policyDto(opt.Some(newRev)), nil
+	return policyDto(revisionOf(newRev, newFound)), nil
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/model"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/run"
@@ -120,6 +121,16 @@ func voteRun(
 	return decided
 }
 
+// planHash is the plan hash of a run parked for approval.
+func planHash(t *testing.T, a store.RunApproval) []byte {
+	t.Helper()
+	hash, ok := a.PlanHash.Get()
+	if !ok {
+		t.Fatalf("no plan hash: %#v", a)
+	}
+	return hash
+}
+
 func isClaimable(t *testing.T, s *store.Store) bool {
 	t.Helper()
 	claimed, ok, err := s.ClaimOperation(t.Context(), "w", []string{store.RunKind}, 30*time.Second)
@@ -186,7 +197,8 @@ func TestPoliciesAreRevisionsSeenOnlyByTheirOrganization(t *testing.T) {
 }
 
 func TestAProtectedDeployWaitsForAnotherPerson(t *testing.T) {
-	s := pgtest.Store(t)
+	now := clock.System{}.NowMs()
+	s := pgtest.Store(t).WithClock(clock.Fixed(now))
 	f := newPolicyFixture(t, s, "a", opt.Some(policy.Production()))
 	runID, required := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
 	if required != 1 {
@@ -196,17 +208,20 @@ func TestAProtectedDeployWaitsForAnotherPerson(t *testing.T) {
 	if waiting.Phase != run.AwaitingApproval {
 		t.Fatalf("expected awaitingApproval, got %v", waiting.Phase)
 	}
-	if waiting.ExpiresAt == nil || *waiting.ExpiresAt <= time.Now().UnixMilli() {
-		t.Fatalf("expected future expiry, got %v", waiting.ExpiresAt)
+	// The store's clock set the expiry: now plus the policy's wait.
+	wantExpiry := now + int64(policy.Production().ApprovalTTLSecs)*1000
+	if at, ok := waiting.ExpiresAt.Get(); !ok || at <= now || at != wantExpiry {
+		t.Fatalf("expiry = %v, want %d", waiting.ExpiresAt, wantExpiry)
 	}
-	if len(waiting.PlanHash) != 32 {
-		t.Fatalf("expected 32 byte plan hash, got %d", len(waiting.PlanHash))
+	hash := planHash(t, waiting)
+	if len(hash) != 32 {
+		t.Fatalf("expected 32 byte plan hash, got %d", len(hash))
 	}
 	if isClaimable(t, s) {
 		t.Fatal("parked run should not be claimable")
 	}
 
-	d := voteRun(t, s, f, runID, aliceUser, policy.Approve, waiting.PlanHash)
+	d := voteRun(t, s, f, runID, aliceUser, policy.Approve, hash)
 	if ref, ok := d.(store.DecidedRefused); !ok || ref.Err != policy.ErrSelfApproval {
 		t.Fatalf("expected ErrSelfApproval, got %#v", d)
 	}
@@ -218,7 +233,7 @@ func TestAProtectedDeployWaitsForAnotherPerson(t *testing.T) {
 		t.Fatal("refusals should record nothing")
 	}
 
-	d = voteRun(t, s, f, runID, bobUser, policy.Approve, waiting.PlanHash)
+	d = voteRun(t, s, f, runID, bobUser, policy.Approve, hash)
 	if rec, ok := d.(store.DecidedRecorded); !ok {
 		t.Fatalf("expected DecidedRecorded, got %#v", d)
 	} else if _, ok := rec.Tally.(policy.Approved); !ok {
@@ -232,18 +247,18 @@ func TestAProtectedDeployWaitsForAnotherPerson(t *testing.T) {
 	if approved.Approved() != 1 {
 		t.Fatalf("expected 1 approval, got %d", approved.Approved())
 	}
-	if len(approved.Decisions) != 1 || approved.Decisions[0].Comment == nil || *approved.Decisions[0].Comment != "looks good" {
+	if len(approved.Decisions) != 1 || approved.Decisions[0].Comment != opt.Some("looks good") {
 		t.Fatalf("expected comment 'looks good', got %#v", approved.Decisions)
 	}
 	if !isClaimable(t, s) {
 		t.Fatal("approved run should be woken and claimable")
 	}
 
-	d = voteRun(t, s, f, runID, carolUser, policy.Approve, waiting.PlanHash)
+	d = voteRun(t, s, f, runID, carolUser, policy.Approve, hash)
 	if ref, ok := d.(store.DecidedRefused); !ok || ref.Err != policy.ErrNotAwaiting {
 		t.Fatalf("expected ErrNotAwaiting, got %#v", d)
 	}
-	d = voteRun(t, s, f, ids.New[ids.DeploymentRun](), bobUser, policy.Approve, waiting.PlanHash)
+	d = voteRun(t, s, f, ids.New[ids.DeploymentRun](), bobUser, policy.Approve, hash)
 	if _, ok := d.(store.DecidedNotFound); !ok {
 		t.Fatalf("expected DecidedNotFound, got %#v", d)
 	}
@@ -256,7 +271,7 @@ func TestOneRejectionCancelsAndTwoApprovalsNeedTwoPeople(t *testing.T) {
 	f := newPolicyFixture(t, s, "a", opt.Some(two))
 
 	first, _ := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
-	hash := runApprovalState(t, s, f, first).PlanHash
+	hash := planHash(t, runApprovalState(t, s, f, first))
 	d := voteRun(t, s, f, first, bobUser, policy.Approve, hash)
 	if rec, ok := d.(store.DecidedRecorded); !ok {
 		t.Fatalf("expected DecidedRecorded, got %#v", d)
@@ -278,7 +293,7 @@ func TestOneRejectionCancelsAndTwoApprovalsNeedTwoPeople(t *testing.T) {
 	}
 
 	second, _ := startPolicyRun(t, s, f, 1, store.ReasonRollback)
-	secondHash := runApprovalState(t, s, f, second).PlanHash
+	secondHash := planHash(t, runApprovalState(t, s, f, second))
 	d = voteRun(t, s, f, second, carolUser, policy.Reject, secondHash)
 	if rec, ok := d.(store.DecidedRecorded); !ok {
 		t.Fatalf("expected DecidedRecorded, got %#v", d)
@@ -288,6 +303,15 @@ func TestOneRejectionCancelsAndTwoApprovalsNeedTwoPeople(t *testing.T) {
 	rejected := runApprovalState(t, s, f, second)
 	if rejected.Phase != run.Cancelled {
 		t.Fatalf("expected cancelled, got %v", rejected.Phase)
+	}
+	tn := tenant(t, s, f.org)
+	var outcome *string
+	if err := tn.TestQueryRow(t.Context(), "SELECT outcome FROM deployment_runs WHERE id = $1", second).Scan(&outcome); err != nil {
+		t.Fatalf("outcome: %v", err)
+	}
+	rollback(t, tn)
+	if outcome == nil || *outcome != "cancelled" {
+		t.Fatalf("outcome = %v, want cancelled", outcome)
 	}
 }
 
@@ -299,7 +323,7 @@ func TestRestartsAndOpenEnvironmentsNeedNoApproval(t *testing.T) {
 		t.Fatalf("expected 0 required approvals, got %d", required)
 	}
 	st := runApprovalState(t, s, open, runID)
-	if st.Phase != run.Planned || st.PlanHash != nil || st.ExpiresAt != nil {
+	if st.Phase != run.Planned || st.PlanHash.IsSome() || st.ExpiresAt.IsSome() {
 		t.Fatalf("expected planned with no plan hash/expiry, got %#v", st)
 	}
 
@@ -323,7 +347,7 @@ func TestANewerRunSupersedesAWaitingOne(t *testing.T) {
 	s := pgtest.Store(t)
 	f := newPolicyFixture(t, s, "a", opt.Some(policy.Production()))
 	older, _ := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
-	hash := runApprovalState(t, s, f, older).PlanHash
+	hash := planHash(t, runApprovalState(t, s, f, older))
 
 	newer, _ := startPolicyRun(t, s, f, 1, store.ReasonDeploy)
 	if runApprovalState(t, s, f, older).Phase != run.Superseded {
@@ -336,7 +360,7 @@ func TestANewerRunSupersedesAWaitingOne(t *testing.T) {
 	if ref, ok := d.(store.DecidedRefused); !ok || ref.Err != policy.ErrNotAwaiting {
 		t.Fatalf("expected ErrNotAwaiting, got %#v", d)
 	}
-	newerHash := runApprovalState(t, s, f, newer).PlanHash
+	newerHash := planHash(t, runApprovalState(t, s, f, newer))
 	if bytes.Equal(newerHash, hash) {
 		t.Fatal("every run has its own plan hash")
 	}
@@ -350,7 +374,7 @@ func TestApprovalInputsAndDecisionsNeverChange(t *testing.T) {
 	s := pgtest.Store(t)
 	f := newPolicyFixture(t, s, "a", opt.Some(policy.Production()))
 	runID, _ := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
-	hash := runApprovalState(t, s, f, runID).PlanHash
+	hash := planHash(t, runApprovalState(t, s, f, runID))
 	voteRun(t, s, f, runID, bobUser, policy.Approve, hash)
 
 	for _, sqlStmt := range []string{
@@ -415,6 +439,15 @@ func TestScopedRolesAreOnePerNodeAndOnlyForMembers(t *testing.T) {
 	if err != nil || len(bindings) != 2 {
 		t.Fatalf("expected 2 bindings: %#v, %v", bindings, err)
 	}
+	projectBound := false
+	for _, b := range bindings {
+		if uid, ok := b.ScopeUID.Get(); ok && b.ScopeKind == model.ScopeProject && uid == node.String() {
+			projectBound = true
+		}
+	}
+	if !projectBound {
+		t.Fatalf("no project binding on %s: %#v", node, bindings)
+	}
 	if _, err := s.BindScopedRole(ctx, f.org, member, model.ScopeOrg, node, perm.Owner); err == nil {
 		t.Fatal("org roles are not scoped")
 	}
@@ -425,6 +458,9 @@ func TestScopedRolesAreOnePerNodeAndOnlyForMembers(t *testing.T) {
 	unbound, err = s.UnbindScopedRole(ctx, f.org, member, model.ScopeProject, node)
 	if err != nil || unbound {
 		t.Fatalf("unbind again should be false: %v, %v", unbound, err)
+	}
+	if bindings, err := s.BindingsForUser(ctx, member); err != nil || len(bindings) != 1 {
+		t.Fatalf("expected the org binding only: %#v, %v", bindings, err)
 	}
 }
 
