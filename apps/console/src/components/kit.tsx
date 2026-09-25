@@ -28,6 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -39,9 +40,12 @@ import {
 import { Empty, EmptyContent, EmptyDescription } from '@/components/ui/empty'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { fill } from '@/lib/messages/pages'
+import { sparkline, stateTones, type Tone } from '@/lib/ops'
 import { usePrefs } from '@/lib/prefs'
 import { problemMessage } from '@/lib/problem'
 import { cn } from '@/lib/utils'
@@ -170,6 +174,44 @@ export function Tag({ children, className }: { children: ReactNode; className?: 
   )
 }
 
+const toneClasses: Record<Tone, string> = {
+  success: 'border-success/30 bg-success/10 text-success',
+  warning: 'border-warning/30 bg-warning/10 text-warning',
+  danger: 'border-destructive/30 bg-destructive/10 text-destructive',
+  neutral: 'border-border bg-muted text-muted-foreground',
+}
+
+/**
+ * A state or a severity as a coloured badge: `tone` names the colour, or a
+ * state (`open`, `verified`, `failed`, …) whose colour `lib/ops` knows.
+ */
+export function ToneBadge({
+  tone,
+  children,
+  className,
+}: {
+  tone: Tone | string
+  children: ReactNode
+  className?: string
+}) {
+  const family: Tone = tone in toneClasses ? (tone as Tone) : (stateTones[tone] ?? 'neutral')
+  return (
+    <Badge variant="outline" className={cn(toneClasses[family], className)}>
+      {children}
+    </Badge>
+  )
+}
+
+/** A line of muted text while something loads. */
+export function Loading({ className }: { className?: string }) {
+  const { t } = usePrefs()
+  return (
+    <p role="status" className={cn('text-muted-foreground text-sm', className)}>
+      {t('common.loading')}
+    </p>
+  )
+}
+
 /** Nothing to list yet, and what the list is for. */
 export function EmptyState({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
@@ -250,6 +292,40 @@ export function SelectInput({
         </div>
       )}
     </Labelled>
+  )
+}
+
+/** A checkbox and its label; with `name` it takes part in its form (`on` when checked). */
+export function CheckboxField({
+  label,
+  className,
+  ...props
+}: { label: ReactNode; className?: string } & ComponentProps<typeof Checkbox>) {
+  const id = useId()
+  return (
+    <div className={cn('flex items-center gap-2', className)}>
+      <Checkbox id={id} {...props} />
+      <Label htmlFor={id} className="font-normal">
+        {label}
+      </Label>
+    </div>
+  )
+}
+
+/** An on/off switch and its label, for a setting or a filter that applies at once. */
+export function SwitchField({
+  label,
+  className,
+  ...props
+}: { label: ReactNode; className?: string } & ComponentProps<typeof Switch>) {
+  const id = useId()
+  return (
+    <div className={cn('flex items-center gap-2', className)}>
+      <Switch id={id} {...props} />
+      <Label htmlFor={id} className="font-normal">
+        {label}
+      </Label>
+    </div>
   )
 }
 
@@ -393,3 +469,40 @@ export function FormDialog({
 /** The look of a card that is one link (a project, an environment, an app). */
 export const linkCard =
   'block h-full rounded-xl border bg-card p-4 text-card-foreground shadow-xs outline-none transition hover:border-foreground/20 hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50'
+
+/** A value to copy (a DNS record, a secret shown once): the text and a copy button. */
+export function Copyable({ value }: { value: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <code
+        dir="ltr"
+        className="min-w-0 select-all break-all rounded-md bg-muted px-2 py-1 text-start font-mono text-xs"
+      >
+        {value}
+      </code>
+      <CopyButton value={value} className="shrink-0" />
+    </span>
+  )
+}
+
+/** A line chart of `values`, labelled for screen readers. */
+export function Sparkline({ values, label }: { values: readonly number[]; label: string }) {
+  return (
+    <svg
+      viewBox="0 0 240 48"
+      className="h-12 w-full"
+      role="img"
+      aria-label={label}
+      preserveAspectRatio="none"
+    >
+      <polyline
+        points={sparkline(values, 240, 48)}
+        fill="none"
+        className="stroke-primary"
+        strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}

@@ -72,21 +72,24 @@ export function incidentState(i: {
   return 'open'
 }
 
-/** The look of a state or severity. */
-export const tones: Record<string, string> = {
-  critical: 'border-danger/30 bg-danger/10 text-danger',
-  warning: 'border-warn/30 bg-warn/10 text-warn',
-  info: 'border-line-strong bg-hover text-muted',
-  open: 'border-danger/30 bg-danger/10 text-danger',
-  acknowledged: 'border-warn/30 bg-warn/10 text-warn',
-  resolved: 'border-ok/30 bg-ok/10 text-ok',
-  verified: 'border-ok/30 bg-ok/10 text-ok',
-  pending: 'border-warn/30 bg-warn/10 text-warn',
-  revoked: 'border-line-strong bg-hover text-muted',
-  delivered: 'border-ok/30 bg-ok/10 text-ok',
-  failed: 'border-danger/30 bg-danger/10 text-danger',
-  active: 'border-ok/30 bg-ok/10 text-ok',
-  closed: 'border-line-strong bg-hover text-muted',
+/** The colour family of a state or severity (the kit's `ToneBadge` draws it). */
+export type Tone = 'success' | 'warning' | 'danger' | 'neutral'
+
+/** The tone of each state or severity the operational views show. */
+export const stateTones: Record<string, Tone> = {
+  critical: 'danger',
+  warning: 'warning',
+  info: 'neutral',
+  open: 'danger',
+  acknowledged: 'warning',
+  resolved: 'success',
+  verified: 'success',
+  pending: 'warning',
+  revoked: 'neutral',
+  delivered: 'success',
+  failed: 'danger',
+  active: 'success',
+  closed: 'neutral',
 }
 
 /** The webhook events a person can pick. */

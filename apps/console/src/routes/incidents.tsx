@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ExternalLinkIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Pill } from '../components/ops'
-import { Button, Card, Empty, ErrorNote, PageHeader } from '../components/ui'
-import { incidentState, when } from '../lib/ops'
-import { acknowledgeIncident, type Incident, incidentsQuery, resolveIncident } from '../lib/ops-api'
-import { usePrefs } from '../lib/prefs'
+import { EmptyState, ErrorAlert, Loading, PageHeader, SwitchField, ToneBadge } from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { incidentState, when } from '@/lib/ops'
+import { acknowledgeIncident, type Incident, incidentsQuery, resolveIncident } from '@/lib/ops-api'
+import { usePrefs } from '@/lib/prefs'
 
+/** When the incident opened, was last seen, acknowledged and resolved, and by whom. */
 function Timeline({ incident }: { incident: Incident }) {
   const { t, locale } = usePrefs()
   const rows: [string, string, string | null | undefined][] = [
@@ -23,10 +26,10 @@ function Timeline({ incident }: { incident: Incident }) {
     rows.push([t('incidents.resolved'), when(incident.resolvedAt, locale), incident.resolvedBy])
   }
   return (
-    <ol className="space-y-1 border-line border-s ps-3 text-xs">
+    <ol className="space-y-1 border-s ps-3 text-muted-foreground text-xs">
       {rows.map(([label, at, by]) => (
-        <li key={label} className="text-muted-foreground">
-          <span className="font-medium text-fg-soft">{label}</span> · {at}
+        <li key={label}>
+          <span className="font-medium text-foreground">{label}</span> · {at}
           {by && (
             <>
               {' '}
@@ -47,15 +50,15 @@ function IncidentRow({ incident }: { incident: Incident }) {
   const resolve = useMutation({ mutationFn: () => resolveIncident(incident.id), onSuccess: refresh })
   const state = incidentState(incident)
   return (
-    <li className="space-y-3 py-4">
+    <li className="space-y-3 py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
+        <div className="min-w-0 space-y-1.5">
           <p className="flex flex-wrap items-center gap-2">
-            <Pill tone={incident.severity}>
+            <ToneBadge tone={incident.severity}>
               {tOr(`incidents.severity.${incident.severity}`, incident.severity)}
-            </Pill>
-            <Pill tone={state}>{t(`incidents.state.${state}`)}</Pill>
-            <span dir="ltr" className="font-mono text-subtle text-xs">
+            </ToneBadge>
+            <ToneBadge tone={state}>{t(`incidents.state.${state}`)}</ToneBadge>
+            <span dir="ltr" className="font-mono text-muted-foreground text-xs">
               {incident.kind}
             </span>
           </p>
@@ -63,7 +66,7 @@ function IncidentRow({ incident }: { incident: Incident }) {
             {incident.title}
           </h2>
           {incident.detail && (
-            <p dir="auto" className="text-fg-soft text-sm">
+            <p dir="auto" className="text-muted-foreground text-sm">
               {incident.detail}
             </p>
           )}
@@ -72,20 +75,17 @@ function IncidentRow({ incident }: { incident: Incident }) {
               href={incident.runbook}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-link text-sm hover:underline"
+              className="inline-flex items-center gap-1 text-link text-sm hover:underline"
             >
               {t('incidents.runbook')}
+              <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
             </a>
           )}
         </div>
         {state !== 'resolved' && (
           <div className="flex gap-2">
             {state === 'open' && (
-              <Button
-                variant="secondary"
-                disabled={acknowledge.isPending}
-                onClick={() => acknowledge.mutate()}
-              >
+              <Button variant="outline" disabled={acknowledge.isPending} onClick={() => acknowledge.mutate()}>
                 {t('incidents.acknowledge')}
               </Button>
             )}
@@ -96,7 +96,7 @@ function IncidentRow({ incident }: { incident: Incident }) {
         )}
       </div>
       <Timeline incident={incident} />
-      <ErrorNote error={acknowledge.error ?? resolve.error} />
+      <ErrorAlert error={acknowledge.error ?? resolve.error} />
     </li>
   )
 }
@@ -107,29 +107,32 @@ export function IncidentsPage() {
   const [all, setAll] = useState(false)
   const incidents = useQuery(incidentsQuery(all))
   return (
-    <section className="space-y-6">
+    <div className="space-y-6">
       <PageHeader
         title={t('incidents.title')}
-        subtitle={t('incidents.lead')}
+        description={t('incidents.lead')}
         actions={
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
-            {t('incidents.showResolved')}
-          </label>
+          <SwitchField
+            label={t('incidents.showResolved')}
+            checked={all}
+            onCheckedChange={(checked) => setAll(checked)}
+          />
         }
       />
-      <ErrorNote error={incidents.error} />
-      {incidents.isPending && <p className="text-subtle text-sm">{t('common.loading')}</p>}
-      {incidents.data && incidents.data.length === 0 && <Empty>{t('incidents.empty')}</Empty>}
+      <ErrorAlert error={incidents.error} />
+      {incidents.isPending && <Loading />}
+      {incidents.data && incidents.data.length === 0 && <EmptyState>{t('incidents.empty')}</EmptyState>}
       {incidents.data && incidents.data.length > 0 && (
         <Card>
-          <ul className="divide-y divide-line-soft">
-            {incidents.data.map((i) => (
-              <IncidentRow key={i.id} incident={i} />
-            ))}
-          </ul>
+          <CardContent>
+            <ul className="divide-y">
+              {incidents.data.map((i) => (
+                <IncidentRow key={i.id} incident={i} />
+              ))}
+            </ul>
+          </CardContent>
         </Card>
       )}
-    </section>
+    </div>
   )
 }
