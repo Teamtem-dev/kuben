@@ -236,6 +236,6 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `tests/materializer.rs` | 633 | 5 | platform/materializer (cluster_test.go) | ported | 5 → 5 against envtest and PostgreSQL; plus a controller smoke test (platform/controller run_cluster_test.go) |
 | kuben-platform | `tests/two_writer_cas.rs` | 185 | 3 | platform/kubetest (cas_test.go) | ported | 3 → 3 against envtest's API server |
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
-| kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
+| kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 11, ported 173, todo 45.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 11, ported 174, todo 44.
