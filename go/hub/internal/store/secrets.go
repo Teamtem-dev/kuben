@@ -8,6 +8,7 @@ package store
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -53,6 +54,23 @@ const (
 		"WHERE s.environment_id = $1 AND s.org_id = $2 AND s.deleted_at IS NULL " +
 		"ORDER BY s.name"
 )
+
+// SealedBytes is a revision's values as sealed by the caller (the store
+// never sees a value): the values under the revision's data key, the data
+// key under the key-encryption key KeyVersion.
+type SealedBytes struct {
+	Ciphertext []byte
+	WrappedKey []byte
+	KeyVersion uint32
+}
+
+// String shows the key version only, as the Rust Debug did.
+func (s SealedBytes) String() string {
+	return "SealedBytes { key_version: " + strconv.FormatUint(uint64(s.KeyVersion), 10) + ", .. }"
+}
+
+// GoString is String for %#v.
+func (s SealedBytes) GoString() string { return s.String() }
 
 // SecretBinding is the revision of a secret a run renders.
 type SecretBinding struct {
