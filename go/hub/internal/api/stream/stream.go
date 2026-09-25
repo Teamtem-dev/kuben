@@ -88,8 +88,9 @@ func Serve(w http.ResponseWriter, r *http.Request, src Source, orgs []string) er
 		}
 		flusher.Flush()
 	}
-	tick := time.NewTicker(KeepAlive)
-	defer tick.Stop()
+	// axum's KeepAlive: a comment after KeepAlive without an event.
+	idle := time.NewTimer(KeepAlive)
+	defer idle.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -106,11 +107,13 @@ func Serve(w http.ResponseWriter, r *http.Request, src Source, orgs []string) er
 				return err
 			}
 			flusher.Flush()
-		case <-tick.C:
-			if _, err := w.Write([]byte(":ping\n\n")); err != nil {
+			idle.Reset(KeepAlive)
+		case <-idle.C:
+			if _, err := w.Write([]byte(": ping\n\n")); err != nil {
 				return fmt.Errorf("event stream: %w", err)
 			}
 			flusher.Flush()
+			idle.Reset(KeepAlive)
 		}
 	}
 }
