@@ -3,8 +3,9 @@ package api
 import (
 	"cmp"
 	"context"
-	"math"
+	"encoding/json"
 	"slices"
+	"strconv"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
@@ -36,11 +37,17 @@ func AuditStatus(data opt.Val[any]) opt.Val[int32] {
 	if !ok {
 		return opt.None[int32]()
 	}
-	n, ok := fields["status"].(float64)
-	if !ok || n < 0 || n > math.MaxUint16 || n != math.Trunc(n) {
+	// Stored documents are read with wire.DecodeAny: numbers are
+	// json.Number, and serde's as_u64 takes only integer literals.
+	n, ok := fields["status"].(json.Number)
+	if !ok {
 		return opt.None[int32]()
 	}
-	return opt.Some(int32(n))
+	status, err := strconv.ParseUint(n.String(), 10, 16)
+	if err != nil {
+		return opt.None[int32]()
+	}
+	return opt.Some(int32(status))
 }
 
 // ListAudit is the audit log of the caller's organization(s).

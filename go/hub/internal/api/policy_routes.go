@@ -81,7 +81,7 @@ func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy,
 		Scan:              gate,
 	}
 	if err := p.Validate(); err != nil {
-		return policy.EnvironmentPolicy{}, err //nolint:wrapcheck // a kerr validation error
+		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation, "%s", err.Error())
 	}
 	return p, nil
 }

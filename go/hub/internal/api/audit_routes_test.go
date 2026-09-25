@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"testing"
@@ -34,10 +35,12 @@ func TestAuditStatusIsAU16(t *testing.T) {
 		want opt.Val[int32]
 	}{
 		{opt.None[any](), opt.None[int32]()},
-		{opt.Some[any](map[string]any{"status": float64(403)}), opt.Some[int32](403)},
-		{opt.Some[any](map[string]any{"status": float64(70000)}), opt.None[int32]()},
-		{opt.Some[any](map[string]any{"status": float64(-1)}), opt.None[int32]()},
-		{opt.Some[any](map[string]any{"status": 4.5}), opt.None[int32]()},
+		{opt.Some[any](map[string]any{"status": json.Number("403")}), opt.Some[int32](403)},
+		{opt.Some[any](map[string]any{"status": json.Number("70000")}), opt.None[int32]()},
+		{opt.Some[any](map[string]any{"status": json.Number("-1")}), opt.None[int32]()},
+		{opt.Some[any](map[string]any{"status": json.Number("4.5")}), opt.None[int32]()},
+		{opt.Some[any](map[string]any{"status": json.Number("403.0")}), opt.None[int32]()},
+		{opt.Some[any](map[string]any{"status": float64(403)}), opt.None[int32]()},
 		{opt.Some[any](map[string]any{"status": "403"}), opt.None[int32]()},
 		{opt.Some[any](map[string]any{}), opt.None[int32]()},
 		{opt.Some[any]([]any{float64(403)}), opt.None[int32]()},
@@ -52,19 +55,16 @@ func TestAuditStatusIsAU16(t *testing.T) {
 type auditEvent struct{ action, outcome string }
 
 // tests/http.rs scenario2_every_mutation_is_audited_without_handler_code.
-// createProject is not ported yet; member changes stand in for it: a
-// denied role change by bob and an invitation by alice.
 func TestScenario2EveryMutationIsAuditedWithoutHandlerCode(t *testing.T) {
 	f := newFixture(t)
 	alice := f.signIn("alice@example.com", seedPassword)
 	bob := f.signIn("bob@example.com", seedPassword)
-	_, me, _ := alice.do("GET", "/api/v1/me", nil)
-	aliceID, _ := me["id"].(string)
-	if status := bob.status("PATCH", "/api/v1/members/"+aliceID, map[string]any{"role": "viewer"}); status != 403 {
-		t.Fatalf("bob changes a role: %d", status)
+	body := map[string]any{"name": "blog", "display_name": "Blog"}
+	if status := bob.status("POST", "/api/v1/projects", body); status != 403 {
+		t.Fatalf("bob creates a project: %d", status)
 	}
-	if status, _ := invite(alice, "carol@example.com", "developer"); status != 201 {
-		t.Fatalf("alice invites: %d", status)
+	if status := alice.status("POST", "/api/v1/projects", body); status != 201 {
+		t.Fatalf("SQL holds projects: %d", status)
 	}
 
 	status, page, _ := alice.do("GET", "/api/v1/audit", nil)
@@ -78,7 +78,8 @@ func TestScenario2EveryMutationIsAuditedWithoutHandlerCode(t *testing.T) {
 		outcome, _ := e["outcome"].(string)
 		seen = append(seen, auditEvent{action, outcome})
 	}
-	for _, want := range []auditEvent{{"updateMember", "denied"}, {"inviteMember", "success"}, {"login", "success"}} {
+	want := []auditEvent{{"createProject", "denied"}, {"createProject", "success"}, {"project.apply", "accepted"}, {"login", "success"}}
+	for _, want := range want {
 		if !slices.Contains(seen, want) {
 			t.Errorf("missing %v in %v", want, seen)
 		}
@@ -88,8 +89,7 @@ func TestScenario2EveryMutationIsAuditedWithoutHandlerCode(t *testing.T) {
 		t.Fatal("no denied event")
 	}
 	denied := events[i]
-	if denied["actor"] != "bob@example.com" || denied["status"] != float64(403) || denied["actor_kind"] != "session" ||
-		denied["target_kind"] != "member" || denied["target"] != aliceID {
+	if denied["actor"] != "bob@example.com" || denied["status"] != float64(403) || denied["actor_kind"] != "session" {
 		t.Fatalf("denied: %v", denied)
 	}
 	if page["next_before"] != nil {

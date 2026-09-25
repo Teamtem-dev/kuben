@@ -62,18 +62,42 @@ func (s *Server) audit(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		rec := &statusRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
 		action := route.OperationID()
 		if slices.Contains(selfAudited, action) {
 			return
 		}
-		status := http.StatusOK
-		if ww, ok := w.(interface{ Status() int }); ok {
-			status = ww.Status()
-		}
-		s.writeAudit(r, route.PathPattern(), action, status)
+		s.writeAudit(r, route.PathPattern(), action, rec.Status())
 	})
 }
+
+// statusRecorder remembers the status a handler wrote. The audit cannot
+// ask the outer httpx.Writer: it runs inside http.TimeoutHandler, whose
+// buffered writer reaches the outer one only after the handler returned.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+// Status is the status written (200 when the handler wrote only a body).
+func (w *statusRecorder) Status() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
+
+// WriteHeader records the first status and passes it on.
+func (w *statusRecorder) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (w *statusRecorder) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (s *Server) writeAudit(r *http.Request, template, action string, status int) {
 	ctx := r.Context()
