@@ -27,8 +27,8 @@ func jsonValue(t *testing.T, text string) any {
 	return v
 }
 
-// sqlApp is tests/http.rs sql_app: app `api` on a placement of prod, in
-// SQL only, never deployed.
+// sqlApp is tests/http.rs sql_app: app `api`, shown as `API`, on a
+// placement of prod, in SQL only, never deployed.
 func (f fixture) sqlApp() (ids.ProjectID, ids.ApplicationID, ids.TargetID) {
 	t := f.t
 	ctx := t.Context()
@@ -53,7 +53,7 @@ func (f fixture) sqlApp() (ids.ProjectID, ids.ApplicationID, ids.TargetID) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	application, err := tn.CreateApplication(ctx, project.ID, "api", "api")
+	application, err := tn.CreateApplication(ctx, project.ID, "api", "API")
 	if err != nil {
 		t.Fatal(err)
 	}

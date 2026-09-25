@@ -3,127 +3,287 @@ package api_test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
 
+// template is the catalogue entry id; the test fails without it.
+func template(t *testing.T, id string) api.TemplateDef {
+	t.Helper()
+	for _, tpl := range api.TemplatesCatalogue() {
+		if tpl.ID == id {
+			return tpl
+		}
+	}
+	t.Fatalf("no template %q", id)
+	return api.TemplateDef{}
+}
+
+// Ported from routes/templates.rs: every_template_builds_valid_objects.
 func TestEveryTemplateBuildsValidObjects(t *testing.T) {
-	for _, tpl := range api.TemplatesCatalogue {
-		r, err := api.RenderTemplate(tpl, "svc")
-		require.NoError(t, err, "%s: render error", tpl.ID)
-
-		err = api.ValidateSpec(&r.Spec)
-		require.NoError(t, err, "%s: spec validation error", tpl.ID)
-
-		app := &v1alpha1.App{Spec: r.Spec}
-		app.Name = "svc"
-		app.Namespace = "kb-shop-prod"
-
-		caps := render.CapabilitiesOf(render.DefaultPlatform())
-		plan, err := render.Render(app, caps)
-		require.NoError(t, err, "%s: plan rendering error", tpl.ID)
-
-		var deployments, services, pvcs int
-		for _, item := range plan.Inventory {
-			switch item.Kind {
-			case "Deployment":
-				deployments++
-			case "Service":
-				services++
-			case "PersistentVolumeClaim":
-				pvcs++
+	for _, tpl := range api.TemplatesCatalogue() {
+		t.Run(tpl.ID, func(t *testing.T) {
+			r, err := api.RenderTemplate(tpl, "svc")
+			if err != nil {
+				t.Fatalf("render: %v", err)
 			}
-		}
-		assert.Equal(t, 1, deployments, "%s: expected 1 deployment", tpl.ID)
-		assert.Equal(t, 1, services, "%s: expected 1 service", tpl.ID)
-		assert.Equal(t, len(tpl.Volumes), pvcs, "%s: expected %d persistent volume claims", tpl.ID, len(tpl.Volumes))
-
-		specBytes, err := json.Marshal(r.Spec)
-		require.NoError(t, err)
-		for _, value := range r.Secret {
-			if len(value) == api.SecretLen {
-				assert.NotContains(t, string(specBytes), value, "%s: secret value leaked into spec", tpl.ID)
-				assert.NotContains(t, plan.ResourcesJSON(), value, "%s: secret value leaked into plan", tpl.ID)
+			if err := api.ValidateSpec(&r.Spec); err != nil {
+				t.Fatalf("validate the spec: %v", err)
 			}
-		}
+
+			app := &v1alpha1.App{Spec: r.Spec}
+			app.Name = "svc"
+			app.Namespace = "kb-shop-prod"
+			plan, err := render.Render(app, render.CapabilitiesOf(render.DefaultPlatform()))
+			if err != nil {
+				t.Fatalf("render the plan: %v", err)
+			}
+			kinds := map[string]int{}
+			for _, item := range plan.Inventory {
+				kinds[item.Kind]++
+			}
+			want := map[string]int{"Deployment": 1, "Service": 1, "PersistentVolumeClaim": len(tpl.Volumes)}
+			got := map[string]int{
+				"Deployment":            kinds["Deployment"],
+				"Service":               kinds["Service"],
+				"PersistentVolumeClaim": kinds["PersistentVolumeClaim"],
+			}
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Errorf("objects (-want +got):\n%s", diff)
+			}
+
+			spec, err := json.Marshal(r.Spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resources := plan.ResourcesJSON()
+			for _, value := range r.Secret {
+				if len(value) != api.SecretLen {
+					continue
+				}
+				if strings.Contains(string(spec), value) {
+					t.Errorf("a secret value leaked into the spec")
+				}
+				if strings.Contains(resources, value) {
+					t.Errorf("a secret value leaked into the plan")
+				}
+			}
+		})
 	}
 }
 
+// Ported from routes/templates.rs: credentials_are_random_and_connection_urls_complete.
 func TestCredentialsAreRandomAndConnectionUrlsComplete(t *testing.T) {
-	var pg api.TemplateDef
-	found := false
-	for _, tpl := range api.TemplatesCatalogue {
-		if tpl.ID == "postgres" {
-			pg = tpl
-			found = true
-			break
-		}
-	}
-	require.True(t, found, "postgres template found")
-
+	pg := template(t, "postgres")
 	a, err := api.RenderTemplate(pg, "db")
-	require.NoError(t, err)
-	b, err := api.RenderTemplate(pg, "db")
-	require.NoError(t, err)
-
-	assert.Equal(t, api.SecretLen, len(a.Secret["password"]))
-	assert.NotEqual(t, a.Secret["password"], b.Secret["password"], "passwords must be distinct random strings")
-	assert.Equal(t, fmt.Sprintf("postgres://app:%s@db:5432/app", a.Secret["password"]), a.Secret["url"])
-	assert.Equal(t, "db-credentials", api.CredentialsSecret("db"))
-
-	ids := make(map[string]bool)
-	for _, tpl := range api.TemplatesCatalogue {
-		assert.False(t, ids[tpl.ID], "template id %s duplicated", tpl.ID)
-		ids[tpl.ID] = true
+	if err != nil {
+		t.Fatal(err)
 	}
-	assert.Equal(t, len(api.TemplatesCatalogue), len(ids), "template ids are unique")
+	b, err := api.RenderTemplate(pg, "db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(a.Secret["password"]); got != api.SecretLen {
+		t.Errorf("password length %d, want %d", got, api.SecretLen)
+	}
+	if a.Secret["password"] == b.Secret["password"] {
+		t.Errorf("two renders share a password")
+	}
+	if want := fmt.Sprintf("postgres://app:%s@db:5432/app", a.Secret["password"]); a.Secret["url"] != want {
+		t.Errorf("url %q, want %q", a.Secret["url"], want)
+	}
+	if got := api.CredentialsSecret("db"); got != "db-credentials" {
+		t.Errorf("credentials secret %q", got)
+	}
+
+	seen := map[string]bool{}
+	for _, tpl := range api.TemplatesCatalogue() {
+		if seen[tpl.ID] {
+			t.Errorf("template id %q is not unique", tpl.ID)
+		}
+		seen[tpl.ID] = true
+	}
 }
 
+// The optional fields become the CRD's pointers, and a rendered spec shares
+// nothing with the catalogue.
+func TestRenderedSpecsOwnTheirValues(t *testing.T) {
+	gitea, err := api.RenderTemplate(template(t, "gitea"), "git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hc := gitea.Spec.Runtime.HealthCheck; hc == nil || hc.Path != "/api/healthz" {
+		t.Errorf("gitea health check %+v", hc)
+	}
+	if fs := gitea.Spec.Runtime.FSGroup; fs == nil || *fs != 1000 {
+		t.Errorf("gitea fsGroup %v", fs)
+	}
+
+	whoamiDef := template(t, "whoami")
+	whoami, err := api.RenderTemplate(whoamiDef, "echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if whoami.Spec.Runtime.HealthCheck != nil || whoami.Spec.Runtime.FSGroup != nil {
+		t.Errorf("whoami has no health check and no fsGroup: %+v", whoami.Spec.Runtime)
+	}
+	web := whoami.Spec.Runtime.Processes["web"]
+	web.Command[0] = "changed"
+	if whoamiDef.Command[0] != "/whoami" {
+		t.Errorf("the rendered command aliases the template: %v", whoamiDef.Command)
+	}
+	if got := template(t, "whoami").Command[0]; got != "/whoami" {
+		t.Errorf("the catalogue changed: %q", got)
+	}
+}
+
+// templateJSON is one entry of GET /api/v1/templates, as Rust's TemplateDto
+// serializes it.
+func templateJSON(
+	id, name, description, category, image string, port int, protocol string, volumes, keys []any,
+) map[string]any {
+	return map[string]any{
+		"id":              id,
+		"name":            name,
+		"description":     description,
+		"category":        category,
+		"image":           image,
+		"port":            json.Number(fmt.Sprint(port)),
+		"protocol":        protocol,
+		"volumes":         volumes,
+		"connection_keys": keys,
+	}
+}
+
+// The whole catalogue as served, derived from routes/templates.rs TEMPLATES.
+func TestTemplateCatalogueBody(t *testing.T) {
+	f := newFixture(t)
+	bob := f.signIn("bob@example.com", seedPassword)
+
+	req, err := http.NewRequest("GET", bob.base+"/api/v1/templates", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(httpx.ClientHeader, "console")
+	resp := bob.send(req)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, raw)
+	}
+	got, err := wire.DecodeAny(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []any{
+		templateJSON("postgres", "PostgreSQL 17",
+			"Relational database. Other apps connect with the `url` key of the credentials secret.",
+			"database", "postgres:17-alpine", 5432, "tcp",
+			[]any{"/var/lib/postgresql/data (5Gi)"},
+			[]any{"database", "host", "password", "port", "url", "username"}),
+		templateJSON("redis", "Redis 7",
+			"In-memory cache and queue with append-only persistence and a password.",
+			"database", "redis:7-alpine", 6379, "tcp",
+			[]any{"/data (1Gi)"},
+			[]any{"host", "password", "port", "url"}),
+		templateJSON("mariadb", "MariaDB 11",
+			"MySQL-compatible database. Connect with the `url` key of the credentials secret.",
+			"database", "mariadb:11", 3306, "tcp",
+			[]any{"/var/lib/mysql (5Gi)"},
+			[]any{"database", "host", "password", "port", "root-password", "url", "username"}),
+		templateJSON("n8n", "n8n",
+			"Workflow automation. Credentials are encrypted with a generated key.",
+			"automation", "n8nio/n8n:stable", 5678, "http",
+			[]any{"/home/node/.n8n (1Gi)"},
+			[]any{"encryption-key"}),
+		templateJSON("uptime-kuma", "Uptime Kuma",
+			"Self-hosted uptime monitoring with status pages.",
+			"monitoring", "louislam/uptime-kuma:1", 3001, "http",
+			[]any{"/app/data (1Gi)"},
+			[]any{}),
+		templateJSON("vaultwarden", "Vaultwarden",
+			"Bitwarden-compatible password manager. Sign-ups are closed; invite users from /admin with the generated admin token.",
+			"security", "vaultwarden/server:latest", 80, "http",
+			[]any{"/data (1Gi)"},
+			[]any{"admin-token"}),
+		templateJSON("gitea", "Gitea",
+			"Lightweight Git hosting (rootless image). Finish the installer on first visit.",
+			"development", "gitea/gitea:1-rootless", 3000, "http",
+			[]any{"/var/lib/gitea (5Gi)", "/etc/gitea (100Mi)"},
+			[]any{}),
+		templateJSON("whoami", "whoami",
+			"Tiny HTTP echo service to test domains, TLS and routing.",
+			"sample", "traefik/whoami:v1.10", 8080, "http",
+			[]any{},
+			[]any{}),
+	}
+	if diff := cmp.Diff(any(want), got); diff != "" {
+		t.Errorf("GET /api/v1/templates (-want +got):\n%s", diff)
+	}
+}
+
+// Ported from tests/http.rs: scenario8_template_catalogue.
 func TestScenario8TemplateCatalogue(t *testing.T) {
 	f := newFixture(t)
 	f.sqlApp()
-
 	alice := f.signIn("alice@example.com", seedPassword)
 	bob := f.signIn("bob@example.com", seedPassword)
 
-	// GET /api/v1/templates as bob (viewer)
 	status, list := bob.list("/api/v1/templates")
-	assert.Equal(t, 200, status)
-	assert.Len(t, list, 8)
-
+	if status != http.StatusOK {
+		t.Fatalf("list templates: %d", status)
+	}
+	if len(list) != 8 {
+		t.Fatalf("%d templates, want 8", len(list))
+	}
 	var pg map[string]any
 	for _, item := range list {
 		if item["id"] == "postgres" {
 			pg = item
-			break
 		}
 	}
-	require.NotNil(t, pg, "postgres found in templates")
-	assert.Equal(t, "tcp", pg["protocol"])
-	keys, ok := pg["connection_keys"].([]any)
-	require.True(t, ok)
-	assert.Contains(t, keys, "url")
+	if pg == nil {
+		t.Fatal("no postgres template")
+	}
+	if pg["protocol"] != "tcp" {
+		t.Errorf("postgres protocol %v", pg["protocol"])
+	}
+	keys, _ := pg["connection_keys"].([]any)
+	if !slices.Contains(keys, any("url")) {
+		t.Errorf("postgres connection keys %v lack url", keys)
+	}
 
 	const deployURL = "/api/v1/projects/shop/environments/prod/templates/postgres"
-	deployBody := map[string]any{"name": "db"}
-
-	// Viewer cannot deploy template -> 403 Forbidden
-	assert.Equal(t, 403, bob.status("POST", deployURL, deployBody), "viewers cannot deploy templates")
-
-	// Owner deploys template without cluster -> 503 Service Unavailable ("no cluster in tests")
-	assert.Equal(t, 503, alice.status("POST", deployURL, deployBody), "no cluster in tests")
-
-	// Non-existent template -> 404 Not Found
-	const badTemplateURL = "/api/v1/projects/shop/environments/prod/templates/nope"
-	assert.Equal(t, 404, alice.status("POST", badTemplateURL, deployBody), "template does not exist")
-
-	// Invalid app name -> 422 Unprocessable Entity
-	badNameBody := map[string]any{"name": "-invalid-name-"}
-	assert.Equal(t, 422, alice.status("POST", deployURL, badNameBody), "invalid dns label")
+	name := map[string]any{"name": "db"}
+	for _, c := range []struct {
+		what   string
+		client *client
+		url    string
+		body   map[string]any
+		want   int
+	}{
+		{"viewers cannot deploy templates", bob, deployURL, name, http.StatusForbidden},
+		{"no cluster in tests", alice, deployURL, name, http.StatusServiceUnavailable},
+		{"unknown template", alice, "/api/v1/projects/shop/environments/prod/templates/nope", name, http.StatusNotFound},
+		{"invalid app name", alice, deployURL, map[string]any{"name": "-invalid-name-"}, http.StatusUnprocessableEntity},
+	} {
+		if got := c.client.status("POST", c.url, c.body); got != c.want {
+			t.Errorf("%s: status %d, want %d", c.what, got, c.want)
+		}
+	}
 }

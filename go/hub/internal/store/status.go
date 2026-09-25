@@ -179,10 +179,7 @@ func (t *Tenant) SetStatusPage(ctx context.Context, page StatusPage) error {
 	for _, e := range page.Environments {
 		envUUIDs = append(envUUIDs, e.UUID())
 	}
-	updatedAt := page.UpdatedAt
-	if updatedAt == 0 {
-		updatedAt = t.store.now()
-	}
+	// The store's clock stamps the page; page.UpdatedAt is ignored, as in Rust.
 	_, err := exec(ctx, t.tx, op, upsertStatusPage,
 		page.Project.UUID(),
 		t.org.String(),
@@ -191,7 +188,7 @@ func (t *Tenant) SetStatusPage(ctx context.Context, page StatusPage) error {
 		page.Enabled,
 		envUUIDs,
 		page.UpdatedBy,
-		updatedAt,
+		t.store.now(),
 	)
 	return err
 }

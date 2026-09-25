@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
@@ -13,7 +14,8 @@ import (
 
 // Ported from repo/status.rs: status_pages_are_found_by_slug_only_when_enabled.
 func TestStatusPagesAreFoundBySlugOnlyWhenEnabled(t *testing.T) {
-	s := pgtest.Store(t)
+	const stamped int64 = 1_700_000_000_000
+	s := pgtest.Store(t).WithClock(clock.Fixed(stamped))
 	ctx := t.Context()
 
 	orgA := org(t, s, "a", "A")
@@ -31,7 +33,7 @@ func TestStatusPagesAreFoundBySlugOnlyWhenEnabled(t *testing.T) {
 		Enabled:      true,
 		Environments: []ids.EnvironmentID{envA},
 		UpdatedBy:    "u",
-		UpdatedAt:    0,
+		UpdatedAt:    42, // ignored: the store's clock stamps the page
 	}
 	if err := tnA.SetStatusPage(ctx, page); err != nil {
 		t.Fatalf("set status page: %v", err)
@@ -70,6 +72,9 @@ func TestStatusPagesAreFoundBySlugOnlyWhenEnabled(t *testing.T) {
 	if found.Org != orgA || len(found.Environments) != 1 || found.Environments[0] != envA {
 		t.Fatalf("unexpected found page: %+v", found)
 	}
+	if found.UpdatedAt != stamped {
+		t.Fatalf("updated at %d, want the store clock's %d", found.UpdatedAt, stamped)
+	}
 
 	tnB := tenant(t, s, orgB)
 	projectB := must[ids.ProjectID](t, "project")(tnB.CreateProject(ctx, "web", "Web"))
@@ -88,7 +93,9 @@ func TestStatusPagesAreFoundBySlugOnlyWhenEnabled(t *testing.T) {
 	if err == nil || !store.IsUniqueViolation(err) {
 		t.Fatalf("slugs are global: %v", err)
 	}
-	tnB.Rollback(ctx)
+	if err := tnB.Rollback(ctx); err != nil {
+		t.Fatalf("roll back: %v", err)
+	}
 
 	page.Enabled = false
 	tnA = tenant(t, s, orgA)

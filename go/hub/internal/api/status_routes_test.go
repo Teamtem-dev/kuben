@@ -2,13 +2,14 @@ package api_test
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
@@ -18,104 +19,96 @@ import (
 func TestPublicStatusPagesShowOnlyPublicFacts(t *testing.T) {
 	f := newFixture(t)
 	_, _, tgt := f.sqlApp()
-
 	alice := f.signIn("alice@example.com", seedPassword)
 	bob := f.signIn("bob@example.com", seedPassword)
-
-	const publicURL = "/api/v1/public/status/shop-status"
 	anon := f.browser()
 
-	// 1. Initial state: status page doesn't exist -> 404
-	status, _, _ := anon.do("GET", publicURL, nil)
-	assert.Equal(t, 404, status)
+	const publicURL = "/api/v1/public/status/shop-status"
+	if got := anon.status("GET", publicURL, nil); got != http.StatusNotFound {
+		t.Fatalf("no page yet: status %d", got)
+	}
 
-	// 2. Open an incident on target with secret internal detail
 	ctx := t.Context()
 	tn, err := f.store.Tenant(ctx, f.org)
-	require.NoError(t, err)
-	incident := store.NewIncident{
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tn.Rollback(ctx) //nolint:errcheck // a no-op after the commit
+	if _, _, err := tn.OpenIncident(ctx, store.NewIncident{
 		Target:    opt.Some(tgt),
 		Kind:      "deployment.failed",
 		Severity:  "critical",
 		DedupeKey: "k",
 		Title:     "The deployment of shop/prod/api failed",
 		Detail:    opt.Some("secret internal detail"),
+	}); err != nil {
+		t.Fatal(err)
 	}
-	_, _, err = tn.OpenIncident(ctx, incident)
-	require.NoError(t, err)
-	require.NoError(t, tn.Commit(ctx))
+	if err := tn.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	const pageURL = "/api/v1/projects/shop/status-page"
-	body := map[string]any{
-		"slug":         "shop-status",
-		"title":        "Shop",
-		"environments": []string{"prod"},
+	body := map[string]any{"slug": "shop-status", "title": "Shop", "environments": []string{"prod"}}
+	for _, c := range []struct {
+		what   string
+		client *client
+		body   map[string]any
+		want   int
+	}{
+		{"viewers cannot publish", bob, body, http.StatusForbidden},
+		{"bad slug", alice, map[string]any{"slug": "Shop Status", "title": "Shop", "environments": []string{"prod"}}, http.StatusUnprocessableEntity},
+		{"unknown environment", alice, map[string]any{"slug": "shop-status", "title": "Shop", "environments": []string{"nope"}}, http.StatusUnprocessableEntity},
+		{"no environments", alice, map[string]any{"slug": "shop-status", "title": "Shop", "environments": []string{}}, http.StatusUnprocessableEntity},
+		{"blank title", alice, map[string]any{"slug": "shop-status", "title": "  ", "environments": []string{"prod"}}, http.StatusUnprocessableEntity},
+	} {
+		if got := c.client.status("PUT", pageURL, c.body); got != c.want {
+			t.Errorf("%s: status %d, want %d", c.what, got, c.want)
+		}
 	}
 
-	// 3. Bob (viewer) cannot configure status page -> 403
-	status, _, _ = bob.do("PUT", pageURL, body)
-	assert.Equal(t, 403, status)
-
-	// 4. Invalid slug -> 422
-	badSlug := map[string]any{"slug": "Shop Status", "title": "Shop", "environments": []string{"prod"}}
-	status, _, _ = alice.do("PUT", pageURL, badSlug)
-	assert.Equal(t, 422, status)
-
-	// 5. Unknown environment -> 422
-	badEnv := map[string]any{"slug": "shop-status", "title": "Shop", "environments": []string{"nope"}}
-	status, _, _ = alice.do("PUT", pageURL, badEnv)
-	assert.Equal(t, 422, status)
-
-	// 6. Empty environments -> 422
-	emptyEnvs := map[string]any{"slug": "shop-status", "title": "Shop", "environments": []string{}}
-	status, _, _ = alice.do("PUT", pageURL, emptyEnvs)
-	assert.Equal(t, 422, status)
-
-	// 7. Empty title -> 422
-	emptyTitle := map[string]any{"slug": "shop-status", "title": "  ", "environments": []string{"prod"}}
-	status, _, _ = alice.do("PUT", pageURL, emptyTitle)
-	assert.Equal(t, 422, status)
-
-	// 8. Alice (owner) configures status page -> 200 OK
 	status, saved, _ := alice.do("PUT", pageURL, body)
-	assert.Equal(t, 200, status)
-	assert.Equal(t, "/status/shop-status", saved["path"])
-	assert.Equal(t, "shop-status", saved["slug"])
-	assert.Equal(t, "Shop", saved["title"])
-	assert.Equal(t, true, saved["enabled"])
+	if status != http.StatusOK || saved["path"] != "/status/shop-status" {
+		t.Fatalf("publish: %d %v", status, saved)
+	}
+	status, settings, _ := alice.do("GET", pageURL, nil)
+	if status != http.StatusOK {
+		t.Fatalf("settings: %d %v", status, settings)
+	}
+	// The route and the store each read their clock: the stamps may differ.
+	delete(saved, "updatedAt")
+	delete(settings, "updatedAt")
+	if diff := cmp.Diff(saved, settings); diff != "" {
+		t.Errorf("settings differ from the saved page (-saved +read):\n%s", diff)
+	}
 
-	// 9. Alice reads configuration -> 200 OK
-	status, got, _ := alice.do("GET", pageURL, nil)
-	assert.Equal(t, 200, status)
-	assert.Equal(t, saved["path"], got["path"])
-	assert.Equal(t, saved["slug"], got["slug"])
-
-	// 10. Anon reads public status page -> 200 OK
 	status, shown, header := anon.do("GET", publicURL, nil)
-	assert.Equal(t, 200, status)
-	assert.Equal(t, "public, max-age=15", header.Get("Cache-Control"))
-	assert.Equal(t, "Shop", shown["title"])
-	assert.Equal(t, "degraded", shown["status"])
+	if status != http.StatusOK {
+		t.Fatalf("public page: %d %v", status, shown)
+	}
+	if got := header.Get("Cache-Control"); got != "public, max-age=15" {
+		t.Errorf("Cache-Control %q", got)
+	}
+	if shown["title"] != "Shop" || shown["status"] != "degraded" {
+		t.Errorf("title and status: %v %v", shown["title"], shown["status"])
+	}
+	wantComponents := []any{map[string]any{"name": "API", "status": "degraded"}}
+	if diff := cmp.Diff(wantComponents, shown["components"]); diff != "" {
+		t.Errorf("components (-want +got):\n%s", diff)
+	}
+	incidents, _ := shown["incidents"].([]any)
+	if len(incidents) == 0 {
+		t.Fatalf("no incidents in %v", shown)
+	}
+	first, _ := incidents[0].(map[string]any)
+	if first["severity"] != "critical" || first["component"] != "API" {
+		t.Errorf("first incident %v", first)
+	}
 
-	components, ok := shown["components"].([]any)
-	require.True(t, ok)
-	require.Len(t, components, 1)
-	comp, ok := components[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "api", comp["name"])
-	assert.Equal(t, "degraded", comp["status"])
-
-	incidents, ok := shown["incidents"].([]any)
-	require.True(t, ok)
-	require.Len(t, incidents, 1)
-	inc, ok := incidents[0].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "critical", inc["severity"])
-	assert.Equal(t, "api", inc["component"])
-
-	rawBytes, err := json.Marshal(shown)
-	require.NoError(t, err)
-	text := string(rawBytes)
+	raw, err := json.Marshal(shown)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, leak := range []string{
 		"secret internal detail",
 		"shop/prod/api",
@@ -123,48 +116,50 @@ func TestPublicStatusPagesShowOnlyPublicFacts(t *testing.T) {
 		tgt.UUID().String(),
 		"deployment.failed",
 	} {
-		assert.False(t, strings.Contains(text, leak), "leaked %s in %s", leak, text)
+		if strings.Contains(string(raw), leak) {
+			t.Errorf("%s leaked: %s", leak, raw)
+		}
 	}
 
-	// 11. Delete status page -> 204
-	status, _, _ = alice.do("DELETE", pageURL, nil)
-	assert.Equal(t, 204, status)
-
-	// 12. Public status is gone at once (cache invalidated) -> 404
-	status, _, _ = anon.do("GET", publicURL, nil)
-	assert.Equal(t, 404, status)
-
-	// 13. Second DELETE returns 404
-	status, _, _ = alice.do("DELETE", pageURL, nil)
-	assert.Equal(t, 404, status)
-
-	// 14. GET settings returns 404
-	status, _, _ = alice.do("GET", pageURL, nil)
-	assert.Equal(t, 404, status)
+	for _, c := range []struct {
+		what   string
+		client *client
+		method string
+		url    string
+		want   int
+	}{
+		{"take the page down", alice, "DELETE", pageURL, http.StatusNoContent},
+		{"taken down at once", anon, "GET", publicURL, http.StatusNotFound},
+		{"already down", alice, "DELETE", pageURL, http.StatusNotFound},
+		{"no settings left", alice, "GET", pageURL, http.StatusNotFound},
+	} {
+		if got := c.client.status(c.method, c.url, nil); got != c.want {
+			t.Errorf("%s: status %d, want %d", c.what, got, c.want)
+		}
+	}
 }
 
 func TestStatusPageDto(t *testing.T) {
-	projID := ids.New[ids.Project]()
-	orgID := ids.New[ids.Org]()
-	envID := ids.New[ids.Environment]()
-
 	page := store.StatusPage{
-		Project:      projID,
-		Org:          orgID,
+		Project:      ids.New[ids.Project](),
+		Org:          ids.New[ids.Org](),
 		Slug:         "shop-status",
 		Title:        "Shop Service Status",
 		Enabled:      true,
-		Environments: []ids.EnvironmentID{envID},
+		Environments: []ids.EnvironmentID{ids.New[ids.Environment]()},
 		UpdatedBy:    "user:alice",
 		UpdatedAt:    1_700_000_000_000,
 	}
-
-	dto := api.StatusPageDtoOf(page, []string{"prod"})
-	assert.Equal(t, "shop-status", dto.Slug)
-	assert.Equal(t, "Shop Service Status", dto.Title)
-	assert.True(t, dto.Enabled)
-	assert.Equal(t, []string{"prod"}, dto.Environments)
-	assert.Equal(t, "/status/shop-status", dto.Path)
-	assert.Equal(t, "user:alice", dto.UpdatedBy)
-	assert.Equal(t, api.Timestamp(1_700_000_000_000), dto.UpdatedAt)
+	want := &gen.StatusPageDto{
+		Slug:         "shop-status",
+		Title:        "Shop Service Status",
+		Enabled:      true,
+		Environments: []string{"prod"},
+		Path:         "/status/shop-status",
+		UpdatedBy:    "user:alice",
+		UpdatedAt:    api.Timestamp(1_700_000_000_000),
+	}
+	if diff := cmp.Diff(want, api.StatusPageDtoOf(page, []string{"prod"})); diff != "" {
+		t.Errorf("dto (-want +got):\n%s", diff)
+	}
 }

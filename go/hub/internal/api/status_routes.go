@@ -47,100 +47,89 @@ func statusPageDto(page store.StatusPage, envNames []string) *gen.StatusPageDto 
 	}
 }
 
-func (s *Server) buildPublicStatus(ctx context.Context, page store.StatusPage) (*gen.PublicStatus, error) {
+// publicFacts reads the apps of page's environments, sorted by display
+// name (stable, as Rust's sort_by), and their incidents open now or
+// resolved since the week before now. The transaction ends before the
+// page is built, as Rust dropped its tenant.
+func (s *Server) publicFacts(
+	ctx context.Context, page store.StatusPage, now int64,
+) ([]store.AppRecord, []store.PublicIncident, error) {
 	tenant, err := s.deps.Store.Tenant(ctx, page.Org)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	defer tenant.Rollback(ctx) //nolint:errcheck
+	defer tenant.Rollback(ctx) //nolint:errcheck // read only
 
 	var apps []store.AppRecord
 	for _, env := range page.Environments {
 		records, err := tenant.Apps(ctx, env)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		apps = append(apps, records...)
 	}
-	slices.SortFunc(apps, func(a, b store.AppRecord) int {
+	slices.SortStableFunc(apps, func(a, b store.AppRecord) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	now := s.deps.Clock.NowMs()
 	targets := make([]uuid.UUID, 0, len(apps))
 	for _, a := range apps {
 		targets = append(targets, a.Target.UUID())
 	}
 	incidents, err := tenant.PublicIncidents(ctx, targets, now-weekMs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	_ = tenant.Rollback(ctx)
+	return apps, incidents, nil
+}
 
+// saturatingU32 is Rust's u32::try_from(n).unwrap_or(u32::MAX) for a count.
+func saturatingU32(n int) uint32 {
+	return uint32(min(max(n, 0), math.MaxUint32))
+}
+
+// componentStatus is the state an app shows on a public page.
+func (s *Server) componentStatus(a store.AppRecord, incidents []store.PublicIncident) status.Service {
+	pods := s.deps.Projections.PodsOfApp(a.Namespace, a.Slug)
+	var ready opt.Val[bool]
+	switch a.Delivery {
+	case store.DeliveryAgent:
+		if r, ok := a.Runtime.Get(); ok {
+			ready = opt.Some(r.Ready())
+		}
+	case store.DeliveryController:
+		if v, ok := s.deps.Projections.App(a.Namespace, a.Slug); ok {
+			ready = opt.Some(v.Ready)
+		}
+	}
+	readyPods := 0
+	for _, p := range pods {
+		if p.Ready {
+			readyPods++
+		}
+	}
+	open := func(severity string) bool {
+		return slices.ContainsFunc(incidents, func(i store.PublicIncident) bool {
+			tid, ok := i.TargetID.Get()
+			return i.ResolvedAt.IsNone() && i.Severity == severity && ok && tid == a.Target.UUID()
+		})
+	}
+	return status.Component(status.Observed{
+		Ready:            ready,
+		Pods:             saturatingU32(len(pods)),
+		ReadyPods:        saturatingU32(readyPods),
+		CriticalIncident: open("critical"),
+		WarningIncident:  open("warning"),
+	})
+}
+
+// publicIncidents are the incidents of the page's apps, by display name.
+func publicIncidents(apps []store.AppRecord, incidents []store.PublicIncident) []gen.PublicIncidentDto {
 	names := make(map[uuid.UUID]string, len(apps))
 	for _, a := range apps {
 		names[a.Target.UUID()] = a.Name
 	}
-
-	components := make([]gen.PublicComponent, 0, len(apps))
-	componentStatuses := make([]status.Service, 0, len(apps))
-	for _, a := range apps {
-		pods := s.deps.Projections.PodsOfApp(a.Namespace, a.Slug)
-		var ready opt.Val[bool]
-		switch a.Delivery {
-		case store.DeliveryAgent:
-			if r, ok := a.Runtime.Get(); ok {
-				ready = opt.Some(r.Ready())
-			}
-		case store.DeliveryController:
-			if v, ok := s.deps.Projections.App(a.Namespace, a.Slug); ok {
-				ready = opt.Some(v.Ready)
-			}
-		}
-
-		readyPods := 0
-		for _, p := range pods {
-			if p.Ready {
-				readyPods++
-			}
-		}
-
-		open := func(severity string) bool {
-			for _, i := range incidents {
-				if i.ResolvedAt.IsNone() && i.Severity == severity {
-					if tid, ok := i.TargetID.Get(); ok && tid == a.Target.UUID() {
-						return true
-					}
-				}
-			}
-			return false
-		}
-
-		var podCount uint32 = math.MaxUint32
-		if len(pods) <= math.MaxUint32 {
-			podCount = uint32(len(pods))
-		}
-		var readyPodCount uint32 = math.MaxUint32
-		if readyPods <= math.MaxUint32 {
-			readyPodCount = uint32(readyPods)
-		}
-
-		observed := status.Observed{
-			Ready:            ready,
-			Pods:             podCount,
-			ReadyPods:        readyPodCount,
-			CriticalIncident: open("critical"),
-			WarningIncident:  open("warning"),
-		}
-		cStatus := status.Component(observed)
-		componentStatuses = append(componentStatuses, cStatus)
-		components = append(components, gen.PublicComponent{
-			Name:   a.Name,
-			Status: string(cStatus),
-		})
-	}
-
-	incidentDTOs := make([]gen.PublicIncidentDto, 0)
+	dtos := make([]gen.PublicIncidentDto, 0, len(incidents))
 	for _, i := range incidents {
 		tid, ok := i.TargetID.Get()
 		if !ok {
@@ -150,23 +139,38 @@ func (s *Server) buildPublicStatus(ctx context.Context, page store.StatusPage) (
 		if !ok {
 			continue
 		}
-		var resAt opt.Val[string]
-		if rAt, ok := i.ResolvedAt.Get(); ok {
-			resAt = opt.Some(Timestamp(rAt))
+		var resolvedAt opt.Val[string]
+		if at, ok := i.ResolvedAt.Get(); ok {
+			resolvedAt = opt.Some(Timestamp(at))
 		}
-		incidentDTOs = append(incidentDTOs, gen.PublicIncidentDto{
+		dtos = append(dtos, gen.PublicIncidentDto{
 			Component:  name,
 			Severity:   i.Severity,
 			StartedAt:  Timestamp(i.OpenedAt),
-			ResolvedAt: optNilString(resAt),
+			ResolvedAt: optNilString(resolvedAt),
 		})
 	}
+	return dtos
+}
 
+func (s *Server) buildPublicStatus(ctx context.Context, page store.StatusPage) (*gen.PublicStatus, error) {
+	now := s.deps.Clock.NowMs()
+	apps, incidents, err := s.publicFacts(ctx, page, now)
+	if err != nil {
+		return nil, err
+	}
+	components := make([]gen.PublicComponent, 0, len(apps))
+	statuses := make([]status.Service, 0, len(apps))
+	for _, a := range apps {
+		st := s.componentStatus(a, incidents)
+		statuses = append(statuses, st)
+		components = append(components, gen.PublicComponent{Name: a.Name, Status: string(st)})
+	}
 	return &gen.PublicStatus{
 		Title:      page.Title,
-		Status:     string(status.Page(componentStatuses)),
+		Status:     string(status.Page(statuses)),
 		Components: components,
-		Incidents:  incidentDTOs,
+		Incidents:  publicIncidents(apps, incidents),
 		UpdatedAt:  Timestamp(now),
 	}, nil
 }
@@ -213,7 +217,7 @@ func (s *Server) GetStatusPage(ctx context.Context, params gen.GetStatusPagePara
 	if err != nil {
 		return nil, err
 	}
-	defer tenant.Rollback(ctx) //nolint:errcheck
+	defer tenant.Rollback(ctx) //nolint:errcheck // read only
 
 	page, found, err := tenant.StatusPage(ctx, p.project.ID)
 	if err != nil {
@@ -227,7 +231,6 @@ func (s *Server) GetStatusPage(ctx context.Context, params gen.GetStatusPagePara
 	if err != nil {
 		return nil, err
 	}
-	_ = tenant.Rollback(ctx)
 
 	envNames := make([]string, 0, len(page.Environments))
 	for _, id := range page.Environments {
@@ -239,6 +242,23 @@ func (s *Server) GetStatusPage(ctx context.Context, params gen.GetStatusPagePara
 		}
 	}
 	return statusPageDto(page, envNames), nil
+}
+
+// validatePutStatusPage checks a page's slug, title and number of
+// environments, and returns the trimmed title.
+func validatePutStatusPage(req *gen.PutStatusPage) (string, error) {
+	if err := DNSLabel("slug", req.Slug, 63); err != nil {
+		return "", err
+	}
+	title := strings.TrimSpace(req.Title)
+	titleRunes := utf8.RuneCountInString(title)
+	if titleRunes == 0 || titleRunes > 100 || strings.IndexFunc(title, unicode.IsControl) >= 0 {
+		return "", kerr.New(kerr.Validation, "title must be 1 to 100 printable characters")
+	}
+	if len(req.Environments) == 0 || len(req.Environments) > 20 {
+		return "", kerr.New(kerr.Validation, "list 1 to 20 environments")
+	}
+	return title, nil
 }
 
 // PutStatusPage publishes or changes a project's status page.
@@ -255,23 +275,16 @@ func (s *Server) PutStatusPage(ctx context.Context, req *gen.PutStatusPage, para
 		return nil, err
 	}
 
-	if err := DNSLabel("slug", req.Slug, 63); err != nil {
+	title, err := validatePutStatusPage(req)
+	if err != nil {
 		return nil, err
-	}
-	title := strings.TrimSpace(req.Title)
-	titleRunes := utf8.RuneCountInString(title)
-	if titleRunes == 0 || titleRunes > 100 || strings.IndexFunc(title, unicode.IsControl) >= 0 {
-		return nil, kerr.New(kerr.Validation, "title must be 1 to 100 printable characters")
-	}
-	if len(req.Environments) == 0 || len(req.Environments) > 20 {
-		return nil, kerr.New(kerr.Validation, "list 1 to 20 environments")
 	}
 
 	tenant, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
 		return nil, err
 	}
-	defer tenant.Rollback(ctx) //nolint:errcheck
+	defer tenant.Rollback(ctx) //nolint:errcheck // committed on success
 
 	known, err := tenant.Environments(ctx, p.project.ID)
 	if err != nil {
@@ -280,17 +293,13 @@ func (s *Server) PutStatusPage(ctx context.Context, req *gen.PutStatusPage, para
 
 	var envIDs []ids.EnvironmentID
 	for _, name := range req.Environments {
-		var found *store.EnvironmentRecord
-		for _, e := range known {
-			if e.Slug == name && !e.Deleting {
-				found = &e
-				break
-			}
-		}
-		if found == nil {
+		i := slices.IndexFunc(known, func(e store.EnvironmentRecord) bool {
+			return e.Slug == name && !e.Deleting
+		})
+		if i < 0 {
 			return nil, kerr.New(kerr.Validation, "no environment `%s`", name)
 		}
-		envIDs = append(envIDs, found.ID)
+		envIDs = append(envIDs, known[i].ID)
 	}
 
 	_, actor := acc.Actor()
@@ -338,7 +347,7 @@ func (s *Server) DeleteStatusPage(ctx context.Context, params gen.DeleteStatusPa
 	if err != nil {
 		return nil, err
 	}
-	defer tenant.Rollback(ctx) //nolint:errcheck
+	defer tenant.Rollback(ctx) //nolint:errcheck // committed on success
 
 	existing, hasPage, err := tenant.StatusPage(ctx, p.project.ID)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
@@ -81,190 +83,197 @@ type TemplateDef struct {
 	Generated   []string
 	Derived     []templateDerived
 	Volumes     []templateVolume
-	Health      string
-	Size        string
-	FSGroup     *int64
+	// Health is the path of the HTTP health check, if the template has one.
+	Health opt.Val[string]
+	Size   string
+	// FSGroup is set for images that run as a non-root user and must write
+	// their volume.
+	FSGroup opt.Val[int64]
 }
 
-func int64Ptr(v int64) *int64 { return &v }
-
-var templatesCatalogue = []TemplateDef{
-	{
-		ID:          "postgres",
-		Name:        "PostgreSQL 17",
-		Description: "Relational database. Other apps connect with the `url` key of the credentials secret.",
-		Category:    "database",
-		Image:       "postgres:17-alpine",
-		Port:        5432,
-		Protocol:    v1alpha1.ProtocolTCP,
-		Command:     nil,
-		Env: []templateEnv{
-			{"POSTGRES_USER", lit("app")},
-			{"POSTGRES_DB", lit("app")},
-			{"POSTGRES_PASSWORD", sec("password")},
-			{"PGDATA", lit("/var/lib/postgresql/data/pgdata")},
+// templatesCatalogue is the reviewed catalogue (TEMPLATES). It is built
+// afresh on every call, so no caller can change what another one sees.
+//
+//nolint:funlen // one literal: the catalogue itself
+func templatesCatalogue() []TemplateDef {
+	return []TemplateDef{
+		{
+			ID:          "postgres",
+			Name:        "PostgreSQL 17",
+			Description: "Relational database. Other apps connect with the `url` key of the credentials secret.",
+			Category:    "database",
+			Image:       "postgres:17-alpine",
+			Port:        5432,
+			Protocol:    v1alpha1.ProtocolTCP,
+			Command:     nil,
+			Env: []templateEnv{
+				{"POSTGRES_USER", lit("app")},
+				{"POSTGRES_DB", lit("app")},
+				{"POSTGRES_PASSWORD", sec("password")},
+				{"PGDATA", lit("/var/lib/postgresql/data/pgdata")},
+			},
+			Generated: []string{"password"},
+			Derived: []templateDerived{
+				{"url", "postgres://app:{password}@{name}:5432/app"},
+				{"host", "{name}"},
+				{"port", "5432"},
+				{"username", "app"},
+				{"database", "app"},
+			},
+			Volumes: []templateVolume{{"data", "/var/lib/postgresql/data", "5Gi"}},
+			Health:  opt.None[string](),
+			Size:    "small",
+			FSGroup: opt.None[int64](),
 		},
-		Generated: []string{"password"},
-		Derived: []templateDerived{
-			{"url", "postgres://app:{password}@{name}:5432/app"},
-			{"host", "{name}"},
-			{"port", "5432"},
-			{"username", "app"},
-			{"database", "app"},
+		{
+			ID:          "redis",
+			Name:        "Redis 7",
+			Description: "In-memory cache and queue with append-only persistence and a password.",
+			Category:    "database",
+			Image:       "redis:7-alpine",
+			Port:        6379,
+			Protocol:    v1alpha1.ProtocolTCP,
+			Command: []string{
+				"sh",
+				"-c",
+				"exec redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\"",
+			},
+			Env:       []templateEnv{{"REDIS_PASSWORD", sec("password")}},
+			Generated: []string{"password"},
+			Derived: []templateDerived{
+				{"url", "redis://:{password}@{name}:6379/0"},
+				{"host", "{name}"},
+				{"port", "6379"},
+			},
+			Volumes: []templateVolume{{"data", "/data", "1Gi"}},
+			Health:  opt.None[string](),
+			Size:    "nano",
+			FSGroup: opt.None[int64](),
 		},
-		Volumes: []templateVolume{{"data", "/var/lib/postgresql/data", "5Gi"}},
-		Health:  "",
-		Size:    "small",
-		FSGroup: nil,
-	},
-	{
-		ID:          "redis",
-		Name:        "Redis 7",
-		Description: "In-memory cache and queue with append-only persistence and a password.",
-		Category:    "database",
-		Image:       "redis:7-alpine",
-		Port:        6379,
-		Protocol:    v1alpha1.ProtocolTCP,
-		Command: []string{
-			"sh",
-			"-c",
-			"exec redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\"",
+		{
+			ID:          "mariadb",
+			Name:        "MariaDB 11",
+			Description: "MySQL-compatible database. Connect with the `url` key of the credentials secret.",
+			Category:    "database",
+			Image:       "mariadb:11",
+			Port:        3306,
+			Protocol:    v1alpha1.ProtocolTCP,
+			Command:     nil,
+			Env: []templateEnv{
+				{"MARIADB_DATABASE", lit("app")},
+				{"MARIADB_USER", lit("app")},
+				{"MARIADB_PASSWORD", sec("password")},
+				{"MARIADB_ROOT_PASSWORD", sec("root-password")},
+			},
+			Generated: []string{"password", "root-password"},
+			Derived: []templateDerived{
+				{"url", "mysql://app:{password}@{name}:3306/app"},
+				{"host", "{name}"},
+				{"port", "3306"},
+				{"username", "app"},
+				{"database", "app"},
+			},
+			Volumes: []templateVolume{{"data", "/var/lib/mysql", "5Gi"}},
+			Health:  opt.None[string](),
+			Size:    "medium",
+			FSGroup: opt.None[int64](),
 		},
-		Env:       []templateEnv{{"REDIS_PASSWORD", sec("password")}},
-		Generated: []string{"password"},
-		Derived: []templateDerived{
-			{"url", "redis://:{password}@{name}:6379/0"},
-			{"host", "{name}"},
-			{"port", "6379"},
+		{
+			ID:          "n8n",
+			Name:        "n8n",
+			Description: "Workflow automation. Credentials are encrypted with a generated key.",
+			Category:    "automation",
+			Image:       "n8nio/n8n:stable",
+			Port:        5678,
+			Protocol:    v1alpha1.ProtocolHTTP,
+			Command:     nil,
+			Env: []templateEnv{
+				{"N8N_ENCRYPTION_KEY", sec("encryption-key")},
+				{"N8N_PORT", lit("5678")},
+				{"GENERIC_TIMEZONE", lit("UTC")},
+			},
+			Generated: []string{"encryption-key"},
+			Derived:   nil,
+			Volumes:   []templateVolume{{"data", "/home/node/.n8n", "1Gi"}},
+			Health:    opt.Some("/healthz"),
+			Size:      "small",
+			FSGroup:   opt.Some[int64](1000),
 		},
-		Volumes: []templateVolume{{"data", "/data", "1Gi"}},
-		Health:  "",
-		Size:    "nano",
-		FSGroup: nil,
-	},
-	{
-		ID:          "mariadb",
-		Name:        "MariaDB 11",
-		Description: "MySQL-compatible database. Connect with the `url` key of the credentials secret.",
-		Category:    "database",
-		Image:       "mariadb:11",
-		Port:        3306,
-		Protocol:    v1alpha1.ProtocolTCP,
-		Command:     nil,
-		Env: []templateEnv{
-			{"MARIADB_DATABASE", lit("app")},
-			{"MARIADB_USER", lit("app")},
-			{"MARIADB_PASSWORD", sec("password")},
-			{"MARIADB_ROOT_PASSWORD", sec("root-password")},
+		{
+			ID:          "uptime-kuma",
+			Name:        "Uptime Kuma",
+			Description: "Self-hosted uptime monitoring with status pages.",
+			Category:    "monitoring",
+			Image:       "louislam/uptime-kuma:1",
+			Port:        3001,
+			Protocol:    v1alpha1.ProtocolHTTP,
+			Command:     nil,
+			Env:         nil,
+			Generated:   nil,
+			Derived:     nil,
+			Volumes:     []templateVolume{{"data", "/app/data", "1Gi"}},
+			Health:      opt.None[string](),
+			Size:        "small",
+			FSGroup:     opt.None[int64](),
 		},
-		Generated: []string{"password", "root-password"},
-		Derived: []templateDerived{
-			{"url", "mysql://app:{password}@{name}:3306/app"},
-			{"host", "{name}"},
-			{"port", "3306"},
-			{"username", "app"},
-			{"database", "app"},
+		{
+			ID:          "vaultwarden",
+			Name:        "Vaultwarden",
+			Description: "Bitwarden-compatible password manager. Sign-ups are closed; invite users from /admin with the generated admin token.",
+			Category:    "security",
+			Image:       "vaultwarden/server:latest",
+			Port:        80,
+			Protocol:    v1alpha1.ProtocolHTTP,
+			Command:     nil,
+			Env: []templateEnv{
+				{"SIGNUPS_ALLOWED", lit("false")},
+				{"ADMIN_TOKEN", sec("admin-token")},
+			},
+			Generated: []string{"admin-token"},
+			Derived:   nil,
+			Volumes:   []templateVolume{{"data", "/data", "1Gi"}},
+			Health:    opt.Some("/alive"),
+			Size:      "small",
+			FSGroup:   opt.None[int64](),
 		},
-		Volumes: []templateVolume{{"data", "/var/lib/mysql", "5Gi"}},
-		Health:  "",
-		Size:    "medium",
-		FSGroup: nil,
-	},
-	{
-		ID:          "n8n",
-		Name:        "n8n",
-		Description: "Workflow automation. Credentials are encrypted with a generated key.",
-		Category:    "automation",
-		Image:       "n8nio/n8n:stable",
-		Port:        5678,
-		Protocol:    v1alpha1.ProtocolHTTP,
-		Command:     nil,
-		Env: []templateEnv{
-			{"N8N_ENCRYPTION_KEY", sec("encryption-key")},
-			{"N8N_PORT", lit("5678")},
-			{"GENERIC_TIMEZONE", lit("UTC")},
+		{
+			ID:          "gitea",
+			Name:        "Gitea",
+			Description: "Lightweight Git hosting (rootless image). Finish the installer on first visit.",
+			Category:    "development",
+			Image:       "gitea/gitea:1-rootless",
+			Port:        3000,
+			Protocol:    v1alpha1.ProtocolHTTP,
+			Command:     nil,
+			Env:         nil,
+			Generated:   nil,
+			Derived:     nil,
+			Volumes: []templateVolume{
+				{"data", "/var/lib/gitea", "5Gi"},
+				{"config", "/etc/gitea", "100Mi"},
+			},
+			Health:  opt.Some("/api/healthz"),
+			Size:    "small",
+			FSGroup: opt.Some[int64](1000),
 		},
-		Generated: []string{"encryption-key"},
-		Derived:   nil,
-		Volumes:   []templateVolume{{"data", "/home/node/.n8n", "1Gi"}},
-		Health:    "/healthz",
-		Size:      "small",
-		FSGroup:   int64Ptr(1000),
-	},
-	{
-		ID:          "uptime-kuma",
-		Name:        "Uptime Kuma",
-		Description: "Self-hosted uptime monitoring with status pages.",
-		Category:    "monitoring",
-		Image:       "louislam/uptime-kuma:1",
-		Port:        3001,
-		Protocol:    v1alpha1.ProtocolHTTP,
-		Command:     nil,
-		Env:         nil,
-		Generated:   nil,
-		Derived:     nil,
-		Volumes:     []templateVolume{{"data", "/app/data", "1Gi"}},
-		Health:      "",
-		Size:        "small",
-		FSGroup:     nil,
-	},
-	{
-		ID:          "vaultwarden",
-		Name:        "Vaultwarden",
-		Description: "Bitwarden-compatible password manager. Sign-ups are closed; invite users from /admin with the generated admin token.",
-		Category:    "security",
-		Image:       "vaultwarden/server:latest",
-		Port:        80,
-		Protocol:    v1alpha1.ProtocolHTTP,
-		Command:     nil,
-		Env: []templateEnv{
-			{"SIGNUPS_ALLOWED", lit("false")},
-			{"ADMIN_TOKEN", sec("admin-token")},
+		{
+			ID:          "whoami",
+			Name:        "whoami",
+			Description: "Tiny HTTP echo service to test domains, TLS and routing.",
+			Category:    "sample",
+			Image:       "traefik/whoami:v1.10",
+			Port:        8080,
+			Protocol:    v1alpha1.ProtocolHTTP,
+			Command:     []string{"/whoami", "--port", "8080"},
+			Env:         nil,
+			Generated:   nil,
+			Derived:     nil,
+			Volumes:     nil,
+			Health:      opt.None[string](),
+			Size:        "nano",
+			FSGroup:     opt.None[int64](),
 		},
-		Generated: []string{"admin-token"},
-		Derived:   nil,
-		Volumes:   []templateVolume{{"data", "/data", "1Gi"}},
-		Health:    "/alive",
-		Size:      "small",
-		FSGroup:   nil,
-	},
-	{
-		ID:          "gitea",
-		Name:        "Gitea",
-		Description: "Lightweight Git hosting (rootless image). Finish the installer on first visit.",
-		Category:    "development",
-		Image:       "gitea/gitea:1-rootless",
-		Port:        3000,
-		Protocol:    v1alpha1.ProtocolHTTP,
-		Command:     nil,
-		Env:         nil,
-		Generated:   nil,
-		Derived:     nil,
-		Volumes: []templateVolume{
-			{"data", "/var/lib/gitea", "5Gi"},
-			{"config", "/etc/gitea", "100Mi"},
-		},
-		Health:  "/api/healthz",
-		Size:    "small",
-		FSGroup: int64Ptr(1000),
-	},
-	{
-		ID:          "whoami",
-		Name:        "whoami",
-		Description: "Tiny HTTP echo service to test domains, TLS and routing.",
-		Category:    "sample",
-		Image:       "traefik/whoami:v1.10",
-		Port:        8080,
-		Protocol:    v1alpha1.ProtocolHTTP,
-		Command:     []string{"/whoami", "--port", "8080"},
-		Env:         nil,
-		Generated:   nil,
-		Derived:     nil,
-		Volumes:     nil,
-		Health:      "",
-		Size:        "nano",
-		FSGroup:     nil,
-	},
+	}
 }
 
 // CredentialsSecret is the name of the Secret holding a template app's generated credentials.
@@ -278,7 +287,7 @@ func randomSecret() (string, error) {
 	out := make([]byte, SecretLen)
 	for i := 0; i < SecretLen; {
 		if _, err := rand.Read(b); err != nil {
-			return "", err
+			return "", fmt.Errorf("generate a credential: %w", err)
 		}
 		if int(b[0]) < maxByte {
 			out[i] = alphanumericChars[int(b[0])%len(alphanumericChars)]
@@ -342,8 +351,8 @@ func renderTemplate(t TemplateDef, app string) (RenderedTemplate, error) {
 	}
 
 	var healthCheck *v1alpha1.HealthCheck
-	if t.Health != "" {
-		healthCheck = &v1alpha1.HealthCheck{Path: t.Health}
+	if path, ok := t.Health.Get(); ok {
+		healthCheck = &v1alpha1.HealthCheck{Path: path}
 	}
 
 	port := t.Port
@@ -352,7 +361,7 @@ func renderTemplate(t TemplateDef, app string) (RenderedTemplate, error) {
 		Runtime: v1alpha1.Runtime{
 			Processes: map[string]v1alpha1.Process{
 				"web": {
-					Command:  t.Command,
+					Command:  slices.Clone(t.Command),
 					Port:     &port,
 					Size:     t.Size,
 					Replicas: v1alpha1.DefaultReplicas(),
@@ -360,7 +369,7 @@ func renderTemplate(t TemplateDef, app string) (RenderedTemplate, error) {
 				},
 			},
 			HealthCheck: healthCheck,
-			FSGroup:     t.FSGroup,
+			FSGroup:     t.FSGroup.Ptr(),
 		},
 		Env:     envVars,
 		Volumes: volumes,
@@ -401,10 +410,9 @@ func templateDto(t TemplateDef) gen.TemplateDto {
 }
 
 func findTemplate(id string) (TemplateDef, bool) {
-	for _, t := range templatesCatalogue {
-		if t.ID == id {
-			return t, true
-		}
+	catalogue := templatesCatalogue()
+	if i := slices.IndexFunc(catalogue, func(t TemplateDef) bool { return t.ID == id }); i >= 0 {
+		return catalogue[i], true
 	}
 	return TemplateDef{}, false
 }
@@ -414,8 +422,9 @@ func (s *Server) ListTemplates(ctx context.Context) ([]gen.TemplateDto, error) {
 	if _, err := s.access(ctx); err != nil {
 		return nil, err
 	}
-	dtos := make([]gen.TemplateDto, len(templatesCatalogue))
-	for i, t := range templatesCatalogue {
+	catalogue := templatesCatalogue()
+	dtos := make([]gen.TemplateDto, len(catalogue))
+	for i, t := range catalogue {
 		dtos[i] = templateDto(t)
 	}
 	return dtos, nil
@@ -458,12 +467,35 @@ func (s *Server) DeployTemplate(
 		return nil, err
 	}
 
-	cluster, err := s.cluster()
+	secretName := CredentialsSecret(req.Name)
+	secrets, err := s.createCredentials(ctx, e, req.Name, rendered.Secret)
 	if err != nil {
 		return nil, err
 	}
 
-	secretName := CredentialsSecret(req.Name)
+	appDto, err := s.createApp(ctx, acc, e, req.Name, rendered.Spec)
+	if err != nil {
+		s.dropOrphanedCredentials(ctx, secrets, secretName)
+		return nil, err
+	}
+
+	return &gen.DeployedTemplate{
+		App:               appDto,
+		CredentialsSecret: secretName,
+		ConnectionKeys:    templateDto(t).ConnectionKeys,
+	}, nil
+}
+
+// createCredentials stores the generated values of app in its credentials
+// Secret, which must not exist yet, and returns the client to remove it with.
+func (s *Server) createCredentials(
+	ctx context.Context, e envScope, app string, values map[string]string,
+) (secretDeleter, error) {
+	cluster, err := s.cluster()
+	if err != nil {
+		return nil, err
+	}
+	secretName := CredentialsSecret(app)
 	namespace := e.namespace()
 	secrets := cluster.Typed.CoreV1().Secrets(namespace)
 
@@ -474,37 +506,41 @@ func (s *Server) DeployTemplate(
 		return nil, kubeError(err, secretName)
 	}
 
-	secretData := make(map[string][]byte, len(rendered.Secret))
-	for k, v := range rendered.Secret {
-		secretData[k] = []byte(v)
+	data := make(map[string][]byte, len(values))
+	for k, v := range values {
+		data[k] = []byte(v)
 	}
-	secObj := &corev1.Secret{
+	object := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: namespace,
 			Labels: map[string]string{
 				v1alpha1.LabelManagedBy:   v1alpha1.LabelManagerValue,
 				v1alpha1.LabelEnvironment: e.resourceName(),
-				v1alpha1.LabelApp:         req.Name,
+				v1alpha1.LabelApp:         app,
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
-		Data: secretData,
+		Data: data,
 	}
-	if _, err := secrets.Create(ctx, secObj, metav1.CreateOptions{}); err != nil {
+	if _, err := secrets.Create(ctx, object, metav1.CreateOptions{}); err != nil {
 		return nil, kubeError(err, secretName)
 	}
+	return secrets, nil
+}
 
-	appDto, err := s.createApp(ctx, acc, e, req.Name, rendered.Spec)
-	if err != nil {
-		// Do not leave orphaned credentials behind.
-		_ = secrets.Delete(ctx, secretName, metav1.DeleteOptions{})
-		return nil, err
+// secretDeleter is the part of the Secrets client the cleanup needs.
+type secretDeleter interface {
+	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
+}
+
+// dropOrphanedCredentials removes the credentials of an app that could not
+// be created, so none are left behind. It runs even when the request was
+// cancelled; a failure is logged and does not change the answer, which stays
+// the creation's error (Rust discarded the failure).
+func (s *Server) dropOrphanedCredentials(ctx context.Context, secrets secretDeleter, name string) {
+	err := secrets.Delete(context.WithoutCancel(ctx), name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		s.deps.Logger.Error("orphaned template credentials were not removed", "secret", name, "error", err)
 	}
-
-	return &gen.DeployedTemplate{
-		App:               appDto,
-		CredentialsSecret: secretName,
-		ConnectionKeys:    templateDto(t).ConnectionKeys,
-	}, nil
 }
