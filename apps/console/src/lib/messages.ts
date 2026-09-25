@@ -123,6 +123,11 @@ const coreEn = {
   'theme.system': 'System',
   'theme.light': 'Light',
   'theme.dark': 'Dark',
+  'account.profile': 'Profile',
+  'account.manageTokens': 'Manage API tokens',
+  'ui.copy': 'Copy',
+  'ui.copied': 'Copied',
+  'ui.dangerZone': 'Danger zone',
 } as const
 
 const coreFa: Record<keyof typeof coreEn, string> = {
@@ -241,6 +246,11 @@ const coreFa: Record<keyof typeof coreEn, string> = {
   'theme.system': 'سیستم',
   'theme.light': 'روشن',
   'theme.dark': 'تیره',
+  'account.profile': 'نمایه',
+  'account.manageTokens': 'مدیریت توکن‌های API',
+  'ui.copy': 'کپی',
+  'ui.copied': 'کپی شد',
+  'ui.dangerZone': 'ناحیهٔ خطر',
 }
 
 export const en = { ...coreEn, ...opsEn, ...pagesEn } as const

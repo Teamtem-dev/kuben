@@ -61,6 +61,7 @@ import {
 } from '@/components/ui/sidebar'
 import { logout, projectsQuery } from '@/lib/api'
 import { type Crumb, crumbsFor } from '@/lib/breadcrumbs'
+import { initials } from '@/lib/initials'
 import { useLiveUpdates } from '@/lib/live'
 import type { MessageKey } from '@/lib/messages'
 import { usePrefs } from '@/lib/prefs'
@@ -306,14 +307,6 @@ function CommandPalette() {
     </>
   )
 }
-
-const initials = (name: string) =>
-  name
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('')
 
 function UserMenu() {
   const { me } = route.useRouteContext()

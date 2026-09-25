@@ -3,7 +3,14 @@
  * labelled inputs, notices and the guarded delete. Pages compose these
  * instead of styling the primitives each time.
  */
-import { AlertCircleIcon, CheckCircle2Icon, InfoIcon, TriangleAlertIcon } from 'lucide-react'
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  CheckIcon,
+  CopyIcon,
+  InfoIcon,
+  TriangleAlertIcon,
+} from 'lucide-react'
 import { type ComponentProps, type ReactNode, useId, useState } from 'react'
 import { Logo } from '@/components/brand'
 import { LanguageMenu, ThemeMenu } from '@/components/pref-menus'
@@ -313,5 +320,28 @@ export function AuthShell({ children }: { children: ReactNode }) {
       </div>
       <div className="grid w-full flex-1 place-items-center">{children}</div>
     </main>
+  )
+}
+
+/** Copies `value` to the clipboard and says so for a moment. */
+export function CopyButton({ value, className }: { value: string; className?: string }) {
+  const { t } = usePrefs()
+  const [copied, setCopied] = useState(false)
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={className}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        })
+      }}
+    >
+      {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+      <span aria-live="polite">{copied ? t('ui.copied') : t('ui.copy')}</span>
+    </Button>
   )
 }
