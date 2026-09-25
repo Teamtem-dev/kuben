@@ -10,7 +10,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `bundle.rs` | 184 | 3 | bundle | ported | 3 → 5 (+ the embedded copy is byte-identical to the root `bundle.lock.json`, the summary lists every pin) |
 | kuben | `main.rs` | 85 | 0 | cmd/kuben, cli | partial | every command is declared (cli.Root); serve, setup-token, version, copy-self run; the others answer "not available in this build yet" until their G5 port. anyhow's `Error: …` on failure; RUST_LOG/telemetry: G5 |
 | kuben | `serve.rs` | 867 | 0 | serve | partial | api role; with a cluster: informers, readiness on first sync, discovery (controller role), leader election settings (the Lease is campaigned for once reconcilers exist, S1-D). Left: materializer, controllers, AgentLink, builds, background work (S1–S5) |
-| kuben | `telemetry.rs` | 36 | 0 |  | todo | |
+| kuben | `telemetry.rs` | 36 | 0 | serve (Logger, LogLevel), platform/metrics | ported | 0 → 2; slog JSON/text; RUST_LOG over telemetry.log_level, of an EnvFilter directive list only the global level; Prometheus (client_golang, a registry per process, no default registry) on server.metrics_bind with Rust's six metric names: subsystem failures/panics (supervise), reconcile errors (controller policy), kuben_leader (leader), SSE lag (projection source), audit write errors |
 | kuben | `cli/admin.rs` | 38 | 0 | cli (cmd_admin.go) | ported | 0 → 0; the admin is created through bootstrap.EnsureAdmin when missing; every session of the account is revoked |
 | kuben | `cli/agent.rs` | 50 | 0 | cli (cmd_admin.go) | ported | 0 → 0; same lines as Rust; the cluster CA is made in the state directory if the hub has not started yet |
 | kuben | `cli/backup.rs` | 561 | 5 |  | todo | |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 201, todo 18.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 202, todo 17.

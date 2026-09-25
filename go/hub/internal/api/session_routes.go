@@ -239,7 +239,7 @@ func (s *Server) serveStream(w http.ResponseWriter, r *http.Request) {
 	for _, o := range a.OrgIDs() {
 		orgs = append(orgs, o.String())
 	}
-	if err := stream.Serve(w, r, projection.NewSource(s.deps.Projections), orgs); err != nil {
+	if err := stream.Serve(w, r, projection.NewSource(s.deps.Projections, s.deps.Health.Metrics()), orgs); err != nil {
 		s.deps.Logger.Debug("event stream ended", "error", err)
 	}
 }

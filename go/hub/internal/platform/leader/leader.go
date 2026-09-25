@@ -87,10 +87,11 @@ func Run(ctx context.Context, client kubernetes.Interface, e Election, h *health
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(lctx context.Context) {
 				leading.Store(true)
+				h.Metrics().Leading(true)
 				logger.Info("acquired the controller lease; starting controllers", "identity", e.Identity)
 				workErr <- work(lctx)
 			},
-			OnStoppedLeading: func() {},
+			OnStoppedLeading: func() { h.Metrics().Leading(false) },
 		},
 	})
 	if err != nil {

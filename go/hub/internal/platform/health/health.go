@@ -10,6 +10,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/metrics"
 )
 
 // State is how a subsystem is doing.
@@ -41,13 +42,25 @@ type Health struct {
 
 	mu         sync.Mutex // guards subsystems
 	subsystems map[string]Subsystem
+
+	metrics *metrics.Metrics // the process's metrics, beside its health
 }
 
 // New is a registry that is not ready and has just beaten.
 func New(c clock.Clock) *Health {
-	h := &Health{clock: c, subsystems: map[string]Subsystem{}}
+	h := &Health{clock: c, subsystems: map[string]Subsystem{}, metrics: metrics.New()}
 	h.heartbeat.Store(c.NowMs())
 	return h
+}
+
+// Metrics are the process's Prometheus metrics; every part of the server
+// that reports health reports its counters here too. A nil Health has none
+// (nil metrics record nothing).
+func (h *Health) Metrics() *metrics.Metrics {
+	if h == nil {
+		return nil
+	}
+	return h.metrics
 }
 
 // SetReady sets readiness.

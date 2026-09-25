@@ -140,6 +140,7 @@ func (s *Server) writeAudit(r *http.Request, template, action string, status int
 		Data:       opt.Some[any](map[string]any{"status": status, "method": r.Method, "token": token}),
 	})
 	if err != nil {
+		s.deps.Health.Metrics().AuditWriteFailed()
 		s.deps.Logger.Error("audit write failed", "error", err)
 	}
 }

@@ -6,6 +6,7 @@ package supervise
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -39,8 +40,16 @@ func Run(ctx context.Context, name string, h *health.Health, logger *slog.Logger
 			h.OK(name)
 			return
 		}
-		h.Degrade(name, err.Error())
-		logger.Error("subsystem failed; restarting", "subsystem", name, "error", err)
+		var p panicked
+		if errors.As(err, &p) {
+			h.Degrade(name, "panic")
+			h.Metrics().SubsystemPanicked(name)
+			logger.Error("subsystem panicked; restarting", "subsystem", name, "panic", p.value, "stack", p.stack)
+		} else {
+			h.Degrade(name, err.Error())
+			h.Metrics().SubsystemFailed(name)
+			logger.Error("subsystem failed; restarting", "subsystem", name, "error", err)
+		}
 		if time.Since(started) >= resetAfter {
 			delay = MinDelay
 		}
@@ -58,11 +67,17 @@ func Run(ctx context.Context, name string, h *health.Health, logger *slog.Logger
 func runOnce(ctx context.Context, work func(context.Context) error) (err error) {
 	defer func() {
 		if v := recover(); v != nil {
-			err = fmt.Errorf("panic: %v\n%s", v, debug.Stack())
+			err = panicked{value: fmt.Sprint(v), stack: string(debug.Stack())}
 		}
 	}()
 	return work(ctx)
 }
+
+// panicked is a panic of the work, recovered: counted and reported apart
+// from errors, as the Rust supervisor did with a panicked task.
+type panicked struct{ value, stack string }
+
+func (p panicked) Error() string { return "panic: " + p.value }
 
 // jitter is d scaled by a random factor in [0.5, 1.5).
 func jitter(d time.Duration) time.Duration {

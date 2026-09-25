@@ -94,11 +94,12 @@ func RunAll(ctx context.Context, d Deps) error {
 		return err
 	}
 	s := &shared{
-		client: mgr.GetClient(),
-		reader: mgr.GetAPIReader(),
-		facts:  d.Facts,
-		clock:  d.Clock,
-		logger: d.Logger,
+		client:  mgr.GetClient(),
+		reader:  mgr.GetAPIReader(),
+		facts:   d.Facts,
+		clock:   d.Clock,
+		logger:  d.Logger,
+		metrics: d.Health.Metrics(),
 	}
 	if err := register(mgr, s, d.Projections); err != nil {
 		return err
@@ -142,7 +143,7 @@ func newManager(d Deps, scheme *runtime.Scheme) (manager.Manager, error) {
 func register(mgr manager.Manager, s *shared, projections *projection.Projections) error {
 	withPolicy := func(kind string, inner reconcile.Reconciler) (reconcile.Reconciler, controller.Options) {
 		limiter := RateLimiter()
-		return policy{kind: kind, inner: inner, limiter: limiter, logger: s.logger},
+		return policy{kind: kind, inner: inner, limiter: limiter, logger: s.logger, metrics: s.metrics},
 			controller.Options{RateLimiter: limiter, MaxConcurrentReconciles: workers}
 	}
 

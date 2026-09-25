@@ -31,6 +31,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/metrics"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
@@ -128,10 +129,11 @@ type shared struct {
 	// client writes, and reads the watched kinds from the cache.
 	client client.Client
 	// reader reads from the API server, where the Rust controllers did.
-	reader client.Reader
-	facts  *discovery.Watch
-	clock  clock.Clock
-	logger *slog.Logger
+	reader  client.Reader
+	facts   *discovery.Watch
+	clock   clock.Clock
+	logger  *slog.Logger
+	metrics *metrics.Metrics
 }
 
 // configs is every KubenConfig in the cache, by name, so "the first" is
@@ -263,6 +265,7 @@ type policy struct {
 	inner   reconcile.Reconciler
 	limiter workqueue.TypedRateLimiter[reconcile.Request]
 	logger  *slog.Logger
+	metrics *metrics.Metrics
 }
 
 // Reconcile runs the inner reconciler and logs its failure.
@@ -279,5 +282,6 @@ func (p policy) Reconcile(ctx context.Context, req reconcile.Request) (reconcile
 		"error", err.Error(),
 		"failures", failures,
 		"retry_in_s", int64(Backoff(failures)/time.Second))
+	p.metrics.ReconcileFailed(p.kind)
 	return reconcile.Result{}, err
 }

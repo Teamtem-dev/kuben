@@ -7,6 +7,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/stream"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/metrics"
 )
 
 // Visibility is the per-connection tenant filter of the event stream
@@ -120,11 +121,13 @@ func (v *Visibility) Admit(d Delta) bool {
 
 // Source is the event stream's source (stream.Source) on the projections.
 type Source struct {
-	p *Projections
+	p       *Projections
+	metrics *metrics.Metrics
 }
 
-// NewSource is the stream source reading p.
-func NewSource(p *Projections) Source { return Source{p: p} }
+// NewSource is the stream source reading p; missed deltas are counted in m
+// (`kuben_sse_lagged_total`; nil counts nothing).
+func NewSource(p *Projections, m *metrics.Metrics) Source { return Source{p: p, metrics: m} }
 
 func raw[V any](items []*V) []json.RawMessage {
 	out := make([]json.RawMessage, 0, len(items))
@@ -170,6 +173,9 @@ func (s Source) Subscribe(ctx context.Context, orgs []string) <-chan stream.Delt
 			got, ok := sub.Recv(ctx)
 			if !ok {
 				return
+			}
+			if got.Lagged > 0 {
+				s.metrics.SSELagged(got.Lagged)
 			}
 			event, send := toEvent(got, visibility)
 			if !send {

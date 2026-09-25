@@ -99,7 +99,7 @@ func TestTheSourceStreamsWhatTheCallerMaySee(t *testing.T) {
 	p := projection.New()
 	p.UpsertProject(project("mine", "a"))
 	p.UpsertProject(project("theirs", "b"))
-	var src stream.Source = projection.NewSource(p)
+	var src stream.Source = projection.NewSource(p, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	deltas := src.Subscribe(ctx, []string{"a"})
@@ -135,7 +135,7 @@ func TestASlowConnectionGetsAResyncWithoutAnID(t *testing.T) {
 	p := projection.New()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	deltas := projection.NewSource(p).Subscribe(ctx, []string{"a"})
+	deltas := projection.NewSource(p, nil).Subscribe(ctx, []string{"a"})
 	// Nobody reads: DeltaCapacity deltas fill the backlog, the rest are
 	// missed.
 	for range projection.DeltaCapacity + 5 {
