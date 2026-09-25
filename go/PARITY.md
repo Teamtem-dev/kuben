@@ -142,7 +142,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-crd | `v1alpha1/release.rs` | 57 | 0 | kubenapi/v1alpha1 (release.go) | ported | testdata/objects fixtures |
 | kuben-crd | `v1alpha1/runtime.rs` | 228 | 6 | kubenapi/v1alpha1 (runtime.go) | ported | 6/6 tests (runtime_test.go): CEL and OpenAPI rules of the manifest run by the apiextensions-apiserver validators |
 | kuben-crd | `v1alpha1/task.rs` | 228 | 4 | kubenapi/v1alpha1 (task.go) | ported | 4/4 tests (task_test.go), same validators |
-| kuben-platform | `activator.rs` | 22 | 0 |  | todo | |
+| kuben-platform | `activator.rs` | 22 | 0 | serve (warnActivator) | dropped | behind the Rust `activator` feature, which release builds never enabled: `--roles=activator` is ignored with the same warning as those builds gave (scale-to-zero is phase 2) |
 | kuben-platform | `agentlink.rs` | 580 | 3 | platform/agentlink | ported | 3 → 3 |
 | kuben-platform | `discovery.rs` | 734 | 5 | platform/discovery | ported | 5 → 19 Go tests (+ probes over fake clientsets, the loop against its store, the Watch); tokio `watch` → `discovery.Watch` (SUBSTITUTIONS.md) |
 | kuben-platform | `doctor.rs` | 701 | 4 | platform/doctor | ported | 4 → 9: every check, the overall verdict, the port probe (injectable dialer), the lookup, the KubenConfig and Gateway readers |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 8, ported 204, todo 16.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 8, ported 204, todo 15.

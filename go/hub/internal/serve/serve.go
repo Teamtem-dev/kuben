@@ -141,6 +141,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		h.SetReady(true)
 	}
 	subsystems = append(subsystems, startBackground(ctx, cfg, st, keyring, app, h, logger)...)
+	subsystems = append(subsystems, startMaintenance(ctx, cfg, st, h, logger)...)
+	warnActivator(cfg, logger)
 	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
 	builds, err := startBuilds(ctx, cfg, st, cluster, app, h, logger)
 	if err != nil {
