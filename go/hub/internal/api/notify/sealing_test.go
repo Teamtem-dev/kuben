@@ -11,10 +11,14 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 )
 
-// An endpoint secret opens only for the endpoint and organization it was
-// sealed for.
-func TestEndpointSecretsOpenOnlyForTheirEndpoint(t *testing.T) {
-	keyring := secrets.FromKeys(map[uint32][32]byte{1: {7}})
+// notify.rs endpoint_secrets_are_sealed_for_their_endpoint: an endpoint
+// secret opens only for the endpoint and organization it was sealed for.
+func TestEndpointSecretsAreSealedForTheirEndpoint(t *testing.T) {
+	var key [32]byte
+	for i := range key {
+		key[i] = 7
+	}
+	keyring := secrets.FromKeys(map[uint32][32]byte{1: key})
 	org, endpoint := ids.New[ids.Org](), uuid.New()
 	sealed, err := notify.SealSecret(keyring, org, endpoint, []byte("whsec"))
 	if err != nil {
