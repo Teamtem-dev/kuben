@@ -7,12 +7,12 @@ import (
 	"context"
 	"net/netip"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/domain"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/doctor"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )

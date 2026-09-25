@@ -19,12 +19,12 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/model"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	coresso "github.com/Teamtem-dev/kuben/go/hub/internal/core/sso"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 

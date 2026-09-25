@@ -14,9 +14,9 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/notify"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/notify"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 

@@ -12,11 +12,11 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso/ssotest"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/sso"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/sso/ssotest"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 

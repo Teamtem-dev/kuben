@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/client"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/apiclient"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/host"
 )
@@ -151,7 +151,7 @@ func (c contextsDoc) resolve(name opt.Val[string], env envLookup) (serverContext
 // clientSession is a client of the chosen server, and the defaults for app
 // names.
 type clientSession struct {
-	api     client.Client
+	api     apiclient.Client
 	context serverContext
 	target  clientTarget
 }
@@ -169,7 +169,7 @@ func openClientSession(t clientTarget, env envLookup) (clientSession, error) {
 	if err != nil {
 		return clientSession{}, err
 	}
-	return clientSession{api: client.New(chosen.URL, chosen.Token), context: chosen, target: t}, nil
+	return clientSession{api: apiclient.New(chosen.URL, chosen.Token), context: chosen, target: t}, nil
 }
 
 // project is the project of apps named without one: the flag's, else the
@@ -183,8 +183,8 @@ func (s clientSession) environment() opt.Val[string] {
 	return orClientVal(s.target.environment, s.context.Environment)
 }
 
-func (s clientSession) app(text string) (client.AppPath, error) {
-	return client.ParseAppPath(text, s.project(), s.environment()) //nolint:wrapcheck // the message is the error
+func (s clientSession) app(text string) (apiclient.AppPath, error) {
+	return apiclient.ParseAppPath(text, s.project(), s.environment()) //nolint:wrapcheck // the message is the error
 }
 
 func orClientVal[T any](first, second opt.Val[T]) opt.Val[T] {

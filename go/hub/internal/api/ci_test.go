@@ -15,14 +15,14 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oidc"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/outbound"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/oidc"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/outbound"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 

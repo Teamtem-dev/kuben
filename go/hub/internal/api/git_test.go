@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
 )
 

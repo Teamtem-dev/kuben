@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oidc"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/oidc"
 )
 
 // CI trust internals under test (routes/ci.rs).

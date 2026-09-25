@@ -39,23 +39,23 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-agent | `tls.rs` | 323 | 6 | kubenapi/protocol (tls.go) | ported | 6 → 6 |
 | kuben-api | `audit.rs` | 205 | 3 | api (audit.go) | ported |  |
 | kuben-api | `authz.rs` | 180 | 1 | api/access | ported |  |
-| kuben-api | `client.rs` | 483 | 4 | api/client | ported | 4 → 6 (+ problem decoding, followed SSE over an in-memory httptest server); net/http with hand-written DTOs in serde order (the CLI prints them back); APIError/TransportError sealed; FollowLogs is an iter.Seq2 over SSE |
-| kuben-api | `dns.rs` | 631 | 4 | api/dns | ported | 4 → 7; DoH lookups, change plan, Cloudflare adapter (hand-written: ownership needs record comments and ids, which libdns lacks), public backend, gateway records |
+| kuben-api | `client.rs` | 483 | 4 | apiclient | ported | 4 → 6 (+ problem decoding, followed SSE over an in-memory httptest server); net/http with hand-written DTOs in serde order (the CLI prints them back); APIError/TransportError sealed; FollowLogs is an iter.Seq2 over SSE |
+| kuben-api | `dns.rs` | 631 | 4 | integrations/dns | ported | 4 → 7; DoH lookups, change plan, Cloudflare adapter (hand-written: ownership needs record comments and ids, which libdns lacks), public backend, gateway records |
 | kuben-api | `error.rs` | 100 | 0 | api/problem | ported |  |
-| kuben-api | `github.rs` | 750 | 6 | api/github | ported | 6 → 21 (a fake GitHub on httptest: token requests, JWT checked against the public key, caching, error classes, body cap, revoke, installation, pull request state, commit status) |
+| kuben-api | `github.rs` | 750 | 6 | integrations/github | ported | 6 → 21 (a fake GitHub on httptest: token requests, JWT checked against the public key, caching, error classes, body cap, revoke, installation, pull request state, commit status) |
 | kuben-api | `host.rs` | 73 | 2 | platform/host | ported | 2 → 2; serve.AdvertiseIP and api.WriteOwnerOnly are older copies of the same functions |
 | kuben-api | `image_watch.rs` | 287 | 0 | api (image_watch.go), serve (background.go) | ported | 0 in Rust; covered by the tests/http.rs port below; runs on every replica as serve.rs spawn_background |
 | kuben-api | `lib.rs` | 105 | 0 | api (server.go) | ported | router: session, CSRF, audit, timeout (followed logs exempt), body limit, gzip compression (SUBSTITUTIONS), request id, `/api/docs` (api/apidocs), probes, console fallback, the GitHub webhook and the CI exchange with body limits of their own (inside the gzip/request-id wrappers; Rust mounted them outside the tower layers) |
-| kuben-api | `notify.rs` | 593 | 6 | api/notify (plan.go, notifier.go, sealing.go) | ported | 6 → 8 (+ signatures vs testdata/compat, + the http crate's reason phrases); is_private is outbound.IsPrivate; the notifier runs on every replica (serve/background.go) with the GitHub App for commit statuses |
-| kuben-api | `oci.rs` | 908 | 9 | api/oci | ported | Parse, Fixed, Registry, Verifier (RegistryVerifier): 7 tests ported, 2 dropped (challenge parsing and query encoding belong to go-containerregistry), + 4 in-process registry tests for the verifier |
-| kuben-api | `oidc.rs` | 465 | 5 | api/oidc | ported | 5 → 6 (+ key fetch, cache, refresh and outage against an httptest issuer); the shared JWKS/RS256 parts serve SSO in S4 |
+| kuben-api | `notify.rs` | 593 | 6 | notify (plan.go, notifier.go, sealing.go) | ported | 6 → 8 (+ signatures vs testdata/compat, + the http crate's reason phrases); is_private is outbound.IsPrivate; the notifier runs on every replica (serve/background.go) with the GitHub App for commit statuses |
+| kuben-api | `oci.rs` | 908 | 9 | integrations/oci | ported | Parse, Fixed, Registry, Verifier (RegistryVerifier): 7 tests ported, 2 dropped (challenge parsing and query encoding belong to go-containerregistry), + 4 in-process registry tests for the verifier |
+| kuben-api | `oidc.rs` | 465 | 5 | integrations/oidc | ported | 5 → 6 (+ key fetch, cache, refresh and outage against an httptest issuer); the shared JWKS/RS256 parts serve SSO in S4 |
 | kuben-api | `openapi.rs` | 231 | 2 | api/gen (ogen) + api/genspec | dropped | spec first: the contract generates the server |
 | kuben-api | `previews.rs` | 464 | 0 | api (previews.go) | ported | 0 → 5 Go unit tests: pull request lifecycle (OnPull, called by git.go), janitor (Sweep, Verify every tenth round; an unclear answer never deletes) started in serve/background.go on a ticker |
 | kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | 2 → 2; setup_guide/setup_url are SetupGuide/SetupURL (the advertised address is passed in; host::console_url) |
-| kuben-api | `sso.rs` | 554 | 5 | api/sso | ported | 5 → 5; reuses api/oidc (JWKS, RS256) |
+| kuben-api | `sso.rs` | 554 | 5 | integrations/sso | ported | 5 → 5; reuses integrations/oidc (JWKS, RS256) |
 | kuben-api | `state.rs` | 151 | 0 | api (server.go Deps) | ported | ApiState and its with_* builders are the fields of api.Deps (usage, DNS, images, keyring, SSO, GitHub OIDC, GitHub App); an unset field is the zero value or opt.None, as the builders defaulted |
 | kuben-api | `stream.rs` | 248 | 2 | api/stream, platform/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
-| kuben-api | `transport.rs` | 157 | 0 | api/outbound | ported | net/http with the same rules (https only unless allowed, proxy from env, header and body timeouts, body cap, no redirects); notify.rs is_private is outbound.IsPrivate |
+| kuben-api | `transport.rs` | 157 | 0 | integrations/outbound | ported | net/http with the same rules (https only unless allowed, proxy from env, header and body timeouts, body cap, no redirects); notify.rs is_private is outbound.IsPrivate |
 | kuben-api | `web.rs` | 106 | 1 | api/web | ported | 1 → 1; content types from a fixed table of mime_guess 2.0.5 (Go's mime package differs and reads /etc/mime.types) |
 | kuben-api | `bin/openapi.rs` | 23 | 0 | api/gen (ogen) + api/genspec | dropped | spec first: packages/api-client/openapi.json is the frozen contract the server is generated from, so nothing writes it |
 | kuben-api | `auth/mod.rs` | 462 | 1 | api (session_routes.go), api/httpx | ported | SSO routes: S4 |
@@ -232,7 +232,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-agent | `tests/link.rs` | 756 | 15 | platform/agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (the hub module requires go/agent for it) |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | ported | 3 → 3; run by the CI job `go-kind` against a kind cluster (KUBEN_TEST_KUBE=1), as Rust ran them with --ignored in its kind job |
 | kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | ported | 44 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies, m4 SSO (3), m5 domain claims and DNS records, m4 signed webhooks and incidents, m4 export and detach, m4 scan gate, m5 previews |
-| kuben-api | `tests/oci.rs` | 41 | 2 | api/oci (network_test.go) | ported | 2 → 2, run only with KUBEN_TEST_NETWORK=1 (Rust: --ignored) |
+| kuben-api | `tests/oci.rs` | 41 | 2 | integrations/oci (network_test.go) | ported | 2 → 2, run only with KUBEN_TEST_NETWORK=1 (Rust: --ignored) |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 | platform/agentlink (mtls_test.go) | ported | 6 → 6 |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 | platform/controller (execution_crds_test.go) + platform/kubetest | ported | 2 → 2 against envtest's API server |
 | kuben-platform | `tests/materializer.rs` | 633 | 5 | platform/materializer (cluster_test.go) | ported | 5 → 5 against envtest and PostgreSQL; plus a controller smoke test (platform/controller run_cluster_test.go) |

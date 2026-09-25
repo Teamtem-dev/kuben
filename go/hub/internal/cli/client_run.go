@@ -24,10 +24,10 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/term"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/client"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/apiclient"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 )
 
@@ -95,7 +95,7 @@ func runLogin(ctx context.Context, g *globals, opts loginOpts, env envLookup) er
 		}
 		token = read
 	}
-	me, err := client.New(url, token).Me(ctx)
+	me, err := apiclient.New(url, token).Me(ctx)
 	if err != nil {
 		return fmt.Errorf("signing in to %s: %w", url, err)
 	}
@@ -144,7 +144,7 @@ func runApps(ctx context.Context, g *globals, opts appsOpts, env envLookup) erro
 		return err
 	}
 	onlyProject, onlyEnvironment := s.project(), s.environment()
-	rows := []client.AppDto{}
+	rows := []apiclient.AppDto{}
 	projects, err := s.api.Projects(ctx)
 	if err != nil {
 		return err //nolint:wrapcheck // the client's message
@@ -172,7 +172,7 @@ func runApps(ctx context.Context, g *globals, opts appsOpts, env envLookup) erro
 }
 
 // printApps is the table of apps, or their JSON.
-func printApps(w io.Writer, rows []client.AppDto, asJSON bool) error {
+func printApps(w io.Writer, rows []apiclient.AppDto, asJSON bool) error {
 	if asJSON {
 		text, err := serdePretty(rows)
 		if err != nil {
@@ -243,7 +243,7 @@ func printClientTable(w io.Writer, header []string, rows [][]string) error {
 
 // currentRevision is the revision the app is on now (0 before its first
 // run).
-func currentRevision(releases []client.ReleaseDto) int64 {
+func currentRevision(releases []apiclient.ReleaseDto) int64 {
 	for _, r := range releases {
 		if r.Current {
 			return r.Revision
@@ -257,7 +257,7 @@ func currentRevision(releases []client.ReleaseDto) int64 {
 
 // previousRevision is the revision before the current one in a
 // newest-first history.
-func previousRevision(releases []client.ReleaseDto) opt.Val[int64] {
+func previousRevision(releases []apiclient.ReleaseDto) opt.Val[int64] {
 	current := currentRevision(releases)
 	found := opt.None[int64]()
 	for _, r := range releases {
@@ -302,9 +302,9 @@ func runDeploy(ctx context.Context, g *globals, opts deployOpts, env envLookup) 
 	if err != nil {
 		return err //nolint:wrapcheck // the client's message
 	}
-	request := client.StartDeploymentRequest{
+	request := apiclient.StartDeploymentRequest{
 		Image:              opt.Some(image),
-		Reason:             client.ReasonDeploy,
+		Reason:             apiclient.ReasonDeploy,
 		ExpectedGeneration: uint64(max(currentRevision(releases), 0)), //nolint:gosec // not negative
 	}
 	key, ok := opts.idempotencyKey.Get()
@@ -364,7 +364,7 @@ func (realPacer) sleep(ctx context.Context, d time.Duration) error {
 const pollEvery = 2 * time.Second
 
 // waitFor prints each new phase of the run until it ends or timeout passes.
-func waitFor(ctx context.Context, w io.Writer, app client.AppPath, phase string, timeout time.Duration,
+func waitFor(ctx context.Context, w io.Writer, app apiclient.AppPath, phase string, timeout time.Duration,
 	poll func(context.Context) (string, error), clock pacer,
 ) error {
 	out := &lineWriter{w: w}
@@ -424,7 +424,7 @@ func runAppStatus(ctx context.Context, g *globals, opts statusOpts, text string,
 	}
 	doctor, doctorErr := s.api.Doctor(ctx, path)
 	if opts.json {
-		report := opt.None[client.DoctorReport]()
+		report := opt.None[apiclient.DoctorReport]()
 		if doctorErr == nil {
 			report = opt.Some(doctor)
 		}
@@ -436,12 +436,12 @@ func runAppStatus(ctx context.Context, g *globals, opts statusOpts, text string,
 // printStatusJSON is `{"app", "pods", "releases", "doctor"}` as the Rust
 // CLI printed its serde_json::json! value: object keys sorted at every
 // level (serde_json without preserve_order), two-space indent.
-func printStatusJSON(w io.Writer, detail client.AppDetail, releases []client.ReleaseDto, doctor opt.Val[client.DoctorReport]) error {
+func printStatusJSON(w io.Writer, detail apiclient.AppDetail, releases []apiclient.ReleaseDto, doctor opt.Val[apiclient.DoctorReport]) error {
 	raw, err := json.Marshal(struct {
-		App      client.AppDto                `json:"app"`
-		Pods     []client.PodDto              `json:"pods"`
-		Releases []client.ReleaseDto          `json:"releases"`
-		Doctor   opt.Val[client.DoctorReport] `json:"doctor"`
+		App      apiclient.AppDto                `json:"app"`
+		Pods     []apiclient.PodDto              `json:"pods"`
+		Releases []apiclient.ReleaseDto          `json:"releases"`
+		Doctor   opt.Val[apiclient.DoctorReport] `json:"doctor"`
 	}{detail.App, emptyIfNil(detail.Pods), emptyIfNil(releases), doctor})
 	if err != nil {
 		return fmt.Errorf("writing JSON: %w", err)
@@ -475,8 +475,8 @@ func inParens(v opt.Val[string]) string {
 	return ""
 }
 
-func printStatus(w io.Writer, path client.AppPath, detail client.AppDetail, releases []client.ReleaseDto,
-	doctor client.DoctorReport, doctorErr error,
+func printStatus(w io.Writer, path apiclient.AppPath, detail apiclient.AppDetail, releases []apiclient.ReleaseDto,
+	doctor apiclient.DoctorReport, doctorErr error,
 ) error {
 	out := &lineWriter{w: w}
 	a := detail.App
@@ -518,7 +518,7 @@ func printStatus(w io.Writer, path client.AppPath, detail client.AppDetail, rele
 	return out.err
 }
 
-func printDoctor(out *lineWriter, report client.DoctorReport) {
+func printDoctor(out *lineWriter, report apiclient.DoctorReport) {
 	out.line("doctor    " + report.Status)
 	for _, check := range report.Checks {
 		tag := "????"
@@ -560,7 +560,7 @@ func runLogs(ctx context.Context, g *globals, opts logsOpts, env envLookup) erro
 	if err != nil {
 		return err
 	}
-	options := client.LogOptions{Tail: opts.tail, Process: opts.process, Previous: opts.previous}
+	options := apiclient.LogOptions{Tail: opts.tail, Process: opts.process, Previous: opts.previous}
 	if !opts.follow {
 		pods, err := s.api.Logs(ctx, app, options)
 		if err != nil {
@@ -577,7 +577,7 @@ func runLogs(ctx context.Context, g *globals, opts logsOpts, env envLookup) erro
 
 // printLogs prints each pod's lines, prefixed with the pod when there are
 // several; a pod whose log could not be read is named on stderr.
-func printLogs(stdout, stderr io.Writer, pods []client.PodLogs) error {
+func printLogs(stdout, stderr io.Writer, pods []apiclient.PodLogs) error {
 	out, errOut := &lineWriter{w: stdout}, &lineWriter{w: stderr}
 	prefix := len(pods) > 1
 	for _, pod := range pods {
@@ -596,19 +596,19 @@ func printLogs(stdout, stderr io.Writer, pods []client.PodLogs) error {
 }
 
 // printFollowed prints followed lines as they come until the stream ends.
-func printFollowed(stdout, stderr io.Writer, events iter.Seq2[client.FollowEvent, error]) error {
+func printFollowed(stdout, stderr io.Writer, events iter.Seq2[apiclient.FollowEvent, error]) error {
 	out, errOut := &lineWriter{w: stdout}, &lineWriter{w: stderr}
 	for event, err := range events {
 		if err != nil {
 			return err
 		}
 		switch e := event.(type) {
-		case client.LineEvent:
+		case apiclient.LineEvent:
 			out.line("[" + e.Pod + "] " + e.Line)
 			if out.err != nil {
 				return out.err
 			}
-		case client.EndEvent:
+		case apiclient.EndEvent:
 			pod, hasPod := e.Pod.Get()
 			reason, hasReason := e.Error.Get()
 			switch {

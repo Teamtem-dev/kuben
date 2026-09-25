@@ -18,10 +18,10 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/doctor"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/evidence"

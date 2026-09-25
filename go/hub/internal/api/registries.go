@@ -16,10 +16,10 @@ import (
 	"unicode"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ascii"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )

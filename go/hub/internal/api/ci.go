@@ -23,8 +23,6 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oidc"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/outbound"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/problem"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ci"
@@ -33,6 +31,8 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/model"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/oidc"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/outbound"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 )

@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/notify"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/notify"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 

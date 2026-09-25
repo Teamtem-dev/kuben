@@ -428,7 +428,7 @@ jobs:
       # ADR-032 option A: tags resolve to digests at their registry. First, so
       # a registry problem shows here and not as an e2e failure.
       - name: Registry resolution (network)
-        run: go test -count=1 -v ./internal/api/oci/
+        run: go test -count=1 -v ./internal/integrations/oci/
         working-directory: go/hub
         env:
           KUBEN_TEST_NETWORK: "1"

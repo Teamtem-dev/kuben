@@ -32,7 +32,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
@@ -40,6 +39,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/policy"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/preview"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
