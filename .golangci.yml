@@ -121,21 +121,21 @@ linters:
           files:
             - "**/internal/core/**"
           deny:
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/store
+            - pkg: github.com/Teamtem-dev/kuben/internal/store
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/platform
+            - pkg: github.com/Teamtem-dev/kuben/internal/platform
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/api
+            - pkg: github.com/Teamtem-dev/kuben/internal/httpapi
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/integrations
+            - pkg: github.com/Teamtem-dev/kuben/internal/integrations
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/notify
+            - pkg: github.com/Teamtem-dev/kuben/internal/notify
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/apiclient
+            - pkg: github.com/Teamtem-dev/kuben/internal/apiclient
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/previews
+            - pkg: github.com/Teamtem-dev/kuben/internal/previews
               desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/imagewatch
+            - pkg: github.com/Teamtem-dev/kuben/internal/imagewatch
               desc: core performs no IO.
             - pkg: net/http
               desc: core performs no IO.

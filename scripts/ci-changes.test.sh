@@ -34,13 +34,16 @@ check "bun lockfile" "web codegen scripts go" bun.lock
 check "bunfig" "web codegen scripts go" bunfig.toml
 check "package turbo config" "web" apps/console/turbo.json
 check "package manifest" "web" apps/console/package.json
-check "mixed" "web go" go/hub/internal/api/apps.go apps/console/src/lib/api.ts
+check "mixed" "web go" internal/httpapi/apps.go apps/console/src/lib/api.ts
 check "new script" "scripts" scripts/check-drift.sh
 check "trivy exceptions" "scripts" .trivyignore.yaml
 check "dockerfile" "scripts" Dockerfile
-check "go source" "go" go/hub/internal/core/perm/perm.go
-check "go module" "go" go/agent/go.mod
-check "go workspace" "go" go.work.sum
+check "go source" "go" internal/core/perm/perm.go
+check "go module" "go" go.mod
+check "go sums" "go" go.sum
+check "go tools" "go" tools/go.mod
+check "go api types" "go" api/v1alpha1/app.go
+check "go command" "go" cmd/kuben/main.go
 check "go lint config" "go" .golangci.yml
 check "go check script" "scripts go" scripts/go-check.sh
 check "go build script" "scripts go" scripts/go-build.sh

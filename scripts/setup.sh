@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup: checks for Go (the version in go/hub/go.mod) and Bun,
+# One-time setup: checks for Go (the version in go.mod) and Bun,
 # installs the JS dependencies and downloads the Go modules of the workspace.
 #
 #   bun run setup

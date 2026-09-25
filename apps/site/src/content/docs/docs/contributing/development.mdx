@@ -9,7 +9,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 
 ## Toolchain
 
-- **Go**, the version in `go/hub/go.mod` (one workspace, `go.work`: the hub, the agent, the shared API types and the tools)
+- **Go**, the version in `go.mod` (one workspace, `go.work`: the hub, the agent, the shared API types and the tools)
 - **Bun** 1.4 or later: package manager, JS runtime and test runner. Node is not needed.
 - **Turborepo** runs every task in both languages from one graph (installed by `bun install`).
 - **kind** for the end-to-end tests, **Helm** for the chart.
@@ -83,7 +83,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 
 | Command | Does |
 |---|---|
-| `bun run build` | the hub with the console embedded (`go/hub/bin/kuben`) and the web bundle |
+| `bun run build` | the hub with the console embedded (`bin/kuben`) and the web bundle |
 | `bun run check` | `tsc` |
 | `bun run lint` | `scripts/go-check.sh` on every Go module, and Biome |
 | `bun run format` | gofumpt and Biome fixes |
@@ -108,7 +108,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 - **CRD types stay structural:** no internally tagged unions; use one-of structs with optional fields (`Source { image, git }`). A test guards this.
 - **Budgets are gates:** binary ≤ 45 MiB, image (Kuben and its agent) ≤ 50 MiB, console JS ≤ 200 kB and CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
 - **Commits** follow Conventional Commits (`feat(api): …`, `fix(controller): …`). Label pull requests (`feature`, `bug`, `security`, `breaking`); release notes are grouped by label.
-- **Migrations are PostgreSQL only** (ADR-025), in `go/hub/internal/store/migrations/`. 2.0 adds none, so going back to 1.2 is an image change; the next migration (`0035`) comes with 2.1.
+- **Migrations are PostgreSQL only** (ADR-025), in `internal/store/migrations/`. 2.0 adds none, so going back to 1.2 is an image change; the next migration (`0035`) comes with 2.1.
 
 ## The review checklist
 

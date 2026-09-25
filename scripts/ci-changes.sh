@@ -9,8 +9,9 @@
 #   web      web app and TypeScript packages       → web, console-live, budgets
 #   codegen  the frozen contracts and the TS client → drift, api-compat
 #   scripts  shell scripts, installer, Helm chart  → scripts, e2e jobs
-#   go       Go modules (go/, go.work), and the     → go, go-kind, oracle, e2e jobs,
-#            frozen contracts the Go tests pin        console-live, budgets
+#   go       the Go module (cmd/, api/, internal/,  → go, go-kind, oracle, e2e jobs,
+#            test/, tools/, go.mod), and the frozen    console-live, budgets
+#            contracts the Go tests pin
 #
 # Fail open: a change to CI itself (.github/) or to the task runner every job
 # goes through (turbo.json, the root package.json, bun.lock, bunfig.toml), or an
@@ -31,7 +32,7 @@ else
     count=$((count + 1))
     case "$path" in
     .github/* | turbo.json | package.json | bun.lock | bunfig.toml) select_all ;;
-    go/* | go.work | go.work.sum | .golangci.yml) go=true ;;
+    cmd/* | api/* | internal/* | test/* | testdata/* | tools/* | go.mod | go.sum | go/* | .golangci.yml) go=true ;;
     scripts/go-check.sh | scripts/go-build.sh)
       go=true
       scripts=true

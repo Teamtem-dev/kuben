@@ -6,12 +6,14 @@ ignored) and drops what was only there because of Rust.
 
 ## Layout
 
-- `go/hub` is the hub (the `kuben` binary), `go/agent` the cluster agent, `go/kubenapi`
-  what they share (CRD types, protocol). Everything not meant for import lives
-  under `internal/`.
+- One Go module at the repository root (`github.com/Teamtem-dev/kuben`):
+  `cmd/kuben` is the hub (the `kuben` binary), `cmd/kuben-agent` the cluster
+  agent, `api/v1alpha1` the CRD types. Everything not meant for import lives
+  under `internal/`; `ARCHITECTURE.md` lists every package and the
+  dependency rules the linter enforces.
 - `internal/core/**` performs **no IO**, starts no goroutines and imports
-  nothing from `store`, `platform` or `api`. One package per domain concept,
-  named after it (`perm`, `authz`, `preview`, `imagepolicy`, `ops/run`, …).
+  no other internal package. One package per domain concept, named after it
+  (`perm`, `authz`, `preview`, `imagepolicy`, `ops/run`, …).
 - While the Rust code still exists, each Go package says in its package
   comment which Rust module it replaces, and ports **every** test of it.
 
@@ -35,10 +37,10 @@ type and reproduce the exact wire form; add a test that pins it.
   values must be safe to use: prefer `Valid()`-style checks over constructors
   that callers can bypass.
 - CI runs NilAway; a finding is a build failure, not a suggestion.
-- **Exception: `go/kubenapi`** follows the Kubernetes API conventions
+- **Exception: `api/v1alpha1`** follows the Kubernetes API conventions
   instead (optional fields are pointers or `omitempty` slices and maps,
   `metav1` types, generated `DeepCopy`), because server-side apply,
-  controller-gen and client-go are built on them. Code outside kubenapi
+  controller-gen and client-go are built on them. Code outside api/v1alpha1
   reads those pointers through small accessors or converts them at the
   boundary; NilAway still checks every dereference.
 
@@ -86,7 +88,7 @@ type and reproduce the exact wire form; add a test that pins it.
 ## Concurrency (outside core)
 
 - Every goroutine has an owner, a `context.Context` and a way to stop; use
-  `errgroup` or `internal/platform/supervise`, never a bare `go` statement in
+  `errgroup` or `internal/supervise`, never a bare `go` statement in
   business code. Shared state is owned by one goroutine or guarded by a
   mutex declared next to the fields it guards.
 - All tests run with `-race`.
@@ -133,21 +135,17 @@ type and reproduce the exact wire form; add a test that pins it.
 
 ## Tools and checks
 
-Tool versions are pinned in `go/tools` (`go tool <name>` from anywhere in the
-workspace). golangci-lint is the exception: its authors advise against
+Tool versions are pinned in `tools/go.mod`, a module of its own so that
+their dependencies never reach the binaries: run them from the root with
+`go tool -modfile=tools/go.mod <name>`. golangci-lint is the exception: its authors advise against
 building it from source, so CI runs the official action at a pinned version
 with `.golangci.yml`.
 
 ```bash
-cd go/hub
-go tool gofumpt -l .                                   # must print nothing
-go vet ./...
-go tool exhaustive -default-signifies-exhaustive=false -ignore-enum-types '^reflect\.Kind$' ./...
-go tool go-check-sumtype -default-signifies-exhaustive=false ./...
-go tool errcheck -blank -asserts -ignoretests ./...
-go tool nilaway -test=true ./...
+bash scripts/go-check.sh      # gofumpt, vet, exhaustive, go-check-sumtype, NilAway
+golangci-lint run ./...       # .golangci.yml, including the layering rules
 go test -race -shuffle=on ./...
-go tool govulncheck ./...
+go tool -modfile=tools/go.mod govulncheck ./...
 ```
 
 In the sandbox only, load the mirror first: `. .cache/go/env.sh`

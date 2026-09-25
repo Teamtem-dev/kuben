@@ -12,8 +12,8 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: gomod
-    # The modules of the Go workspace (go.work).
-    directories: ["/go/hub", "/go/agent", "/go/kubenapi", "/go/tools"]
+    # The Go module at the root and the pinned tools (tools/go.mod).
+    directories: ["/", "/tools"]
     schedule:
       interval: weekly
     cooldown:

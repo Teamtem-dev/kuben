@@ -80,7 +80,7 @@ Our [Code of Conduct](CODE_OF_CONDUCT.md) applies to every Kuben community space
 
 Contributions are welcome. Before you open a pull request, read the [contribution guidelines](CONTRIBUTING.md): they cover the workflow and the invariants every change is reviewed against.
 
-You need [Go](https://go.dev) (the version in `go/hub/go.mod`) and [Bun](https://bun.com) 1.4 or later. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph:
+You need [Go](https://go.dev) (the version in `go.mod`) and [Bun](https://bun.com) 1.4 or later. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph:
 
 ```bash
 bun run setup   # checks Go and Bun, JS dependencies, Go modules

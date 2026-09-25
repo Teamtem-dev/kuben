@@ -47,7 +47,7 @@ Repository rules:
 
 Each invariant closes a class of bugs found in the system Kuben replaces.
 Reviewers check the ones a change touches. Paths are Go packages under
-`go/hub/internal/` unless they say otherwise.
+`internal/` unless they say otherwise.
 
 | # | Invariant | Where it is enforced |
 |---|---|---|
@@ -80,12 +80,12 @@ Also check:
 - Work that must happen once per cluster (reconciling, applying CRDs) runs
   under the controller Lease, never on every replica (ADR-023).
 - Migrations are PostgreSQL only (ADR-025), in
-  `go/hub/internal/store/migrations/`. An applied migration is never edited,
+  `internal/store/migrations/`. An applied migration is never edited,
   not even a comment: the checksum of every file is recorded and existing
   databases would refuse to start. 2.0 adds no migration (rollback to 1.2 is
   an image change); the next one is `0035` in 2.1.
 - Pure logic (builders, validation, parsing) has unit tests; API behaviour has
-  HTTP tests in `go/hub/internal/api` (PostgreSQL, run in CI); cluster
+  HTTP tests in `internal/httpapi` (PostgreSQL, run in CI); cluster
   behaviour is covered by envtest, the kind jobs and `scripts/e2e.sh`.
 
 ## Reporting security issues
