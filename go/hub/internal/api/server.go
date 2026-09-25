@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -190,7 +189,7 @@ func (s *Server) Handler() http.Handler {
 		`{"code":"timeout","title":"Request Timeout","status":408}`)
 	unwrapped := rest
 	rest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("follow") == "true" && strings.HasSuffix(r.URL.Path, "/logs") {
+		if s.followsLogs(r) {
 			unwrapped.ServeHTTP(w, r)
 			return
 		}
