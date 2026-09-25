@@ -224,6 +224,16 @@ jobs:
           npm install --no-package-lock --no-audit --no-fund
           npx playwright install --with-deps chromium-headless-shell
           npx playwright test
+      # Visual snapshots: the first run writes the missing ones (visual.pw.ts);
+      # download this artifact and commit apps/console/e2e/__screenshots__/.
+      - name: Upload the console's visual snapshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: console-screenshots
+          path: apps/console/e2e/__screenshots__/
+          if-no-files-found: ignore
+          retention-days: 14
 
   # The console as it ships: embedded in the Go binary, served by `kuben
   # serve` on PostgreSQL, in a browser, nothing mocked. First-run setup,

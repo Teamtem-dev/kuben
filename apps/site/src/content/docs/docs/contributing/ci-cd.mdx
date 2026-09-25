@@ -28,6 +28,18 @@ Every CI job calls the same Turborepo task a developer runs locally. Pull reques
 
 Which groups a branch would run: `git diff --name-only origin/main...HEAD | scripts/ci-changes.sh`.
 
+### Console visual snapshots
+
+The Web job also compares screenshots of the console's key pages (home, an app, an environment, incidents, audit, settings, sign-in) in English and Persian, light and dark, against `apps/console/e2e/__screenshots__/` (`apps/console/e2e/visual.pw.ts`; the API is mocked and the clock pinned). A snapshot that does not exist yet is written instead of compared, so a new page never fails its first run, and the job uploads the folder as the `console-screenshots` artifact. To add or refresh them after an intended visual change, either commit the files from that artifact, or on Linux (the CI platform):
+
+```sh
+cd apps/console && bun run build
+cd e2e && npm install --no-package-lock && npx playwright install chromium-headless-shell
+npx playwright test visual.pw.ts --update-snapshots
+```
+
+and commit `apps/console/e2e/__screenshots__/`. Snapshots are per platform (`-linux`), so a run on macOS writes its own files next to them rather than failing.
+
 Details that matter:
 
 - Every action is pinned to a **commit SHA**; Dependabot keeps them current with a 7-day cooldown.
