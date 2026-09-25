@@ -59,7 +59,12 @@
       "description": "The Go hub with the console embedded (scripts/go-build.sh).",
       "command": ["bash", "../../scripts/go-build.sh", "bin/kuben"],
       "dependsOn": ["@kuben/console#build"],
-      "inputs": ["$TURBO_DEFAULT$", "!bin/**", "!internal/api/web/dist/**", "$TURBO_ROOT$/apps/console/dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!bin/**",
+        "!internal/api/web/dist/**",
+        "$TURBO_ROOT$/apps/console/dist/**"
+      ],
       "outputs": ["bin/kuben"]
     },
     "hub#dev": {

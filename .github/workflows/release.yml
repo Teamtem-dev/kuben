@@ -146,10 +146,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Budgets and a smoke run of the Linux binary
+        env:
+          EXPECTED_VERSION: ${{ needs.plan.outputs.version }}
         run: |
           bin=$(find dist -path '*kuben_linux_amd64*' -name kuben -type f | head -n1)
           scripts/check-budgets.sh binary "$bin"
-          "$bin" --version | tee /dev/stderr | grep -F "${{ needs.plan.outputs.version }}"
+          "$bin" --version | tee /dev/stderr | grep -F "$EXPECTED_VERSION"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
