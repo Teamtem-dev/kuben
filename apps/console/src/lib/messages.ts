@@ -6,6 +6,7 @@
  */
 import { opsEn, opsFa } from './messages/ops'
 import { pagesEn, pagesFa } from './messages/pages'
+import { viewsEn, viewsFa } from './messages/views'
 
 const coreEn = {
   'app.name': 'Kuben',
@@ -261,10 +262,10 @@ const coreFa: Record<keyof typeof coreEn, string> = {
   'logs.mode': 'کدام لاگ‌ها',
 }
 
-export const en = { ...coreEn, ...opsEn, ...pagesEn } as const
+export const en = { ...coreEn, ...opsEn, ...pagesEn, ...viewsEn } as const
 
 export type MessageKey = keyof typeof en
 
-export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa }
+export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa, ...viewsFa }
 
 export const locales = { en, fa } as const
