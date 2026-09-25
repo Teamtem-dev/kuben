@@ -12,9 +12,34 @@
  * and links (text-success, bg-warning/10, text-link, …).
  *
  * Values are shadcn's neutral baseline, except light --muted-foreground and
- * --destructive, a touch darker so text in them keeps WCAG AA (4.5:1) on
- * --muted/--accent too (the console's axe checks enforce it). Keep that
- * contrast when changing colours.
+ * the status colours (--destructive, --success, --warning, --link, both
+ * themes), which are chosen so text in them keeps WCAG AA (4.5:1) not only
+ * on the page but on the tinted surfaces the console puts it on: a badge or
+ * alert is `text-X` on `bg-X/10` (or /5), and such rows may sit on --muted
+ * (hover) — the console's axe checks enforce it. Keep that contrast when
+ * changing colours.
+ *
+ * Contrast ratios (WCAG 2.x, alpha composited in sRGB like the browser/axe;
+ * worst case = text on bg-X/10 laid over --muted; `/90` = text-X/90, the
+ * destructive alert's description):
+ *
+ *   light             on --background   on bg-X/10 over bg   worst (over --muted)
+ *   --destructive          6.66               5.56           5.11  (/90: 5.50)
+ *   --success              6.78               5.82           5.36
+ *   --warning              7.13               6.09           5.61
+ *   --link                 6.71               5.76           5.30
+ *   white on bg-destructive (button):  6.66
+ *
+ *   dark              on --background   on bg-X/10 over bg   worst (over --muted)
+ *   --destructive          7.72               6.89           5.03  (/90: 5.04)
+ *   --success             13.04              11.04           7.89
+ *   --warning             13.69              11.50           8.19
+ *   --link                11.88              10.14           7.26
+ *   white on bg-destructive/60 over --background (button):  5.89
+ *
+ * (The earlier light --destructive, oklch(0.55 0.23 27.325), gave 4.48:1 on
+ * bg-destructive/10 — axe failed the error alerts and danger badges.) Every value is inside the sRGB gamut, so
+ * the browser shows what these numbers assume.
  */
 
 :root {
@@ -34,7 +59,7 @@
   --muted-foreground: oklch(0.53 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.55 0.23 27.325);
+  --destructive: oklch(0.5 0.2 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -52,10 +77,10 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* Kuben additions (status text, links); 4.5:1 on --background. */
-  --success: oklch(0.508 0.118 165.612);
+  /* Kuben additions (status text, links); see the contrast table above. */
+  --success: oklch(0.46 0.095 165.612);
   --warning: oklch(0.473 0.137 46.201);
-  --link: oklch(0.5 0.134 242.749);
+  --link: oklch(0.47 0.12 242.749);
 }
 
 .dark {
@@ -74,7 +99,7 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: oklch(0.73 0.16 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
