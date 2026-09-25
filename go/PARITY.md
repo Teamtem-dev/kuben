@@ -13,12 +13,12 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `telemetry.rs` | 36 | 0 | serve (Logger, LogLevel), platform/metrics | ported | 0 → 2; slog JSON/text; RUST_LOG over telemetry.log_level, of an EnvFilter directive list only the global level; Prometheus (client_golang, a registry per process, no default registry) on server.metrics_bind with Rust's six metric names: subsystem failures/panics (supervise), reconcile errors (controller policy), kuben_leader (leader), SSE lag (projection source), audit write errors |
 | kuben | `cli/admin.rs` | 38 | 0 | cli (cmd_admin.go) | ported | 0 → 0; the admin is created through bootstrap.EnsureAdmin when missing; every session of the account is revoked |
 | kuben | `cli/agent.rs` | 50 | 0 | cli (cmd_admin.go) | ported | 0 → 0; same lines as Rust; the cluster CA is made in the state directory if the hub has not started yet |
-| kuben | `cli/backup.rs` | 561 | 5 |  | todo | |
+| kuben | `cli/backup.rs` | 561 | 5 | cli/backup, cli (cmd_backup.go) | ported | 5 → 6 (+ manifest golden); Run/RunTo/Restore/ClientToolsInstalled/Freshness serve cli/upgrade and serve (watch_backups in serve/maintenance.go); paths joined as Path::join did |
 | kuben | `cli/client.rs` | 685 | 3 | cli (cmd_client.go, client_contexts.go, client_run.go) | ported | 3 → 12 (golden tests: table, status text/JSON, logs, follow, deploy wait on an injected clock); `status` without an app is setupStatus (setup port); the three status reads run one after another (Rust: at once), same output |
-| kuben | `cli/dns01.rs` | 168 | 2 |  | todo | |
-| kuben | `cli/doctor.rs` | 551 | 2 |  | todo | |
+| kuben | `cli/dns01.rs` | 168 | 2 | cli/dns01, cli (cmd_dns01.go) | ported | 2 → 3 (+ dry-run YAML golden via sigs.k8s.io/yaml, to check once against serde_yaml_ng output) |
+| kuben | `cli/doctor.rs` | 551 | 2 | cli/doctor, cli (cmd_doctor.go) | ported | 2 → 4 (+ redaction, exposure lines); reuses platform/doctor, platform/discovery, core/support |
 | kuben | `cli/mod.rs` | 274 | 2 | cli (root.go, cmd_serve.go, cmd_version.go) | partial | 2 → 6; cobra: clap's `env =` fallbacks by an annotation applied before each command (flag, then variable, then default), `--roles` comma list, `--dev`, version string with Rust's OS/arch names (`macos`, `x86_64`, `aarch64`). Left: the option structs of the commands still to port |
-| kuben | `cli/support.rs` | 659 | 4 |  | todo | |
+| kuben | `cli/support.rs` | 659 | 4 | cli/support, cli (cmd_support.go) | ported | 4 → 5 (+ pretty layout golden); cluster section via client-go (quantities in canonical form; zero values that Go cannot tell from absent are null) |
 | kuben | `cli/ui.rs` | 372 | 3 | cli/ui | ported | 3 → 5 (+ spinner frame, prompts); writes to an io.Writer; the spinner goroutine is owned and joined by Step.Close (Rust: Drop) |
 | kuben | `cli/upgrade.rs` | 134 | 1 | cli/upgrade, cli (cmd_upgrade.go), serve | ported | 1 → 1; serve and `kuben migrate` migrate through upgrade.Migrate (a backup first when migrations are pending and pg_dump is installed) |
 | kuben | `cli/setup/journal.rs` | 431 | 4 |  | todo | |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 3, ported 216, todo 8.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 3, ported 220, todo 4.
