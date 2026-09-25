@@ -105,7 +105,7 @@ func encode(obj any, kind string) (*unstructured.Unstructured, error) {
 	}
 	u.SetAPIVersion(v1alpha1.SchemeGroupVersion.String())
 	u.SetKind(kind)
-	if ts, found, _ := unstructured.NestedFieldNoCopy(u.Object, "metadata", "creationTimestamp"); found && ts == nil {
+	if ts, found, err := unstructured.NestedFieldNoCopy(u.Object, "metadata", "creationTimestamp"); err == nil && found && ts == nil {
 		unstructured.RemoveNestedField(u.Object, "metadata", "creationTimestamp")
 	}
 	return u, nil
@@ -150,9 +150,10 @@ func mergePatch(ctx context.Context, ri dynamic.ResourceInterface, name string, 
 	return err //nolint:wrapcheck // a Kubernetes API error, classified by the caller
 }
 
-// remove deletes name with the given propagation; one that is gone
+// remove deletes name, its dependents in the background; one that is gone
 // already is fine.
-func remove(ctx context.Context, ri dynamic.ResourceInterface, name string, propagation metav1.DeletionPropagation) error {
+func remove(ctx context.Context, ri dynamic.ResourceInterface, name string) error {
+	propagation := metav1.DeletePropagationBackground
 	err := ri.Delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 	if apierrors.IsNotFound(err) {
 		return nil

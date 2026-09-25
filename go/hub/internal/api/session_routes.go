@@ -178,7 +178,7 @@ func (s *Server) ChangePassword(ctx context.Context, req *gen.ChangePassword) (g
 		return nil, kerr.ErrForbidden
 	}
 	minLen := s.deps.Config.Security.PasswordMinLength
-	if uint64(utf8.RuneCountInString(req.NewPassword)) < minLen {
+	if uint64(utf8.RuneCountInString(req.NewPassword)) < minLen { //nolint:gosec // a count is never negative
 		return nil, kerr.New(kerr.Validation, "the new password needs at least %d characters", minLen)
 	}
 	if req.NewPassword == req.CurrentPassword {

@@ -103,7 +103,7 @@ func SecretMatches(secret string, storedHash []byte) bool {
 func SessionCookie(cfg config.Config, raw string) *http.Cookie {
 	hours := cfg.Security.SessionTTLHours
 	maxAge := int(min(hours, uint64(1<<31-1)/3600) * 3600) //nolint:gosec // bounded above
-	return &http.Cookie{
+	return &http.Cookie{                                   //nolint:gosec // Secure only over HTTPS: plain HTTP on loopback is a supported setup (ADR-031)
 		Name:     CookieName(cfg),
 		Value:    raw,
 		Path:     "/",
@@ -117,5 +117,8 @@ func SessionCookie(cfg config.Config, raw string) *http.Cookie {
 // RemovalCookie clears the session cookie, as the Rust removal cookie did
 // (same name and path, empty value, expired).
 func RemovalCookie(cfg config.Config) *http.Cookie {
-	return &http.Cookie{Name: CookieName(cfg), Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0)}
+	return &http.Cookie{ //nolint:gosec // Secure only over HTTPS, as the session cookie
+		Name: CookieName(cfg), Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: cfg.CookieSecure(),
+	}
 }

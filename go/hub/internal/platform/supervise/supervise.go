@@ -30,7 +30,7 @@ func Run(ctx context.Context, name string, h *health.Health, logger *slog.Logger
 	h.Starting(name)
 	delay := MinDelay
 	for {
-		started := time.Now()
+		started := time.Now() //nolint:forbidigo // a duration measurement for the backoff, not a decision
 		err := runOnce(ctx, work)
 		if ctx.Err() != nil {
 			return

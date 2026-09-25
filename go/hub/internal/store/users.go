@@ -22,7 +22,7 @@ const (
 	selectUserByEmail = "SELECT id, email, display_name, password_hash, is_active, must_change_password, created_at FROM users WHERE email = $1"
 	selectUserByID    = "SELECT id, email, display_name, password_hash, is_active, must_change_password, created_at FROM users WHERE id = $1"
 	countUsers        = "SELECT COUNT(*) FROM users"
-	updatePassword    = "UPDATE users SET password_hash = $2, must_change_password = FALSE WHERE id = $1"
+	updatePassword    = "UPDATE users SET password_hash = $2, must_change_password = FALSE WHERE id = $1" //nolint:gosec // SQL, not a credential
 )
 
 // scanUser reads a users row. The id column is text holding a UUID; a text

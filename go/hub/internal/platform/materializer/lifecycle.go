@@ -214,7 +214,7 @@ func (w *Worker) deleteTarget(ctx context.Context, org ids.OrgID, subject store.
 	if f.delivery == store.DeliveryAgent {
 		// The runtime owns the target's objects, volumes excepted: they go
 		// with it.
-		if err := remove(ctx, w.resource(runtimesGVR, f.app.Namespace), f.app.Slug, metav1.DeletePropagationBackground); err != nil {
+		if err := remove(ctx, w.resource(runtimesGVR, f.app.Namespace), f.app.Slug); err != nil {
 			return retryKube(err)
 		}
 	}
@@ -247,7 +247,7 @@ func (w *Worker) removeApp(ctx context.Context, org ids.OrgID, target ids.Target
 	id, annotated := live.Annotations[v1alpha1.AnnotationID]
 	ours := !annotated || id == target.String()
 	if BelongsTo(live.Labels, org) && ours {
-		if err := remove(ctx, ri, app.Slug, metav1.DeletePropagationBackground); err != nil {
+		if err := remove(ctx, ri, app.Slug); err != nil {
 			return retryKube(err)
 		}
 	}
@@ -303,7 +303,7 @@ func (w *Worker) deleteEnvironment(ctx context.Context, org ids.OrgID, subject s
 			if st := w.keepDetachedNamespace(ctx, org, environment.ID, &live); st != nil {
 				return st
 			}
-			if err := remove(ctx, ri, name, metav1.DeletePropagationBackground); err != nil {
+			if err := remove(ctx, ri, name); err != nil {
 				return retryKube(err)
 			}
 		}
@@ -352,7 +352,7 @@ func (w *Worker) deleteProject(ctx context.Context, org ids.OrgID, subject store
 		return retryKube(err)
 	}
 	if exists && BelongsTo(live.Labels, org) {
-		if err := remove(ctx, ri, project.Slug, metav1.DeletePropagationBackground); err != nil {
+		if err := remove(ctx, ri, project.Slug); err != nil {
 			return retryKube(err)
 		}
 	}

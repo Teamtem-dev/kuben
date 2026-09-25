@@ -237,26 +237,26 @@ type (
 		// this is not zero.
 		ApprovalsRequired uint8
 	}
-	// StartedReplayed: the same key and request were accepted before.
+	// StartedReplayed means the same key and request were accepted before.
 	StartedReplayed struct{ Operation ids.OperationID }
-	// StartedKeyReused: the key was used for another request.
+	// StartedKeyReused means the key was used for another request.
 	StartedKeyReused struct{ Operation ids.OperationID }
-	// StartedRejected: the target moved on, is pinned, deleting or was
+	// StartedRejected means the target moved on, is pinned, deleting or was
 	// recreated.
 	StartedRejected struct{ Reject target.Reject }
-	// StartedNotFound: no such target, or the release, revision or plan is
+	// StartedNotFound means no such target, or the release, revision or plan is
 	// not its own.
 	StartedNotFound struct{}
-	// StartedSecretRevoked: the current revision of a secret the
+	// StartedSecretRevoked means the current revision of a secret the
 	// configuration references is revoked; a new value must be set first.
 	StartedSecretRevoked struct{}
-	// StartedVulnerabilityBlocked: the environment's scan gate refuses the
+	// StartedVulnerabilityBlocked means the environment's scan gate refuses the
 	// release (M4.6).
 	StartedVulnerabilityBlocked struct{}
-	// StartedFrozen: the environment is frozen (M4.9); only an emergency
+	// StartedFrozen means the environment is frozen (M4.9); only an emergency
 	// rollback passes.
 	StartedFrozen struct{}
-	// StartedUntrusted: an untrusted preview (a fork's, M5.1) would bind a
+	// StartedUntrusted means an untrusted preview (a fork's, M5.1) would bind a
 	// secret or a registry login.
 	StartedUntrusted struct{}
 )
@@ -277,12 +277,12 @@ func (StartedUntrusted) started()            {}
 type Advance interface{ advance() }
 
 type (
-	// AdvanceMoved: the run is in Phase now.
+	// AdvanceMoved means the run is in Phase now.
 	AdvanceMoved struct{ Phase run.Phase }
-	// AdvanceIllegal: the event is not allowed in the current phase;
+	// AdvanceIllegal means the event is not allowed in the current phase;
 	// nothing changed.
 	AdvanceIllegal struct{ Err *ops.IllegalTransitionError }
-	// AdvanceFenced: the claim's fence moved on or the operation is settled:
+	// AdvanceFenced means the claim's fence moved on or the operation is settled:
 	// stop.
 	AdvanceFenced struct{}
 )
@@ -619,7 +619,7 @@ func (t *Tenant) decideRun(
 	}
 	generation, reject := decide(&state, req.LifecycleUID, req.ExpectedGeneration)
 	if reject != nil {
-		return decision{}, StartedRejected{Reject: reject}, nil
+		return decision{}, StartedRejected{Reject: reject}, nil //nolint:nilerr // a refusal is an answer, not a failure
 	}
 	secrets, refused, err := t.checkRun(ctx, req, emergency)
 	if err != nil || refused != nil {

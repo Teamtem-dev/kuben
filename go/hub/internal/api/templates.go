@@ -28,37 +28,46 @@ const SecretLen = 32
 
 const alphanumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-type ValKind int
+// valKind tells a literal environment value from a generated secret.
+type valKind int
 
 const (
-	ValLit ValKind = iota
-	ValSec
+	valLit valKind = iota
+	valSec
 )
 
-type EnvVal struct {
-	Kind ValKind
+// envVal is a template environment value: literal text, or the key of a
+// generated secret.
+type envVal struct {
+	Kind valKind
 	Text string
 }
 
-func lit(s string) EnvVal { return EnvVal{Kind: ValLit, Text: s} }
-func sec(s string) EnvVal { return EnvVal{Kind: ValSec, Text: s} }
+func lit(s string) envVal { return envVal{Kind: valLit, Text: s} }
+func sec(s string) envVal { return envVal{Kind: valSec, Text: s} }
 
-type TemplateVolume struct {
+// templateVolume is a volume a template mounts.
+type templateVolume struct {
 	Name      string
 	MountPath string
 	Size      string
 }
 
-type TemplateDerived struct {
+// templateDerived is a secret value built from a pattern over the
+// generated ones.
+type templateDerived struct {
 	Key     string
 	Pattern string
 }
 
-type TemplateEnv struct {
+// templateEnv is one environment variable of a template.
+type templateEnv struct {
 	Name string
-	Val  EnvVal
+	Val  envVal
 }
 
+// TemplateDef is a one-click service or database of the catalogue
+// (routes/templates.rs).
 type TemplateDef struct {
 	ID          string
 	Name        string
@@ -68,10 +77,10 @@ type TemplateDef struct {
 	Port        uint16
 	Protocol    v1alpha1.Protocol
 	Command     []string
-	Env         []TemplateEnv
+	Env         []templateEnv
 	Generated   []string
-	Derived     []TemplateDerived
-	Volumes     []TemplateVolume
+	Derived     []templateDerived
+	Volumes     []templateVolume
 	Health      string
 	Size        string
 	FSGroup     *int64
@@ -89,21 +98,21 @@ var templatesCatalogue = []TemplateDef{
 		Port:        5432,
 		Protocol:    v1alpha1.ProtocolTCP,
 		Command:     nil,
-		Env: []TemplateEnv{
+		Env: []templateEnv{
 			{"POSTGRES_USER", lit("app")},
 			{"POSTGRES_DB", lit("app")},
 			{"POSTGRES_PASSWORD", sec("password")},
 			{"PGDATA", lit("/var/lib/postgresql/data/pgdata")},
 		},
 		Generated: []string{"password"},
-		Derived: []TemplateDerived{
+		Derived: []templateDerived{
 			{"url", "postgres://app:{password}@{name}:5432/app"},
 			{"host", "{name}"},
 			{"port", "5432"},
 			{"username", "app"},
 			{"database", "app"},
 		},
-		Volumes: []TemplateVolume{{"data", "/var/lib/postgresql/data", "5Gi"}},
+		Volumes: []templateVolume{{"data", "/var/lib/postgresql/data", "5Gi"}},
 		Health:  "",
 		Size:    "small",
 		FSGroup: nil,
@@ -121,14 +130,14 @@ var templatesCatalogue = []TemplateDef{
 			"-c",
 			"exec redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\"",
 		},
-		Env:       []TemplateEnv{{"REDIS_PASSWORD", sec("password")}},
+		Env:       []templateEnv{{"REDIS_PASSWORD", sec("password")}},
 		Generated: []string{"password"},
-		Derived: []TemplateDerived{
+		Derived: []templateDerived{
 			{"url", "redis://:{password}@{name}:6379/0"},
 			{"host", "{name}"},
 			{"port", "6379"},
 		},
-		Volumes: []TemplateVolume{{"data", "/data", "1Gi"}},
+		Volumes: []templateVolume{{"data", "/data", "1Gi"}},
 		Health:  "",
 		Size:    "nano",
 		FSGroup: nil,
@@ -142,21 +151,21 @@ var templatesCatalogue = []TemplateDef{
 		Port:        3306,
 		Protocol:    v1alpha1.ProtocolTCP,
 		Command:     nil,
-		Env: []TemplateEnv{
+		Env: []templateEnv{
 			{"MARIADB_DATABASE", lit("app")},
 			{"MARIADB_USER", lit("app")},
 			{"MARIADB_PASSWORD", sec("password")},
 			{"MARIADB_ROOT_PASSWORD", sec("root-password")},
 		},
 		Generated: []string{"password", "root-password"},
-		Derived: []TemplateDerived{
+		Derived: []templateDerived{
 			{"url", "mysql://app:{password}@{name}:3306/app"},
 			{"host", "{name}"},
 			{"port", "3306"},
 			{"username", "app"},
 			{"database", "app"},
 		},
-		Volumes: []TemplateVolume{{"data", "/var/lib/mysql", "5Gi"}},
+		Volumes: []templateVolume{{"data", "/var/lib/mysql", "5Gi"}},
 		Health:  "",
 		Size:    "medium",
 		FSGroup: nil,
@@ -170,14 +179,14 @@ var templatesCatalogue = []TemplateDef{
 		Port:        5678,
 		Protocol:    v1alpha1.ProtocolHTTP,
 		Command:     nil,
-		Env: []TemplateEnv{
+		Env: []templateEnv{
 			{"N8N_ENCRYPTION_KEY", sec("encryption-key")},
 			{"N8N_PORT", lit("5678")},
 			{"GENERIC_TIMEZONE", lit("UTC")},
 		},
 		Generated: []string{"encryption-key"},
 		Derived:   nil,
-		Volumes:   []TemplateVolume{{"data", "/home/node/.n8n", "1Gi"}},
+		Volumes:   []templateVolume{{"data", "/home/node/.n8n", "1Gi"}},
 		Health:    "/healthz",
 		Size:      "small",
 		FSGroup:   int64Ptr(1000),
@@ -194,7 +203,7 @@ var templatesCatalogue = []TemplateDef{
 		Env:         nil,
 		Generated:   nil,
 		Derived:     nil,
-		Volumes:     []TemplateVolume{{"data", "/app/data", "1Gi"}},
+		Volumes:     []templateVolume{{"data", "/app/data", "1Gi"}},
 		Health:      "",
 		Size:        "small",
 		FSGroup:     nil,
@@ -208,13 +217,13 @@ var templatesCatalogue = []TemplateDef{
 		Port:        80,
 		Protocol:    v1alpha1.ProtocolHTTP,
 		Command:     nil,
-		Env: []TemplateEnv{
+		Env: []templateEnv{
 			{"SIGNUPS_ALLOWED", lit("false")},
 			{"ADMIN_TOKEN", sec("admin-token")},
 		},
 		Generated: []string{"admin-token"},
 		Derived:   nil,
-		Volumes:   []TemplateVolume{{"data", "/data", "1Gi"}},
+		Volumes:   []templateVolume{{"data", "/data", "1Gi"}},
 		Health:    "/alive",
 		Size:      "small",
 		FSGroup:   nil,
@@ -231,7 +240,7 @@ var templatesCatalogue = []TemplateDef{
 		Env:         nil,
 		Generated:   nil,
 		Derived:     nil,
-		Volumes: []TemplateVolume{
+		Volumes: []templateVolume{
 			{"data", "/var/lib/gitea", "5Gi"},
 			{"config", "/etc/gitea", "100Mi"},
 		},
@@ -279,6 +288,8 @@ func randomSecret() (string, error) {
 	return string(out), nil
 }
 
+// RenderedTemplate is a template made into an app: its spec and the values
+// of the Secret it reads.
 type RenderedTemplate struct {
 	Spec   v1alpha1.AppSpec
 	Secret map[string]string
@@ -307,10 +318,10 @@ func renderTemplate(t TemplateDef, app string) (RenderedTemplate, error) {
 	envVars := make([]v1alpha1.EnvVar, len(t.Env))
 	for i, e := range t.Env {
 		switch e.Val.Kind {
-		case ValLit:
+		case valLit:
 			v := e.Val.Text
 			envVars[i] = v1alpha1.EnvVar{Name: e.Name, Value: &v}
-		case ValSec:
+		case valSec:
 			envVars[i] = v1alpha1.EnvVar{
 				Name: e.Name,
 				FromSecret: &v1alpha1.KeyRef{

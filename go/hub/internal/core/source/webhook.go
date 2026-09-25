@@ -224,7 +224,7 @@ func parsePush(body []byte) (WebhookEvent, error) {
 		return nil, err
 	}
 	installation, linked := raw.Installation.Get()
-	installationID, _, err := installation.readIf(linked)
+	installationID, err := installation.readIf(linked)
 	if err != nil {
 		return nil, err
 	}
@@ -255,11 +255,12 @@ func parsePush(body []byte) (WebhookEvent, error) {
 }
 
 // readIf is read for an installation that is there, and nothing otherwise.
-func (r rawInstallation) readIf(present bool) (uint64, string, error) {
+func (r rawInstallation) readIf(present bool) (uint64, error) {
 	if !present {
-		return 0, "", nil
+		return 0, nil
 	}
-	return r.read()
+	id, _, err := r.read()
+	return id, err
 }
 
 type rawInstallationEvent struct {
@@ -385,7 +386,7 @@ func (raw rawPullEvent) read() (pullFields, error) {
 	}
 	installation, linked := raw.Installation.Get()
 	f.hasInstallation = linked
-	if f.installationID, _, err = installation.readIf(linked); err != nil {
+	if f.installationID, err = installation.readIf(linked); err != nil {
 		return fail(err)
 	}
 	return f, nil

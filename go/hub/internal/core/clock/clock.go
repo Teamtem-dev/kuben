@@ -34,6 +34,15 @@ func PlusHours(tsMs int64, hours uint64) int64 {
 	return SaturatingAdd(tsMs, int64(hours)*hourMs)
 }
 
+// Seconds is n seconds as a duration, saturating at the longest duration
+// instead of wrapping (configured timeouts are u64 seconds in Rust).
+func Seconds(n uint64) time.Duration {
+	if n > uint64(math.MaxInt64/int64(time.Second)) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(n) * time.Second //nolint:gosec // bounded above
+}
+
 // SaturatingAdd is a+b, clamped to the int64 range.
 func SaturatingAdd(a, b int64) int64 {
 	switch {

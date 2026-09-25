@@ -109,7 +109,7 @@ func integerHook(_, to reflect.Type, data any) (any, error) {
 		return data, nil
 	case v.CanFloat():
 		return nil, fmt.Errorf("expected a whole number, got %v", data)
-	case v.CanInt() && (v.Int() < 0 || uint64(v.Int()) > limit):
+	case v.CanInt() && (v.Int() < 0 || uint64(v.Int()) > limit): //nolint:gosec // negative ruled out first
 		return nil, fmt.Errorf("%d is out of range (0 to %d)", v.Int(), limit)
 	case v.CanUint() && v.Uint() > limit:
 		return nil, fmt.Errorf("%d is out of range (0 to %d)", v.Uint(), limit)

@@ -131,10 +131,10 @@ type (
 	// AcceptedNew is a new operation, committed with its audit record and
 	// outbox message.
 	AcceptedNew struct{ ID ids.OperationID }
-	// AcceptedReplayed: the same key and request were accepted before, as
+	// AcceptedReplayed means the same key and request were accepted before, as
 	// this operation.
 	AcceptedReplayed struct{ ID ids.OperationID }
-	// AcceptedKeyReused: the key was used for another request, this one
+	// AcceptedKeyReused means the key was used for another request, this one
 	// (HTTP 409); nothing was written.
 	AcceptedKeyReused struct{ ID ids.OperationID }
 )

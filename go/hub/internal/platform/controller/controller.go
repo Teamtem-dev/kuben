@@ -271,7 +271,7 @@ func (p policy) Reconcile(ctx context.Context, req reconcile.Request) (reconcile
 	if err == nil {
 		return res, nil
 	}
-	failures := uint32(min(p.limiter.NumRequeues(req)+1, 1<<16))
+	failures := uint32(min(p.limiter.NumRequeues(req)+1, 1<<16)) //nolint:gosec // 1 to 65536
 	p.logger.Warn("reconcile failed",
 		"kind", p.kind,
 		"namespace", req.Namespace,

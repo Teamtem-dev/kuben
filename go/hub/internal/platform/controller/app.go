@@ -70,8 +70,10 @@ func nameOf(obj map[string]any) string {
 	if !ok {
 		return ""
 	}
-	name, _ := meta["name"].(string)
-	return name
+	if name, ok := meta["name"].(string); ok {
+		return name
+	}
+	return ""
 }
 
 // HandsOff reports whether the App controller no longer writes app: it is

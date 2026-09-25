@@ -26,12 +26,12 @@ import (
 type Fence interface{ isFence() }
 
 type (
-	// FenceWrite: write; the run's generation is the target's current one.
+	// FenceWrite means write; the run's generation is the target's current one.
 	FenceWrite struct{}
-	// FenceForged: write, replacing an annotation that claims a generation
+	// FenceForged means write, replacing an annotation that claims a generation
 	// SQL never accepted.
 	FenceForged struct{ Live uint64 }
-	// FenceSuperseded: do not write; the target is at another generation,
+	// FenceSuperseded means do not write; the target is at another generation,
 	// owned by a newer run.
 	FenceSuperseded struct{ Current uint64 }
 )

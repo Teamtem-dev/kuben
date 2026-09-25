@@ -201,11 +201,11 @@ func (a RunApproval) Approved() uint8 {
 type Decided interface{ decided() }
 
 type (
-	// DecidedRecorded: recorded; the run moved or waits for more approvals.
+	// DecidedRecorded means recorded; the run moved or waits for more approvals.
 	DecidedRecorded struct{ Tally policy.Tally }
-	// DecidedRefused: nothing was recorded.
+	// DecidedRefused means nothing was recorded.
 	DecidedRefused struct{ Err policy.ApprovalError }
-	// DecidedNotFound: no such run of the target.
+	// DecidedNotFound means no such run of the target.
 	DecidedNotFound struct{}
 )
 

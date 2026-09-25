@@ -93,20 +93,20 @@ type Reject interface {
 }
 
 type (
-	// LifecycleMismatch: the target was deleted and recreated.
+	// LifecycleMismatch means the target was deleted and recreated.
 	LifecycleMismatch struct{}
-	// Deleting: the target is being deleted.
+	// Deleting means the target is being deleted.
 	Deleting struct{}
-	// StaleSource: a newer source head exists.
+	// StaleSource means a newer source head exists.
 	StaleSource struct{ Current, Requested uint64 }
-	// BuildConfigChanged: the build configuration changed since the build
+	// BuildConfigChanged means the build configuration changed since the build
 	// started.
 	BuildConfigChanged struct{}
-	// GenerationMoved: the target moved on since the caller read it.
+	// GenerationMoved means the target moved on since the caller read it.
 	GenerationMoved struct{ Current, Expected uint64 }
-	// NotAutomatic: automatic deploys are off for this target.
+	// NotAutomatic means automatic deploys are off for this target.
 	NotAutomatic struct{ Policy DeployPolicy }
-	// Exhausted: the generation counter is exhausted.
+	// Exhausted means the generation counter is exhausted.
 	Exhausted struct{}
 )
 

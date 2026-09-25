@@ -551,6 +551,7 @@ func (w *Worker) verify(ctx context.Context, claim store.Claim, m *store.Materia
 // toVerifying: the controller applied the written generation, so the run
 // is past its preflight and applying, and is verifying.
 func (w *Worker) toVerifying(ctx context.Context, claim store.Claim, m *store.Materialization, phase run.Phase) (run.Phase, stop) {
+	//exhaustive:ignore // a partial table: only these phases step towards verifying
 	steps := map[run.Phase]run.Event{
 		run.AcceptedByCluster: run.EventPreflightStarted,
 		run.Preflight:         run.EventPreflightPassed,

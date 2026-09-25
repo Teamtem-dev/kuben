@@ -147,7 +147,7 @@ func (r Registry) session(image string, ref ImageRef, login opt.Val[Login]) (*se
 		inner = remote.DefaultTransport
 	}
 	obs := &observer{inner: inner}
-	var auth authn.Authenticator = authn.Anonymous
+	auth := authn.Anonymous
 	if l, ok := login.Get(); ok {
 		// Exactly the Basic value of the login, as Rust sent it (ggcr would
 		// drop an empty username or password from Username/Password).

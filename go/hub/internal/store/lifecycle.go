@@ -272,7 +272,9 @@ func (s *Store) LifecycleSubject(ctx context.Context, claim Claim) (Subject, boo
 	}
 	var subject Subject
 	if json.Unmarshal([]byte(payload), &subject) != nil {
-		return Subject{}, false, nil
+		// As Rust's `serde_json::from_str(..).ok()`: an unreadable payload
+		// has no subject.
+		return Subject{}, false, nil //nolint:nilerr // see above
 	}
 	return subject, true, nil
 }

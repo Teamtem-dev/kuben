@@ -86,7 +86,7 @@ func (s *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.Set("Cache-Control", "no-cache")
 	}
-	_, _ = w.Write(body) //nolint:errcheck // the client is gone
+	_, _ = w.Write(body) //nolint:errcheck,gosec // the client is gone; body is an embedded console file
 }
 
 func (s *Handler) exists(rel string) bool {

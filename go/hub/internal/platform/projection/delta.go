@@ -19,76 +19,95 @@ type Delta interface {
 	isDelta()
 }
 
-// PodUpsert: a pod appeared or changed.
+// PodUpsert means a pod appeared or changed.
 type PodUpsert struct {
 	Seq uint64
 	Pod *PodView
 }
 
-// PodDelete: the pod Key (`namespace/name`) is gone.
+// PodDelete means the pod Key (`namespace/name`) is gone.
 type PodDelete struct {
 	Seq uint64
 	Key string
 }
 
-// ProjectUpsert: a project appeared or changed.
+// ProjectUpsert means a project appeared or changed.
 type ProjectUpsert struct {
 	Seq     uint64
 	Project *ProjectView
 }
 
-// ProjectDelete: the project Key is gone.
+// ProjectDelete means the project Key is gone.
 type ProjectDelete struct {
 	Seq uint64
 	Key string
 }
 
-// EnvironmentUpsert: an environment appeared or changed.
+// EnvironmentUpsert means an environment appeared or changed.
 type EnvironmentUpsert struct {
 	Seq         uint64
 	Environment *EnvironmentView
 }
 
-// EnvironmentDelete: the environment Key is gone.
+// EnvironmentDelete means the environment Key is gone.
 type EnvironmentDelete struct {
 	Seq uint64
 	Key string
 }
 
-// AppUpsert: an app appeared or changed.
+// AppUpsert means an app appeared or changed.
 type AppUpsert struct {
 	Seq uint64
 	App *AppView
 }
 
-// AppDelete: the app Key (`namespace/name`) is gone.
+// AppDelete means the app Key (`namespace/name`) is gone.
 type AppDelete struct {
 	Seq uint64
 	Key string
 }
 
-// ExposureChanged: the route of the app Key, or one of its certificates,
+// ExposureChanged means the route of the app Key, or one of its certificates,
 // changed; so did its exposure.
 type ExposureChanged struct {
 	Seq uint64
 	Key string
 }
 
-// Resync: a watch was re-listed; clients must refetch the snapshot.
+// Resync means a watch was re-listed; clients must refetch the snapshot.
 type Resync struct {
 	Seq uint64
 }
 
-func (d PodUpsert) Sequence() uint64         { return d.Seq }
-func (d PodDelete) Sequence() uint64         { return d.Seq }
-func (d ProjectUpsert) Sequence() uint64     { return d.Seq }
-func (d ProjectDelete) Sequence() uint64     { return d.Seq }
+// Sequence implements Delta.
+func (d PodUpsert) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
+func (d PodDelete) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
+func (d ProjectUpsert) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
+func (d ProjectDelete) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
 func (d EnvironmentUpsert) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
 func (d EnvironmentDelete) Sequence() uint64 { return d.Seq }
-func (d AppUpsert) Sequence() uint64         { return d.Seq }
-func (d AppDelete) Sequence() uint64         { return d.Seq }
-func (d ExposureChanged) Sequence() uint64   { return d.Seq }
-func (d Resync) Sequence() uint64            { return d.Seq }
+
+// Sequence implements Delta.
+func (d AppUpsert) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
+func (d AppDelete) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
+func (d ExposureChanged) Sequence() uint64 { return d.Seq }
+
+// Sequence implements Delta.
+func (d Resync) Sequence() uint64 { return d.Seq }
 
 func (PodUpsert) isDelta()         {}
 func (PodDelete) isDelta()         {}

@@ -32,7 +32,8 @@ const (
 	MaxCITokenTTLSecs uint32 = 60 * 60
 	// ClockLeewaySecs is the clock skew tolerated on `exp`, `nbf` and `iat`.
 	ClockLeewaySecs int64 = 60
-	// MaxOIDCLifetimeSecs: a provider token living longer than this is refused.
+	// MaxOIDCLifetimeSecs is the longest a provider token may live; a longer
+	// lived one is refused.
 	MaxOIDCLifetimeSecs int64 = 60 * 60
 
 	maxPatterns = 20

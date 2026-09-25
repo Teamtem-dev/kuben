@@ -24,7 +24,8 @@ import (
 const (
 	// ClockLeewaySecs is the clock skew tolerated on `exp` and `iat`.
 	ClockLeewaySecs int64 = 60
-	// MaxIDTokenLifetimeSecs: an ID token living longer than this is refused.
+	// MaxIDTokenLifetimeSecs is the longest an ID token may live; a longer
+	// lived one is refused.
 	MaxIDTokenLifetimeSecs int64 = 24 * 3600
 	// LoginWindowSecs is how long a started sign-in may take.
 	LoginWindowSecs int64 = 10 * 60

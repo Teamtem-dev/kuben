@@ -106,8 +106,8 @@ func tokenDto(names scopeNames, t model.APIToken) gen.TokenDto {
 	}
 }
 
-// ValidTokenName: 1–64 characters after trimming, none of them a control
-// character.
+// ValidTokenName reports whether a token name has 1–64 characters after
+// trimming, none of them a control character.
 func ValidTokenName(name string) bool {
 	n := utf8.RuneCountInString(name)
 	return n > 0 && n <= 64 && !strings.ContainsFunc(name, unicode.IsControl)

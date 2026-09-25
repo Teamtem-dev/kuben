@@ -100,10 +100,11 @@ type Facts struct {
 
 const hourMs = 3_600_000
 
-// BackupFreshMs: a backup older than this does not protect an upgrade.
+// BackupFreshMs is the age after which a backup no longer protects an
+// upgrade.
 const BackupFreshMs int64 = 24 * hourMs
 
-// MinFreeBytes: less free space than this is a warning.
+// MinFreeBytes is the free space below which preflight warns.
 const MinFreeBytes uint64 = 1 << 30
 
 // Preflight is every finding about facts, most serious first.

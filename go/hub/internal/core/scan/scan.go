@@ -397,13 +397,13 @@ func (g Gate) Weakens(current Gate) bool {
 //sumtype:decl
 type Verdict interface{ verdict() }
 
-// Pass: the deployment may go ahead.
+// Pass means the deployment may go ahead.
 type Pass struct{}
 
-// Warn: the deployment may go ahead, with these reasons shown.
+// Warn means the deployment may go ahead, with these reasons shown.
 type Warn struct{ Reasons []string }
 
-// Block: the deployment is refused for these reasons.
+// Block means the deployment is refused for these reasons.
 type Block struct{ Reasons []string }
 
 func (Pass) verdict()  {}

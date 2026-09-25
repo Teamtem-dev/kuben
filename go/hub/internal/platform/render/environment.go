@@ -79,7 +79,7 @@ func Namespace(env *v1alpha1.Environment) map[string]any {
 	}
 }
 
-// ResourceQuota: tenants can never create LoadBalancer or NodePort
+// ResourceQuota is the quota of an environment: tenants can never create LoadBalancer or NodePort
 // Services (cost and exposure), plus the optional CPU, memory and pod caps
 // of the spec.
 func ResourceQuota(env *v1alpha1.Environment) map[string]any {

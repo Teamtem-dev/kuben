@@ -50,12 +50,12 @@ func compareUint32(a, b uint32) int {
 // without a major there is no version.
 func ParseMinor(version string) (Minor, bool) {
 	v := strings.TrimLeft(strings.TrimSpace(version), "v")
-	majorText, rest, _ := cutSeparator(v)
+	majorText, rest := cutSeparator(v)
 	major, ok := parseUint32(majorText)
 	if !ok {
 		return Minor{}, false
 	}
-	minorText, _, _ := cutSeparator(rest)
+	minorText, _ := cutSeparator(rest)
 	minor, _ := parseUint32(leadingDigits(minorText))
 	return Minor{Major: major, Minor: minor}, true
 }
@@ -70,12 +70,12 @@ func parseUint32(s string) (uint32, bool) {
 }
 
 // cutSeparator cuts s at its first `.`, `-` or `+`.
-func cutSeparator(s string) (before, after string, found bool) {
+func cutSeparator(s string) (before, after string) {
 	at := strings.IndexAny(s, ".-+")
 	if at < 0 {
-		return s, "", false
+		return s, ""
 	}
-	return s[:at], s[at+1:], true
+	return s[:at], s[at+1:]
 }
 
 // leadingDigits is the run of digits s starts with.

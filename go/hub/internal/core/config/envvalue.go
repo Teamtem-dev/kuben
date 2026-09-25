@@ -179,10 +179,11 @@ func unescape(s string) (string, error) {
 			return "", errEnvSyntax
 		}
 		code, err := strconv.ParseUint(s[i:i+width], 16, 32)
-		if err != nil || !utf8.ValidRune(rune(code)) {
+		// At most 32 bits: a code over MaxInt32 wraps negative and is invalid.
+		if err != nil || !utf8.ValidRune(rune(code)) { //nolint:gosec // see above
 			return "", errEnvSyntax
 		}
-		out.WriteRune(rune(code))
+		out.WriteRune(rune(code)) //nolint:gosec // a valid rune, checked above
 		i += width
 	}
 	return out.String(), nil

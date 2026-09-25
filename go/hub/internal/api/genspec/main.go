@@ -28,7 +28,7 @@ func run(args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: genspec <openapi.json> <output.json>")
 	}
-	data, err := os.ReadFile(args[0])
+	data, err := os.ReadFile(args[0]) //nolint:gosec // a build tool reading the path it was given
 	if err != nil {
 		return err //nolint:wrapcheck // the path is in the message
 	}

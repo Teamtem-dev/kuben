@@ -118,7 +118,7 @@ func New(deps Deps) (*Server, error) {
 		deps:         deps,
 		policy:       authz.RolePolicy{},
 		throttle:     newLoginThrottle(sec, deps.Store, deps.Clock, deps.Logger),
-		sessionCache: expirable.NewLRU[string, ids.UserID](10_000, nil, time.Duration(sec.SessionCacheTTLSecs)*time.Second),
+		sessionCache: expirable.NewLRU[string, ids.UserID](10_000, nil, clock.Seconds(sec.SessionCacheTTLSecs)),
 		statusCache:  expirable.NewLRU[string, *gen.PublicStatus](statusCacheCapacity, nil, statusCacheTTL),
 		loginPermits: make(chan struct{}, max(sec.LoginConcurrency, 1)),
 		logStreams:   newLogStreams(),
@@ -176,7 +176,7 @@ func (s *Server) Handler() http.Handler {
 	var rest http.Handler = s.routes
 	rest = s.gate(rest)
 	rest = s.audit(rest)
-	timed := http.TimeoutHandler(rest, time.Duration(s.deps.Config.Server.RequestTimeoutSecs)*time.Second,
+	timed := http.TimeoutHandler(rest, clock.Seconds(s.deps.Config.Server.RequestTimeoutSecs),
 		`{"code":"timeout","title":"Request Timeout","status":408}`)
 	unwrapped := rest
 	rest = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +220,7 @@ func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 		defer func() {
 			if v := recover(); v != nil {
 				if v == http.ErrAbortHandler { //nolint:errorlint // a sentinel re-panicked on purpose
-					panic(v)
+					panic(v) //nolint:forbidigo // net/http's way to abort a response
 				}
 				logger.Error("handler panicked", "panic", v, "path", r.URL.Path)
 				problem.Write(w, nil, kerr.New(kerr.Internal, "panic"))

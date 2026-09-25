@@ -66,7 +66,7 @@ func errInvalidDomainTLS(host, tls string) *BuildError {
 	return &BuildError{ReasonInvalidDomainTLS, fmt.Sprintf("domain `%s` has tls `%s`: use `auto`, `none` or the name of a Secret", host, tls)}
 }
 
-// TooLargeError: the rendered resources exceed the envelope bound.
+// TooLargeError means the rendered resources exceed the envelope bound.
 type TooLargeError struct {
 	Bytes int
 	Max   int
@@ -76,7 +76,7 @@ func (e *TooLargeError) Error() string {
 	return fmt.Sprintf("the rendered resources take %d bytes, more than the %d-byte envelope", e.Bytes, e.Max)
 }
 
-// IncompleteError: a rendered object lacks a field the inventory needs.
+// IncompleteError means a rendered object lacks a field the inventory needs.
 type IncompleteError struct {
 	What string
 }

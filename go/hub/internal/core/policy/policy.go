@@ -348,13 +348,13 @@ type Pending struct {
 //sumtype:decl
 type Tally interface{ tally() }
 
-// Waiting: more approvals are needed.
+// Waiting means more approvals are needed.
 type Waiting struct{ Remaining uint8 }
 
-// Approved: enough approvals, the run may be delivered.
+// Approved means enough approvals, the run may be delivered.
 type Approved struct{}
 
-// Rejected: one rejection cancels the run.
+// Rejected means one rejection cancels the run.
 type Rejected struct{}
 
 func (Waiting) tally()  {}

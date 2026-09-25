@@ -192,7 +192,7 @@ func (s *Store) Ping(ctx context.Context) error {
 // Backend is the backend name for logs and `/healthz/details`.
 func (*Store) Backend() string { return "postgres" }
 
-const roleBypassing = "SELECT rolname::text, rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
+const roleBypassing = "SELECT rolname::text, rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user" //nolint:gosec // SQL, not a credential
 
 // RoleBypassingRowSecurity is the current role when it bypasses row-level
 // security: a superuser or a `BYPASSRLS` role. Tenant isolation then rests

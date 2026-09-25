@@ -79,7 +79,7 @@ func setupTokenCmd(load func() (config.Config, error)) *cobra.Command {
 				}
 				token = opt.Some(t)
 			}
-			host := serve.AdvertiseIP().Or("localhost")
+			host := serve.AdvertiseIP(c.Context()).Or("localhost")
 			_, err = fmt.Fprintln(c.OutOrStdout(), api.SetupURLAt(cfg.ConsoleURLWithHost(host), token))
 			return err //nolint:wrapcheck // stdout
 		},

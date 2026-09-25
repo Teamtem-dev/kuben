@@ -138,7 +138,8 @@ func waitAll(done []<-chan struct{}, timeout time.Duration, logger *slog.Logger)
 }
 
 func listen(ctx context.Context, cfg config.Config, handler http.Handler, h *health.Health, logger *slog.Logger) error {
-	ln, err := net.Listen("tcp", cfg.Server.Bind)
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", cfg.Server.Bind)
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w", cfg.Server.Bind, err)
 	}
@@ -224,14 +225,14 @@ func announceSetup(ctx context.Context, cfg config.Config, st *store.Store, inCl
 	}
 	token := opt.None[string]()
 	if api.SetupTokenRequired(cfg) {
-		t, err := api.CurrentOrNewSetupToken(cfg, time.Now())
+		t, err := api.CurrentOrNewSetupToken(cfg, time.UnixMilli(clock.System{}.NowMs()))
 		if err != nil {
 			logger.Error("cannot write the setup token", "error", err, "file", api.SetupTokenPath(cfg))
 			return
 		}
 		token = opt.Some(t)
 	}
-	host := AdvertiseIP().Or("localhost")
+	host := AdvertiseIP(ctx).Or("localhost")
 	logger.Warn("no admin account yet: finish the setup in the browser",
 		"url", api.SetupURLAt(cfg.ConsoleURLWithHost(host), token))
 }
@@ -239,8 +240,9 @@ func announceSetup(ctx context.Context, cfg config.Config, st *store.Store, inCl
 // AdvertiseIP is this machine's address as other machines reach it (the
 // source address of a route to the internet; nothing is sent), for links
 // in logs and the setup banner (host.rs advertise_ip).
-func AdvertiseIP() opt.Val[string] {
-	conn, err := net.Dial("udp", "1.1.1.1:53")
+func AdvertiseIP(ctx context.Context) opt.Val[string] {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "udp", "1.1.1.1:53")
 	if err != nil {
 		return opt.None[string]()
 	}

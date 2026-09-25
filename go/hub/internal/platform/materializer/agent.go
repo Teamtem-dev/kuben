@@ -104,17 +104,17 @@ func marshalUnescaped(v any) (string, error) {
 type Heard interface{ isHeard() }
 
 type (
-	// HeardNothing: nothing about this generation yet.
+	// HeardNothing means nothing about this generation yet.
 	HeardNothing struct{}
-	// HeardAccepted: the envelope is written to the cluster.
+	// HeardAccepted means the envelope is written to the cluster.
 	HeardAccepted struct{}
-	// HeardApplying: its workloads are rolling out.
+	// HeardApplying means its workloads are rolling out.
 	HeardApplying struct{}
-	// HeardReady: its workloads are available.
+	// HeardReady means its workloads are available.
 	HeardReady struct{}
-	// HeardFailed: the agent failed it, or refused the envelope.
+	// HeardFailed means the agent failed it, or refused the envelope.
 	HeardFailed struct{ Reason string }
-	// HeardNewer: the agent already carries a newer generation.
+	// HeardNewer means the agent already carries a newer generation.
 	HeardNewer struct{}
 )
 

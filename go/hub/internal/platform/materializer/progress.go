@@ -35,15 +35,15 @@ var failedReasons = []string{
 type Progress interface{ isProgress() }
 
 type (
-	// ProgressPending: the controller has not reconciled the written
+	// ProgressPending means the controller has not reconciled the written
 	// generation yet.
 	ProgressPending struct{}
-	// ProgressApplied: it reconciled it and its workloads are rolling out.
+	// ProgressApplied means it reconciled it and its workloads are rolling out.
 	ProgressApplied struct{}
-	// ProgressReady: every workload of the written generation is
+	// ProgressReady means every workload of the written generation is
 	// available.
 	ProgressReady struct{}
-	// ProgressFailed: it will not become ready without a new generation.
+	// ProgressFailed means it will not become ready without a new generation.
 	ProgressFailed struct{ Reason string }
 )
 

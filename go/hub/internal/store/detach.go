@@ -170,7 +170,7 @@ func scanExport(row pgx.CollectableRow) (ExportMaterial, error) {
 // nullable reads optional JSON text as a value, null when absent.
 func nullable(op string, text *string) (any, error) {
 	if text == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil is the JSON null of an absent document
 	}
 	return jsonValue(op, *text)
 }

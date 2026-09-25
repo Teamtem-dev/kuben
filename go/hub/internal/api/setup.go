@@ -40,8 +40,8 @@ const SetupTokenTTL = 30 * time.Minute
 // SetupTokenPath is where cfg keeps the setup token.
 func SetupTokenPath(cfg config.Config) string { return filepath.Join(cfg.StateDir(), SetupTokenFile) }
 
-// SetupTokenRequired: a token is needed unless the console listens on
-// loopback only.
+// SetupTokenRequired reports whether first-run setup needs the installer
+// token: always, unless the console listens on loopback only.
 func SetupTokenRequired(cfg config.Config) bool { return !cfg.BindIsLoopback() }
 
 // IssueSetupToken writes a fresh token and returns it.
@@ -74,7 +74,7 @@ func WriteOwnerOnly(path, content string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("replace %s: %w", path, err)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // the configured state directory
 	if err != nil {
 		return fmt.Errorf("create %s: %w", path, err)
 	}
@@ -210,7 +210,7 @@ func (s *Server) Setup(ctx context.Context, req *gen.SetupRequest) (gen.SetupRes
 		return nil, kerr.New(kerr.Validation, "the organization needs a name")
 	}
 	minLen := s.deps.Config.Security.PasswordMinLength
-	if uint64(utf8.RuneCountInString(req.Password)) < minLen {
+	if uint64(utf8.RuneCountInString(req.Password)) < minLen { //nolint:gosec // a count is never negative
 		return nil, kerr.New(kerr.Validation, "the password needs at least %d characters", minLen)
 	}
 	var hash string

@@ -10,25 +10,42 @@ import (
 	"github.com/google/uuid"
 )
 
-// The kinds of thing an id can name.
+// The kinds of thing an id can name: each type is the kind of its ids.
 type (
-	User           struct{} // A user account.
-	Org            struct{} // An organization (tenant).
-	Audit          struct{} // An audit event.
-	Token          struct{} // An API token.
-	Target         struct{} // One application on one environment placement (ADR-026).
-	Release        struct{} // An immutable, portable release: artifact digests plus portable config.
-	DeploymentRun  struct{} // One attempt to make a release effective on one target.
-	BuildAttempt   struct{} // One build attempt; an infrastructure retry is a new attempt.
-	SourceBinding  struct{} // A target's binding to one Git repository and branch (M3).
-	Project        struct{} // A project: owns applications and environments.
-	Environment    struct{} // A logical environment such as staging or production (ADR-026).
-	Cluster        struct{} // A Kubernetes cluster registered with Kuben.
-	Placement      struct{} // An environment's binding to one cluster and namespace (ADR-026).
-	Application    struct{} // An application definition in a project.
-	Operation      struct{} // A durable operation: one accepted request and its execution (plan §9.2).
-	ConfigRevision struct{} // One immutable configuration revision of a target (ADR-026).
-	RenderPlan     struct{} // A frozen, content-addressed render plan (ADR-026, I22).
+	// User is a user account.
+	User struct{}
+	// Org is an organization (tenant).
+	Org struct{}
+	// Audit is an audit event.
+	Audit struct{}
+	// Token is an API token.
+	Token struct{}
+	// Target is one application on one environment placement (ADR-026).
+	Target struct{}
+	// Release is an immutable, portable release: artifact digests plus portable config.
+	Release struct{}
+	// DeploymentRun is one attempt to make a release effective on one target.
+	DeploymentRun struct{}
+	// BuildAttempt is one build attempt; an infrastructure retry is a new attempt.
+	BuildAttempt struct{}
+	// SourceBinding is a target's binding to one Git repository and branch (M3).
+	SourceBinding struct{}
+	// Project is a project: owns applications and environments.
+	Project struct{}
+	// Environment is a logical environment such as staging or production (ADR-026).
+	Environment struct{}
+	// Cluster is a Kubernetes cluster registered with Kuben.
+	Cluster struct{}
+	// Placement is an environment's binding to one cluster and namespace (ADR-026).
+	Placement struct{}
+	// Application is an application definition in a project.
+	Application struct{}
+	// Operation is a durable operation: one accepted request and its execution (plan §9.2).
+	Operation struct{}
+	// ConfigRevision is one immutable configuration revision of a target (ADR-026).
+	ConfigRevision struct{}
+	// RenderPlan is a frozen, content-addressed render plan (ADR-026, I22).
+	RenderPlan struct{}
 )
 
 // Kind is closed: only the kinds above name ids.
@@ -39,23 +56,40 @@ type Kind interface {
 
 // The id types, by kind.
 type (
-	UserID           = ID[User]
-	OrgID            = ID[Org]
-	AuditID          = ID[Audit]
-	TokenID          = ID[Token]
-	TargetID         = ID[Target]
-	ReleaseID        = ID[Release]
-	DeploymentRunID  = ID[DeploymentRun]
-	BuildAttemptID   = ID[BuildAttempt]
-	SourceBindingID  = ID[SourceBinding]
-	ProjectID        = ID[Project]
-	EnvironmentID    = ID[Environment]
-	ClusterID        = ID[Cluster]
-	PlacementID      = ID[Placement]
-	ApplicationID    = ID[Application]
-	OperationID      = ID[Operation]
+	// UserID is an id of kind User.
+	UserID = ID[User]
+	// OrgID is an id of kind Org.
+	OrgID = ID[Org]
+	// AuditID is an id of kind Audit.
+	AuditID = ID[Audit]
+	// TokenID is an id of kind Token.
+	TokenID = ID[Token]
+	// TargetID is an id of kind Target.
+	TargetID = ID[Target]
+	// ReleaseID is an id of kind Release.
+	ReleaseID = ID[Release]
+	// DeploymentRunID is an id of kind DeploymentRun.
+	DeploymentRunID = ID[DeploymentRun]
+	// BuildAttemptID is an id of kind BuildAttempt.
+	BuildAttemptID = ID[BuildAttempt]
+	// SourceBindingID is an id of kind SourceBinding.
+	SourceBindingID = ID[SourceBinding]
+	// ProjectID is an id of kind Project.
+	ProjectID = ID[Project]
+	// EnvironmentID is an id of kind Environment.
+	EnvironmentID = ID[Environment]
+	// ClusterID is an id of kind Cluster.
+	ClusterID = ID[Cluster]
+	// PlacementID is an id of kind Placement.
+	PlacementID = ID[Placement]
+	// ApplicationID is an id of kind Application.
+	ApplicationID = ID[Application]
+	// OperationID is an id of kind Operation.
+	OperationID = ID[Operation]
+	// ConfigRevisionID is an id of kind ConfigRevision.
 	ConfigRevisionID = ID[ConfigRevision]
-	RenderPlanID     = ID[RenderPlan]
+	// RenderPlanID is an id of kind RenderPlan.
+	RenderPlanID = ID[RenderPlan]
 )
 
 // ID names one thing of kind K. It is comparable, a valid map key, text in

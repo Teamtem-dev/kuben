@@ -19,7 +19,7 @@ const (
 	WildcardListener = "https"
 	// TLSSecretPrefix prefixes the certificate Secrets (and cert-manager
 	// Certificates) Kuben's gateway orders.
-	TLSSecretPrefix = "kuben-tls-"
+	TLSSecretPrefix = "kuben-tls-" //nolint:gosec // a name prefix, not a credential
 )
 
 // fnv1a is 64-bit FNV-1a: stable forever, unlike a seeded hash.

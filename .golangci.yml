@@ -74,6 +74,10 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+        # `if err := f(); err != nil` inside a function that has an `err`
+        # already is the idiom Effective Go teaches; flagging it buries the
+        # findings that matter.
+        - shadow
     errcheck:
       check-type-assertions: true
       check-blank: true
@@ -128,8 +132,11 @@ linters:
           msg: return an error; panics are for programmer errors in main and tests.
   exclusions:
     rules:
+      # Tests are one story each (tests/http.rs scenarios run to hundreds of
+      # lines), talk to httptest servers that end with the test, and build
+      # small slices.
       - path: _test\.go
-        linters: [funlen, gosec, forbidigo, errcheck, unparam]
+        linters: [funlen, gocyclo, gosec, forbidigo, errcheck, unparam, noctx, prealloc]
       - path: internal/core/clock/
         linters: [forbidigo]
       - path: internal/core/config/

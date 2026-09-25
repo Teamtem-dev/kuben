@@ -162,14 +162,14 @@ type Estimate interface {
 	estimate()
 }
 
-// FitsEstimate: every pod fits on the largest node.
+// FitsEstimate means every pod fits on the largest node.
 type FitsEstimate struct{}
 
-// UnlikelyToSchedule: a pod requests more than any schedulable node offers,
+// UnlikelyToSchedule means a pod requests more than any schedulable node offers,
 // so it will not run. Why says which resource.
 type UnlikelyToSchedule struct{ Why string }
 
-// UnknownConstraints: not known (no node facts); never shown as safe.
+// UnknownConstraints means not known (no node facts); never shown as safe.
 type UnknownConstraints struct{ Why string }
 
 func (FitsEstimate) estimate()       {}

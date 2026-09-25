@@ -195,7 +195,7 @@ func (r *BuildReport) UnmarshalJSON(data []byte) error {
 type JobVerdict interface{ jobVerdict() }
 
 type (
-	// Pending: created, not started yet.
+	// Pending means created, not started yet.
 	Pending struct{}
 	// Fetching the source.
 	Fetching struct{}
@@ -208,7 +208,7 @@ type (
 		Failure BuildFailure
 		Detail  string
 	}
-	// Gone: the Job does not exist.
+	// Gone means the Job does not exist.
 	Gone struct{}
 )
 

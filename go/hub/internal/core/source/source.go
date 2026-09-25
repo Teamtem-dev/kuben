@@ -328,7 +328,7 @@ type recipeJSON struct {
 
 // MarshalJSON writes `strategy`, `context` and, when set, `dockerfile`.
 func (r BuildRecipe) MarshalJSON() ([]byte, error) {
-	return json.Marshal(recipeJSON{Strategy: r.Strategy, Context: r.Context, Dockerfile: r.Dockerfile})
+	return json.Marshal(recipeJSON(r))
 }
 
 // UnmarshalJSON reads a recipe; every field may be left out, and an unknown
@@ -338,7 +338,7 @@ func (r *BuildRecipe) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	*r = BuildRecipe{Strategy: raw.Strategy, Context: raw.Context, Dockerfile: raw.Dockerfile}
+	*r = BuildRecipe(raw)
 	return nil
 }
 

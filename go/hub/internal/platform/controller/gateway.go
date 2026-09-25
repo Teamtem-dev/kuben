@@ -315,7 +315,11 @@ func Readiness(live *unstructured.Unstructured, p render.Platform, facts opt.Val
 	switch {
 	case found && programmed.True:
 		var addresses []string
-		list, _, _ := unstructured.NestedSlice(live.Object, "status", "addresses")
+		// A malformed or missing list reads as no addresses.
+		list, _, err := unstructured.NestedSlice(live.Object, "status", "addresses")
+		if err != nil {
+			list = nil
+		}
 		for _, a := range list {
 			if m, ok := a.(map[string]any); ok {
 				if v, ok := m["value"].(string); ok {

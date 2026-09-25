@@ -35,9 +35,9 @@ import (
 type Finding interface{ isFinding() }
 
 type (
-	// Clean: the object is as SQL renders it.
+	// Clean means the object is as SQL renders it.
 	Clean struct{}
-	// Drift: someone else changed or deleted it.
+	// Drift means someone else changed or deleted it.
 	Drift struct {
 		Deleted     bool
 		SpecChanged bool
