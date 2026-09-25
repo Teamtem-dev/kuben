@@ -144,7 +144,9 @@ func get[T any](t *testing.T) func(T, error) T {
 func (w *world) tenant() *store.Tenant {
 	w.t.Helper()
 	tn, err := w.store.Tenant(w.t.Context(), w.org)
-	must(w.t, err)
+	if err != nil {
+		w.t.Fatal(err)
+	}
 	w.t.Cleanup(func() { _ = tn.Rollback(context.Background()) }) //nolint:errcheck // committed or read only
 	return tn
 }
@@ -153,7 +155,9 @@ func (w *world) tenant() *store.Tenant {
 func read[T any](w *world, f func(*store.Tenant) (T, bool, error)) (T, bool) {
 	w.t.Helper()
 	tn, err := w.store.Tenant(w.t.Context(), w.org)
-	must(w.t, err)
+	if err != nil {
+		w.t.Fatal(err)
+	}
 	defer tn.Rollback(context.Background()) //nolint:errcheck // read only
 	v, ok, err := f(tn)
 	must(w.t, err)
@@ -224,6 +228,16 @@ func (w *world) app() (*v1alpha1.App, bool) {
 	var app v1alpha1.App
 	must(w.t, json.Unmarshal(data, &app))
 	return &app, true
+}
+
+// liveApp is the App written in the cluster; the test fails without one.
+func (w *world) liveApp() *v1alpha1.App {
+	w.t.Helper()
+	app, ok := w.app()
+	if !ok || app == nil {
+		w.t.Fatal("no App was written")
+	}
+	return app
 }
 
 func (w *world) waitForApp() *v1alpha1.App {
@@ -348,13 +362,13 @@ func TestASupersededRunNeverWritesAndAForgedGenerationIsReplaced(t *testing.T) {
 	if p := w.phase(olderRun); p != run.Superseded {
 		t.Fatalf("older: %s", p)
 	}
-	if live, _ := w.app(); generation(live) != "99" {
+	if live := w.liveApp(); generation(live) != "99" {
 		t.Fatalf("a superseded run writes nothing: %s", generation(live))
 	}
 	if got := w.workOnce(worker); got != opt.Some(newer) {
 		t.Fatalf("then the newer, got %v", got)
 	}
-	live, _ := w.app()
+	live := w.liveApp()
 	if generation(live) != "2" || image(live) != repository+"@"+clusterDigest {
 		t.Fatalf("the forged value is replaced: %s %s", generation(live), image(live))
 	}
@@ -383,7 +397,9 @@ func TestANameAnotherOrganizationHoldsIsNeverTaken(t *testing.T) {
 		t.Fatal("nothing was written")
 	}
 	live, err := projects.Get(t.Context(), w.slug, metav1.GetOptions{})
-	must(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if name, _, _ := unstructured.NestedString(live.Object, "spec", "displayName"); name != "Theirs" {
 		t.Fatalf("their project: %s", name)
 	}
@@ -399,7 +415,7 @@ func TestDriftIsRecordedAndReplaced(t *testing.T) {
 	if got := <-done; got != opt.Some(operation) {
 		t.Fatalf("worked on %v", got)
 	}
-	app, _ = w.app()
+	app = w.liveApp()
 	if f, err := worker.CheckDrift(t.Context(), app); err != nil || f != (materializer.Clean{}) {
 		t.Fatalf("a status update is not drift: %#v %v", f, err)
 	}
@@ -408,14 +424,14 @@ func TestDriftIsRecordedAndReplaced(t *testing.T) {
 	body := []byte(`{"spec":{"source":{"image":"evil.example.com/web:latest"}}}`)
 	_, err := w.apps().Patch(t.Context(), "web", types.MergePatchType, body, metav1.PatchOptions{FieldManager: "kubectl-edit"})
 	must(t, err)
-	edited, _ := w.app()
+	edited := w.liveApp()
 	f, err := worker.CheckDrift(t.Context(), edited)
 	must(t, err)
 	d, ok := f.(materializer.Drift)
 	if !ok || !d.SpecChanged || d.Deleted || !slices.Equal(d.Managers, []string{"kubectl-edit"}) {
 		t.Fatalf("an edit is drift: %#v", f)
 	}
-	replaced, _ := w.app()
+	replaced := w.liveApp()
 	if image(replaced) != repository+"@"+clusterDigest {
 		t.Fatalf("SQL's rendering is written again: %s", image(replaced))
 	}
@@ -510,7 +526,9 @@ func TestLifecycleOperationsWriteAndRemoveResources(t *testing.T) {
 		t.Fatalf("worked on %v", got)
 	}
 	env, err := environments.Get(ctx, envName, metav1.GetOptions{})
-	must(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if p, _, _ := unstructured.NestedString(env.Object, "spec", "project"); p != w.slug || env.GetAnnotations()[v1alpha1.AnnotationOperation] != apply.String() {
 		t.Fatalf("environment: %v %v", env.Object["spec"], env.GetAnnotations())
 	}

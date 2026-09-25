@@ -147,7 +147,7 @@ func fakeCloudflare(t *testing.T, seen *[]string) *httptest.Server {
 }
 
 func TestCloudflareIsSpokenAsTheAPIExpects(t *testing.T) {
-	var seen []string
+	seen := []string{}
 	srv := fakeCloudflare(t, &seen)
 	cf := dns.NewCloudflare(srv.URL+"/", "secret")
 	if err := cf.Verify(t.Context()); err != nil {

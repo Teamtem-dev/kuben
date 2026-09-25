@@ -75,10 +75,10 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/policy.rs` | 299 | 2 | api (policy_routes.go) | ported | 2 → 2 unit tests + tests/http.rs `m4_weakening_protection_takes_an_owner` |
 | kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
 | kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | ported | list, get (readiness from the org's own projection), create, delete; tests/http.rs `projects_are_tenant_scoped` → `TestProjectsAreTenantScoped` (+ duplicate, delete twice, viewer) |
-| kuben-api | `routes/registries.rs` | 262 | 2 |  | todo | |
+| kuben-api | `routes/registries.rs` | 262 | 2 | api (registries.go) | ported | 2 → 2 + tests/http.rs `m4_registry_logins_pull_private_images` |
 | kuben-api | `routes/request.rs` | 64 | 1 | api (request.go, projects.go, access) | ported | 1 → 1 (`TestTimestampsAreRFC3339`); `actor` is `access.Access.Actor` |
 | kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | ported | 1 → 1 (`short_names` → `TestEnvironmentShortNames`); project, environment and app scopes, `deleting` (environment or project), cluster, kube_error |
-| kuben-api | `routes/secrets.rs` | 654 | 2 |  | todo | |
+| kuben-api | `routes/secrets.rs` | 654 | 2 | api (secrets*.go) | ported | 2 → 2 + tests/http.rs `m4_secret_values_are_revisions_rolled_out_to_their_apps`, `m4_production_rotations_wait_for_approval`; a negative revision in the revoke path is 422 (axum: 400) |
 | kuben-api | `routes/status.rs` | 322 | 0 | api (status_routes.go) | ported | 0 unit tests in Rust; tests/http.rs `m5_public_status_pages_show_only_public_facts` + TestStatusPageDto ported |
 | kuben-api | `routes/templates.rs` | 543 | 2 | api (templates.go) | ported | 2 → 2 unit tests + tests/http.rs `scenario8_template_catalogue` |
 | kuben-api | `routes/tokens.rs` | 229 | 0 | api (tokens.go) | ported |  |
@@ -153,7 +153,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `lib.rs` | 39 | 0 |  | todo | |
 | kuben-platform | `local_agent.rs` | 341 | 2 |  | todo | |
 | kuben-platform | `registry.rs` | 212 | 4 | platform/registry | ported | 4 → 4 |
-| kuben-platform | `secrets.rs` | 664 | 10 |  | todo | |
+| kuben-platform | `secrets.rs` | 664 | 10 | platform/secrets | ported | 10 → 12 (+ opening the Rust-sealed `testdata/compat/secrets.json`, + `Prepare` against PostgreSQL) |
 | kuben-platform | `supervise.rs` | 133 | 3 | platform/supervise | ported | 3 → 3 |
 | kuben-platform | `usage.rs` | 430 | 4 | platform/usage | ported | 4 → 5 (+ one collector pass with the hourly rollup and a missing Metrics API); started by serve on API replicas with a cluster |
 | kuben-platform | `render/mod.rs` | 551 | 9 | platform/render | ported | 9 → 9 (+ 14 builder tests in build_test.go); the three insta snapshots match byte for byte (testdata/ holds copies, checked identical while the Rust tree exists); objects built as JSON maps, canonical text by wire.CanonicalValue |
@@ -165,7 +165,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `materializer/mod.rs` | 31 | 0 | platform/materializer (materializer.go) | ported | |
 | kuben-platform | `materializer/progress.rs` | 134 | 2 | platform/materializer (progress.go) | ported | 2 → 2 |
 | kuben-platform | `materializer/render.rs` | 652 | 7 | platform/materializer (render.go) | ported | 7 → 7; the config revision is decoded by `v1alpha1.DecodeAppSpec`, which refuses missing or null required members as serde did |
-| kuben-platform | `materializer/secrets.rs` | 339 | 3 | platform/materializer (secrets.go) | partial | the keyring-less path only (a run bound to a secret fails `SecretsUnavailable`, as Rust without a keyring); writing and collecting revision Secrets and the 3 tests follow with `secrets.rs` (S2) |
+| kuben-platform | `materializer/secrets.rs` | 339 | 3 | platform/materializer (secrets.go) | ported | 3 → 3; writing and collecting revision Secrets against an API server were untested in Rust too (envtest later) |
 | kuben-platform | `materializer/worker.rs` | 663 | 1 | platform/materializer (worker.go, plan.go) | ported | 1 → 1; kube-rs typed Api → dynamic client + serde-compatible JSON of the kubenapi types, server-side apply as `kuben-materializer` |
 | kuben-platform | `materializer/write.rs` | 100 | 1 | platform/materializer (kube.go) | ported | 1 → 1 |
 | kuben-platform | `controller/app.rs` | 357 | 1 | platform/controller (app.go), platform/render (Build) | ported | 1 → 5 Go tests (+ fake-client reconciles: apply/prune/status, GatewayAPIMissing, build error, hand-over); reads Rust made live go through the API reader; `blockOwnerDeletion: false` stripped to match kube-rs owner refs |
@@ -217,7 +217,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/retention.rs` | 182 | 2 | store (retention.go) | ported | 2 → 2; the DB test writes its incidents and webhook deliveries by hand until repo/notify.rs is ported |
 | kuben-store | `repo/rollups.rs` | 145 | 1 | store (rollups.go) | ported | 1 → 1 |
 | kuben-store | `repo/scans.rs` | 683 | 3 | store (scans.go) | ported | 3 → 3 |
-| kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets.go, partial) | partial | `secrets` (live secret summaries), `wanted_secrets`, `bind_run_secrets`, `run_secret_bindings`, `SecretBinding`; the secret store mutations and the 5 tests follow with the secret routes |
+| kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets*.go) | ported | 5 → 5; `SecretKind` is a sealed interface (opaque, registry host) |
 | kuben-store | `repo/sessions.rs` | 125 | 0 | store (sessions.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/sso.rs` | 326 | 3 |  | todo | |
 | kuben-store | `repo/status.rs` | 244 | 1 | store (status.go) | ported | 1 → 1 (`status_pages_are_found_by_slug_only_when_enabled`) |
@@ -229,7 +229,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 |  | todo | |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 |  | todo | |
-| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 32 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics. Left with their slices: secrets, rotations, registry logins (S2); scan gate (S3); SSO, webhooks and incidents, export and detach (S4); previews, domain claims, image policies (S5) |
+| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 35 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3). Left with their slices: scan gate (S3); SSO, webhooks and incidents, export and detach (S4); previews, domain claims, image policies (S5) |
 | kuben-api | `tests/oci.rs` | 41 | 2 |  | todo | |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 |  | todo | |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 | platform/controller (execution_crds_test.go) + platform/kubetest | ported | 2 → 2 against envtest's API server |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 12, ported 146, todo 71.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 10, ported 151, todo 68.

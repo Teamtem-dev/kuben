@@ -189,7 +189,7 @@ func Plan(wanted []RecordSpec, existing []ProviderRecord, known []string, tag st
 	var changes []Change
 	var used []string
 	for _, spec := range wanted {
-		var sameKind []ProviderRecord
+		sameKind := make([]ProviderRecord, 0, len(existing))
 		for _, r := range existing {
 			if strings.EqualFold(r.Name, spec.Name) && r.RecordType == spec.RecordType {
 				sameKind = append(sameKind, r)

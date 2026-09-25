@@ -29,8 +29,8 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
 )
