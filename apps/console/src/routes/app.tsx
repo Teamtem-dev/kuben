@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tansta
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
 import { ExternalLinkIcon, PlayIcon, RotateCwIcon, StethoscopeIcon } from 'lucide-react'
 import { type FormEvent, useId, useState } from 'react'
+import { type Column, DataTable } from '@/components/data-table'
 import {
   ConfirmDelete,
   ErrorAlert,
@@ -26,6 +27,7 @@ import {
   environmentsQuery,
   type PromoteResult,
   promoteApp,
+  type Release,
   releasesQuery,
   restartApp,
   rollbackApp,
@@ -437,59 +439,98 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
     mutationFn: (revision: number) => rollbackApp(project, environment, app, revision),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] }),
   })
+  const columns: Column<Release>[] = [
+    {
+      id: 'revision',
+      header: t('deployments.revision'),
+      sortValue: (r) => r.revision,
+      filterValue: (r) => `#${r.revision}`,
+      cell: (r) => <span className="font-medium font-mono">#{r.revision}</span>,
+    },
+    {
+      id: 'reason',
+      header: t('releases.reason'),
+      sortValue: (r) => r.reason,
+      filterValue: (r) => `${r.reason} ${r.note ?? ''}`,
+      className: 'whitespace-normal',
+      cell: (r) => (
+        <div className="space-y-1">
+          <Tag>{r.reason}</Tag>
+          {r.note && (
+            <p dir="auto" className="text-muted-foreground text-xs">
+              {r.note}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'image',
+      header: t('environment.image'),
+      filterValue: (r) => r.image,
+      className: 'max-w-72',
+      cell: (r) => (
+        <span dir="ltr" className="block truncate font-mono text-muted-foreground text-xs">
+          {r.image ?? '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'when',
+      header: t('audit.when'),
+      sortValue: (r) => r.created_at,
+      filterValue: (r) => r.actor,
+      className: 'text-muted-foreground text-xs',
+      cell: (r) => (
+        <>
+          <time dateTime={new Date(r.created_at).toISOString()}>
+            {new Date(r.created_at).toLocaleString(locale)}
+          </time>
+          {r.actor && (
+            <span dir="ltr" className="block">
+              {r.actor}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'action',
+      header: t('app.rollBack'),
+      hideHeader: true,
+      className: 'text-end',
+      cell: (r) =>
+        r.current ? (
+          <Tag className="border-success/30 bg-success/10 text-success">{t('app.current')}</Tag>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={rollback.isPending}
+            onClick={() => rollback.mutate(r.revision)}
+          >
+            {t('app.rollBack')}
+          </Button>
+        ),
+    },
+  ]
+
   return (
     <Section title={t('app.releases')}>
       <ErrorAlert error={rollback.error} />
       {releases.isError ? (
         <ErrorAlert error={releases.error} />
-      ) : !releases.data?.length ? (
-        <p className="text-muted-foreground text-sm">{t('app.noReleases')}</p>
       ) : (
-        <ul className="divide-y">
-          {releases.data.map((r) => (
-            <li
-              key={r.revision}
-              className="flex items-center justify-between gap-3 py-3 text-sm first:pt-0 last:pb-0"
-            >
-              <div className="min-w-0 space-y-1">
-                <p className="flex min-w-0 items-center gap-2">
-                  <span className="font-medium font-mono">#{r.revision}</span>
-                  <Tag>{r.reason}</Tag>
-                  <span dir="ltr" className="truncate font-mono text-muted-foreground text-xs">
-                    {r.image ?? '—'}
-                  </span>
-                </p>
-                <p className="truncate text-muted-foreground text-xs">
-                  {new Date(r.created_at).toLocaleString(locale)}
-                  {r.actor ? (
-                    <>
-                      {' · '}
-                      <span dir="ltr">{r.actor}</span>
-                    </>
-                  ) : null}
-                  {r.note ? (
-                    <>
-                      {' · '}
-                      <span dir="auto">{r.note}</span>
-                    </>
-                  ) : null}
-                </p>
-              </div>
-              {r.current ? (
-                <Tag className="border-success/30 bg-success/10 text-success">{t('app.current')}</Tag>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={rollback.isPending}
-                  onClick={() => rollback.mutate(r.revision)}
-                >
-                  {t('app.rollBack')}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          label={t('app.releases')}
+          columns={columns}
+          rows={releases.data}
+          rowKey={(r) => String(r.revision)}
+          loading={releases.isLoading}
+          empty={t('app.noReleases')}
+          initialSort={{ id: 'revision', desc: true }}
+          pageSize={10}
+        />
       )}
     </Section>
   )

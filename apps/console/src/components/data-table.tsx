@@ -81,7 +81,14 @@ export function DataTable<T>({
   }, [rows, columns, filterable, query, sort, locale])
   const slice = paginate(shown, page, pageSize)
 
-  if (loading) return <TableSkeleton columns={columns.length} />
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {toolbar && <div className="flex flex-wrap items-center justify-end gap-3">{toolbar}</div>}
+        <TableSkeleton columns={columns.length} />
+      </div>
+    )
+  }
   if (!rows || rows.length === 0) {
     return (
       <div className="space-y-4">

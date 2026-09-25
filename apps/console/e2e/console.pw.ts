@@ -183,7 +183,13 @@ test('incidents: an open one can be acknowledged or resolved; resolved ones are 
 }) => {
   await mockApi(page)
   await page.goto('/incidents')
-  await expect(page.getByRole('heading', { name: 'web in shop/prod failed to deploy' })).toBeVisible()
+  const table = page.getByRole('table', { name: 'Incidents' })
+  const row = table.getByRole('row', { name: /web in shop\/prod failed to deploy/ })
+  await expect(row).toBeVisible()
+  await expect(row.getByRole('link', { name: 'shop/prod/web' })).toHaveAttribute(
+    'href',
+    '/projects/shop/prod/web',
+  )
   await expect(page.getByRole('button', { name: 'Acknowledge' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Resolve' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Runbook' })).toHaveAttribute(

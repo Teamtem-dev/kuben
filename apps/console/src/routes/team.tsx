@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { getRouteApi } from '@tanstack/react-router'
 import { UserPlusIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
+import { type Column, DataTable } from '@/components/data-table'
 import {
   Copyable,
   ErrorAlert,
@@ -17,8 +18,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { NativeSelect } from '@/components/ui/native-select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { inviteMember, membersQuery, removeMember, updateMember } from '@/lib/api'
+import { inviteMember, type Member, membersQuery, removeMember, updateMember } from '@/lib/api'
 import { initials } from '@/lib/initials'
 import { fill } from '@/lib/messages/pages'
 import { usePrefs } from '@/lib/prefs'
@@ -88,7 +88,7 @@ function InviteForm({
 
 export function TeamPage() {
   const { me } = route.useRouteContext()
-  const { t } = usePrefs()
+  const { t, tOr } = usePrefs()
   const { data: members } = useSuspenseQuery(membersQuery)
   const queryClient = useQueryClient()
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['members'] })
@@ -100,6 +100,71 @@ export function TeamPage() {
     onSettled: refresh,
   })
   const remove = useMutation({ mutationFn: removeMember, onSettled: refresh })
+  const roleName = (role: string) => tOr(`team.role.${role}`, role)
+
+  const columns: Column<Member>[] = [
+    {
+      id: 'name',
+      header: t('projects.name'),
+      sortValue: (m) => m.display_name ?? m.email,
+      filterValue: (m) => `${m.display_name ?? ''} ${m.email}`,
+      cell: (m) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar aria-hidden="true" className="size-8">
+            <AvatarFallback className="text-xs">{initials(m.display_name ?? m.email)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 truncate font-medium">
+              <span dir="auto">{m.display_name ?? m.email}</span>
+              {m.id === me.id && <Tag>{t('team.you')}</Tag>}
+            </p>
+            <p className="truncate text-muted-foreground text-xs">
+              <span dir="ltr">{m.email}</span>
+              {m.must_change_password && ` · ${t('team.invitationPending')}`}
+            </p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'role',
+      header: t('team.role'),
+      sortValue: (m) => ROLES.indexOf(m.role as (typeof ROLES)[number]),
+      filterValue: (m) => `${roleName(m.role)} ${m.role}`,
+      cell: (m) => (
+        <NativeSelect
+          size="sm"
+          aria-label={fill(t('team.roleOf'), { email: m.email })}
+          value={m.role}
+          disabled={m.id === me.id || change.isPending}
+          onChange={(e) => change.mutate({ id: m.id, role: e.target.value })}
+        >
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {roleName(r)}
+            </option>
+          ))}
+        </NativeSelect>
+      ),
+    },
+    {
+      id: 'remove',
+      header: t('ui.remove'),
+      hideHeader: true,
+      className: 'text-end',
+      cell: (m) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          disabled={m.id === me.id || remove.isPending}
+          onClick={() => remove.mutate(m.id)}
+        >
+          {t('ui.remove')}
+        </Button>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-6">
@@ -140,71 +205,14 @@ export function TeamPage() {
 
       <Section title={fill(t('team.members'), { count: members.length })}>
         <ErrorAlert error={change.error ?? remove.error} />
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('projects.name')}</TableHead>
-              <TableHead>{t('team.role')}</TableHead>
-              <TableHead>
-                <span className="sr-only">{t('ui.remove')}</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((m) => {
-              const self = m.id === me.id
-              return (
-                <TableRow key={m.id}>
-                  <TableCell>
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar aria-hidden="true" className="size-8">
-                        <AvatarFallback className="text-xs">
-                          {initials(m.display_name ?? m.email)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-2 truncate font-medium">
-                          <span dir="auto">{m.display_name ?? m.email}</span>
-                          {self && <Tag>{t('team.you')}</Tag>}
-                        </p>
-                        <p className="truncate text-muted-foreground text-xs">
-                          <span dir="ltr">{m.email}</span>
-                          {m.must_change_password && ` · ${t('team.invitationPending')}`}
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <NativeSelect
-                      size="sm"
-                      aria-label={fill(t('team.roleOf'), { email: m.email })}
-                      value={m.role}
-                      disabled={self || change.isPending}
-                      onChange={(e) => change.mutate({ id: m.id, role: e.target.value })}
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {t(`team.role.${r}`)}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={self || remove.isPending}
-                      onClick={() => remove.mutate(m.id)}
-                    >
-                      {t('ui.remove')}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
+        <DataTable
+          label={t('nav.team')}
+          columns={columns}
+          rows={members}
+          rowKey={(m) => m.id}
+          empty={t('team.empty')}
+          initialSort={{ id: 'name', desc: false }}
+        />
       </Section>
     </div>
   )

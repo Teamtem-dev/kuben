@@ -11,6 +11,12 @@ export const viewsEn = {
   'table.perPage': '{count} per page',
   'table.previous': 'Previous page',
   'table.next': 'Next page',
+  'team.empty': 'No members yet.',
+  'incidents.severity': 'Severity',
+  'incidents.incident': 'Incident',
+  'incidents.state': 'State',
+  'incidents.actions': 'Actions',
+  'releases.reason': 'Reason',
 } as const
 
 export const viewsFa: Record<keyof typeof viewsEn, string> = {
@@ -25,4 +31,10 @@ export const viewsFa: Record<keyof typeof viewsEn, string> = {
   'table.perPage': '{count} در هر صفحه',
   'table.previous': 'صفحهٔ قبل',
   'table.next': 'صفحهٔ بعد',
+  'team.empty': 'هنوز عضوی نیست.',
+  'incidents.severity': 'شدت',
+  'incidents.incident': 'رخداد',
+  'incidents.state': 'وضعیت',
+  'incidents.actions': 'اقدام‌ها',
+  'releases.reason': 'دلیل',
 }
