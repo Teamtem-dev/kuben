@@ -101,22 +101,17 @@ func (k *Keyring) Current() uint32 {
 	return k.versions[len(k.versions)-1]
 }
 
-// Fingerprint identifies a key version's key without revealing it.
-type Fingerprint struct {
-	Version uint32
-	SHA256  [32]byte
-}
-
 // Fingerprints is every version with the fingerprint of its key,
-// sha256("kuben/kek-fingerprint/v1|" ‖ key), by version.
-func (k *Keyring) Fingerprints() []Fingerprint {
-	out := make([]Fingerprint, 0, len(k.versions))
+// sha256("kuben/kek-fingerprint/v1|" ‖ key), by version: it identifies the
+// key without revealing it.
+func (k *Keyring) Fingerprints() []store.KeyFingerprint {
+	out := make([]store.KeyFingerprint, 0, len(k.versions))
 	for _, v := range k.versions {
 		h := sha256.New()
 		h.Write([]byte("kuben/kek-fingerprint/v1|"))
 		key := k.keys[v]
 		h.Write(key[:])
-		var f Fingerprint
+		var f store.KeyFingerprint
 		f.Version = v
 		copy(f.SHA256[:], h.Sum(nil))
 		out = append(out, f)
