@@ -102,6 +102,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		h.Degrade("cluster", "no kubernetes cluster configured")
 		h.SetReady(true)
 	}
+	subsystems = append(subsystems, startBackground(ctx, st, keyring, h, logger)...)
 	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
 
 	var serveErr error
