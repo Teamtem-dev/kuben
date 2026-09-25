@@ -180,3 +180,14 @@ func TestAJobFromACronJobIsOwnedByIt(t *testing.T) {
 		t.Fatal("no uid, no owner")
 	}
 }
+
+// routes/scope.rs: an environment's Kubernetes name is `<project>-<env>`,
+// its namespace `kb-<that>`.
+func TestEnvironmentNames(t *testing.T) {
+	if got := render.EnvironmentResourceName("shop", "prod"); got != "shop-prod" {
+		t.Errorf("resource name: %s", got)
+	}
+	if got := render.NamespaceName(render.EnvironmentResourceName("shop", "prod")); got != "kb-shop-prod" {
+		t.Errorf("namespace: %s", got)
+	}
+}

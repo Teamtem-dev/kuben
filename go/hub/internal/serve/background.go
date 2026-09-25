@@ -4,16 +4,17 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/imagewatch"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/notify"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/supervise"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/previews"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -33,15 +34,15 @@ func startBackground(
 	notifications := supervise.Go(ctx, notify.Subsystem, h, logger, func(ctx context.Context) error {
 		return notify.Run(ctx, notifier, h)
 	})
-	previews := api.NewPreviews(api.PreviewDeps{
+	lifecycle := previews.New(previews.Deps{
 		Store: st, GitHub: app, OrgEnvironments: cfg.Quota.OrgEnvironments, Clock: clock.System{}, Logger: logger,
 	})
-	janitor := supervise.Go(ctx, api.PreviewsSubsystem, h, logger, func(ctx context.Context) error {
-		return api.RunPreviewJanitor(ctx, previews, h)
+	janitor := supervise.Go(ctx, previews.Subsystem, h, logger, func(ctx context.Context) error {
+		return previews.RunJanitor(ctx, lifecycle, h)
 	})
-	watcher := api.NewImageWatcher(st, oci.Registry{}, opt.Some(keyring), clock.System{}, logger)
-	images := supervise.Go(ctx, api.ImageWatchSubsystem, h, logger, func(ctx context.Context) error {
-		return api.RunImageWatch(ctx, watcher, h)
+	watcher := imagewatch.New(st, oci.Registry{}, opt.Some(keyring), clock.System{}, logger)
+	images := supervise.Go(ctx, imagewatch.Subsystem, h, logger, func(ctx context.Context) error {
+		return imagewatch.Run(ctx, watcher, h)
 	})
 	return []<-chan struct{}{notifications, janitor, images}
 }

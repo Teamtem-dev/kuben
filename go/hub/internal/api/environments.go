@@ -26,7 +26,7 @@ const primaryCluster = "primary"
 
 // environmentDto is EnvironmentDto::of.
 func environmentDto(project string, e store.EnvironmentRecord, view opt.Val[projection.EnvironmentView]) gen.EnvironmentDto {
-	resource := EnvironmentResourceName(project, e.Slug)
+	resource := render.EnvironmentResourceName(project, e.Slug)
 	v, seen := view.Get()
 	phase := "Pending"
 	if e.Deleting {
@@ -78,7 +78,7 @@ func (s *Server) ListEnvironments(ctx context.Context, params gen.ListEnvironmen
 	}
 	items := gen.ListEnvironmentsOKApplicationJSON{}
 	for _, e := range environments {
-		view := s.environmentView(EnvironmentResourceName(p.project.Slug, e.Slug))
+		view := s.environmentView(render.EnvironmentResourceName(p.project.Slug, e.Slug))
 		items = append(items, environmentDto(p.project.Slug, e, view))
 	}
 	return &items, nil
@@ -154,7 +154,7 @@ func (s *Server) CreateEnvironment(
 	if err := DNSLabel("name", req.Name, 20); err != nil {
 		return nil, err
 	}
-	resource := EnvironmentResourceName(p.project.Slug, req.Name)
+	resource := render.EnvironmentResourceName(p.project.Slug, req.Name)
 	namespace := render.NamespaceName(resource)
 	if len(namespace) > 63 {
 		return nil, kerr.New(kerr.Validation, "project and environment names are too long together")
@@ -224,7 +224,7 @@ func (s *Server) createEnvironment(
 	if _, set, err := t.SetEnvironmentPolicy(ctx, p.project.ID, id, initial, actor); err != nil || !set {
 		return store.EnvironmentRecord{}, orConflict(err, taken)
 	}
-	resource := EnvironmentResourceName(p.project.Slug, name)
+	resource := render.EnvironmentResourceName(p.project.Slug, name)
 	if _, err := t.Request(ctx, store.EnvironmentApply, store.EnvironmentSubject(p.project.ID, id), actor,
 		requestAudit(a, store.EnvironmentApply, "environment", resource)); err != nil {
 		return store.EnvironmentRecord{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -250,24 +250,7 @@ func orConflict(err, conflict error) error {
 // admitEnvironment is admission::admit_environment: the organization's
 // environment quota (M4.5).
 func (s *Server) admitEnvironment(ctx context.Context, t *store.Tenant) error {
-	return admitEnvironmentUnder(ctx, t, s.deps.Config.Quota.OrgEnvironments)
-}
-
-// admitEnvironmentUnder is admitEnvironment with the quota given: the
-// preview lifecycle admits its environments without a Server.
-func admitEnvironmentUnder(ctx context.Context, t *store.Tenant, quota opt.Val[uint64]) error {
-	limit, ok := quota.Get()
-	if !ok {
-		return nil
-	}
-	n, err := t.LiveEnvironmentCount(ctx)
-	if err != nil {
-		return err //nolint:wrapcheck // a store error, answered as internal
-	}
-	if n >= limit {
-		return kerr.New(kerr.Conflict, "the organization's quota allows %d environments", limit)
-	}
-	return nil
+	return t.AdmitEnvironment(ctx, s.deps.Config.Quota.OrgEnvironments) //nolint:wrapcheck // a kerr conflict or a store error
 }
 
 // DeleteEnvironment deletes an environment. Production environments need

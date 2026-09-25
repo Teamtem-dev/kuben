@@ -26,6 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/previews"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -324,7 +325,15 @@ type pullOutcome struct {
 	result  string
 }
 
-// onPull is previews::on_pull (M5.1, previews.go): the event applied to
+// previews is the preview lifecycle on the server's dependencies.
+func (s *Server) previews() *previews.Lifecycle {
+	return previews.New(previews.Deps{
+		Store: s.deps.Store, GitHub: s.deps.GitHub, OrgEnvironments: s.deps.Config.Quota.OrgEnvironments,
+		Clock: s.deps.Clock, Logger: s.deps.Logger,
+	})
+}
+
+// onPull is previews::on_pull (M5.1, internal/previews): the event applied to
 // every project of org whose previews follow its repository.
 func (s *Server) onPull(ctx context.Context, org ids.OrgID, pull source.PullEvent) ([]pullOutcome, error) {
 	outcomes, err := s.previews().OnPull(ctx, org, pull)

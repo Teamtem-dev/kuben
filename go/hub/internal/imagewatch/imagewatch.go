@@ -1,6 +1,4 @@
-package api
-
-// The image update watcher (M5.4, image_watch.rs): apps that follow a tag
+// Package imagewatch is the image update watcher (M5.4, image_watch.rs): apps that follow a tag
 // pattern of their repository get a new release when the pattern's tag
 // moves.
 //
@@ -15,6 +13,7 @@ package api
 //     any other.
 //  4. Records the outcome. A failure backs off exponentially, up to a day,
 //     and a registry's `Retry-After` is honored.
+package imagewatch
 
 import (
 	"context"
@@ -33,8 +32,8 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
-// ImageWatchSubsystem is the watcher's health name.
-const ImageWatchSubsystem = "image-policies"
+// Subsystem is the watcher's health name.
+const Subsystem = "image-policies"
 
 const (
 	imageWatchTick  = 30 * time.Second
@@ -75,8 +74,8 @@ func (FoundDeployed) found() {}
 func (FoundRefused) found()  {}
 func (FoundFailed) found()   {}
 
-// ImageWatcher is the watcher of one process.
-type ImageWatcher struct {
+// Watcher is the watcher of one process.
+type Watcher struct {
 	store   *store.Store
 	images  oci.Resolver
 	keyring opt.Val[*secrets.Keyring]
@@ -84,14 +83,14 @@ type ImageWatcher struct {
 	logger  *slog.Logger
 }
 
-// NewImageWatcher is a watcher resolving images with images and opening
+// New is a watcher resolving images with images and opening
 // registry logins with keyring, when there is one.
-func NewImageWatcher(st *store.Store, images oci.Resolver, keyring opt.Val[*secrets.Keyring], c clock.Clock, logger *slog.Logger) *ImageWatcher {
-	return &ImageWatcher{store: st, images: images, keyring: keyring, clock: c, logger: logger}
+func New(st *store.Store, images oci.Resolver, keyring opt.Val[*secrets.Keyring], c clock.Clock, logger *slog.Logger) *Watcher {
+	return &Watcher{store: st, images: images, keyring: keyring, clock: c, logger: logger}
 }
 
 // Pass checks every due policy once; the number checked.
-func (w *ImageWatcher) Pass(ctx context.Context) (int, error) {
+func (w *Watcher) Pass(ctx context.Context) (int, error) {
 	orgs, err := w.store.ImagePolicyOrgs(ctx)
 	if err != nil {
 		return 0, err //nolint:wrapcheck // a store error naming its operation
@@ -113,7 +112,7 @@ func (w *ImageWatcher) Pass(ctx context.Context) (int, error) {
 }
 
 // lease takes org's due policies and moves their next check past the pass.
-func (w *ImageWatcher) lease(ctx context.Context, org ids.OrgID) ([]store.ImagePolicy, error) {
+func (w *Watcher) lease(ctx context.Context, org ids.OrgID) ([]store.ImagePolicy, error) {
 	now := w.clock.NowMs()
 	t, err := w.store.Tenant(ctx, org)
 	if err != nil {
@@ -152,7 +151,7 @@ func rateLimited(err error) (Found, bool) {
 	return nil, false
 }
 
-func (w *ImageWatcher) check(ctx context.Context, org ids.OrgID, policy store.ImagePolicy) Found {
+func (w *Watcher) check(ctx context.Context, org ids.OrgID, policy store.ImagePolicy) Found {
 	pattern, err := imagepolicy.Parse(policy.Pattern)
 	if err != nil {
 		return failed(err)
@@ -191,7 +190,7 @@ func (w *ImageWatcher) check(ctx context.Context, org ids.OrgID, policy store.Im
 
 // login is the environment's login for registry, opened; none without a
 // keyring or a login.
-func (w *ImageWatcher) login(ctx context.Context, org ids.OrgID, env ids.EnvironmentID, registry string) (opt.Val[oci.Login], error) {
+func (w *Watcher) login(ctx context.Context, org ids.OrgID, env ids.EnvironmentID, registry string) (opt.Val[oci.Login], error) {
 	t, err := w.store.Tenant(ctx, org)
 	if err != nil {
 		return opt.None[oci.Login](), err //nolint:wrapcheck // the store's text, as Rust's to_string
@@ -201,7 +200,7 @@ func (w *ImageWatcher) login(ctx context.Context, org ids.OrgID, env ids.Environ
 	if !ok {
 		return opt.None[oci.Login](), nil
 	}
-	login, err := openRegistryLogin(ctx, keyring, t, org, env, registry)
+	login, err := keyring.OpenRegistryLogin(ctx, t, org, env, registry)
 	if err != nil {
 		return opt.None[oci.Login](), err
 	}
@@ -211,7 +210,7 @@ func (w *ImageWatcher) login(ctx context.Context, org ids.OrgID, env ids.Environ
 	return opt.None[oci.Login](), nil
 }
 
-func (w *ImageWatcher) deploy(ctx context.Context, org ids.OrgID, policy store.ImagePolicy, tag string, digest artifact.Digest, image string) Found {
+func (w *Watcher) deploy(ctx context.Context, org ids.OrgID, policy store.ImagePolicy, tag string, digest artifact.Digest, image string) Found {
 	text := digest.String()
 	started, current, err := w.startFollowed(ctx, org, policy, digest, image)
 	switch {
@@ -227,7 +226,7 @@ func (w *ImageWatcher) deploy(ctx context.Context, org ids.OrgID, policy store.I
 }
 
 // startFollowed deploys digest unless the app runs it already (current).
-func (w *ImageWatcher) startFollowed(ctx context.Context, org ids.OrgID, policy store.ImagePolicy, digest artifact.Digest, image string) (store.Started, bool, error) {
+func (w *Watcher) startFollowed(ctx context.Context, org ids.OrgID, policy store.ImagePolicy, digest artifact.Digest, image string) (store.Started, bool, error) {
 	t, err := w.store.Tenant(ctx, org)
 	if err != nil {
 		return nil, false, err //nolint:wrapcheck // the store's text, as Rust's to_string
@@ -247,7 +246,7 @@ func (w *ImageWatcher) startFollowed(ctx context.Context, org ids.OrgID, policy 
 	return started, false, t.Commit(ctx) //nolint:wrapcheck // the store's text, as Rust's to_string
 }
 
-func (w *ImageWatcher) record(ctx context.Context, org ids.OrgID, policy store.ImagePolicy, found Found) error {
+func (w *Watcher) record(ctx context.Context, org ids.OrgID, policy store.ImagePolicy, found Found) error {
 	now := w.clock.NowMs()
 	interval := nonNegative(policy.IntervalSecs, defaultCheckInterval)
 	failures := nonNegative(policy.Failures, 0)
@@ -308,9 +307,9 @@ func refusal(started store.Started) string {
 	return "the run was accepted before"
 }
 
-// RunImageWatch runs w until ctx ends: a pass every 30 seconds.
-func RunImageWatch(ctx context.Context, w *ImageWatcher, h *health.Health) error {
-	h.OK(ImageWatchSubsystem)
+// Run runs w until ctx ends: a pass every 30 seconds.
+func Run(ctx context.Context, w *Watcher, h *health.Health) error {
+	h.OK(Subsystem)
 	tick := time.NewTicker(imageWatchTick)
 	defer tick.Stop()
 	for {

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 )
 
@@ -58,4 +59,23 @@ func (t *Tenant) LiveEnvironmentCount(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 	return counter(op, n)
+}
+
+// AdmitEnvironment is admission::admit_environment (M4.5): a conflict when
+// the organization already has as many live environments as quota allows.
+// No quota admits everything. The API and the preview lifecycle both admit
+// new environments through it.
+func (t *Tenant) AdmitEnvironment(ctx context.Context, quota opt.Val[uint64]) error {
+	limit, ok := quota.Get()
+	if !ok {
+		return nil
+	}
+	n, err := t.LiveEnvironmentCount(ctx)
+	if err != nil {
+		return err
+	}
+	if n >= limit {
+		return kerr.New(kerr.Conflict, "the organization's quota allows %d environments", limit)
+	}
+	return nil
 }

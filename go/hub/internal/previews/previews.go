@@ -1,7 +1,6 @@
-package api
-
-// Preview environments (M5.1; previews.rs): pull request events, their
-// lifecycle and the janitor.
+// Package previews is preview environments (M5.1; previews.rs): pull
+// request events, their lifecycle and the janitor. The HTTP routes that
+// read and change previews stay in internal/api.
 //
 // A pull request of a repository the source environment of a project
 // builds from gets a preview:
@@ -23,6 +22,7 @@ package api
 // whether the pull request of a preview not confirmed for a while is still
 // open, so a missed `closed` delivery is caught. An unclear answer never
 // deletes anything.
+package previews
 
 import (
 	"context"
@@ -42,12 +42,13 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
-// PreviewsSubsystem is the janitor's health name.
-const PreviewsSubsystem = "previews"
+// Subsystem is the janitor's health name.
+const Subsystem = "previews"
 
 const (
 	// previewSweep is how often the janitor looks for expired previews.
@@ -62,8 +63,8 @@ const (
 	maxNamespaceLen = 63
 )
 
-// PreviewOutcome is what a pull request event did to one project.
-type PreviewOutcome struct {
+// Outcome is what a pull request event did to one project.
+type Outcome struct {
 	Project ids.ProjectID
 	// Result names what happened: `opened`, `synced`, `closed`, `stale`,
 	// `staleAfterClose`, `limit`, `disabled`, `noPreview`, `forkRefused`,
@@ -71,8 +72,8 @@ type PreviewOutcome struct {
 	Result string
 }
 
-// PreviewDeps is what the preview lifecycle works with.
-type PreviewDeps struct {
+// Deps is what the preview lifecycle works with.
+type Deps struct {
 	Store *store.Store
 	// GitHub answers whether a pull request is still open; without it the
 	// janitor only deletes expired previews.
@@ -84,9 +85,9 @@ type PreviewDeps struct {
 	Logger          *slog.Logger
 }
 
-// Previews is the preview lifecycle and janitor of one process; every
+// Lifecycle is the preview lifecycle and janitor of one process; every
 // replica runs one janitor.
-type Previews struct {
+type Lifecycle struct {
 	store           *store.Store
 	github          opt.Val[*github.App]
 	orgEnvironments opt.Val[uint64]
@@ -94,10 +95,10 @@ type Previews struct {
 	logger          *slog.Logger
 }
 
-// NewPreviews is the preview lifecycle on d; the system clock and the
+// New is the preview lifecycle on d; the system clock and the
 // default logger when d leaves them out.
-func NewPreviews(d PreviewDeps) *Previews {
-	p := &Previews{store: d.Store, github: d.GitHub, orgEnvironments: d.OrgEnvironments, clock: d.Clock, logger: d.Logger}
+func New(d Deps) *Lifecycle {
+	p := &Lifecycle{store: d.Store, github: d.GitHub, orgEnvironments: d.OrgEnvironments, clock: d.Clock, logger: d.Logger}
 	if p.clock == nil {
 		p.clock = clock.System{}
 	}
@@ -105,14 +106,6 @@ func NewPreviews(d PreviewDeps) *Previews {
 		p.logger = slog.Default()
 	}
 	return p
-}
-
-// previews is the lifecycle on the server's dependencies.
-func (s *Server) previews() *Previews {
-	return NewPreviews(PreviewDeps{
-		Store: s.deps.Store, GitHub: s.deps.GitHub, OrgEnvironments: s.deps.Config.Quota.OrgEnvironments,
-		Clock: s.deps.Clock, Logger: s.deps.Logger,
-	})
 }
 
 // pullAudit is the audit record of what a pull request event did to
@@ -136,23 +129,23 @@ func pullAudit(event source.PullEvent, action, target string) store.NewAudit {
 
 // OnPull applies a pull request event to every project of org it concerns,
 // each in a transaction of its own (previews::on_pull).
-func (p *Previews) OnPull(ctx context.Context, org ids.OrgID, event source.PullEvent) ([]PreviewOutcome, error) {
+func (p *Lifecycle) OnPull(ctx context.Context, org ids.OrgID, event source.PullEvent) ([]Outcome, error) {
 	projects, err := p.previewProjects(ctx, org, event)
 	if err != nil {
 		return nil, err
 	}
-	out := []PreviewOutcome{}
+	out := []Outcome{}
 	for _, project := range projects {
 		result, err := p.applyIn(ctx, org, project, event)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, PreviewOutcome{Project: project, Result: result})
+		out = append(out, Outcome{Project: project, Result: result})
 	}
 	return out, nil
 }
 
-func (p *Previews) previewProjects(ctx context.Context, org ids.OrgID, event source.PullEvent) ([]ids.ProjectID, error) {
+func (p *Lifecycle) previewProjects(ctx context.Context, org ids.OrgID, event source.PullEvent) ([]ids.ProjectID, error) {
 	t, err := p.store.Tenant(ctx, org)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -162,7 +155,7 @@ func (p *Previews) previewProjects(ctx context.Context, org ids.OrgID, event sou
 }
 
 // applyIn applies event to project and commits, whatever the result.
-func (p *Previews) applyIn(ctx context.Context, org ids.OrgID, project ids.ProjectID, event source.PullEvent) (string, error) {
+func (p *Lifecycle) applyIn(ctx context.Context, org ids.OrgID, project ids.ProjectID, event source.PullEvent) (string, error) {
 	t, err := p.store.Tenant(ctx, org)
 	if err != nil {
 		return "", err //nolint:wrapcheck // a store error, answered as internal
@@ -183,13 +176,13 @@ func handleClosedPreview(ctx context.Context, t *store.Tenant, active store.Prev
 		return "noPreview", nil
 	}
 	audit := pullAudit(event, "closePreview", active.Environment)
-	if _, err := destroyPreview(ctx, t, active, store.CloseClosed, event.UpdatedAt, audit); err != nil {
+	if _, err := Destroy(ctx, t, active, store.CloseClosed, event.UpdatedAt, audit); err != nil {
 		return "", err
 	}
 	return "closed", nil
 }
 
-func (p *Previews) updateActivePreview(ctx context.Context, t *store.Tenant, active store.PreviewRecord, settings store.PreviewPolicy, event source.PullEvent, now int64) (string, error) {
+func (p *Lifecycle) updateActivePreview(ctx context.Context, t *store.Tenant, active store.PreviewRecord, settings store.PreviewPolicy, event source.PullEvent, now int64) (string, error) {
 	touched, err := t.TouchPreview(ctx, active.EnvironmentID, event.HeadRepository, event.HeadBranch, event.Head,
 		event.UpdatedAt, preview.Expiry(now, settings.TTLHours, opt.Some(active.ExpiresAt)))
 	if err != nil {
@@ -204,7 +197,7 @@ func (p *Previews) updateActivePreview(ctx context.Context, t *store.Tenant, act
 	return "synced", nil
 }
 
-func (p *Previews) apply(ctx context.Context, t *store.Tenant, project ids.ProjectID, event source.PullEvent) (string, error) {
+func (p *Lifecycle) apply(ctx context.Context, t *store.Tenant, project ids.ProjectID, event source.PullEvent) (string, error) {
 	settings, found, err := t.PreviewPolicy(ctx, project)
 	if err != nil {
 		return "", err //nolint:wrapcheck // a store error, answered as internal
@@ -285,7 +278,7 @@ func locate(ctx context.Context, t *store.Tenant, settings store.PreviewPolicy, 
 	if !ok {
 		return previewTarget{}, "nameTooLong", nil
 	}
-	resource := EnvironmentResourceName(projects[i].Slug, slug)
+	resource := render.EnvironmentResourceName(projects[i].Slug, slug)
 	namespace := render.NamespaceName(resource)
 	if len(namespace) > maxNamespaceLen {
 		return previewTarget{}, "nameTooLong", nil
@@ -305,7 +298,7 @@ func locate(ctx context.Context, t *store.Tenant, settings store.PreviewPolicy, 
 	}, "", nil
 }
 
-func (p *Previews) create(
+func (p *Lifecycle) create(
 	ctx context.Context, t *store.Tenant, settings store.PreviewPolicy, event source.PullEvent, epoch uint64, expiresAt int64,
 ) (string, error) {
 	project := settings.Project
@@ -320,7 +313,7 @@ func (p *Previews) create(
 	if len(sources) == 0 {
 		return "noApps", nil
 	}
-	if err := admitEnvironmentUnder(ctx, t, p.orgEnvironments); err != nil {
+	if err := t.AdmitEnvironment(ctx, p.orgEnvironments); err != nil {
 		return "", err
 	}
 	revision, found, err := t.EnvironmentPolicy(ctx, where.source.ID)
@@ -337,7 +330,7 @@ func (p *Previews) create(
 	if err != nil {
 		return "", err //nolint:wrapcheck // a store error, answered as internal
 	}
-	cluster, err := t.EnsureCluster(ctx, primaryCluster)
+	cluster, err := t.EnsureCluster(ctx, registry.Primary)
 	if err != nil {
 		return "", err //nolint:wrapcheck // a store error, answered as internal
 	}
@@ -383,7 +376,7 @@ func previewConfig(config any) (any, []string) {
 
 // copyApps copies the source apps into the preview's placement, each bound
 // to the pull request's head.
-func (p *Previews) copyApps(
+func (p *Lifecycle) copyApps(
 	ctx context.Context, t *store.Tenant, project ids.ProjectID, placement ids.PlacementID,
 	sources []store.PreviewSource, event source.PullEvent, actor string,
 ) error {
@@ -443,9 +436,9 @@ func syncPreviewApps(ctx context.Context, t *store.Tenant, env ids.EnvironmentID
 	return nil
 }
 
-// destroyPreview closes p for reason and deletes its environment. False
+// Destroy closes p for reason and deletes its environment. False
 // when it was closed already.
-func destroyPreview(ctx context.Context, t *store.Tenant, p store.PreviewRecord, reason store.CloseReason, eventAt int64, audit store.NewAudit) (bool, error) {
+func Destroy(ctx context.Context, t *store.Tenant, p store.PreviewRecord, reason store.CloseReason, eventAt int64, audit store.NewAudit) (bool, error) {
 	closed, err := t.ClosePreview(ctx, p.EnvironmentID, reason, eventAt)
 	if err != nil || !closed {
 		return false, err //nolint:wrapcheck // a store error, answered as internal
@@ -478,7 +471,7 @@ func systemAudit(p store.PreviewRecord, action, why string) store.NewAudit {
 }
 
 // Sweep deletes the previews expired by now; the number deleted.
-func (p *Previews) Sweep(ctx context.Context, now int64) (int, error) {
+func (p *Lifecycle) Sweep(ctx context.Context, now int64) (int, error) {
 	orgs, err := p.store.PreviewOrgs(ctx)
 	if err != nil {
 		return 0, err //nolint:wrapcheck // a store error naming its operation
@@ -494,7 +487,7 @@ func (p *Previews) Sweep(ctx context.Context, now int64) (int, error) {
 	return done, nil
 }
 
-func (p *Previews) sweepOrg(ctx context.Context, org ids.OrgID, now int64) (int, error) {
+func (p *Lifecycle) sweepOrg(ctx context.Context, org ids.OrgID, now int64) (int, error) {
 	t, err := p.store.Tenant(ctx, org)
 	if err != nil {
 		return 0, err //nolint:wrapcheck // a store error naming its operation
@@ -506,7 +499,7 @@ func (p *Previews) sweepOrg(ctx context.Context, org ids.OrgID, now int64) (int,
 	}
 	done := 0
 	for _, pv := range due {
-		destroyed, err := destroyPreview(ctx, t, pv, store.CloseExpired, 0, systemAudit(pv, "expirePreview", "expired"))
+		destroyed, err := Destroy(ctx, t, pv, store.CloseExpired, 0, systemAudit(pv, "expirePreview", "expired"))
 		if err != nil {
 			return 0, err
 		}
@@ -558,7 +551,7 @@ func pullOf(p store.PreviewRecord) (uint64, uint64, source.RepoName, bool) {
 // Verify deletes the previews whose pull request GitHub reports closed and
 // confirms the open ones; the number deleted. Nothing without the GitHub
 // App.
-func (p *Previews) Verify(ctx context.Context, now int64) (int, error) {
+func (p *Lifecycle) Verify(ctx context.Context, now int64) (int, error) {
 	app, ok := p.github.Get()
 	if !ok {
 		return 0, nil
@@ -595,7 +588,7 @@ func (p *Previews) Verify(ctx context.Context, now int64) (int, error) {
 	return done, nil
 }
 
-func (p *Previews) unverified(ctx context.Context, org ids.OrgID, now int64) ([]store.PreviewRecord, error) {
+func (p *Lifecycle) unverified(ctx context.Context, org ids.OrgID, now int64) ([]store.PreviewRecord, error) {
 	t, err := p.store.Tenant(ctx, org)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error naming its operation
@@ -606,7 +599,7 @@ func (p *Previews) unverified(ctx context.Context, org ids.OrgID, now int64) ([]
 
 // settle records what GitHub said about pv's pull request; true when the
 // preview was deleted.
-func (p *Previews) settle(ctx context.Context, org ids.OrgID, pv store.PreviewRecord, now int64, state pullState) (bool, error) {
+func (p *Lifecycle) settle(ctx context.Context, org ids.OrgID, pv store.PreviewRecord, now int64, state pullState) (bool, error) {
 	t, err := p.store.Tenant(ctx, org)
 	if err != nil {
 		return false, err //nolint:wrapcheck // a store error naming its operation
@@ -617,7 +610,7 @@ func (p *Previews) settle(ctx context.Context, org ids.OrgID, pv store.PreviewRe
 	case pullOpen:
 		err = t.PreviewVerified(ctx, pv.EnvironmentID, now)
 	case pullClosed:
-		destroyed, err = destroyPreview(ctx, t, pv, store.CloseClosed, now,
+		destroyed, err = Destroy(ctx, t, pv, store.CloseClosed, now,
 			systemAudit(pv, "closePreview", "the pull request is closed"))
 	case pullUnknown:
 		// Unclear: never a reason to delete. Try again later.
@@ -632,10 +625,10 @@ func (p *Previews) settle(ctx context.Context, org ids.OrgID, pv store.PreviewRe
 	return destroyed, nil
 }
 
-// RunPreviewJanitor runs p's janitor until ctx ends: a sweep every minute,
+// RunJanitor runs p's janitor until ctx ends: a sweep every minute,
 // and the pull request states every tenth round.
-func RunPreviewJanitor(ctx context.Context, p *Previews, h *health.Health) error {
-	h.OK(PreviewsSubsystem)
+func RunJanitor(ctx context.Context, p *Lifecycle, h *health.Health) error {
+	h.OK(Subsystem)
 	tick := time.NewTicker(previewSweep)
 	defer tick.Stop()
 	var rounds uint64

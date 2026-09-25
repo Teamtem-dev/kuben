@@ -1,10 +1,15 @@
 package secrets
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 )
 
@@ -75,4 +80,26 @@ func (l RegistryLogin) DockerConfig(registry string) string {
 		return ""
 	}
 	return text
+}
+
+// OpenRegistryLogin is the login of environment env (of org) for registry,
+// opened with k; none when the environment has no login for it, or the
+// secret holds no usable one. The API and the image watcher both use it.
+func (k *Keyring) OpenRegistryLogin(
+	ctx context.Context, t *store.Tenant, org ids.OrgID, env ids.EnvironmentID, registry string,
+) (opt.Val[RegistryLogin], error) {
+	current, found, err := t.RegistryLogin(ctx, env, registry)
+	if err != nil || !found {
+		return opt.None[RegistryLogin](), err //nolint:wrapcheck // a store error, answered as internal
+	}
+	who := Identity{Org: org.String(), Secret: current.Secret.String(), Revision: current.Revision}
+	values, err := k.OpenValues(who, current.Sealed)
+	if err != nil {
+		return opt.None[RegistryLogin](), kerr.New(kerr.Internal, "opening a registry login failed: %s", err.Error())
+	}
+	login, ok := RegistryLoginFrom(values)
+	if !ok {
+		return opt.None[RegistryLogin](), nil
+	}
+	return opt.Some(login), nil
 }

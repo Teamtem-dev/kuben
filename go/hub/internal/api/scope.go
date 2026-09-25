@@ -27,12 +27,6 @@ func scopeNotFound(kind, name string) error {
 	return kerr.New(kerr.NotFound, "%s `%s`", kind, name)
 }
 
-// EnvironmentResourceName is the Kubernetes object name of an environment:
-// `<project>-<env>`.
-func EnvironmentResourceName(project, env string) string {
-	return project + "-" + env
-}
-
 // EnvironmentShortName is the environment name used in URLs and the UI:
 // resource without its `<project>-` prefix, or resource itself when that
 // would leave nothing.
@@ -113,7 +107,7 @@ func (e envScope) namespace() string {
 
 // resourceName is the environment's Kubernetes object name.
 func (e envScope) resourceName() string {
-	return EnvironmentResourceName(e.project.project.Slug, e.env.Slug)
+	return render.EnvironmentResourceName(e.project.project.Slug, e.env.Slug)
 }
 
 // deleting reports whether the environment, or its project, is being
@@ -151,7 +145,7 @@ func (s *Server) findEnvironment(ctx context.Context, a access.Access, project, 
 		return envScope{}, scopeNotFound("environment", env)
 	}
 	return envScope{
-		project: p, env: record, view: s.environmentView(EnvironmentResourceName(p.project.Slug, record.Slug)),
+		project: p, env: record, view: s.environmentView(render.EnvironmentResourceName(p.project.Slug, record.Slug)),
 	}, nil
 }
 

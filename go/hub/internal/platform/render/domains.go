@@ -150,6 +150,12 @@ func (c DomainClaim) Mode() TLSMode {
 	return TLSMode{Kind: TLSAuto}
 }
 
+// EnvironmentResourceName is the Kubernetes object name of an environment:
+// `<project>-<env>`.
+func EnvironmentResourceName(project, env string) string {
+	return project + "-" + env
+}
+
 // NamespaceName is the namespace of an environment: `kb-<environment>`.
 func NamespaceName(environment string) string { return "kb-" + environment }
 

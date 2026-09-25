@@ -21,9 +21,6 @@ import (
 
 // routes/scope.rs short_names.
 func TestEnvironmentShortNames(t *testing.T) {
-	if got := api.EnvironmentResourceName("shop", "prod"); got != "shop-prod" {
-		t.Errorf("resource name: %s", got)
-	}
 	cases := [][3]string{
 		{"shop", "shop-prod", "prod"},
 		{"shop", "legacy", "legacy"},

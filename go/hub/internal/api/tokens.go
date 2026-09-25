@@ -17,6 +17,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/model"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -64,7 +65,7 @@ func (s *Server) addScopeNames(ctx context.Context, org ids.OrgID, names scopeNa
 			return err //nolint:wrapcheck // a store error, answered as internal
 		}
 		for _, e := range envs {
-			names.environments[e.ID.UUID()] = EnvironmentResourceName(p.Slug, e.Slug)
+			names.environments[e.ID.UUID()] = render.EnvironmentResourceName(p.Slug, e.Slug)
 		}
 		names.projects[p.ID.UUID()] = p.Slug
 	}

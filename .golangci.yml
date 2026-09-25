@@ -133,6 +133,10 @@ linters:
               desc: core performs no IO.
             - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/apiclient
               desc: core performs no IO.
+            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/previews
+              desc: core performs no IO.
+            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/imagewatch
+              desc: core performs no IO.
             - pkg: net/http
               desc: core performs no IO.
             - pkg: database/sql$

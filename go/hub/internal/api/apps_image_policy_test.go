@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/imagewatch"
 )
 
 // tests/http.rs m5_image_policies_deploy_new_digests.
@@ -38,7 +38,7 @@ func TestM5ImagePoliciesDeployNewDigests(t *testing.T) {
 		t.Fatalf("save: %d %v", status, saved)
 	}
 
-	watcher := api.NewImageWatcher(f.store, testImages(t), opt.Some(testKeyring()), clock.System{}, slog.Default())
+	watcher := imagewatch.New(f.store, testImages(t), opt.Some(testKeyring()), clock.System{}, slog.Default())
 	pass := func() int {
 		n, err := watcher.Pass(t.Context())
 		if err != nil {

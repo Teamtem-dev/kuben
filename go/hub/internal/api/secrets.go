@@ -22,7 +22,6 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
@@ -302,26 +301,5 @@ func (s *Server) registryLogin(ctx context.Context, t *store.Tenant, e envScope,
 	if err != nil {
 		return opt.None[secrets.RegistryLogin](), err
 	}
-	return openRegistryLogin(ctx, keyring, t, e.project.org, e.env.ID, registry)
-}
-
-// openRegistryLogin is the login of environment (of org) for registry,
-// opened.
-func openRegistryLogin(
-	ctx context.Context, keyring *secrets.Keyring, t *store.Tenant, org ids.OrgID, env ids.EnvironmentID, registry string,
-) (opt.Val[secrets.RegistryLogin], error) {
-	current, found, err := t.RegistryLogin(ctx, env, registry)
-	if err != nil || !found {
-		return opt.None[secrets.RegistryLogin](), err //nolint:wrapcheck // a store error, answered as internal
-	}
-	who := secrets.Identity{Org: org.String(), Secret: current.Secret.String(), Revision: current.Revision}
-	values, err := keyring.OpenValues(who, current.Sealed)
-	if err != nil {
-		return opt.None[secrets.RegistryLogin](), kerr.New(kerr.Internal, "opening a registry login failed: %s", err.Error())
-	}
-	login, ok := secrets.RegistryLoginFrom(values)
-	if !ok {
-		return opt.None[secrets.RegistryLogin](), nil
-	}
-	return opt.Some(login), nil
+	return keyring.OpenRegistryLogin(ctx, t, e.project.org, e.env.ID, registry) //nolint:wrapcheck // a kerr or store error
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/preview"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/previews"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
@@ -313,7 +314,7 @@ func (s *Server) DestroyPreview(ctx context.Context, params gen.DestroyPreviewPa
 	}
 	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
 	audit := requestAudit(acc, "preview.destroyed", "environment", e.resourceName())
-	if _, err := destroyPreview(ctx, t, current, store.CloseManual, s.deps.Clock.NowMs(), audit); err != nil {
+	if _, err := previews.Destroy(ctx, t, current, store.CloseManual, s.deps.Clock.NowMs(), audit); err != nil {
 		return nil, err
 	}
 	if err := t.Commit(ctx); err != nil {
