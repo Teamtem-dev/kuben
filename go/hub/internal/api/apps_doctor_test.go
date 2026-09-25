@@ -24,6 +24,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/doctor"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/evidence"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
@@ -230,10 +231,53 @@ func TestAppDoctorAssemblesTheChecks(t *testing.T) {
 	if certificate["detail"] != "not issued yet" || certificate["hint"] == nil {
 		t.Fatalf("certificate: %v", certificate)
 	}
+	// The evidence graph: an image app has no build; the fake cluster has
+	// no Deployment, Service or EndpointSlice; the projections know one
+	// ready pod; the app serves, so the network layers come from the checks.
 	graph, _ := body["graph"].(map[string]any)
-	findings, isList := body["findings"].([]any)
-	if graph == nil || !isList || len(findings) != 0 {
-		t.Fatalf("graph and findings: %v %v", body["graph"], body["findings"])
+	nodes, _ := graph["nodes"].([]any)
+	var layers []string
+	subjects := map[string]string{}
+	statuses := map[string]string{}
+	for _, item := range nodes {
+		n, _ := item.(map[string]any)
+		layer, _ := n["layer"].(string)
+		layers = append(layers, layer)
+		subjects[layer], _ = n["subject"].(string)
+		statuses[layer], _ = n["status"].(string)
+	}
+	wantLayers := []string{"release", "deployment", "pods", "service", "endpoints", "gateway", "route", "dns", "tls"}
+	if diff := cmp.Diff(wantLayers, layers); diff != "" {
+		t.Fatalf("layers (-want +got):\n%s", diff)
+	}
+	for layer, want := range map[string][2]string{
+		"deployment": {"no Deployment", "fail"},
+		"pods":       {"1 of 1 pods ready", "ok"},
+		"service":    {"Service api", "fail"},
+		"endpoints":  {"0 ready endpoint(s)", "fail"},
+		"route":      {"route", "ok"},
+		"dns":        {"DNS", "warn"},
+		"tls":        {"certificates", "fail"},
+	} {
+		if got := [2]string{subjects[layer], statuses[layer]}; got != want {
+			t.Fatalf("%s: %v, want %v", layer, got, want)
+		}
+	}
+	if edges, _ := graph["edges"].([]any); len(edges) == 0 {
+		t.Fatalf("edges: %v", graph)
+	}
+	findings, _ := body["findings"].([]any)
+	kinds := map[string]string{}
+	for _, item := range findings {
+		f, _ := item.(map[string]any)
+		layer, _ := f["layer"].(string)
+		kinds[layer], _ = f["kind"].(string)
+	}
+	if kinds["deployment"] != "rootCause" || kinds["service"] != "rootCause" || kinds["endpoints"] != "symptom" {
+		t.Fatalf("findings: %v", body["findings"])
+	}
+	if first, _ := findings[0].(map[string]any); first["kind"] != "rootCause" {
+		t.Fatalf("root causes first: %v", findings)
 	}
 
 	// A viewer may read it too.
@@ -300,18 +344,51 @@ func TestAppDoctorWithoutAGateway(t *testing.T) {
 }
 
 // The report: the worst status, a null hint on an ok check, the graph
-// and findings not observed yet.
+// and its findings as serde_json values (keys sorted).
 func TestDoctorReportShape(t *testing.T) {
-	report := api.DoctorReportOf([]doctor.Check{
+	graph := evidence.Of([]evidence.Node{
+		evidence.NewNode(evidence.Pods, doctor.StatusFail, "no pods").Fact("no pod of the app is known"),
+	})
+	report, err := api.DoctorReportOf([]doctor.Check{
 		{ID: "dns", Subject: "a", Status: doctor.StatusOK, Detail: "fine"},
 		{ID: "claim", Subject: "a", Status: doctor.StatusWarn, Detail: "d", Hint: opt.Some("h")},
-	})
+	}, graph, evidence.Diagnose(graph))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if report.Status != "warn" || len(report.Checks) != 2 || !report.Checks[0].Hint.IsNull() ||
 		report.Checks[1].Hint.Value != "h" {
 		t.Fatalf("report: %+v", report)
 	}
-	if empty := api.DoctorReportOf(nil); empty.Status != "ok" || len(empty.Checks) != 0 {
-		t.Fatalf("no checks: %+v", empty)
+	gotGraph := map[string]string{}
+	for k, v := range report.Graph {
+		gotGraph[k] = string(v)
+	}
+	wantGraph := map[string]string{
+		"nodes": `[{"action":null,"evidence":["no pod of the app is known"],"layer":"pods","observedAt":null,"status":"fail","subject":"no pods"}]`,
+		"edges": `[]`,
+	}
+	if diff := cmp.Diff(wantGraph, gotGraph); diff != "" {
+		t.Fatalf("graph (-want +got):\n%s", diff)
+	}
+	if len(report.Findings) != 1 {
+		t.Fatalf("findings: %+v", report.Findings)
+	}
+	gotFinding := map[string]string{}
+	for k, v := range report.Findings[0] {
+		gotFinding[k] = string(v)
+	}
+	wantFinding := map[string]string{
+		"kind": `"rootCause"`, "layer": `"pods"`, "status": `"fail"`, "confidence": `"high"`, "summary": `"no pods"`,
+		"evidence": `["no pod of the app is known"]`, "related": `[]`, "action": `null`,
+	}
+	if diff := cmp.Diff(wantFinding, gotFinding); diff != "" {
+		t.Fatalf("finding (-want +got):\n%s", diff)
+	}
+	empty, err := api.DoctorReportOf(nil, evidence.Of(nil), evidence.Diagnose(evidence.Of(nil)))
+	if err != nil || empty.Status != "ok" || len(empty.Checks) != 0 || len(empty.Findings) != 0 ||
+		string(empty.Graph["nodes"]) != "[]" || string(empty.Graph["edges"]) != "[]" {
+		t.Fatalf("no checks: %+v %v", empty, err)
 	}
 }
 

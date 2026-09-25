@@ -22,13 +22,16 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/domain"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/doctor"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/evidence"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
 )
 
 // factsFreshMs: a recorded observation older than this is asked again.
@@ -58,7 +61,14 @@ func (s *Server) GetAppDoctor(ctx context.Context, params gen.GetAppDoctorParams
 	if err != nil {
 		return nil, err
 	}
-	report := doctorReport(checks)
+	graph, err := s.evidenceGraph(ctx, a, cluster, checks)
+	if err != nil {
+		return nil, err
+	}
+	report, err := doctorReport(checks, graph, evidence.Diagnose(graph))
+	if err != nil {
+		return nil, err
+	}
 	return &report, nil
 }
 
@@ -285,10 +295,10 @@ func (s *Server) agentState(ctx context.Context, a appScope) (doctor.AgentState,
 	return doctor.AgentSeen{Age: age}, nil
 }
 
-// doctorReport is the report of checks. The evidence graph and its
-// findings (evidence.rs, routes/apps/evidence.rs) are not ported yet: the
-// graph has no node and there is no finding.
-func doctorReport(checks []doctor.Check) gen.DoctorReport {
+// doctorReport is the report of checks, with the evidence graph and its
+// findings. Rust turned both into serde_json values, whose objects print
+// their keys sorted: each member here is that canonical text.
+func doctorReport(checks []doctor.Check, graph evidence.Graph, findings []evidence.Finding) (gen.DoctorReport, error) {
 	out := make([]gen.DoctorCheck, len(checks))
 	for i, c := range checks {
 		out[i] = gen.DoctorCheck{
@@ -299,10 +309,44 @@ func doctorReport(checks []doctor.Check) gen.DoctorReport {
 			Hint:    optNilString(c.Hint),
 		}
 	}
+	members, err := rawMembers(graph)
+	if err != nil {
+		return gen.DoctorReport{}, err
+	}
+	items := make([]gen.DoctorReportFindingsItem, len(findings))
+	for i, f := range findings {
+		item, err := rawMembers(f)
+		if err != nil {
+			return gen.DoctorReport{}, err
+		}
+		items[i] = item
+	}
 	return gen.DoctorReport{
 		Status:   string(doctor.Overall(checks)),
 		Checks:   out,
-		Graph:    gen.DoctorReportGraph{"nodes": jx.Raw("[]"), "edges": jx.Raw("[]")},
-		Findings: []gen.DoctorReportFindingsItem{},
+		Graph:    members,
+		Findings: items,
+	}, nil
+}
+
+// rawMembers is the members of v's JSON object, each as its canonical
+// text.
+func rawMembers(v any) (map[string]jx.Raw, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, kerr.Wrap(err, "encode the doctor's report")
 	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return nil, kerr.Wrap(err, "encode the doctor's report")
+	}
+	out := make(map[string]jx.Raw, len(members))
+	for key, member := range members {
+		text, err := wire.Canonical(member)
+		if err != nil {
+			return nil, kerr.Wrap(err, "encode the doctor's report")
+		}
+		out[key] = jx.Raw(text)
+	}
+	return out, nil
 }
