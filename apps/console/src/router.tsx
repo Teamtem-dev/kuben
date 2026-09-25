@@ -59,7 +59,7 @@ export function safeRedirect(value: unknown): string | undefined {
 function RouteError({ error }: ErrorComponentProps) {
   const { t } = usePrefs()
   return (
-    <div role="alert" className="space-y-3 rounded-xl border border-danger/30 bg-danger/5 p-6">
+    <div role="alert" className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-6">
       <p className="font-medium">{problemMessage(error)}</p>
       <Link to="/" className="text-link text-sm hover:underline">
         {t('common.backToProjects')}
@@ -70,7 +70,11 @@ function RouteError({ error }: ErrorComponentProps) {
 
 function Pending() {
   const { t } = usePrefs()
-  return <p className="text-subtle text-sm">{t('common.loading')}</p>
+  return (
+    <p role="status" className="text-muted-foreground text-sm">
+      {t('common.loading')}
+    </p>
+  )
 }
 
 const rootRoute = createRootRouteWithContext<RouterContext>()()
