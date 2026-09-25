@@ -48,7 +48,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `oci.rs` | 908 | 9 | api/oci | ported | Parse, Fixed, Registry, Verifier (RegistryVerifier): 7 tests ported, 2 dropped (challenge parsing and query encoding belong to go-containerregistry), + 4 in-process registry tests for the verifier |
 | kuben-api | `oidc.rs` | 465 | 5 | api/oidc | ported | 5 → 6 (+ key fetch, cache, refresh and outage against an httptest issuer); the shared JWKS/RS256 parts serve SSO in S4 |
 | kuben-api | `openapi.rs` | 231 | 2 | api/gen (ogen) + api/genspec | dropped | spec first: the contract generates the server |
-| kuben-api | `previews.rs` | 464 | 0 |  | todo | |
+| kuben-api | `previews.rs` | 464 | 0 | api (previews.go) | ported | 0 → 5 Go unit tests: pull request lifecycle (OnPull, called by git.go), janitor (Sweep, Verify every tenth round; an unclear answer never deletes) started in serve/background.go on a ticker |
 | kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | 2 → 2; setup_guide/setup_url are SetupGuide/SetupURL (the advertised address is passed in; host::console_url) |
 | kuben-api | `sso.rs` | 554 | 5 | api/sso | ported | 5 → 5; reuses api/oidc (JWKS, RS256) |
 | kuben-api | `state.rs` | 151 | 0 | api (server.go Deps) | ported | ApiState and its with_* builders are the fields of api.Deps (usage, DNS, images, keyring, SSO, GitHub OIDC, GitHub App); an unset field is the zero value or opt.None, as the builders defaulted |
@@ -67,13 +67,13 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/controls.rs` | 731 | 2 | api (controls.go) | ported | 2 → 2 unit tests + tests/http.rs `m4_freezes_pauses_and_emergency_rollbacks`, `m4_owners_and_silences_are_kept`; OwnerDto answers without Rust's `updatedBy`/`updatedAt`, which the frozen contract does not have (the console never read them) |
 | kuben-api | `routes/domains.rs` | 703 | 0 | api (domains.go, domains_sync.go) | ported | 0 → 4 (+ http.rs m5_domain_claims_and_dns_records): claims list/create/verify (TXT or provider)/revoke, DNS providers list/create (token verified, sealed)/delete, syncAppDns (plan + apply, records remembered); DNS backend injectable via Deps.DNS (default dns.NewPublic) |
 | kuben-api | `routes/environments.rs` | 326 | 0 | api (environments.go) | ported | list, get, create (placement on `primary`, initial policy, org environment quota), delete (closes a preview, `env-delete-protected` for production); `TestEnvironmentsReadAndWriteSQL` (the environment half of `environments_and_apps_read_from_sql` and `viewers_can_read_but_not_write`) |
-| kuben-api | `routes/git.rs` | 298 | 0 | api (git.go) | partial | 0 → 3 (webhook refusals/outcomes, mounting and the 5 MiB limit, provider errors); mounted beside the CI exchange (inside the gzip/request-id/recovery wrappers; an oversized body is an empty 413). Pull requests reach previews::on_pull with the preview port |
+| kuben-api | `routes/git.rs` | 298 | 0 | api (git.go) | ported | 0 → 3 (webhook refusals/outcomes, mounting and the 5 MiB limit, provider errors); mounted beside the CI exchange (inside the gzip/request-id/recovery wrappers; an oversized body is an empty 413); pull requests go to Previews.OnPull |
 | kuben-api | `routes/health.rs` | 54 | 0 | api (probes.go) | ported | seq, pods and cluster from the projections and registry |
 | kuben-api | `routes/incidents.rs` | 511 | 2 | api (incidents.go, incidents_webhooks.go) | ported | 2 → 2 + http.rs m4_signed_webhooks_and_incidents |
 | kuben-api | `routes/members.rs` | 267 | 0 | api (members.go) | ported |  |
 | kuben-api | `routes/mod.rs` | 26 | 0 | api | ported | a module list: the routes are files of package api, mounted through the ogen handler (server.go) |
 | kuben-api | `routes/policy.rs` | 299 | 2 | api (policy_routes.go) | ported | 2 → 2 unit tests + tests/http.rs `m4_weakening_protection_takes_an_owner` |
-| kuben-api | `routes/previews.rs` | 325 | 0 |  | todo | |
+| kuben-api | `routes/previews.rs` | 325 | 0 | api (previews_routes.go) | ported | get/put policy, list, extend, destroy; put answers the updatedAt it stored (one clock reading) |
 | kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | ported | list, get (readiness from the org's own projection), create, delete; tests/http.rs `projects_are_tenant_scoped` → `TestProjectsAreTenantScoped` (+ duplicate, delete twice, viewer) |
 | kuben-api | `routes/registries.rs` | 262 | 2 | api (registries.go) | ported | 2 → 2 + tests/http.rs `m4_registry_logins_pull_private_images` |
 | kuben-api | `routes/request.rs` | 64 | 1 | api (request.go, projects.go, access) | ported | 1 → 1 (`TestTimestampsAreRFC3339`); `actor` is `access.Access.Actor` |
@@ -210,7 +210,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/operations.rs` | 804 | 5 | store (operations.go) | ported | 5 → 5 |
 | kuben-store | `repo/orgs.rs` | 320 | 0 | store (orgs.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/policies.rs` | 888 | 8 | store (policies.go) | ported | 8 → 8; `PolicyRevision`, `environment_policy`, `policy_of_target`, `set_environment_policy`, `RunApproval`, `DecideRun`; all 8 PostgreSQL tests ported in policies_test.go |
-| kuben-store | `repo/previews.rs` | 740 | 2 | store (previews.go, partial) | partial | `untrusted_target` (a deployment checks it), `close_preview`; previews and the 2 tests follow with the preview work |
+| kuben-store | `repo/previews.rs` | 740 | 2 | store (previews.go) | ported | 2 → 2; the Rust `Preview` type is `PreviewRecord` (store.Preview names the environment kind); untrusted_environment lives in secrets_revisions.go |
 | kuben-store | `repo/product.rs` | 693 | 3 | store (tenant.go) | ported | 3 → 3 |
 | kuben-store | `repo/releases.rs` | 144 | 0 | store (releases.go) | ported | 0 tests in the file; covered by the releases section of the tests/matrix.rs port |
 | kuben-store | `repo/resolve.rs` | 244 | 2 | store (resolve.go) | ported | 2 → 2; `SqlScope` is `SQLScope` |
@@ -229,7 +229,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 | platform/agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (the hub module requires go/agent for it) |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | ported | 3 → 3; run by the CI job `go-kind` against a kind cluster (KUBEN_TEST_KUBE=1), as Rust ran them with --ignored in its kind job |
-| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 43 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies, m4 SSO (3), m5 domain claims and DNS records, m4 signed webhooks and incidents, m4 export and detach, m4 scan gate. Left: previews (S5) |
+| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | ported | 44 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies, m4 SSO (3), m5 domain claims and DNS records, m4 signed webhooks and incidents, m4 export and detach, m4 scan gate, m5 previews |
 | kuben-api | `tests/oci.rs` | 41 | 2 | api/oci (network_test.go) | ported | 2 → 2, run only with KUBEN_TEST_NETWORK=1 (Rust: --ignored) |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 | platform/agentlink (mtls_test.go) | ported | 6 → 6 |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 | platform/controller (execution_crds_test.go) + platform/kubetest | ported | 2 → 2 against envtest's API server |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 6, ported 207, todo 14.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 3, ported 212, todo 12.
