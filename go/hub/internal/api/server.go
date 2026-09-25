@@ -29,6 +29,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
 )
@@ -70,6 +71,9 @@ type Deps struct {
 	InCluster bool
 	// Resolver checks DNS records for apps/domains.rs; systemResolver when nil.
 	Resolver DNSResolver
+	// Usage is this replica's live usage window (M5.5), absent without a
+	// cluster.
+	Usage opt.Val[*usage.Buffer]
 }
 
 // Server implements the generated handler interface. Operations not ported

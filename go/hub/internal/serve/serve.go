@@ -30,6 +30,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
 )
@@ -95,7 +96,13 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	var serveErr error
 	if cfg.HasRole(config.RoleAPI) {
+		live := opt.None[*usage.Buffer]()
+		if r, ok := cluster.Get(); ok {
+			buffer, done := startUsage(ctx, r.Primary(), st, h, logger)
+			live, subsystems = opt.Some(buffer), append(subsystems, done)
+		}
 		server, err := api.New(api.Deps{
+			Usage:       live,
 			Config:      cfg,
 			Store:       st,
 			Hasher:      auth.HasherFromConfig(cfg.Security),
