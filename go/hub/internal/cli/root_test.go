@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 )
 
@@ -97,4 +100,21 @@ func TestVersionJSONNeedsBundle(t *testing.T) {
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "requires '--bundle'") {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+// pflag takes the first `quoted` word of a usage as the flag's value name
+// (`--keep backup.keep` instead of `--keep uint32`), so no usage has one.
+func TestNoFlagUsageHasABackquote(t *testing.T) {
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			if strings.Contains(f.Usage, "`") {
+				t.Errorf("%s --%s: %s", c.CommandPath(), f.Name, f.Usage)
+			}
+		})
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(Root())
 }

@@ -47,7 +47,7 @@ func serveCmd(g *globals) *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringSliceVar(&opts.roles, "roles", nil, "Roles to run in this process (comma separated). Defaults to config")
 	bindEnv(flags, "roles", "KUBEN_ROLES")
-	flags.BoolVar(&opts.dev, "dev", false, "Development mode: pretty logs and an insecure cookie. The database is still PostgreSQL (`database.url`)")
+	flags.BoolVar(&opts.dev, "dev", false, "Development mode: pretty logs and an insecure cookie. The database is still PostgreSQL (database.url)")
 	return cmd
 }
 
