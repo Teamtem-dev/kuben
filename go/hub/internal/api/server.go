@@ -209,6 +209,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", guarded)
 	mux.Handle(apidocs.Path, apidocs.Handler(s.docs))
+	mux.Handle(ciExchangePath, s.ciExchange()) // signed by GitHub: outside the session and CSRF layers
 	mux.HandleFunc("GET /livez", s.livez)
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("/", s.deps.Console)
