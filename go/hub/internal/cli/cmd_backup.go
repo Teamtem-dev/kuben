@@ -6,8 +6,8 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/backup"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/ops/backup"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/serve"
 )
 

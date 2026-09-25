@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/bundle"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/setup/journal"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/install/journal"
 )
 
 // planLine is one line of the plan: what, and what a run would do about it.

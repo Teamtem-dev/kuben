@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/setup/journal"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/ui"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/install/journal"
 )
 
 // loadConfig reads the configuration as every kuben command does, without

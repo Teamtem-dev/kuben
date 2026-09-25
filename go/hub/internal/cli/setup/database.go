@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/setup/journal"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/install/journal"
 )
 
 // ensureDatabase: the PostgreSQL this server keeps its data in, installed

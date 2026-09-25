@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/upgrade"
+	opsupgrade "github.com/Teamtem-dev/kuben/go/hub/internal/ops/upgrade"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/serve"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
@@ -29,7 +30,7 @@ func migrateCmd(g *globals) *cobra.Command {
 				return err //nolint:wrapcheck // explains itself
 			}
 			defer st.Close()
-			if _, err := upgrade.Migrate(ctx, cfg, st, logger); err != nil {
+			if _, err := opsupgrade.Migrate(ctx, cfg, st, logger); err != nil {
 				return err //nolint:wrapcheck // explains itself
 			}
 			logger.Info("migrations applied", "backend", st.Backend())

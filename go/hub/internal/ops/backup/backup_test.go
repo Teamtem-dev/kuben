@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/backup"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/ops/backup"
 )
 
 func TestPasswordsLeaveTheURL(t *testing.T) {

@@ -37,8 +37,8 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/bundle"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/setup/journal"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/install/journal"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )

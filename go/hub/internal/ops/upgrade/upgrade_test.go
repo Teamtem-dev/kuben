@@ -3,8 +3,8 @@ package upgrade_test
 import (
 	"testing"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/upgrade"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/ops/upgrade"
 )
 
 func TestFreeSpaceIsReadFromDF(t *testing.T) {

@@ -15,11 +15,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/setup/journal"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/ui"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/install/journal"
 )
 
 // failingRunner is a machine where no program can be started: no root,

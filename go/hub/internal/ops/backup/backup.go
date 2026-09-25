@@ -15,7 +15,7 @@
 // tools and must be at least as new as the server.
 //
 // The package imports neither internal/cli nor internal/serve: `kuben
-// migrate` (cli/upgrade) and the server call it.
+// migrate` (ops/upgrade), `kuben backup` (cli) and the server call it.
 package backup
 
 import (
