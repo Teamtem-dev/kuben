@@ -27,11 +27,13 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/bootstrap"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/upgrade"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/metrics"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
@@ -39,18 +41,43 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
 )
 
-// Logger is the process logger the configuration asks for (JSON by
-// default, text for `pretty`).
+// Logger is the process logger the configuration asks for (telemetry.rs
+// init): JSON by default, text for `pretty`. The level is RUST_LOG's when
+// set, else `telemetry.log_level`; of an EnvFilter directive list
+// (`debug,hyper=info`) the global level counts, per-target levels do not.
 func Logger(cfg config.TelemetryCfg) *slog.Logger {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
-		level = slog.LevelInfo
+	directives := cfg.LogLevel
+	if env := os.Getenv("RUST_LOG"); env != "" {
+		directives = env
 	}
-	opts := &slog.HandlerOptions{Level: level}
+	opts := &slog.HandlerOptions{Level: LogLevel(directives)}
 	if cfg.LogFormat == "pretty" {
 		return slog.New(slog.NewTextHandler(os.Stderr, opts))
 	}
 	return slog.New(slog.NewJSONHandler(os.Stderr, opts))
+}
+
+// LogLevel is the global level of an EnvFilter directive list: its last
+// directive without a target; info when there is none. `trace` is debug.
+func LogLevel(directives string) slog.Level {
+	level := slog.LevelInfo
+	for d := range strings.SplitSeq(directives, ",") {
+		d = strings.TrimSpace(d)
+		if d == "" || strings.ContainsAny(d, "=[{:") {
+			continue
+		}
+		switch strings.ToLower(d) {
+		case "trace", "debug":
+			level = slog.LevelDebug
+		case "info":
+			level = slog.LevelInfo
+		case "warn":
+			level = slog.LevelWarn
+		case "error", "off":
+			level = slog.LevelError
+		}
+	}
+	return level
 }
 
 // Run serves until ctx ends (a signal), then shuts down in order.
@@ -61,6 +88,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	ctrllog.SetLogger(logr.FromSlogHandler(logger.Handler()))
 	h := health.New(clock.System{})
 	watchdog(ctx, h)
+	// Owned by ctx: the exporter shuts down with the server.
+	_ = metrics.Serve(ctx, h.Metrics(), cfg.Server.MetricsBind, logger)
 
 	st, err := store.ConnectUnmigrated(ctx, cfg.Database)
 	if err != nil {
@@ -68,7 +97,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	st = st.WithLogger(logger)
 	defer st.Close()
-	migrated, err := st.MigrateJournaled(ctx, version.Version)
+	migrated, err := upgrade.Migrate(ctx, cfg, st, logger)
 	if err != nil {
 		return fmt.Errorf("database migrations: %w", err)
 	}

@@ -11,8 +11,8 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `main.rs` | 85 | 0 | cmd/kuben, cli | partial | every command is declared (cli.Root); serve, setup-token, version, copy-self run; the others answer "not available in this build yet" until their G5 port. anyhow's `Error: …` on failure; RUST_LOG/telemetry: G5 |
 | kuben | `serve.rs` | 867 | 0 | serve | partial | api role; with a cluster: informers, readiness on first sync, discovery (controller role), leader election settings (the Lease is campaigned for once reconcilers exist, S1-D). Left: materializer, controllers, AgentLink, builds, background work (S1–S5) |
 | kuben | `telemetry.rs` | 36 | 0 |  | todo | |
-| kuben | `cli/admin.rs` | 38 | 0 |  | todo | |
-| kuben | `cli/agent.rs` | 50 | 0 |  | todo | |
+| kuben | `cli/admin.rs` | 38 | 0 | cli (cmd_admin.go) | ported | 0 → 0; the admin is created through bootstrap.EnsureAdmin when missing; every session of the account is revoked |
+| kuben | `cli/agent.rs` | 50 | 0 | cli (cmd_admin.go) | ported | 0 → 0; same lines as Rust; the cluster CA is made in the state directory if the hub has not started yet |
 | kuben | `cli/backup.rs` | 561 | 5 |  | todo | |
 | kuben | `cli/client.rs` | 685 | 3 |  | todo | |
 | kuben | `cli/dns01.rs` | 168 | 2 |  | todo | |
@@ -20,7 +20,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `cli/mod.rs` | 274 | 2 | cli (root.go, cmd_serve.go, cmd_version.go) | partial | 2 → 6; cobra: clap's `env =` fallbacks by an annotation applied before each command (flag, then variable, then default), `--roles` comma list, `--dev`, version string with Rust's OS/arch names (`macos`, `x86_64`, `aarch64`). Left: the option structs of the commands still to port |
 | kuben | `cli/support.rs` | 659 | 4 |  | todo | |
 | kuben | `cli/ui.rs` | 372 | 3 |  | todo | |
-| kuben | `cli/upgrade.rs` | 134 | 1 |  | todo | |
+| kuben | `cli/upgrade.rs` | 134 | 1 | cli/upgrade, cli (cmd_upgrade.go), serve | ported | 1 → 1; serve and `kuben migrate` migrate through upgrade.Migrate (a backup first when migrations are pending and pg_dump is installed) |
 | kuben | `cli/setup/journal.rs` | 431 | 4 |  | todo | |
 | kuben | `cli/setup/mod.rs` | 2210 | 10 |  | todo | |
 | kuben | `cli/setup/plan.rs` | 258 | 1 |  | todo | |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 198, todo 21.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 201, todo 18.

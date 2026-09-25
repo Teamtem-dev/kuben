@@ -3,6 +3,7 @@ package cli
 // `kuben serve` (ServeOpts and the serve arm of Cli::load_config).
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -72,4 +73,9 @@ func (o serveOpts) apply(cfg config.Config) (config.Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// runCtx is the context of a one-shot command: cancelled by an interrupt.
+func runCtx(c *cobra.Command) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(c.Context(), os.Interrupt, syscall.SIGTERM)
 }
