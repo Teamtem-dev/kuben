@@ -4,7 +4,8 @@
 // and with a cluster the informers, the readiness gate, capability
 // discovery, the materializer and, behind the controller Lease, the
 // reconcilers and the drift watch; on controller replicas AgentLink, the
-// endpoint cluster agents dial.
+// endpoint cluster agents dial, and with builds enabled the build worker
+// and the rescans.
 package serve
 
 import (
@@ -90,6 +91,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	app, err := githubApp(cfg, logger)
+	if err != nil {
+		return err
+	}
 
 	projections := projection.New()
 	var subsystems []<-chan struct{}
@@ -105,6 +110,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	subsystems = append(subsystems, startBackground(ctx, st, keyring, h, logger)...)
 	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
+	builds, err := startBuilds(ctx, cfg, st, cluster, app, h, logger)
+	if err != nil {
+		return err
+	}
+	subsystems = append(subsystems, builds...)
 
 	var serveErr error
 	if cfg.HasRole(config.RoleAPI) {
