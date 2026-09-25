@@ -7,6 +7,8 @@ tags: [security, engineering, ci]
 excerpt: Kuben's release pipeline builds five binaries without a cache, checksums and attests them, builds the image from those exact bytes, scans it before pushing, and embeds a dependency list in every binary. Here is why each step is there.
 ---
 
+> **Update for 2.0.** This post describes the 1.x pipeline. Kuben 2.0 is written in Go (ADR-033), and the pipeline keeps its shape with new tools: goreleaser builds the five targets (static, `CGO_ENABLED=0`, no Zig), the tag alone sets the version, Go embeds the module list that `cargo auditable` used to add (`go version -m`, `govulncheck -mode=binary`), and govulncheck replaces `cargo deny` in CI and in the daily check. Archive names, checksums, signatures and the image are unchanged. 1.2.x fixes are still released by this pipeline, from the `release/1.2` branch. The current details are in [CI/CD and releases](/docs/contributing/ci-cd/).
+
 A platform that deploys your software runs with a service account that can read every Secret in the cluster. Its release process should be at least as careful as the code. This post walks through Kuben's, step by step, with the reasoning for each.
 
 ## The shape

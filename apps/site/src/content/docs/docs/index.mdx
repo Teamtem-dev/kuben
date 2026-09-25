@@ -9,7 +9,7 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 Kuben is a **platform as a service that runs on your own Kubernetes cluster**. You give it a container image; it gives your team an isolated environment with a public HTTPS address, zero-downtime rollouts, autoscaling, logs, release history with rollback, and an audit log of who changed what.
 
-It ships as **one Rust binary** (or one Helm release). State that must survive a restart lives in PostgreSQL: the Helm chart runs its own by default, `kuben setup` installs it on a server, and you can point Kuben at an external one instead. Everything else, the desired state of every project, environment and app, is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
+It ships as **one binary** (or one Helm release). State that must survive a restart lives in PostgreSQL: the Helm chart runs its own by default, `kuben setup` installs it on a server, and you can point Kuben at an external one instead. Everything else, the desired state of every project, environment and app, is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
 
 ## Who it is for
 
@@ -53,7 +53,7 @@ Git builds, preview environments per pull request, scale-to-zero and SSO are on 
     Kuben creates an `HTTPRoute` per app and manages the listeners of a dedicated Gateway. cert-manager issues a certificate for every listener. TLS terminates at your Gateway controller (Traefik, Envoy Gateway or Cilium).
   </Card>
   <Card title="Generated, drift-checked contracts" icon="document">
-    The OpenAPI spec, the TypeScript client and the CRD manifests are generated from the Rust code, and CI fails if a commit lets them drift. The [REST API reference](/docs/reference/api/) on this site is rendered from that spec.
+    The OpenAPI spec and the CRD manifests are frozen contracts: the server is generated from the spec, the TypeScript client too, and CI fails if a commit lets them drift or breaks the API. The [REST API reference](/docs/reference/api/) on this site is rendered from that spec.
   </Card>
 </CardGrid>
 
