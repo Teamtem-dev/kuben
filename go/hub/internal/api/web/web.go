@@ -11,7 +11,6 @@ package web
 import (
 	"embed"
 	"io/fs"
-	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -76,17 +75,33 @@ func (s *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(notEmbedded)) //nolint:errcheck // the client is gone
 		return
 	}
-	contentType := mime.TypeByExtension(path.Ext(rel))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	h.Set("Content-Type", contentType)
+	h.Set("Content-Type", ContentType(rel))
 	if asset {
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		h.Set("Cache-Control", "no-cache")
 	}
 	_, _ = w.Write(body) //nolint:errcheck,gosec // the client is gone; body is an embedded console file
+}
+
+// mimeTypes is mime_guess 2.0.5's first type for the extensions a console
+// build has (and a few it could have). Go's mime package differs (charsets)
+// and reads the machine's /etc/mime.types, so it is not used.
+var mimeTypes = map[string]string{ //nolint:gochecknoglobals // a constant table
+	"html": "text/html", "js": "text/javascript", "mjs": "application/javascript", "css": "text/css",
+	"svg": "image/svg+xml", "woff2": "font/woff2", "woff": "application/font-woff", "ttf": "font/ttf",
+	"png": "image/png", "ico": "image/x-icon", "json": "application/json", "txt": "text/plain",
+	"webmanifest": "application/manifest+json", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+	"webp": "image/webp", "avif": "image/avif", "gif": "image/gif",
+}
+
+// ContentType is the type the Rust console handler (mime_guess) sent for a
+// file: by its extension, case-insensitively, else application/octet-stream.
+func ContentType(rel string) string {
+	if t, ok := mimeTypes[strings.ToLower(strings.TrimPrefix(path.Ext(rel), "."))]; ok {
+		return t
+	}
+	return "application/octet-stream"
 }
 
 func (s *Handler) exists(rel string) bool {

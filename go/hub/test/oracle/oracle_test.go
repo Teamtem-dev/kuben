@@ -47,7 +47,7 @@ var skeleton = []oracle.Step{
 var sliceS1 = []oracle.Step{
 	{Name: "templates list", Method: "GET", Path: "/api/v1/templates"},
 	{Name: "create project", Method: "POST", Path: "/api/v1/projects", Body: map[string]any{
-		"name": "shop", "displayName": "Shop",
+		"name": "shop", "display_name": "Shop",
 	}},
 	{Name: "get project", Method: "GET", Path: "/api/v1/projects/shop"},
 	{Name: "create environment", Method: "POST", Path: "/api/v1/projects/shop/environments", Body: map[string]any{

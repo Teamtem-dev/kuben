@@ -7,6 +7,7 @@ package oracle
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,7 +25,8 @@ type Step struct {
 	Method string
 	Path   string
 	Body   any
-	// Headers are sent as given; the console's CSRF header is always sent.
+	// Headers are sent as given (an empty value removes the header); the
+	// console's CSRF header is sent unless removed.
 	Headers map[string]string
 }
 
@@ -101,7 +103,7 @@ func (c *Client) Do(s Step) (Result, error) {
 		}
 		body = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(s.Method, c.base+s.Path, body)
+	req, err := http.NewRequestWithContext(context.Background(), s.Method, c.base+s.Path, body)
 	if err != nil {
 		return Result{}, fmt.Errorf("%s: %w", s.Name, err)
 	}
@@ -110,6 +112,10 @@ func (c *Client) Do(s Step) (Result, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	for k, v := range s.Headers {
+		if v == "" {
+			req.Header.Del(k)
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	resp, err := c.http.Do(req)

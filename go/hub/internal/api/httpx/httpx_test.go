@@ -49,6 +49,11 @@ func TestCSRFGuard(t *testing.T) {
 		{"POST", map[string]string{httpx.ClientHeader: "console", "Sec-Fetch-Site": "cross-site"}, 403},
 		{"DELETE", map[string]string{httpx.ClientHeader: "console", "Sec-Fetch-Site": "same-origin"}, 204},
 		{"POST", map[string]string{"Authorization": "Bearer kbn_pat_x"}, 204},
+		// Presence decides, as in Rust: an empty client header passes, an
+		// empty Sec-Fetch-Site or Authorization is still a header.
+		{"POST", map[string]string{httpx.ClientHeader: ""}, 204},
+		{"POST", map[string]string{httpx.ClientHeader: "console", "Sec-Fetch-Site": ""}, 403},
+		{"POST", map[string]string{"Authorization": ""}, 204},
 	}
 	for _, c := range cases {
 		r := httptest.NewRequest(c.method, "/api/v1/x", nil)
@@ -94,5 +99,22 @@ func TestWrapGivesIDsAndAppliesCookies(t *testing.T) {
 	httpx.Wrap(config.DefaultSecurityCfg(), http.NotFoundHandler()).ServeHTTP(rec, r)
 	if rec.Header().Get(httpx.RequestIDHeader) != "given" {
 		t.Fatal("the client's id is kept")
+	}
+}
+
+func TestJSONIsServedWithoutACharset(t *testing.T) {
+	for set, want := range map[string]string{
+		"application/json; charset=utf-8": "application/json",
+		"application/problem+json":        "application/problem+json",
+		"text/html; charset=utf-8":        "text/html; charset=utf-8",
+	} {
+		rec := httptest.NewRecorder()
+		httpx.Wrap(config.DefaultSecurityCfg(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", set)
+			_, _ = w.Write([]byte("{}"))
+		})).ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/x", nil))
+		if got := rec.Header().Get("Content-Type"); got != want {
+			t.Errorf("%s: %s, want %s", set, got, want)
+		}
 	}
 }

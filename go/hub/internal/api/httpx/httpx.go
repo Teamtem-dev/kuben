@@ -139,6 +139,11 @@ func (w *Writer) WriteHeader(status int) {
 	}
 	w.status = status
 	h := w.Header()
+	// axum's Json wrote a bare `application/json`; the generated server
+	// adds a charset, which the contract does not have.
+	if h.Get("Content-Type") == "application/json; charset=utf-8" {
+		h.Set("Content-Type", "application/json")
+	}
 	for _, kv := range w.headers {
 		h.Set(kv[0], kv[1])
 	}
@@ -236,10 +241,12 @@ func CSRFGuard(forbidden func(http.ResponseWriter), next http.Handler) http.Hand
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 		default:
-			if r.Header.Get("Authorization") == "" {
-				site := r.Header.Get("Sec-Fetch-Site")
-				siteOK := site == "" || site == "same-origin" || site == "none"
-				if !siteOK || r.Header.Get(ClientHeader) == "" {
+			// Presence, not value, as auth/mod.rs csrf_guard checked: an
+			// empty client header passes, an empty Sec-Fetch-Site does not.
+			if _, bearer := r.Header["Authorization"]; !bearer {
+				site, hasSite := r.Header["Sec-Fetch-Site"]
+				siteOK := !hasSite || (len(site) > 0 && (site[0] == "same-origin" || site[0] == "none"))
+				if _, hasClient := r.Header[ClientHeader]; !siteOK || !hasClient {
 					forbidden(w)
 					return
 				}

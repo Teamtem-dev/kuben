@@ -30,10 +30,10 @@ func TestSPARouting(t *testing.T) {
 		path, contentType, cache, body string
 		status                         int
 	}{
-		{"/", "text/html; charset=utf-8", "no-cache", "<!doctype", 200},
-		{"/projects/shop", "text/html; charset=utf-8", "no-cache", "<!doctype", 200},
-		{"/assets/app-1a2b.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable", "console", 200},
-		{"/assets/app-1a2b.js.map", "text/html; charset=utf-8", "no-cache", "<!doctype", 200},
+		{"/", "text/html", "no-cache", "<!doctype", 200},
+		{"/projects/shop", "text/html", "no-cache", "<!doctype", 200},
+		{"/assets/app-1a2b.js", "text/javascript", "public, max-age=31536000, immutable", "console", 200},
+		{"/assets/app-1a2b.js.map", "text/html", "no-cache", "<!doctype", 200},
 		{"/api/v1/nothing", "application/problem+json", "", `{"code":"not_found"`, 404},
 	}
 	for _, c := range cases {
@@ -54,5 +54,24 @@ func TestWithoutABuildTheAppSaysSo(t *testing.T) {
 	web.NewFS(fstest.MapFS{}).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if !strings.Contains(rec.Body.String(), "not embedded") || rec.Header().Get("Content-Security-Policy") == "" {
 		t.Fatalf("got %s", rec.Body)
+	}
+}
+
+// The types mime_guess 2.0.5 gave the Rust console handler.
+func TestContentTypesAreMimeGuesses(t *testing.T) {
+	for file, want := range map[string]string{
+		"index.html":           "text/html",
+		"assets/index-abc.js":  "text/javascript",
+		"assets/index-abc.css": "text/css",
+		"favicon.svg":          "image/svg+xml",
+		"assets/inter.woff2":   "font/woff2",
+		"assets/LOGO.PNG":      "image/png",
+		"assets/data.bin":      "application/octet-stream",
+		"assets/no-extension":  "application/octet-stream",
+		"site.webmanifest":     "application/manifest+json",
+	} {
+		if got := web.ContentType(file); got != want {
+			t.Errorf("%s: %s, want %s", file, got, want)
+		}
 	}
 }
