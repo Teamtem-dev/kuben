@@ -121,7 +121,7 @@ type ciFixture struct {
 
 func loadCIFixture(t *testing.T) ciFixture {
 	t.Helper()
-	raw, err := os.ReadFile("oidc/testdata/github-oidc.json")
+	raw, err := os.ReadFile("../integrations/oidc/testdata/github-oidc.json")
 	if err != nil {
 		t.Fatal(err)
 	}

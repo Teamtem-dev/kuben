@@ -21,6 +21,7 @@ apps/site/.wrangler
 
 # Local dev state
 /.dev
+/.cargo-home
 *.db
 *.db-wal
 *.db-shm
