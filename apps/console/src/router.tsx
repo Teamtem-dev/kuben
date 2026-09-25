@@ -37,10 +37,10 @@ const page = {
   DoctorPage: lazyRouteComponent(() => import('./routes/doctor'), 'DoctorPage'),
   DomainsPage: lazyRouteComponent(() => import('./routes/domains'), 'DomainsPage'),
   EnvironmentPage: lazyRouteComponent(() => import('./routes/environment'), 'EnvironmentPage'),
+  HomePage: lazyRouteComponent(() => import('./routes/home'), 'HomePage'),
   IncidentsPage: lazyRouteComponent(() => import('./routes/incidents'), 'IncidentsPage'),
   LoginPage: lazyRouteComponent(() => import('./routes/login'), 'LoginPage'),
   ProjectPage: lazyRouteComponent(() => import('./routes/project'), 'ProjectPage'),
-  ProjectsPage: lazyRouteComponent(() => import('./routes/projects'), 'ProjectsPage'),
   SetupPage: lazyRouteComponent(() => import('./routes/setup'), 'SetupPage'),
   StatusPage: lazyRouteComponent(() => import('./routes/status'), 'StatusPage'),
   TeamPage: lazyRouteComponent(() => import('./routes/team'), 'TeamPage'),
@@ -146,11 +146,12 @@ const authedRoute = createRoute({
   component: AppShell,
 })
 
-const projectsRoute = createRoute({
+/** Home: the summary, open incidents, recent deployments and every project. */
+const homeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/',
   loader: ({ context }) => context.queryClient.ensureQueryData(projectsQuery),
-  component: page.ProjectsPage,
+  component: page.HomePage,
 })
 
 const projectRoute = createRoute({
@@ -243,7 +244,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   statusRoute,
   authedRoute.addChildren([
-    projectsRoute,
+    homeRoute,
     projectRoute,
     environmentRoute,
     appRoute,

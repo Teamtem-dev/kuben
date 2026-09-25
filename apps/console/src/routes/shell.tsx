@@ -5,6 +5,7 @@ import {
   FolderKanbanIcon,
   GlobeIcon,
   KeyRoundIcon,
+  LayoutDashboardIcon,
   LogOutIcon,
   type LucideIcon,
   ScrollTextIcon,
@@ -69,7 +70,7 @@ import { usePrefs } from '@/lib/prefs'
 const route = getRouteApi('/_authed')
 
 const NAV = [
-  { to: '/', label: 'nav.projects', icon: FolderKanbanIcon, exact: true },
+  { to: '/', label: 'nav.home', icon: LayoutDashboardIcon, exact: true },
   { to: '/team', label: 'nav.team', icon: UsersIcon, exact: false },
   { to: '/tokens', label: 'nav.tokens', icon: KeyRoundIcon, exact: false },
   { to: '/incidents', label: 'nav.incidents', icon: SirenIcon, exact: false },

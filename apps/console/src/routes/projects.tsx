@@ -1,86 +1,68 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import {
-  EmptyState,
-  ErrorAlert,
-  FormDialog,
-  linkCard,
-  PageHeader,
-  StatusBadge,
-  TextInput,
-} from '@/components/kit'
+import { EmptyState, ErrorAlert, FormDialog, linkCard, StatusBadge, TextInput } from '@/components/kit'
 import { Button } from '@/components/ui/button'
 import { DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { createProject, projectQuery, projectsQuery } from '@/lib/api'
+import { createProject, type Project, projectQuery } from '@/lib/api'
 import { fill } from '@/lib/messages/pages'
 import { usePrefs } from '@/lib/prefs'
 
-export function ProjectsPage() {
+/** The "New project" button and its dialog. */
+export function NewProjectButton() {
   const { t } = usePrefs()
-  const { data: projects } = useSuspenseQuery(projectsQuery)
   const [creating, setCreating] = useState(false)
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={t('projects.title')}
-        description={
-          projects.length === 1
-            ? t('projects.countOne')
-            : fill(t('projects.count'), { count: projects.length })
-        }
-        actions={
-          <FormDialog
-            open={creating}
-            onOpenChange={setCreating}
-            title={t('projects.new')}
-            trigger={
-              <Button>
-                <PlusIcon aria-hidden="true" />
-                {t('projects.new')}
-              </Button>
-            }
-          >
-            <CreateProjectForm onDone={() => setCreating(false)} />
-          </FormDialog>
-        }
-      />
+    <FormDialog
+      open={creating}
+      onOpenChange={setCreating}
+      title={t('projects.new')}
+      trigger={
+        <Button>
+          <PlusIcon aria-hidden="true" />
+          {t('projects.new')}
+        </Button>
+      }
+    >
+      <CreateProjectForm onDone={() => setCreating(false)} />
+    </FormDialog>
+  )
+}
 
-      {projects.length === 0 ? (
-        <EmptyState>{t('projects.empty')}</EmptyState>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((p) => (
-            <li key={p.name}>
-              <Link to="/projects/$project" params={{ project: p.name }} className={linkCard}>
-                <div className="flex items-center justify-between gap-3">
-                  <span dir="auto" className="truncate font-medium">
-                    {p.display_name}
-                  </span>
-                  <StatusBadge ready={p.ready} label={p.deleting ? t('projects.deleting') : undefined} />
-                </div>
-                <p className="mt-1 text-muted-foreground text-xs">
-                  <span dir="ltr" className="font-mono">
-                    {p.name}
-                  </span>{' '}
-                  ·{' '}
-                  {p.environments === 1
-                    ? t('projects.environmentsOne')
-                    : fill(t('projects.environments'), { count: p.environments })}
-                </p>
-                {p.description && (
-                  <p dir="auto" className="mt-2 line-clamp-2 text-muted-foreground text-sm">
-                    {p.description}
-                  </p>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+/** The projects as a grid of cards, each a link to its page. */
+export function ProjectCards({ projects }: { projects: readonly Project[] }) {
+  const { t } = usePrefs()
+  if (projects.length === 0) return <EmptyState>{t('projects.empty')}</EmptyState>
+  return (
+    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {projects.map((p) => (
+        <li key={p.name}>
+          <Link to="/projects/$project" params={{ project: p.name }} className={linkCard}>
+            <div className="flex items-center justify-between gap-3">
+              <span dir="auto" className="truncate font-medium">
+                {p.display_name}
+              </span>
+              <StatusBadge ready={p.ready} label={p.deleting ? t('projects.deleting') : undefined} />
+            </div>
+            <p className="mt-1 text-muted-foreground text-xs">
+              <span dir="ltr" className="font-mono">
+                {p.name}
+              </span>{' '}
+              ·{' '}
+              {p.environments === 1
+                ? t('projects.environmentsOne')
+                : fill(t('projects.environments'), { count: p.environments })}
+            </p>
+            {p.description && (
+              <p dir="auto" className="mt-2 line-clamp-2 text-muted-foreground text-sm">
+                {p.description}
+              </p>
+            )}
+          </Link>
+        </li>
+      ))}
+    </ul>
   )
 }
 

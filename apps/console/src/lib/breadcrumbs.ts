@@ -25,15 +25,15 @@ const decode = (segment: string) => {
   }
 }
 
-/** Projects › project › environment › app › Doctor, or the one top-level page. */
+/** Home › project › environment › app › Doctor, or the one top-level page. */
 export function crumbsFor(pathname: string): Crumb[] {
   const [first, ...rest] = pathname.split('/').filter(Boolean).map(decode)
-  if (first === undefined) return [{ kind: 'page', label: 'nav.projects' }]
+  if (first === undefined) return [{ kind: 'page', label: 'nav.home' }]
   const page = PAGES[first]
   if (page) return [{ kind: 'page', label: page }]
   if (first !== 'projects') return []
   const [project, environment, app, tail] = rest
-  const crumbs: Crumb[] = [{ kind: 'page', label: 'nav.projects', to: '/' }]
+  const crumbs: Crumb[] = [{ kind: 'page', label: 'nav.home', to: '/' }]
   if (project) crumbs.push({ kind: 'project', project })
   if (project && environment) crumbs.push({ kind: 'environment', project, environment })
   if (project && environment && app) crumbs.push({ kind: 'app', project, environment, app })

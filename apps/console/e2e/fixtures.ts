@@ -367,8 +367,35 @@ export const audit = {
       ip: '203.0.113.9',
       request_id: null,
     },
+    {
+      seq: 1,
+      id: '0190f3c6-0000-7000-8000-0000000000a1',
+      at: now - 120_000,
+      actor_kind: 'user',
+      actor: user.email,
+      action: 'startDeployment',
+      target_kind: 'app',
+      target: 'shop/prod/web',
+      outcome: 'accepted',
+      status: null,
+      ip: '203.0.113.9',
+      request_id: null,
+    },
   ],
   next_before: null,
+}
+
+export const health = {
+  ready: true,
+  database: 'postgres',
+  cluster: true,
+  seq: 42,
+  pods: 2,
+  subsystems: {
+    agentlink: { state: 'ok', updated_at_ms: now },
+    projections: { state: 'ok', updated_at_ms: now },
+    webhooks: { state: 'degraded', last_error: 'hooks.example.com: 502', updated_at_ms: now },
+  },
 }
 
 export const previews = [
@@ -531,6 +558,7 @@ export async function mockApi(page: Page, { signedIn = true, setupNeeded = false
     if (path === `/api/v1/webhooks/${webhooks[0]?.id}/deliveries`) return json(route, deliveries)
     if (path === '/api/v1/domains') return json(route, claims)
     if (path === '/api/v1/audit') return json(route, audit)
+    if (path === '/api/v1/healthz/details') return json(route, health)
     if (path === '/api/v1/projects/shop/previews') return json(route, previews)
     if (path === '/api/v1/projects/shop/previews/policy') return json(route, previewPolicy)
     if (path === '/api/v1/projects/shop/status-page') return json(route, statusPage)

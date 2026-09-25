@@ -262,8 +262,9 @@ test('audit log: the events in a table', async ({ page }) => {
   await mockApi(page)
   await page.goto('/audit')
   const table = page.getByRole('table')
-  await expect(table.getByRole('cell', { name: 'app.update' })).toBeVisible()
-  await expect(table.getByRole('cell', { name: 'shop/prod/web' })).toBeVisible()
+  const row = table.getByRole('row', { name: /app\.update/ })
+  await expect(row.getByRole('cell', { name: 'app.update' })).toBeVisible()
+  await expect(row.getByRole('cell', { name: 'shop/prod/web' })).toBeVisible()
 })
 
 test('project page: previews, their policy and the status page settings', async ({ page }) => {
@@ -351,7 +352,7 @@ test('the breadcrumb follows the project hierarchy', async ({ page }) => {
   await mockApi(page)
   await page.goto('/projects/shop/prod/web/doctor')
   const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
-  await expect(trail.getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '/')
+  await expect(trail.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/')
   await expect(trail.getByRole('link', { name: 'web' })).toHaveAttribute('href', '/projects/shop/prod/web')
   await expect(trail.locator('[aria-current="page"]')).toHaveText('Doctor')
 })
