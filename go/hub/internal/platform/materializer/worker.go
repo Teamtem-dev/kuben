@@ -33,6 +33,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
@@ -69,6 +70,9 @@ type Deps struct {
 	// DeletionCheck is how long an environment deletion waits before it
 	// checks again; DeletionCheck when zero.
 	DeletionCheck time.Duration
+	// Keyring opens the secret revisions runs are bound to; runs bound to
+	// any fail without it.
+	Keyring opt.Val[*secrets.Keyring]
 }
 
 // Worker is the materializer of one process. It holds no state of its own
@@ -169,9 +173,14 @@ func (w *Worker) carry(ctx context.Context, claim store.Claim) stop {
 	case !found:
 		return settled(run.Failed, "RunMissing")
 	}
-	// A succeeded run bound to secrets collects its environment's unused
-	// revision objects once the keyring is ported (secrets.go).
 	st := w.drive(ctx, claim, &m)
+	// A succeeded run bound to secrets collects its environment's unused
+	// revision objects (secrets.go).
+	if s, ok := st.(stopSettled); ok && s.phase == run.Succeeded && len(m.Secrets) > 0 {
+		if _, err := w.collectSecrets(ctx, &m); err != nil {
+			w.d.Logger.Warn("unused secret revisions stay for now", "run", m.Run.String(), "error", err.Error())
+		}
+	}
 	switch s := st.(type) {
 	case stopRefused:
 		return w.end(ctx, claim, &m, run.EventFailed, s.code)

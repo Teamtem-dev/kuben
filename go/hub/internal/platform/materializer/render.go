@@ -26,6 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
@@ -265,7 +266,7 @@ func writtenBy(operation ids.OperationID, id string) map[string]string {
 // SecretObjectName is the name of the immutable Secret holding revision
 // of the managed secret name (crate::secrets::object_name).
 func SecretObjectName(name string, revision uint64) string {
-	return name + ".r" + strconv.FormatUint(revision, 10)
+	return secrets.ObjectName(name, revision)
 }
 
 // appSpec is the configuration revision with the release's image as its
