@@ -14,12 +14,12 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `cli/admin.rs` | 38 | 0 | cli (cmd_admin.go) | ported | 0 → 0; the admin is created through bootstrap.EnsureAdmin when missing; every session of the account is revoked |
 | kuben | `cli/agent.rs` | 50 | 0 | cli (cmd_admin.go) | ported | 0 → 0; same lines as Rust; the cluster CA is made in the state directory if the hub has not started yet |
 | kuben | `cli/backup.rs` | 561 | 5 |  | todo | |
-| kuben | `cli/client.rs` | 685 | 3 |  | todo | |
+| kuben | `cli/client.rs` | 685 | 3 | cli (cmd_client.go, client_contexts.go, client_run.go) | ported | 3 → 12 (golden tests: table, status text/JSON, logs, follow, deploy wait on an injected clock); `status` without an app is setupStatus (setup port); the three status reads run one after another (Rust: at once), same output |
 | kuben | `cli/dns01.rs` | 168 | 2 |  | todo | |
 | kuben | `cli/doctor.rs` | 551 | 2 |  | todo | |
 | kuben | `cli/mod.rs` | 274 | 2 | cli (root.go, cmd_serve.go, cmd_version.go) | partial | 2 → 6; cobra: clap's `env =` fallbacks by an annotation applied before each command (flag, then variable, then default), `--roles` comma list, `--dev`, version string with Rust's OS/arch names (`macos`, `x86_64`, `aarch64`). Left: the option structs of the commands still to port |
 | kuben | `cli/support.rs` | 659 | 4 |  | todo | |
-| kuben | `cli/ui.rs` | 372 | 3 |  | todo | |
+| kuben | `cli/ui.rs` | 372 | 3 | cli/ui | ported | 3 → 5 (+ spinner frame, prompts); writes to an io.Writer; the spinner goroutine is owned and joined by Step.Close (Rust: Drop) |
 | kuben | `cli/upgrade.rs` | 134 | 1 | cli/upgrade, cli (cmd_upgrade.go), serve | ported | 1 → 1; serve and `kuben migrate` migrate through upgrade.Migrate (a backup first when migrations are pending and pg_dump is installed) |
 | kuben | `cli/setup/journal.rs` | 431 | 4 |  | todo | |
 | kuben | `cli/setup/mod.rs` | 2210 | 10 |  | todo | |
@@ -37,11 +37,11 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-agent | `tls.rs` | 323 | 6 | kubenapi/protocol (tls.go) | ported | 6 → 6 |
 | kuben-api | `audit.rs` | 205 | 3 | api (audit.go) | ported |  |
 | kuben-api | `authz.rs` | 180 | 1 | api/access | ported |  |
-| kuben-api | `client.rs` | 483 | 4 |  | todo | |
+| kuben-api | `client.rs` | 483 | 4 | api/client | ported | 4 → 6 (+ problem decoding, followed SSE over an in-memory httptest server); net/http with hand-written DTOs in serde order (the CLI prints them back); APIError/TransportError sealed; FollowLogs is an iter.Seq2 over SSE |
 | kuben-api | `dns.rs` | 631 | 4 | api/dns | ported | 4 → 7; DoH lookups, change plan, Cloudflare adapter (hand-written: ownership needs record comments and ids, which libdns lacks), public backend, gateway records |
 | kuben-api | `error.rs` | 100 | 0 | api/problem | ported |  |
 | kuben-api | `github.rs` | 750 | 6 | api/github | ported | 6 → 21 (a fake GitHub on httptest: token requests, JWT checked against the public key, caching, error classes, body cap, revoke, installation, pull request state, commit status) |
-| kuben-api | `host.rs` | 73 | 2 |  | todo | |
+| kuben-api | `host.rs` | 73 | 2 | platform/host | ported | 2 → 2; serve.AdvertiseIP and api.WriteOwnerOnly are older copies of the same functions |
 | kuben-api | `image_watch.rs` | 287 | 0 | api (image_watch.go), serve (background.go) | ported | 0 in Rust; covered by the tests/http.rs port below; runs on every replica as serve.rs spawn_background |
 | kuben-api | `lib.rs` | 105 | 0 | api (server.go) | ported | router: session, CSRF, audit, timeout (followed logs exempt), body limit, gzip compression (SUBSTITUTIONS), request id, `/api/docs` (api/apidocs), probes, console fallback, the GitHub webhook and the CI exchange with body limits of their own (inside the gzip/request-id wrappers; Rust mounted them outside the tower layers) |
 | kuben-api | `notify.rs` | 593 | 6 | api/notify (plan.go, notifier.go, sealing.go) | ported | 6 → 8 (+ signatures vs testdata/compat, + the http crate's reason phrases); is_private is outbound.IsPrivate; the notifier runs on every replica (serve/background.go) with the GitHub App for commit statuses |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 3, ported 212, todo 12.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 3, ported 216, todo 8.
