@@ -88,6 +88,7 @@ type Server struct {
 	logStreams   *logStreams
 	routes       *gen.Server
 	docs         []byte // the /api/docs page
+	compressor   *httpx.Compressor
 }
 
 // statusCacheTTL is how long a public status answer is reused (routes/status.rs CACHE_TTL).
@@ -123,6 +124,7 @@ func New(deps Deps) (*Server, error) {
 	sec := deps.Config.Security
 	s := &Server{
 		docs:         docs,
+		compressor:   httpx.NewCompressor(),
 		deps:         deps,
 		policy:       authz.RolePolicy{},
 		throttle:     newLoginThrottle(sec, deps.Store, deps.Clock, deps.Logger),
@@ -207,7 +209,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /livez", s.livez)
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("/", s.deps.Console)
-	return httpx.Wrap(sec, recoverPanics(s.deps.Logger, mux))
+	return httpx.Wrap(sec, s.compressor.Wrap(recoverPanics(s.deps.Logger, mux)))
 }
 
 // limitBody caps request bodies (tower-http's RequestBodyLimitLayer).
