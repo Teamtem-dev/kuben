@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react'
 import {
   CheckboxField,
   ErrorAlert,
+  Loading,
   Section,
   SelectInput,
   Sparkline,
@@ -69,6 +70,7 @@ export function UsageCard({ project, environment, app }: AppRef) {
       }
     >
       <ErrorAlert error={metrics.error} />
+      {metrics.isPending && <Loading lines={2} />}
       {metrics.data && !metrics.data.available && (
         <p role="status" dir="auto" className="text-muted-foreground text-sm">
           {t('usage.unavailable')} {metrics.data.reason}

@@ -8,6 +8,7 @@ import {
   lazyRouteComponent,
   redirect,
 } from '@tanstack/react-router'
+import { Skeleton } from './components/ui/skeleton'
 import {
   appQuery,
   appsQuery,
@@ -68,12 +69,22 @@ function RouteError({ error }: ErrorComponentProps) {
   )
 }
 
+/** A page loading: its shape in grey (kept in the entry chunk, no kit needed). */
 function Pending() {
   const { t } = usePrefs()
   return (
-    <p role="status" className="text-muted-foreground text-sm">
-      {t('common.loading')}
-    </p>
+    <div role="status" className="space-y-6">
+      <span className="sr-only">{t('common.loading')}</span>
+      <div aria-hidden="true" className="space-y-2">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-4 w-80 max-w-full" />
+      </div>
+      <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-24 rounded-xl" />
+        ))}
+      </div>
+    </div>
   )
 }
 

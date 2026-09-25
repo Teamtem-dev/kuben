@@ -6,6 +6,7 @@ import {
   ConfirmDelete,
   EmptyState,
   ErrorAlert,
+  Loading,
   linkCard,
   Notice,
   PageHeader,
@@ -371,6 +372,8 @@ function Secrets({ project, environment }: { project: string; environment: strin
     <Section title={t('environment.secrets')}>
       {secrets.isError ? (
         <ErrorAlert error={secrets.error} />
+      ) : secrets.isPending ? (
+        <Loading lines={2} />
       ) : secrets.data?.length ? (
         <ItemGroup className="gap-2">
           {secrets.data.map((s) => (
@@ -463,6 +466,8 @@ function RegistryLogins({ project, environment }: { project: string; environment
     <Section title={t('environment.registryLogins')}>
       {logins.isError ? (
         <ErrorAlert error={logins.error} />
+      ) : logins.isPending ? (
+        <Loading lines={2} />
       ) : logins.data?.length ? (
         <ItemGroup className="gap-2">
           {logins.data.map((l) => (
@@ -563,6 +568,7 @@ function Templates({ project, environment }: { project: string; environment: str
           .
         </Notice>
       )}
+      {templates.isPending && <Loading lines={2} />}
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {templates.data?.map((tpl) => (
           <li key={tpl.id} className="flex flex-col gap-2 rounded-lg border p-3">

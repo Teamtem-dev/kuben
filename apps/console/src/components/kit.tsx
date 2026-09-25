@@ -42,6 +42,7 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { fill } from '@/lib/messages/pages'
@@ -202,13 +203,73 @@ export function ToneBadge({
   )
 }
 
-/** A line of muted text while something loads. */
-export function Loading({ children, className }: { children?: ReactNode; className?: string }) {
+const skeletonWidths = ['w-3/4', 'w-1/2', 'w-2/3', 'w-5/6'] as const
+
+/**
+ * Placeholder lines while something loads: a status for screen readers
+ * ("Loading…", or `children`, which is also shown), grey bars for the eye.
+ */
+export function Loading({
+  children,
+  className,
+  lines = 3,
+}: {
+  children?: ReactNode
+  className?: string
+  lines?: number
+}) {
   const { t } = usePrefs()
   return (
-    <p role="status" className={cn('text-muted-foreground text-sm', className)}>
-      {children ?? t('common.loading')}
-    </p>
+    <div role="status" className={cn('space-y-2.5', className)}>
+      {children ? (
+        <p className="text-muted-foreground text-sm">{children}</p>
+      ) : (
+        <span className="sr-only">{t('common.loading')}</span>
+      )}
+      {Array.from({ length: lines }, (_, i) => (
+        <Skeleton
+          key={i}
+          aria-hidden="true"
+          className={cn('h-4', skeletonWidths[i % skeletonWidths.length])}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** A table's shape while its rows load: a header and `rows` grey rows. */
+export function TableSkeleton({ columns, rows = 5 }: { columns: number; rows?: number }) {
+  const { t } = usePrefs()
+  const cells = Array.from({ length: Math.max(1, Math.min(columns, 6)) }, (_, i) => i)
+  const row = (key: string, className: string) => (
+    <div key={key} className="flex gap-4 py-2.5">
+      {cells.map((c) => (
+        <Skeleton key={c} aria-hidden="true" className={cn('h-4 flex-1', className)} />
+      ))}
+    </div>
+  )
+  return (
+    <div role="status" className="divide-y">
+      <span className="sr-only">{t('common.loading')}</span>
+      {row('head', 'h-3 max-w-24')}
+      {Array.from({ length: rows }, (_, i) => row(String(i), ''))}
+    </div>
+  )
+}
+
+/** A card grid's shape while it loads (projects, environments, apps). */
+export function CardsSkeleton({ count = 3 }: { count?: number }) {
+  const { t } = usePrefs()
+  return (
+    <div role="status" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <span className="sr-only">{t('common.loading')}</span>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} aria-hidden="true" className="space-y-3 rounded-xl border p-4">
+          <Skeleton className="h-5 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+      ))}
+    </div>
   )
 }
 

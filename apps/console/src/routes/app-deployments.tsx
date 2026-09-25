@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
-import { ErrorAlert, Section } from '@/components/kit'
+import { ErrorAlert, Loading, Section } from '@/components/kit'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Skeleton } from '@/components/ui/skeleton'
 import { type Deployment, deploymentsQuery, isFinalPhase } from '@/lib/api'
 import { usePrefs } from '@/lib/prefs'
 import { cn } from '@/lib/utils'
@@ -94,10 +93,7 @@ export function DeploymentsCard({ project, environment, app }: Where) {
       {runs.isError ? (
         <ErrorAlert error={runs.error} />
       ) : runs.isLoading ? (
-        <div className="space-y-3" role="status" aria-label={t('common.loading')}>
-          <Skeleton className="h-6 w-2/3" />
-          <Skeleton className="h-6 w-1/2" />
-        </div>
+        <Loading lines={2} />
       ) : !runs.data?.length ? (
         <p className="text-muted-foreground text-sm">{t('deployments.empty')}</p>
       ) : (
