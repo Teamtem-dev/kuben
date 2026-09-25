@@ -68,3 +68,25 @@ func TestFetchReadsAnAnswerWithinItsLimits(t *testing.T) {
 		t.Fatalf("plain http where only https is allowed: %v", err)
 	}
 }
+
+func TestSendAnswersTheStatusWithoutReadingTheBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/slow" {
+			time.Sleep(300 * time.Millisecond)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(strings.Repeat("x", 1<<20)))
+	}))
+	t.Cleanup(srv.Close)
+	c := outbound.New(true, 100*time.Millisecond)
+	if status, err := c.Send(t.Context(), get(t, srv.URL+"/")); err != nil || status != http.StatusAccepted {
+		t.Fatalf("an answer with a large body: %d %v", status, err)
+	}
+	if _, err := c.Send(t.Context(), get(t, srv.URL+"/slow")); err == nil || err.Error() != "timed out" {
+		t.Fatalf("no headers in time: %v", err)
+	}
+	if _, err := outbound.New(false, time.Second).Send(t.Context(), get(t, srv.URL+"/")); err == nil ||
+		!strings.Contains(err.Error(), "not https") {
+		t.Fatalf("plain http where only https is allowed: %v", err)
+	}
+}

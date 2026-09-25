@@ -80,6 +80,26 @@ func (c *Client) Fetch(ctx context.Context, req *http.Request, maxBody int64) (i
 	return resp.StatusCode, data, nil
 }
 
+// Send sends req and returns the answer's status once its headers arrived,
+// within the timeout; the body is left unread (transport.rs send handed it
+// to callers that, like the notifier, did not read it).
+func (c *Client) Send(ctx context.Context, req *http.Request) (int, error) {
+	if c.httpsOnly && req.URL.Scheme != "https" {
+		return 0, errors.New("invalid URL, scheme is not https")
+	}
+	ctx, cancel := context.WithTimeoutCause(ctx, c.timeout, errTimedOut)
+	defer cancel()
+	resp, err := c.http.Do(req.WithContext(ctx)) //nolint:gosec // callers name the services (checked targets)
+	if err != nil {
+		if errors.Is(context.Cause(ctx), errTimedOut) {
+			return 0, errTimedOut
+		}
+		return 0, fmt.Errorf("%w", err)
+	}
+	resp.Body.Close() //nolint:errcheck,gosec // abandoned unread
+	return resp.StatusCode, nil
+}
+
 var (
 	errTimedOut     = errors.New("timed out")
 	errBodyTimedOut = errors.New("timed out reading the answer")
