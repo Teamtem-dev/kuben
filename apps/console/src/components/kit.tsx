@@ -390,6 +390,72 @@ export function ConfirmDelete({
   )
 }
 
+/**
+ * An action that removes or stops something, confirmed in a dialog first
+ * (no name to type: for things that are easy to make again). The dialog
+ * stays open, with the error, when `onConfirm` fails.
+ */
+export function ConfirmAction({
+  label,
+  title,
+  description,
+  pending,
+  error,
+  onConfirm,
+  variant = 'destructive',
+  size,
+  disabled,
+}: {
+  label: ReactNode
+  title: ReactNode
+  description: ReactNode
+  pending: boolean
+  error?: unknown
+  onConfirm: () => Promise<unknown>
+  variant?: 'destructive' | 'outline' | 'ghost'
+  size?: 'sm' | 'default'
+  disabled?: boolean
+}) {
+  const { t } = usePrefs()
+  const [open, setOpen] = useState(false)
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant={variant}
+          size={size}
+          disabled={disabled}
+          className={cn(variant === 'ghost' && 'text-destructive hover:text-destructive')}
+        >
+          {label}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <ErrorAlert error={error} />
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('ui.cancel')}</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={pending}
+            onClick={() => {
+              onConfirm().then(
+                () => setOpen(false),
+                () => undefined,
+              )
+            }}
+          >
+            {label}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 /** The pages before signing in: the mark and the preferences above the content. */
 export function AuthShell({ children }: { children: ReactNode }) {
   const { t } = usePrefs()

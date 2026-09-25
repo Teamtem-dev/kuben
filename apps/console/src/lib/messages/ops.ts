@@ -106,6 +106,7 @@ export const opsEn = {
   'previews.extend': 'Extend 24 h',
   'previews.keep': 'Keep',
   'previews.destroy': 'Destroy',
+  'previews.destroyConfirm': 'Destroy the preview {name}? Its apps and their data are removed now.',
   'previews.state.active': 'Active',
   'previews.state.closed': 'Closed',
   'previews.reason.closed': 'Pull request closed',
@@ -122,6 +123,7 @@ export const opsEn = {
   'statusPage.publish': 'Publish',
   'statusPage.open': 'Open page',
   'statusPage.takeDown': 'Take down',
+  'statusPage.takeDownConfirm': 'Take the public status page down? Its address stops answering.',
 
   'detached.title': 'Detached apps',
   'detached.retained': 'Left running in the namespace',
@@ -309,6 +311,7 @@ export const opsFa: Record<keyof typeof opsEn, string> = {
   'previews.extend': 'تمدید ۲۴ ساعت',
   'previews.keep': 'نگه داشتن',
   'previews.destroy': 'حذف',
+  'previews.destroyConfirm': 'پیش‌نمایش {name} حذف شود؟ اپ‌ها و داده‌هایشان همین حالا پاک می‌شوند.',
   'previews.state.active': 'فعال',
   'previews.state.closed': 'بسته',
   'previews.reason.closed': 'pull request بسته شد',
@@ -326,6 +329,7 @@ export const opsFa: Record<keyof typeof opsEn, string> = {
   'statusPage.publish': 'انتشار',
   'statusPage.open': 'باز کردن صفحه',
   'statusPage.takeDown': 'برداشتن صفحه',
+  'statusPage.takeDownConfirm': 'صفحهٔ وضعیت عمومی برداشته شود؟ نشانی آن دیگر پاسخ نمی‌دهد.',
 
   'detached.title': 'اپ‌های جداشده',
   'detached.retained': 'آنچه در namespace در حال اجرا ماند',
