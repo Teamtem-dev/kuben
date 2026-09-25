@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
 )
@@ -283,7 +283,7 @@ func TestParsing(t *testing.T) {
 	_, errMode := scan.ParseGateMode("BLOCK") // Gate modes are case-sensitive.
 	_, errStatus := scan.ParseStatus("")
 	for _, err := range []error{errSeverity, errMode, errStatus} {
-		if !errors.Is(err, kerr.ErrValidation) {
+		if !errors.Is(err, kerrors.ErrValidation) {
 			t.Errorf("got %v, want a validation error", err)
 		}
 	}

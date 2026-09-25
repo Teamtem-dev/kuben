@@ -10,7 +10,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -31,7 +31,7 @@ func (s *Server) rotate(ctx context.Context, t *store.Tenant, a access.Access, e
 		return nil, nil
 	}
 	if _, err := a.Require(perm.AppDeploy, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	_, actor := a.Actor()
 	apps, err := t.Apps(ctx, e.env.ID)
@@ -123,7 +123,7 @@ func (s *Server) rotateApp(ctx context.Context, t *store.Tenant, a access.Access
 		return skippedRollout(slug, "the app changed meanwhile"), nil
 	case nil:
 	}
-	return gen.RolloutDto{}, kerr.New(kerr.Internal, "an unknown start result")
+	return gen.RolloutDto{}, kerrors.New(kerrors.Internal, "an unknown start result")
 }
 
 // secretInUse refuses to delete secret while apps reference it.
@@ -132,7 +132,7 @@ func secretInUse(secret string, apps []string) error {
 	for _, app := range apps {
 		quoted = append(quoted, "`"+app+"`")
 	}
-	return kerr.New(kerr.Conflict, "secret `%s` is referenced by %s", secret, strings.Join(quoted, ", "))
+	return kerrors.New(kerrors.Conflict, "secret `%s` is referenced by %s", secret, strings.Join(quoted, ", "))
 }
 
 // DeleteSecret deletes a secret. Refused while an app of the environment
@@ -147,7 +147,7 @@ func (s *Server) DeleteSecret(ctx context.Context, params gen.DeleteSecretParams
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	secret := params.Secret
 	users, deleted, err := s.deleteStoredSecret(ctx, a, e, secret)
@@ -171,7 +171,7 @@ func (s *Server) DeleteSecret(ctx context.Context, params gen.DeleteSecretParams
 		found = found || list.Items[i].Name == secret
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "secret `%s`", secret)
+		return nil, kerrors.New(kerrors.NotFound, "secret `%s`", secret)
 	}
 	if len(users) > 0 {
 		return nil, secretInUse(secret, users)
@@ -225,7 +225,7 @@ func (s *Server) ListSecretRevisions(ctx context.Context, params gen.ListSecretR
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *Server) ListSecretRevisions(ctx context.Context, params gen.ListSecretR
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "secret `%s`", params.Secret)
+		return nil, kerrors.New(kerrors.NotFound, "secret `%s`", params.Secret)
 	}
 	var current uint64
 	if len(revisions) > 0 {
@@ -275,10 +275,10 @@ func (s *Server) RevokeSecretRevision(ctx context.Context, params gen.RevokeSecr
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if params.Revision < 0 {
-		return nil, kerr.New(kerr.Validation, "revision must be a non-negative number")
+		return nil, kerrors.New(kerrors.Validation, "revision must be a non-negative number")
 	}
 	revision, secret := uint64(params.Revision), params.Secret
 	_, actor := a.Actor()
@@ -300,8 +300,8 @@ func (s *Server) RevokeSecretRevision(ctx context.Context, params gen.RevokeSecr
 		}
 		return &gen.RevokeSecretRevisionNoContent{}, nil
 	case store.RevokedAlready:
-		return nil, kerr.New(kerr.Conflict, "revision %d of `%s` is revoked already", revision, secret)
+		return nil, kerrors.New(kerrors.Conflict, "revision %d of `%s` is revoked already", revision, secret)
 	case store.RevokedNotFound:
 	}
-	return nil, kerr.New(kerr.NotFound, "revision %d of secret `%s`", revision, secret)
+	return nil, kerrors.New(kerrors.NotFound, "revision %d of secret `%s`", revision, secret)
 }

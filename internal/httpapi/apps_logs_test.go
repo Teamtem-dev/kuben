@@ -20,7 +20,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -84,8 +84,8 @@ func TestFollowedLogsAreCappedPerUserAndFreedWhenClosed(t *testing.T) {
 		held = append(held, permit)
 	}
 	_, err := streams.Acquire(alice)
-	var kerrErr *kerr.Error
-	if !errors.As(err, &kerrErr) || kerrErr.Code != kerr.RateLimited {
+	var kerrErr *kerrors.Error
+	if !errors.As(err, &kerrErr) || kerrErr.Code != kerrors.RateLimited {
 		t.Fatalf("a fifth follow: %v", err)
 	}
 	other, err := streams.Acquire(bob)

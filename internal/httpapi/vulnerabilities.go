@@ -15,7 +15,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
@@ -74,7 +74,7 @@ func vulnerabilityID(id string) bool {
 func printable(name, value string, maxChars int) error {
 	value = trimSpace(value)
 	if value == "" || utf8.RuneCountInString(value) > maxChars || strings.IndexFunc(value, unicode.IsControl) >= 0 {
-		return kerr.New(kerr.Validation, "%s must be 1 to %d printable characters", name, maxChars)
+		return kerrors.New(kerrors.Validation, "%s must be 1 to %d printable characters", name, maxChars)
 	}
 	return nil
 }
@@ -83,7 +83,7 @@ func printable(name, value string, maxChars int) error {
 func checkException(body *gen.CreateException) error {
 	id := trimSpace(body.Vulnerability)
 	if !vulnerabilityID(id) {
-		return kerr.New(kerr.Validation, "`%s` is not a vulnerability id", id)
+		return kerrors.New(kerrors.Validation, "`%s` is not a vulnerability id", id)
 	}
 	if err := printable("reason", body.Reason, 1024); err != nil {
 		return err
@@ -93,7 +93,7 @@ func checkException(body *gen.CreateException) error {
 	}
 	const maxDays = scan.MaxExceptionSecs / 86_400
 	if body.Days <= 0 || int64(body.Days) > maxDays {
-		return kerr.New(kerr.Validation, "an exception lasts 1 to %d days", maxDays)
+		return kerrors.New(kerrors.Validation, "an exception lasts 1 to %d days", maxDays)
 	}
 	return nil
 }
@@ -113,7 +113,7 @@ func (s *Server) callerOrg(ctx context.Context, p perm.Perm, forbidToken bool) (
 	}
 	if forbidToken {
 		if err := a.ForbidToken(); err != nil {
-			return accessOrg{}, err //nolint:wrapcheck // a kerr already
+			return accessOrg{}, err //nolint:wrapcheck // a kerrors already
 		}
 	}
 	org, err := orgOf(a)
@@ -121,7 +121,7 @@ func (s *Server) callerOrg(ctx context.Context, p perm.Perm, forbidToken bool) (
 		return accessOrg{}, err
 	}
 	if _, err := a.Require(p, authz.OrgChain(org)); err != nil {
-		return accessOrg{}, err //nolint:wrapcheck // a kerr already
+		return accessOrg{}, err //nolint:wrapcheck // a kerrors already
 	}
 	return accessOrg{access: a, org: org}, nil
 }
@@ -210,7 +210,7 @@ func (s *Server) CreateVulnerabilityException(
 		dto := exceptionDto(e, now)
 		return &dto, nil
 	}
-	return nil, kerr.New(kerr.Internal, "the new exception is missing")
+	return nil, kerrors.New(kerrors.Internal, "the new exception is missing")
 }
 
 // RevokeVulnerabilityException revokes an exception for good.
@@ -232,7 +232,7 @@ func (s *Server) RevokeVulnerabilityException(
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !revoked {
-		return nil, kerr.New(kerr.NotFound, "exception `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "exception `%s`", params.ID)
 	}
 	audit := requestAudit(c.access, "vulnerability.exception.revoked", "vulnerability", params.ID.String())
 	if err := t.AppendAudit(ctx, audit); err != nil {

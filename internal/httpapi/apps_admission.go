@@ -21,7 +21,7 @@ import (
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/capacity"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
 	"github.com/Teamtem-dev/kuben/internal/doctor"
@@ -64,7 +64,7 @@ func (s *Server) platform(ctx context.Context) (render.Platform, error) {
 	for i := range list.Items {
 		c, err := doctor.DecodeKubenConfig(&list.Items[i])
 		if err != nil {
-			return render.Platform{}, kerr.Wrap(err, "reading a KubenConfig")
+			return render.Platform{}, kerrors.Wrap(err, "reading a KubenConfig")
 		}
 		configs = append(configs, c)
 	}
@@ -120,11 +120,11 @@ func (s *Server) admit(ctx context.Context, t *store.Tenant, at admissionPlaceme
 	quota := s.deps.Config.Quota
 	orgLimits, err := quota.OrgLimits()
 	if err != nil {
-		return nil, kerr.Wrap(err, "quota")
+		return nil, kerrors.Wrap(err, "quota")
 	}
 	own, err := peak(spec, platform)
 	if err != nil {
-		return nil, kerr.New(kerr.Validation, "%s", err.Error())
+		return nil, kerrors.New(kerrors.Validation, "%s", err.Error())
 	}
 	live, err := t.LiveConfigs(ctx)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *Server) admit(ctx context.Context, t *store.Tenant, at admissionPlaceme
 		}
 	}
 	if limit, ok := quota.OrgApps.Get(); ok && uint64(len(others)) >= limit {
-		return nil, kerr.New(kerr.Conflict, "the organization's quota allows %d apps", limit)
+		return nil, kerrors.New(kerrors.Conflict, "the organization's quota allows %d apps", limit)
 	}
 	inEnvironment, inOrg := own.Peak, own.Peak
 	for _, other := range others {
@@ -156,10 +156,10 @@ func (s *Server) admit(ctx context.Context, t *store.Tenant, at admissionPlaceme
 		}
 	}
 	if err := environmentLimits(at.quota).Admit(inEnvironment); err != nil {
-		return nil, kerr.New(kerr.Conflict, "the environment's quota is exceeded: %s", err.Error())
+		return nil, kerrors.New(kerrors.Conflict, "the environment's quota is exceeded: %s", err.Error())
 	}
 	if err := orgLimits.Admit(inOrg); err != nil {
-		return nil, kerr.New(kerr.Conflict, "the organization's quota is exceeded: %s", err.Error())
+		return nil, kerrors.New(kerrors.Conflict, "the organization's quota is exceeded: %s", err.Error())
 	}
 	return s.schedulable(ctx, t, own)
 }
@@ -184,7 +184,7 @@ func (s *Server) schedulable(ctx context.Context, t *store.Tenant, own render.Ap
 	case capacity.FitsEstimate:
 		return nil, nil
 	case capacity.UnlikelyToSchedule:
-		return nil, kerr.New(kerr.Conflict, "the app would not be scheduled: %s", e.Why)
+		return nil, kerrors.New(kerrors.Conflict, "the app would not be scheduled: %s", e.Why)
 	case capacity.UnknownConstraints:
 		return []string{"scheduling is not estimated: " + e.Why}, nil
 	}
@@ -204,7 +204,7 @@ func (s *Server) scanGate(ctx context.Context, t *store.Tenant, target ids.Targe
 	case scan.Warn:
 		return v.Reasons, nil
 	case scan.Block:
-		return nil, kerr.New(kerr.Conflict, "the environment's vulnerability gate refuses this release: %s",
+		return nil, kerrors.New(kerrors.Conflict, "the environment's vulnerability gate refuses this release: %s",
 			strings.Join(v.Reasons, "; "))
 	}
 	return nil, nil

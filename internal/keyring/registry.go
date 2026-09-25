@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -95,7 +95,7 @@ func (k *Keyring) OpenRegistryLogin(
 	who := Identity{Org: org.String(), Secret: current.Secret.String(), Revision: current.Revision}
 	values, err := k.OpenValues(who, current.Sealed)
 	if err != nil {
-		return opt.None[RegistryLogin](), kerr.New(kerr.Internal, "opening a registry login failed: %s", err.Error())
+		return opt.None[RegistryLogin](), kerrors.New(kerrors.Internal, "opening a registry login failed: %s", err.Error())
 	}
 	login, ok := RegistryLoginFrom(values)
 	if !ok {

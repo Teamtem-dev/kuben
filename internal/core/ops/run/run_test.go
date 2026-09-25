@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/quick"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 )
@@ -30,7 +30,7 @@ func TestPhasesHoldEveryPhaseOnceAndParseInvertsString(t *testing.T) {
 			t.Errorf("%s: got %s, %v", names[i], got, err)
 		}
 	}
-	if _, err := run.ParsePhase("finished"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := run.ParsePhase("finished"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("finished: %v", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestEventsHoldEveryEventOnce(t *testing.T) {
 			t.Errorf("%s: got %s, %v", names[i], got, err)
 		}
 	}
-	if _, err := run.ParseEvent("done"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := run.ParseEvent("done"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("done: %v", err)
 	}
 }

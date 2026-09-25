@@ -8,7 +8,7 @@ import (
 	"context"
 	"math"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -26,7 +26,7 @@ func (s *Server) GetAppMetrics(ctx context.Context, params gen.GetAppMetricsPara
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppRead, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	window := params.Window.Or("1h")
 	now := s.deps.Clock.NowMs()
@@ -43,7 +43,7 @@ func (s *Server) GetAppMetrics(ctx context.Context, params gen.GetAppMetricsPara
 			return nil, err
 		}
 	default:
-		return nil, kerr.New(kerr.Validation, "window must be 1h or 7d, not `%s`", window)
+		return nil, kerrors.New(kerrors.Validation, "window must be 1h or 7d, not `%s`", window)
 	}
 	return &gen.MetricsDto{
 		Window:    window,

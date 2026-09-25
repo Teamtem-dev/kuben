@@ -21,7 +21,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -64,7 +64,7 @@ func ParseSeverity(s string) (Severity, error) {
 	case SeverityUnknown, SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical:
 		return v, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown severity `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown severity `%s`", s)
 }
 
 // Rank is the severity's position in the order unknown < low < medium <
@@ -99,7 +99,7 @@ func (s *Severity) UnmarshalJSON(data []byte) error {
 	}
 	v := Severity(text)
 	if v.Rank() < 0 {
-		return kerr.New(kerr.Validation, "unknown severity `%s`", text)
+		return kerrors.New(kerrors.Validation, "unknown severity `%s`", text)
 	}
 	*s = v
 	return nil
@@ -154,7 +154,7 @@ func ParseStatus(s string) (Status, error) {
 	case StatusOK, StatusUnavailable:
 		return v, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown scan status `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown scan status `%s`", s)
 }
 
 func (s Status) String() string { return string(s) }
@@ -215,7 +215,7 @@ func (r *Report) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if w.Status == "" {
-		return kerr.New(kerr.Validation, "missing field `status`")
+		return kerrors.New(kerrors.Validation, "missing field `status`")
 	}
 	if w.Findings == nil {
 		w.Findings = []string{}
@@ -291,7 +291,7 @@ func ParseGateMode(s string) (GateMode, error) {
 	case ModeOff, ModeWarn, ModeBlock:
 		return v, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown gate mode `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown gate mode `%s`", s)
 }
 
 // Rank is the mode's strictness; -1 for a value that is not a mode.
@@ -369,7 +369,7 @@ func (g *Gate) UnmarshalJSON(data []byte) error {
 		present bool
 	}{{"mode", hasMode}, {"severity", hasSeverity}, {"requireScan", hasRequireScan}, {"maxAgeSecs", hasMaxAge}} {
 		if !field.present {
-			return kerr.New(kerr.Validation, "missing field `%s`", field.name)
+			return kerrors.New(kerrors.Validation, "missing field `%s`", field.name)
 		}
 	}
 	*g = Gate{Mode: mode, Severity: severity, RequireScan: requireScan, MaxAgeSecs: maxAge}

@@ -1,11 +1,11 @@
-// Package domain has domain names and claims (M5.2; plan §14.3). It replaces
+// Package dnsname has domain names and claims (M5.2; plan §14.3). It replaces
 // the Rust module kuben-core/src/domain.rs.
 //
 // A host is compared only in canonical form: lower case, IDNA (punycode),
 // no trailing dot. A verified claim on `example.com` covers the name itself
 // and every name below it, so two organizations' claims must never
 // overlap.
-package domain
+package dnsname
 
 import (
 	"strings"
@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/net/idna"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // ChallengeLabel is the label of the TXT record that proves a claim on a
@@ -54,9 +54,9 @@ func (e *Error) Error() string {
 	return "`" + e.Name + "` is not a claimable domain"
 }
 
-// Unwrap makes the error a validation failure for errors.Is and kerr.CodeOf.
+// Unwrap makes the error a validation failure for errors.Is and kerrors.CodeOf.
 func (e *Error) Unwrap() error {
-	return kerr.New(kerr.Validation, "%s", e.Error())
+	return kerrors.New(kerrors.Validation, "%s", e.Error())
 }
 
 // uts46 is UTS-46 non-transitional processing without STD3 rules, hyphen

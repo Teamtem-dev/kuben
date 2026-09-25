@@ -17,7 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -37,7 +37,7 @@ func (s *Server) ListApps(ctx context.Context, params gen.ListAppsParams) (gen.L
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *Server) CreateApp(ctx context.Context, req *gen.CreateApp, params gen.C
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if err := DNSLabel("name", req.Name, 40); err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (s *Server) GetApp(ctx context.Context, params gen.GetAppParams) (gen.GetAp
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	_, denied := a.Require(perm.SecretRead, app.chain())
 	withValues := denied == nil
@@ -140,18 +140,18 @@ func (s *Server) UpdateApp(ctx context.Context, req *gen.UpdateApp, params gen.U
 		need = perm.AppDeploy
 	}
 	if _, err := a.Require(need, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if app.app.Deleting {
-		return nil, kerr.New(kerr.Conflict, "app `%s` is being deleted", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` is being deleted", params.App)
 	}
 	spec, ok := desiredSpec(app.app)
 	if !ok {
-		return nil, kerr.New(kerr.Conflict, "app `%s` has no configuration yet", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` has no configuration yet", params.App)
 	}
 	before, err := json.Marshal(spec)
 	if err != nil {
-		return nil, kerr.Wrap(err, "an app spec")
+		return nil, kerrors.Wrap(err, "an app spec")
 	}
 	if err := applyUpdate(&spec, req); err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func (s *Server) updateArtifact(ctx context.Context, app appScope, image string,
 	}
 	release, ok := app.app.Release.Get()
 	if !ok {
-		return nil, kerr.New(kerr.Conflict, "app `%s` has no release yet", app.app.Slug)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` has no release yet", app.app.Slug)
 	}
 	return releaseArtifact{id: release}, nil
 }
@@ -218,7 +218,7 @@ func (s *Server) deployChangeFor(
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return gen.AppDto{}, kerr.New(kerr.NotFound, "app `%s`", app.app.Slug)
+		return gen.AppDto{}, kerrors.New(kerrors.NotFound, "app `%s`", app.app.Slug)
 	}
 	if err := t.Commit(ctx); err != nil {
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -238,7 +238,7 @@ func (s *Server) DeleteApp(ctx context.Context, params gen.DeleteAppParams) (gen
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppWrite, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
 	if err != nil {
@@ -250,7 +250,7 @@ func (s *Server) DeleteApp(ctx context.Context, params gen.DeleteAppParams) (gen
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !marked {
-		return nil, kerr.New(kerr.Conflict, "app `%s` is being deleted", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` is being deleted", params.App)
 	}
 	_, actor := a.Actor()
 	subject := store.TargetSubject(app.env.project.project.ID, app.env.env.ID, app.app.Target, params.DeleteVolumes.Or(false))
@@ -275,7 +275,7 @@ func (s *Server) RestartApp(ctx context.Context, params gen.RestartAppParams) (g
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppDeploy, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if app.app.Delivery == store.DeliveryAgent {
 		// No App object to annotate: a run of the same release and
@@ -294,7 +294,7 @@ func (s *Server) RestartApp(ctx context.Context, params gen.RestartAppParams) (g
 	// it.
 	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"annotations": map[string]any{render.RestartedAt: now}}})
 	if err != nil {
-		return nil, kerr.Wrap(err, "a restart patch")
+		return nil, kerrors.Wrap(err, "a restart patch")
 	}
 	gvr := v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AppResource)
 	if _, err := c.Dynamic.Resource(gvr).Namespace(app.app.Namespace).
@@ -319,13 +319,13 @@ func (s *Server) HandOverApp(ctx context.Context, params gen.HandOverAppParams) 
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppDeploy, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if app.app.Delivery == store.DeliveryAgent {
-		return nil, kerr.New(kerr.Conflict, "app `%s` is delivered by its cluster's agent already", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` is delivered by its cluster's agent already", params.App)
 	}
 	if app.app.Deleting {
-		return nil, kerr.New(kerr.Conflict, "app `%s` is being deleted", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` is being deleted", params.App)
 	}
 	if err := s.startRerun(ctx, a, app, store.ReasonHandover, true); err != nil {
 		return nil, err
@@ -355,7 +355,7 @@ func (s *Server) startRerun(ctx context.Context, a access.Access, app appScope, 
 			return err //nolint:wrapcheck // a store error, answered as internal
 		}
 		if !moved {
-			return kerr.New(kerr.Conflict, "the cluster of app `%s` has no linked agent that carries applications", app.app.Slug)
+			return kerrors.New(kerrors.Conflict, "the cluster of app `%s` has no linked agent that carries applications", app.app.Slug)
 		}
 	}
 	started, err := t.StartDeployment(ctx, run, requestAudit(a, "deployment.accepted", "app", app.reference()),
@@ -374,7 +374,7 @@ func rerun(app appScope, a access.Access, reason store.RunReason) (store.StartDe
 	release, hasRelease := app.app.Release.Get()
 	revision, hasRevision := app.app.ConfigRevision.Get()
 	if !hasRelease || !hasRevision {
-		return store.StartDeployment{}, kerr.New(kerr.Conflict, "app `%s` has no release yet", app.app.Slug)
+		return store.StartDeployment{}, kerrors.New(kerrors.Conflict, "app `%s` has no release yet", app.app.Slug)
 	}
 	_, actor := a.Actor()
 	expected := app.app.DesiredGeneration

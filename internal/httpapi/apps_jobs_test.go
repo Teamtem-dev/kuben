@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
@@ -96,8 +96,8 @@ func TestStartManualJob(t *testing.T) {
 
 	// The empty process's CronJob `api-` does not exist: 404.
 	_, err = api.StartManualJob(t.Context(), client, "kb-shop-prod", "api-", 1_757_548_800_000)
-	var ke *kerr.Error
-	if !errors.As(err, &ke) || ke.Code != kerr.NotFound {
+	var ke *kerrors.Error
+	if !errors.As(err, &ke) || ke.Code != kerrors.NotFound {
 		t.Fatalf("expected not found, got %v", err)
 	}
 }

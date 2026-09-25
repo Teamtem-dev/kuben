@@ -9,7 +9,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
 )
@@ -58,7 +58,7 @@ func TestErrorMessagesAreRusts(t *testing.T) {
 		if got := tc.err.Error(); got != tc.want {
 			t.Errorf("got %q, want %q", got, tc.want)
 		}
-		if k := store.Kerr(tc.err); k.Code != kerr.Internal || k.Detail != tc.want {
+		if k := store.Kerr(tc.err); k.Code != kerrors.Internal || k.Detail != tc.want {
 			t.Errorf("kerr of %q: %+v", tc.want, k)
 		}
 	}

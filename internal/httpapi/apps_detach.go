@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -31,7 +31,7 @@ func (s *Server) exportOf(ctx context.Context, app appScope, project, environmen
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.Conflict, "app `%s` has not been delivered yet", app.app.Slug)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` has not been delivered yet", app.app.Slug)
 	}
 	return ExportDocument(ExportSubject{
 		Project: project, Environment: environment, App: app.app.Slug, Namespace: app.app.Namespace,
@@ -51,7 +51,7 @@ func (s *Server) ExportApp(ctx context.Context, params gen.ExportAppParams) (gen
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	doc, err := s.exportOf(ctx, app, params.Project, params.Environment)
 	if err != nil {
@@ -104,14 +104,14 @@ func (s *Server) DetachApp(ctx context.Context, req *gen.DetachRequest, params g
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppWrite, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	reason := strings.TrimSpace(req.Reason)
 	if req.Confirm != params.App {
-		return nil, kerr.New(kerr.Validation, "confirm must repeat the app's name")
+		return nil, kerrors.New(kerrors.Validation, "confirm must repeat the app's name")
 	}
 	if reason == "" || utf8.RuneCountInString(reason) > 1024 {
-		return nil, kerr.New(kerr.Validation, "reason must be 1 to 1024 characters")
+		return nil, kerrors.New(kerrors.Validation, "reason must be 1 to 1024 characters")
 	}
 	export, err := s.exportOf(ctx, app, params.Project, params.Environment)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *Server) recordDetach(
 		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if busy {
-		return store.DetachedApp{}, kerr.New(kerr.Conflict,
+		return store.DetachedApp{}, kerrors.New(kerrors.Conflict,
 			"a run of app `%s` has not finished: wait for it or cancel it first", params.App)
 	}
 	marked, err := t.MarkTargetDeleting(ctx, app.app.Target)
@@ -147,7 +147,7 @@ func (s *Server) recordDetach(
 		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !marked {
-		return store.DetachedApp{}, kerr.New(kerr.Conflict, "app `%s` is being deleted", params.App)
+		return store.DetachedApp{}, kerrors.New(kerrors.Conflict, "app `%s` is being deleted", params.App)
 	}
 	_, actor := a.Actor()
 	project, env := app.env.project.project.ID, app.env.env.ID
@@ -167,7 +167,7 @@ func (s *Server) recordDetach(
 		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return store.DetachedApp{}, kerr.New(kerr.Internal, "the detach record is missing")
+		return store.DetachedApp{}, kerrors.New(kerrors.Internal, "the detach record is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -186,7 +186,7 @@ func (s *Server) ListDetachedApps(ctx context.Context, params gen.ListDetachedAp
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -212,7 +212,7 @@ func detachedIn(ctx context.Context, t *store.Tenant, e envScope, id uuid.UUID) 
 		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found || record.EnvironmentID != e.env.ID.UUID() {
-		return store.DetachedApp{}, kerr.New(kerr.NotFound, "detached app `%s`", id)
+		return store.DetachedApp{}, kerrors.New(kerrors.NotFound, "detached app `%s`", id)
 	}
 	return record, nil
 }
@@ -228,7 +228,7 @@ func (s *Server) GetDetachedApp(ctx context.Context, params gen.GetDetachedAppPa
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	target := ids.From[ids.Target](params.ID)
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
@@ -250,7 +250,7 @@ func (s *Server) GetDetachedApp(ctx context.Context, params gen.GetDetachedAppPa
 		if !isObject {
 			// Rust returned the stored value as it was; only objects are
 			// ever stored.
-			return nil, kerr.New(kerr.Internal, "the export of `%s` is not an object", record.App)
+			return nil, kerrors.New(kerrors.Internal, "the export of `%s` is not an object", record.App)
 		}
 		return withExport(dto, object)
 	}
@@ -269,7 +269,7 @@ func (s *Server) ReleaseDetachedApp(ctx context.Context, params gen.ReleaseDetac
 		return nil, err
 	}
 	if _, err := a.Require(perm.EnvWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	target := ids.From[ids.Target](params.ID)
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
@@ -282,7 +282,7 @@ func (s *Server) ReleaseDetachedApp(ctx context.Context, params gen.ReleaseDetac
 		return nil, err
 	}
 	if record.CompletedAt.IsNone() {
-		return nil, kerr.New(kerr.Conflict, "the detach of `%s` has not finished", record.App)
+		return nil, kerrors.New(kerrors.Conflict, "the detach of `%s` has not finished", record.App)
 	}
 	_, actor := a.Actor()
 	released, err := t.ReleaseDetached(ctx, target, actor)
@@ -290,7 +290,7 @@ func (s *Server) ReleaseDetachedApp(ctx context.Context, params gen.ReleaseDetac
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !released {
-		return nil, kerr.New(kerr.Conflict, "`%s` was released already", record.App)
+		return nil, kerrors.New(kerrors.Conflict, "`%s` was released already", record.App)
 	}
 	ref := params.Project + "/" + params.Environment + "/" + record.App
 	if err := t.AppendAudit(ctx, requestAudit(a, "app.detached.released", "app", ref)); err != nil {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
@@ -24,7 +24,7 @@ import (
 // ported yet (slice S1).
 
 func scopeNotFound(kind, name string) error {
-	return kerr.New(kerr.NotFound, "%s `%s`", kind, name)
+	return kerrors.New(kerrors.NotFound, "%s `%s`", kind, name)
 }
 
 // EnvironmentShortName is the environment name used in URLs and the UI:

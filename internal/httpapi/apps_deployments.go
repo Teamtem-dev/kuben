@@ -20,7 +20,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -79,7 +79,7 @@ func idempotencyKey(header gen.OptNilString, actor string) (opt.Val[store.Idempo
 	key := trimSpace(value)
 	visible := !strings.ContainsFunc(key, func(r rune) bool { return r <= ' ' || r >= 0x7f })
 	if key == "" || len(key) > 200 || !visible {
-		return opt.None[store.IdempotencyKey](), kerr.New(kerr.Validation,
+		return opt.None[store.IdempotencyKey](), kerrors.New(kerrors.Validation,
 			"Idempotency-Key must be 1 to 200 visible ASCII characters")
 	}
 	return opt.Some(store.IdempotencyKey{Actor: actor, Key: key, TTL: receiptTTL}), nil
@@ -90,12 +90,12 @@ func idempotencyKey(header gen.OptNilString, actor string) (opt.Val[store.Idempo
 func pinnedImage(image string) (string, artifact.Digest, error) {
 	i := strings.LastIndexByte(image, '@')
 	if i <= 0 {
-		return "", artifact.Digest{}, kerr.New(kerr.Validation,
+		return "", artifact.Digest{}, kerrors.New(kerrors.Validation,
 			"`%s` is not pinned by digest: use repository@sha256:…", image)
 	}
 	digest, err := artifact.ParseDigest(image[i+1:])
 	if err != nil {
-		return "", artifact.Digest{}, kerr.New(kerr.Validation, "%s", err.Error())
+		return "", artifact.Digest{}, kerrors.New(kerrors.Validation, "%s", err.Error())
 	}
 	return image[:i], digest, nil
 }
@@ -112,7 +112,7 @@ type deploymentRequest struct {
 
 func readDeploymentRequest(req *gen.StartDeploymentRequest) (deploymentRequest, error) {
 	if req.ExpectedGeneration < 0 {
-		return deploymentRequest{}, kerr.New(kerr.Validation,
+		return deploymentRequest{}, kerrors.New(kerrors.Validation,
 			"expected_generation: invalid value: integer `%d`, expected u64", req.ExpectedGeneration)
 	}
 	out := deploymentRequest{
@@ -127,11 +127,11 @@ func readDeploymentRequest(req *gen.StartDeploymentRequest) (deploymentRequest, 
 	if config, ok := req.Config.Get(); ok {
 		data, err := json.Marshal(config)
 		if err != nil {
-			return deploymentRequest{}, kerr.Wrap(err, "a deployment's config")
+			return deploymentRequest{}, kerrors.Wrap(err, "a deployment's config")
 		}
 		value, err := wire.DecodeAny(data)
 		if err != nil {
-			return deploymentRequest{}, kerr.Wrap(err, "a deployment's config")
+			return deploymentRequest{}, kerrors.Wrap(err, "a deployment's config")
 		}
 		out.config = opt.Some(value)
 	}
@@ -159,7 +159,7 @@ func (r deploymentRequest) inputHash(project, environment, app string) ([]byte, 
 		"project": project, "environment": environment, "app": app, "request": request,
 	})
 	if err != nil {
-		return nil, kerr.Wrap(err, "a deployment request")
+		return nil, kerrors.Wrap(err, "a deployment request")
 	}
 	sum := sha256.Sum256([]byte(text))
 	return sum[:], nil
@@ -183,7 +183,7 @@ func (s *Server) StartDeployment(
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppDeploy, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	actorKind, actor := a.Actor()
 	key, err := idempotencyKey(params.IdempotencyKey, actor)
@@ -230,7 +230,7 @@ func (s *Server) startRun(
 		// Without a new configuration the resources do not change.
 		spec, ok := specOf(opt.Some(config), opt.Some(anyImage))
 		if !ok {
-			return store.RunSummary{}, nil, kerr.New(kerr.Validation, "`config` is not an app configuration")
+			return store.RunSummary{}, nil, kerrors.New(kerrors.Validation, "`config` is not an app configuration")
 		}
 		admitted, err := s.admit(ctx, t, admissionPlacement{environment: app.env.env.ID, quota: app.env.env.Quota, target: app.app.Target}, &spec)
 		if err != nil {
@@ -259,7 +259,7 @@ func (s *Server) startRun(
 		return store.RunSummary{}, nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return store.RunSummary{}, nil, kerr.New(kerr.NotFound, "app `%s`", app.app.Slug)
+		return store.RunSummary{}, nil, kerrors.New(kerrors.NotFound, "app `%s`", app.app.Slug)
 	}
 	started, err := t.StartDeployment(ctx, store.StartDeployment{
 		Project: app.env.project.project.ID, Target: app.app.Target, Release: release, ConfigRevision: revision,
@@ -283,7 +283,7 @@ func (s *Server) acceptedRun(ctx context.Context, t *store.Tenant, app appScope,
 	case store.StartedAccepted:
 		summary, found, err := t.RunOfTarget(ctx, app.app.Target, st.Run)
 		if err != nil || !found {
-			return store.RunSummary{}, orConflict(err, kerr.Wrap(nil, "the accepted run is missing"))
+			return store.RunSummary{}, orConflict(err, kerrors.Wrap(nil, "the accepted run is missing"))
 		}
 		if err := t.Commit(ctx); err != nil {
 			return store.RunSummary{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -292,13 +292,13 @@ func (s *Server) acceptedRun(ctx context.Context, t *store.Tenant, app appScope,
 	case store.StartedReplayed:
 		summary, found, err := t.RunOfOperation(ctx, st.Operation)
 		if err != nil || !found {
-			return store.RunSummary{}, orConflict(err, kerr.Wrap(nil, "the replayed run is missing"))
+			return store.RunSummary{}, orConflict(err, kerrors.Wrap(nil, "the replayed run is missing"))
 		}
 		return summary, nil
 	case store.StartedKeyReused:
-		return store.RunSummary{}, kerr.New(kerr.Conflict, "this Idempotency-Key was used for a different request")
+		return store.RunSummary{}, kerrors.New(kerrors.Conflict, "this Idempotency-Key was used for a different request")
 	case store.StartedNotFound:
-		return store.RunSummary{}, kerr.New(kerr.NotFound, "that release or configuration of this app")
+		return store.RunSummary{}, kerrors.New(kerrors.NotFound, "that release or configuration of this app")
 	case store.StartedRejected, store.StartedSecretRevoked, store.StartedVulnerabilityBlocked,
 		store.StartedFrozen, store.StartedUntrusted:
 	}
@@ -327,7 +327,7 @@ func (s *Server) releaseFor(ctx context.Context, t *store.Tenant, app appScope, 
 	case !hasImage && hasRelease:
 		return ids.From[ids.Release](release), nil
 	}
-	return ids.ReleaseID{}, kerr.New(kerr.Validation, "give exactly one of `image` and `release`")
+	return ids.ReleaseID{}, kerrors.New(kerrors.Validation, "give exactly one of `image` and `release`")
 }
 
 // configRevisionFor is the configuration to deploy: a new revision from
@@ -336,14 +336,14 @@ func configRevisionFor(ctx context.Context, t *store.Tenant, app appScope, confi
 	if c, ok := config.Get(); ok {
 		revision, found, err := t.CreateConfigRevision(ctx, app.env.project.project.ID, app.app.Target, c, actor)
 		if err != nil || !found {
-			return ids.ConfigRevisionID{}, orConflict(err, kerr.New(kerr.NotFound, "the app"))
+			return ids.ConfigRevisionID{}, orConflict(err, kerrors.New(kerrors.NotFound, "the app"))
 		}
 		return revision.ID, nil
 	}
 	revision, found, err := t.LatestConfigRevision(ctx, app.app.Target)
 	if err != nil || !found {
 		return ids.ConfigRevisionID{}, orConflict(err,
-			kerr.New(kerr.Validation, "the app has no configuration yet: send `config`"))
+			kerrors.New(kerrors.Validation, "the app has no configuration yet: send `config`"))
 	}
 	return revision, nil
 }
@@ -360,7 +360,7 @@ func (s *Server) ListDeployments(ctx context.Context, params gen.ListDeployments
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	runs, phases, err := s.runsOf(ctx, app, min(max(params.Limit.Or(10), 1), 50))
 	if err != nil {
@@ -414,7 +414,7 @@ func (s *Server) GetDeployment(ctx context.Context, params gen.GetDeploymentPara
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
 	if err != nil {
@@ -426,7 +426,7 @@ func (s *Server) GetDeployment(ctx context.Context, params gen.GetDeploymentPara
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "deployment `%s`", params.Run)
+		return nil, kerrors.New(kerrors.NotFound, "deployment `%s`", params.Run)
 	}
 	dto := deploymentDto(summary)
 	return &dto, nil

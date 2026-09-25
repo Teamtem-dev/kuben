@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -87,7 +87,7 @@ func TestPreviewSettingsAreBounded(t *testing.T) {
 			Enabled: true, SourceEnvironment: "prod", TtlHours: c.ttl, MaxActive: c.maxActive,
 		})
 		if c.wantErr != "" {
-			if err == nil || err.Error() != c.wantErr || !errors.Is(err, kerr.ErrValidation) {
+			if err == nil || err.Error() != c.wantErr || !errors.Is(err, kerrors.ErrValidation) {
 				t.Errorf("%s: %v, want %q", c.name, err, c.wantErr)
 			}
 			continue

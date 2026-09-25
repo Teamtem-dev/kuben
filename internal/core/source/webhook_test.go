@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
 )
 
@@ -196,7 +196,7 @@ func TestMalformedPayloadsAreRefused(t *testing.T) {
 	for _, c := range cases {
 		got, err := source.ParseGitHub(c.event, c.body)
 		var inv *source.Invalid
-		if !errors.As(err, &inv) || inv.Kind != c.kind || got != nil || !errors.Is(err, kerr.ErrValidation) {
+		if !errors.As(err, &inv) || inv.Kind != c.kind || got != nil || !errors.Is(err, kerrors.ErrValidation) {
 			t.Errorf("%s: got %v, %v", c.name, got, err)
 			continue
 		}
@@ -336,7 +336,7 @@ func TestActionsParse(t *testing.T) {
 			t.Errorf("%q: got %q, %v", a, got, err)
 		}
 	}
-	if _, err := source.ParsePullAction("synchronize"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := source.ParsePullAction("synchronize"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("got %v", err)
 	}
 	all := []source.InstallationAction{
@@ -347,7 +347,7 @@ func TestActionsParse(t *testing.T) {
 			t.Errorf("%q: got %q, %v", a, got, err)
 		}
 	}
-	if _, err := source.ParseInstallationAction("suspend"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := source.ParseInstallationAction("suspend"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("got %v", err)
 	}
 }

@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	coresso "github.com/Teamtem-dev/kuben/internal/core/sso"
@@ -57,7 +57,7 @@ func ssoStateRemoval(cfg config.Config) *http.Cookie {
 func (s *Server) ssoClient() (*sso.Client, error) {
 	c, ok := s.deps.SSO.Get()
 	if !ok {
-		return nil, kerr.New(kerr.NotFound, "single sign-on is not configured")
+		return nil, kerrors.New(kerrors.NotFound, "single sign-on is not configured")
 	}
 	return c, nil
 }
@@ -87,7 +87,7 @@ func (s *Server) StartSso(ctx context.Context, params gen.StartSsoParams) (gen.S
 	state, nonce, verifier := sso.RandomValue(), sso.RandomValue(), sso.RandomValue()
 	url, err := c.AuthorizeURL(ctx, state, nonce, verifier)
 	if err != nil {
-		return nil, kerr.New(kerr.Unavailable, "%s", err.Error())
+		return nil, kerrors.New(kerrors.Unavailable, "%s", err.Error())
 	}
 	pending := store.PendingSSO{Nonce: nonce, Verifier: verifier, ReturnTo: coresso.SafeReturnTo(params.ReturnTo.Or(""))}
 	expires := s.deps.Clock.NowMs() + coresso.LoginWindowSecs*1000

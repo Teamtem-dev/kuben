@@ -18,7 +18,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -33,10 +33,10 @@ import (
 func refusalErr(e policy.ApprovalError) error {
 	switch e {
 	case policy.ErrSelfApproval:
-		return kerr.ErrForbidden
+		return kerrors.ErrForbidden
 	case policy.ErrNotAwaiting, policy.ErrExpired, policy.ErrAlreadyDecided, policy.ErrStalePlan:
 	}
-	return kerr.New(kerr.Conflict, "%s", e)
+	return kerrors.New(kerrors.Conflict, "%s", e)
 }
 
 func eligible(acc access.Access, a store.RunApproval, mayApprove bool) bool {
@@ -101,7 +101,7 @@ func (s *Server) GetDeploymentApproval(ctx context.Context, params gen.GetDeploy
 	}
 	chain := a.chain()
 	if _, err := acc.Require(perm.AppRead, chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 
 	tenant, err := s.deps.Store.Tenant(ctx, a.env.project.org)
@@ -150,7 +150,7 @@ func (s *Server) decideDeployment(
 		return nil, err
 	}
 	if err := acc.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	a, err := s.findApp(ctx, acc, project, environment, app)
 	if err != nil {
@@ -158,7 +158,7 @@ func (s *Server) decideDeployment(
 	}
 	chain := a.chain()
 	if _, err := acc.Require(perm.ReleaseApprove, chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 
 	comment, err := decisionComment(req.Comment)
@@ -169,7 +169,7 @@ func (s *Server) decideDeployment(
 	// An empty hash is a hash: it is refused as a changed plan, not here.
 	planHash, ok := policy.Unhex(strings.TrimSpace(req.PlanHash))
 	if !ok {
-		return nil, kerr.New(kerr.Validation, "`planHash` is not a hex plan hash")
+		return nil, kerrors.New(kerrors.Validation, "`planHash` is not a hex plan hash")
 	}
 
 	tenant, err := s.deps.Store.Tenant(ctx, a.env.project.org)
@@ -197,7 +197,7 @@ func (s *Server) decideDeployment(
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.Internal, "the decided run is missing")
+		return nil, kerrors.New(kerrors.Internal, "the decided run is missing")
 	}
 	if err := tenant.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -220,10 +220,10 @@ func mayDecide(ctx context.Context, tenant *store.Tenant, target ids.TargetID, a
 		return err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !polFound {
-		return kerr.New(kerr.Conflict, "the environment requires no approvals")
+		return kerrors.New(kerrors.Conflict, "the environment requires no approvals")
 	}
 	if !polRev.Policy.MayApprove(authz.EffectiveRole(acc.Subject, chain)) {
-		return kerr.ErrForbidden
+		return kerrors.ErrForbidden
 	}
 	return nil
 }
@@ -236,7 +236,7 @@ func decisionComment(raw gen.OptNilString) (opt.Val[string], error) {
 		return opt.None[string](), nil
 	}
 	if utf8.RuneCountInString(c) > policy.MaxCommentChars {
-		return opt.None[string](), kerr.New(kerr.Validation, "a comment has at most %d characters", policy.MaxCommentChars)
+		return opt.None[string](), kerrors.New(kerrors.Validation, "a comment has at most %d characters", policy.MaxCommentChars)
 	}
 	return opt.Some(c), nil
 }

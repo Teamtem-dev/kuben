@@ -7,7 +7,7 @@ import (
 	"context"
 	"net/netip"
 
-	domain "github.com/Teamtem-dev/kuben/internal/core/dnsname"
+	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -219,7 +219,7 @@ func (s *Server) SyncAppDns(ctx context.Context, req *gen.SyncDns, params gen.Sy
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppWrite, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	org := a.env.project.org
 	hosts := appDomainHosts(a.app)
@@ -241,7 +241,7 @@ func (s *Server) SyncAppDns(ctx context.Context, req *gen.SyncDns, params gen.Sy
 	pass := dnsPass{t: t, provider: provider, target: a.app.Target, tag: "kuben:" + org.String()}
 	out := []gen.DnsChangeDto{}
 	for _, name := range hosts {
-		host, err := domain.Canonical(name)
+		host, err := dnsname.Canonical(name)
 		if err != nil {
 			continue
 		}

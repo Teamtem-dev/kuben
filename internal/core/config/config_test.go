@@ -9,7 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 )
@@ -113,7 +113,7 @@ func TestSSOMappingsBecomeAPolicy(t *testing.T) {
 		t.Errorf("got %+v, %v", policy, err)
 	}
 	s.DefaultRole = opt.Some("root")
-	if _, err := s.Policy(); kerr.CodeOf(err) != kerr.Validation {
+	if _, err := s.Policy(); kerrors.CodeOf(err) != kerrors.Validation {
 		t.Errorf("got %v", err)
 	}
 	s.DefaultRole = opt.None[string]()
@@ -195,7 +195,7 @@ func TestOrganizationQuotasAreQuantities(t *testing.T) {
 	}
 	quota.OrgMemory = opt.Some("lots")
 	_, err = quota.OrgLimits()
-	if invalid, ok := kerrOf(err); !ok || invalid.Code != kerr.Validation ||
+	if invalid, ok := kerrOf(err); !ok || invalid.Code != kerrors.Validation ||
 		invalid.Detail != "quota.org_memory `lots` is not a quantity" {
 		t.Errorf("got %v", err)
 	}

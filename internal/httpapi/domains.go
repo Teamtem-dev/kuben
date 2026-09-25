@@ -23,9 +23,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
-	domain "github.com/Teamtem-dev/kuben/internal/core/dnsname"
+	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -50,7 +50,7 @@ func claimDto(c store.DomainClaim) gen.ClaimDto {
 		ID:             c.ID,
 		Domain:         c.Domain,
 		Status:         c.Status,
-		ChallengeName:  domain.ChallengeName(c.Domain),
+		ChallengeName:  dnsname.ChallengeName(c.Domain),
 		ChallengeValue: c.Token,
 		Method:         optNilString(c.Method),
 		CreatedBy:      c.CreatedBy,
@@ -84,7 +84,7 @@ func (s *Server) orgAccess(ctx context.Context, p perm.Perm, forbidToken bool) (
 	}
 	if forbidToken {
 		if err := a.ForbidToken(); err != nil {
-			return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+			return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 		}
 	}
 	org, err := orgOf(a)
@@ -92,7 +92,7 @@ func (s *Server) orgAccess(ctx context.Context, p perm.Perm, forbidToken bool) (
 		return access.Access{}, ids.OrgID{}, err
 	}
 	if _, err := a.Require(p, authz.OrgChain(org)); err != nil {
-		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 	}
 	return a, org, nil
 }
@@ -125,14 +125,14 @@ func (s *Server) CreateDomainClaim(ctx context.Context, req *gen.CreateClaim) (g
 	if err != nil {
 		return nil, err
 	}
-	name, err := domain.Canonical(req.Domain)
+	name, err := dnsname.Canonical(req.Domain)
 	if err != nil {
-		return nil, kerr.New(kerr.Validation, "%s", err.Error())
+		return nil, kerrors.New(kerrors.Validation, "%s", err.Error())
 	}
 	if _, owner, found, err := s.deps.Store.DomainOwner(ctx, name); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	} else if found && owner != org {
-		return nil, kerr.New(kerr.Conflict, "`%s` is claimed by another organization", name)
+		return nil, kerrors.New(kerrors.Conflict, "`%s` is claimed by another organization", name)
 	}
 	id := uuid.Must(uuid.NewV7())
 	token := "kuben-" + randomToken(32)
@@ -153,7 +153,7 @@ func (s *Server) CreateDomainClaim(ctx context.Context, req *gen.CreateClaim) (g
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.Internal, "the new claim is missing")
+		return nil, kerrors.New(kerrors.Internal, "the new claim is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -172,7 +172,7 @@ type openedProvider struct {
 
 // provider is the provider name of org, opened with the keyring.
 func (s *Server) provider(ctx context.Context, t *store.Tenant, org ids.OrgID, name string) (openedProvider, error) {
-	notFound := kerr.New(kerr.NotFound, "DNS provider `%s`", name)
+	notFound := kerrors.New(kerrors.NotFound, "DNS provider `%s`", name)
 	all, err := t.DNSProviders(ctx)
 	if err != nil {
 		return openedProvider{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -195,14 +195,14 @@ func (s *Server) provider(ctx context.Context, t *store.Tenant, org ids.OrgID, n
 	}
 	token, err := notify.OpenSecret(keyring, org, id, sealed)
 	if err != nil {
-		return openedProvider{}, kerr.New(kerr.Internal, "%s", err.Error())
+		return openedProvider{}, kerrors.New(kerrors.Internal, "%s", err.Error())
 	}
 	if !utf8.Valid(token) {
-		return openedProvider{}, kerr.New(kerr.Internal, "a provider token is not text")
+		return openedProvider{}, kerrors.New(kerrors.Internal, "a provider token is not text")
 	}
 	api, ok := s.deps.DNS.Provider(kind, string(token))
 	if !ok {
-		return openedProvider{}, kerr.New(kerr.Internal, "unknown DNS provider kind `%s`", kind)
+		return openedProvider{}, kerrors.New(kerrors.Internal, "unknown DNS provider kind `%s`", kind)
 	}
 	return openedProvider{id: id, kind: kind, api: api}, nil
 }
@@ -226,12 +226,12 @@ func (s *Server) prove(ctx context.Context, t *store.Tenant, org ids.OrgID, clai
 		switch {
 		case err != nil:
 			return proof{}, err.Error(), false, nil //nolint:nilerr // a failed lookup is why the claim stays pending
-		case found && domain.Covers(zone.Name, claim.Domain):
+		case found && dnsname.Covers(zone.Name, claim.Domain):
 			return proof{method: p.kind, provider: opt.Some(p.id)}, "", true, nil
 		}
 		return proof{}, "the `" + name + "` account holds no zone for " + claim.Domain, false, nil
 	}
-	challenge := domain.ChallengeName(claim.Domain)
+	challenge := dnsname.ChallengeName(claim.Domain)
 	values, err := s.deps.DNS.TXT(ctx, challenge)
 	switch {
 	case err != nil:
@@ -261,7 +261,7 @@ func (s *Server) VerifyDomainClaim(ctx context.Context, req *gen.VerifyClaim, pa
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "claim `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "claim `%s`", params.ID)
 	}
 	if claim.Status != "pending" {
 		dto := claimDto(claim)
@@ -287,7 +287,7 @@ func (s *Server) VerifyDomainClaim(ctx context.Context, req *gen.VerifyClaim, pa
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.Internal, "the claim is missing")
+		return nil, kerrors.New(kerrors.Internal, "the claim is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -307,10 +307,10 @@ func (s *Server) markVerified(ctx context.Context, t *store.Tenant, a access.Acc
 	case store.ClaimVerified, store.ClaimNotPending:
 		return t.AppendAudit(ctx, requestAudit(a, "domain.verified", "domain", claim.Domain)) //nolint:wrapcheck // a store error, answered as internal
 	case store.ClaimTaken:
-		return kerr.New(kerr.Conflict, "`%s` is verified by another organization", v.Domain)
+		return kerrors.New(kerrors.Conflict, "`%s` is verified by another organization", v.Domain)
 	case nil:
 	}
-	return kerr.New(kerr.Internal, "no verification outcome")
+	return kerrors.New(kerrors.Internal, "no verification outcome")
 }
 
 // RevokeDomainClaim revokes a claim: its apps keep their domains, but
@@ -331,14 +331,14 @@ func (s *Server) RevokeDomainClaim(ctx context.Context, params gen.RevokeDomainC
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "claim `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "claim `%s`", params.ID)
 	}
 	revoked, err := t.RevokeClaim(ctx, params.ID, actor)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !revoked {
-		return nil, kerr.New(kerr.NotFound, "open claim `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "open claim `%s`", params.ID)
 	}
 	if err := t.AppendAudit(ctx, requestAudit(a, "domain.revoked", "domain", claim.Domain)); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -376,7 +376,7 @@ func (s *Server) ListDnsProviders(ctx context.Context) ([]gen.DnsProviderDto, er
 func (s *Server) checkProviderToken(ctx context.Context, kind, token string) error {
 	api, ok := s.deps.DNS.Provider(kind, token)
 	if !ok {
-		return kerr.New(kerr.Validation, "unknown DNS provider kind `%s`", kind)
+		return kerrors.New(kerrors.Validation, "unknown DNS provider kind `%s`", kind)
 	}
 	err := api.Verify(ctx)
 	var dnsErr dns.Error
@@ -384,9 +384,9 @@ func (s *Server) checkProviderToken(ctx context.Context, kind, token string) err
 	case err == nil:
 		return nil
 	case errors.As(err, &dnsErr) && dnsErr.Kind == dns.Unavailable:
-		return kerr.New(kerr.Unavailable, "%s", dnsErr.Detail)
+		return kerrors.New(kerrors.Unavailable, "%s", dnsErr.Detail)
 	}
-	return kerr.New(kerr.Validation, "%s", err.Error())
+	return kerrors.New(kerrors.Validation, "%s", err.Error())
 }
 
 // CreateDnsProvider adds a DNS provider account; its token is checked
@@ -401,7 +401,7 @@ func (s *Server) CreateDnsProvider(ctx context.Context, req *gen.CreateDnsProvid
 	}
 	token := strings.TrimSpace(req.Token)
 	if token == "" || len(req.Token) > maxProviderToken {
-		return nil, kerr.New(kerr.Validation, "token must be 1 to %d characters", maxProviderToken)
+		return nil, kerrors.New(kerrors.Validation, "token must be 1 to %d characters", maxProviderToken)
 	}
 	if err := s.checkProviderToken(ctx, req.Kind, token); err != nil {
 		return nil, err
@@ -413,7 +413,7 @@ func (s *Server) CreateDnsProvider(ctx context.Context, req *gen.CreateDnsProvid
 	id := uuid.Must(uuid.NewV7())
 	sealed, err := notify.SealSecret(keyring, org, id, []byte(token))
 	if err != nil {
-		return nil, kerr.New(kerr.Internal, "%s", err.Error())
+		return nil, kerrors.New(kerrors.Internal, "%s", err.Error())
 	}
 	_, actor := a.Actor()
 	t, err := s.deps.Store.Tenant(ctx, org)
@@ -452,7 +452,7 @@ func (s *Server) DeleteDnsProvider(ctx context.Context, params gen.DeleteDnsProv
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !deleted {
-		return nil, kerr.New(kerr.NotFound, "DNS provider `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "DNS provider `%s`", params.ID)
 	}
 	if err := t.AppendAudit(ctx, requestAudit(a, "dns.provider.deleted", "dns-provider", params.ID.String())); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal

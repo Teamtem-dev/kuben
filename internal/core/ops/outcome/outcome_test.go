@@ -7,7 +7,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/outcome"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
@@ -321,7 +321,7 @@ func TestFailuresKeepTheirCodesAndExplainThemselves(t *testing.T) {
 			t.Errorf("%s: retryable", code)
 		}
 	}
-	if _, err := outcome.ParseBuildFailure("outOfMemory"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := outcome.ParseBuildFailure("outOfMemory"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("got %v", err)
 	}
 	var f outcome.BuildFailure

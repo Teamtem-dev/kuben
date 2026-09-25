@@ -9,7 +9,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	bundle "github.com/Teamtem-dev/kuben/internal/bundlelock"
-	support "github.com/Teamtem-dev/kuben/internal/core/compat"
+	"github.com/Teamtem-dev/kuben/internal/core/compat"
 )
 
 // root is the repository root, relative to this package's directory.
@@ -37,19 +37,19 @@ func TestTheEmbeddedLockIsTheRepositorysLock(t *testing.T) {
 
 func TestWhatAReleaseInstallsIsInsideTheSupportEnvelope(t *testing.T) {
 	b := get(t)
-	fit := func(r support.VersionRange, version string) {
-		minor, ok := support.ParseMinor(version)
+	fit := func(r compat.VersionRange, version string) {
+		minor, ok := compat.ParseMinor(version)
 		if !ok {
 			t.Fatalf("%s does not parse", version)
 		}
-		if got := r.Fit(minor); got != support.Supported {
+		if got := r.Fit(minor); got != compat.Supported {
 			t.Errorf("%s %s: %s", r.Name, version, got)
 		}
 	}
-	fit(support.Kubernetes(), b.K3s.Version)
-	fit(support.GatewayAPI(), b.GatewayAPI.Version)
-	fit(support.CertManager(), b.CertManager.Version)
-	fit(support.PostgreSQL(), b.Postgresql.Tag)
+	fit(compat.Kubernetes(), b.K3s.Version)
+	fit(compat.GatewayAPI(), b.GatewayAPI.Version)
+	fit(compat.CertManager(), b.CertManager.Version)
+	fit(compat.PostgreSQL(), b.Postgresql.Tag)
 }
 
 func isSHA256(v string) bool {

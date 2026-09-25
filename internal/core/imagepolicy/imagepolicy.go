@@ -22,7 +22,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -90,9 +90,9 @@ func (e *PatternError) Error() string {
 	return "`" + e.Text + "` is not a valid tag or tag glob"
 }
 
-// Unwrap makes the error a validation failure for errors.Is and kerr.CodeOf.
+// Unwrap makes the error a validation failure for errors.Is and kerrors.CodeOf.
 func (e *PatternError) Unwrap() error {
-	return kerr.New(kerr.Validation, "%s", e.Error())
+	return kerrors.New(kerrors.Validation, "%s", e.Error())
 }
 
 func validTag(tag string, glob bool) bool {

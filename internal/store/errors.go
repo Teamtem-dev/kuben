@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Error is a store failure: the variants of the Rust StoreError, with its
@@ -111,6 +111,6 @@ func IsUniqueViolation(err error) bool {
 // Kerr is the domain error a store failure becomes at the API: always
 // internal, with the store's message as the detail (Rust's
 // `From<StoreError> for kuben_core::Error`).
-func Kerr(err Error) *kerr.Error {
-	return kerr.New(kerr.Internal, "%s", err.Error())
+func Kerr(err Error) *kerrors.Error {
+	return kerrors.New(kerrors.Internal, "%s", err.Error())
 }

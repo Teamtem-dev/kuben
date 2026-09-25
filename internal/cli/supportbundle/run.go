@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
-	coresupport "github.com/Teamtem-dev/kuben/internal/core/compat"
+	"github.com/Teamtem-dev/kuben/internal/core/compat"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
@@ -63,7 +63,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options, env Env) error {
 			"generated_at":     c.NowMs(),
 			"in_cluster":       config.InCluster(),
 			"format":           1,
-			"support_envelope": coresupport.Envelope(),
+			"support_envelope": compat.Envelope(),
 		},
 		"config": AllowedConfig(cfg),
 		"doctor": doctorSection(ctx, env.ConfigPath),

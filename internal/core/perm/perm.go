@@ -4,7 +4,7 @@ package perm
 import (
 	"slices"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Perm is a fine-grained permission. Every mutating or streaming API
@@ -61,7 +61,7 @@ func ParseRole(s string) (Role, error) {
 	case Viewer, Developer, Admin, Owner:
 		return r, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown role `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown role `%s`", s)
 }
 
 // Perms are the permissions the role grants; nil for an unknown role.

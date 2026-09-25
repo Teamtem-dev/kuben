@@ -23,7 +23,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ci"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -87,7 +87,7 @@ func trustPolicy(req *gen.CreateCiPolicy) (ci.TrustPolicy, error) {
 	}
 	role, err := perm.ParseRole(req.Role.Or(string(perm.Developer)))
 	if err != nil {
-		return ci.TrustPolicy{}, err //nolint:wrapcheck // a kerr already
+		return ci.TrustPolicy{}, err //nolint:wrapcheck // a kerrors already
 	}
 	ttl := ci.DefaultCITokenTTLSecs
 	if v, ok := req.TokenTtlSecs.Get(); ok {
@@ -103,7 +103,7 @@ func trustPolicy(req *gen.CreateCiPolicy) (ci.TrustPolicy, error) {
 		TokenTTLSecs:      ttl,
 	}
 	if err := p.Validate(); err != nil {
-		return ci.TrustPolicy{}, kerr.New(kerr.Validation, "%s", err.Error())
+		return ci.TrustPolicy{}, kerrors.New(kerrors.Validation, "%s", err.Error())
 	}
 	return p, nil
 }
@@ -117,7 +117,7 @@ func (s *Server) ciAdmin(ctx context.Context, forbidToken bool) (access.Access, 
 	}
 	if forbidToken {
 		if err := a.ForbidToken(); err != nil {
-			return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+			return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 		}
 	}
 	org, err := orgOf(a)
@@ -125,7 +125,7 @@ func (s *Server) ciAdmin(ctx context.Context, forbidToken bool) (access.Access, 
 		return access.Access{}, ids.OrgID{}, err
 	}
 	if _, err := a.Require(perm.OrgAdmin, authz.OrgChain(org)); err != nil {
-		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 	}
 	return a, org, nil
 }
@@ -157,7 +157,7 @@ func (s *Server) CreateCiTrustPolicy(ctx context.Context, req *gen.CreateCiPolic
 	}
 	name := strings.TrimSpace(req.Name)
 	if !ValidTokenName(name) {
-		return nil, kerr.New(kerr.Validation, "name must be 1–64 printable characters")
+		return nil, kerrors.New(kerrors.Validation, "name must be 1–64 printable characters")
 	}
 	policy, err := trustPolicy(req)
 	if err != nil {
@@ -165,7 +165,7 @@ func (s *Server) CreateCiTrustPolicy(ctx context.Context, req *gen.CreateCiPolic
 	}
 	own, ok := a.OrgRole(org).Get()
 	if !ok || policy.Role.Rank() > own.Rank() {
-		return nil, kerr.ErrForbidden
+		return nil, kerrors.ErrForbidden
 	}
 	n := store.NewCIPolicy{
 		Org:        org,
@@ -206,7 +206,7 @@ func (s *Server) RevokeCiTrustPolicy(ctx context.Context, params gen.RevokeCiTru
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !revoked {
-		return nil, kerr.New(kerr.NotFound, "an active trust policy `%s`", params.Policy)
+		return nil, kerrors.New(kerrors.NotFound, "an active trust policy `%s`", params.Policy)
 	}
 	return &gen.RevokeCiTrustPolicyNoContent{}, nil
 }

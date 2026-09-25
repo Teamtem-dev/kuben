@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/notify"
@@ -56,14 +56,14 @@ func (s *Server) CreateWebhook(ctx context.Context, req *gen.CreateEndpoint) (ge
 		return nil, err
 	}
 	if err := a.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	org, err := orgOf(a)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := a.Require(perm.OrgAdmin, authz.OrgChain(org)); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	events, err := checkEndpoint(req)
 	if err != nil {
@@ -71,17 +71,17 @@ func (s *Server) CreateWebhook(ctx context.Context, req *gen.CreateEndpoint) (ge
 	}
 	url := strings.TrimSpace(req.URL)
 	if err := notify.CheckTarget(ctx, url, s.deps.Config.Notify); err != nil {
-		return nil, kerr.New(kerr.Validation, "%s", err.Error())
+		return nil, kerrors.New(kerrors.Validation, "%s", err.Error())
 	}
 	keyring, ok := s.deps.Keyring.Get()
 	if !ok {
-		return nil, kerr.New(kerr.Unavailable, "secret encryption is not configured")
+		return nil, kerrors.New(kerrors.Unavailable, "secret encryption is not configured")
 	}
 	secret := newWebhookSecret()
 	id := uuid.Must(uuid.NewV7())
 	sealed, err := notify.SealSecret(keyring, org, id, []byte(secret))
 	if err != nil {
-		return nil, kerr.New(kerr.Internal, "%s", err.Error())
+		return nil, kerrors.New(kerrors.Internal, "%s", err.Error())
 	}
 	_, actor := a.Actor()
 	name := strings.TrimSpace(req.Name)
@@ -102,7 +102,7 @@ func (s *Server) CreateWebhook(ctx context.Context, req *gen.CreateEndpoint) (ge
 	}
 	i := slices.IndexFunc(found, func(e store.Endpoint) bool { return e.ID == id })
 	if i < 0 {
-		return nil, kerr.New(kerr.Internal, "the new webhook is missing")
+		return nil, kerrors.New(kerrors.Internal, "the new webhook is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -119,7 +119,7 @@ func (s *Server) DisableWebhook(ctx context.Context, params gen.DisableWebhookPa
 		return nil, err
 	}
 	if err := a.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.orgTenant(ctx, a, perm.OrgAdmin)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *Server) DisableWebhook(ctx context.Context, params gen.DisableWebhookPa
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !disabled {
-		return nil, kerr.New(kerr.NotFound, "enabled webhook `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "enabled webhook `%s`", params.ID)
 	}
 	if err := t.AppendAudit(ctx, requestAudit(a, "webhook.disabled", "webhook", params.ID.String())); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -159,7 +159,7 @@ func (s *Server) PingWebhook(ctx context.Context, params gen.PingWebhookParams) 
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !queued {
-		return nil, kerr.New(kerr.NotFound, "enabled webhook `%s`", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "enabled webhook `%s`", params.ID)
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -205,7 +205,7 @@ func (s *Server) RetryWebhookDelivery(ctx context.Context, params gen.RetryWebho
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !retried {
-		return nil, kerr.New(kerr.NotFound, "failed delivery `%s` of an enabled webhook", params.Delivery)
+		return nil, kerrors.New(kerrors.NotFound, "failed delivery `%s` of an enabled webhook", params.Delivery)
 	}
 	if err := t.AppendAudit(ctx, requestAudit(a, "webhook.delivery.retried", "webhook", params.ID.String())); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal

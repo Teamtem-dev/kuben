@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
@@ -93,7 +93,7 @@ func (s *Server) GetAppScans(ctx context.Context, params gen.GetAppScansParams) 
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	release, ok := app.app.Release.Get()
 	if !ok {
@@ -145,9 +145,9 @@ func (s *Server) GetAppSbom(ctx context.Context, params gen.GetAppSbomParams) (g
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
-	missing := kerr.New(kerr.NotFound, "an SBOM of `%s` for app `%s`", params.Digest, params.App)
+	missing := kerrors.New(kerrors.NotFound, "an SBOM of `%s` for app `%s`", params.Digest, params.App)
 	release, ok := app.app.Release.Get()
 	if !ok {
 		return nil, missing

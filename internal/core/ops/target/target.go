@@ -22,7 +22,7 @@ import (
 
 	"github.com/google/uuid"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Generation is the monotonic desired-state counter of one target.
@@ -54,7 +54,7 @@ func ParseDeployPolicy(s string) (DeployPolicy, error) {
 	case Auto, Manual, Pinned:
 		return p, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown deploy policy `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown deploy policy `%s`", s)
 }
 
 func (p DeployPolicy) String() string { return string(p) }

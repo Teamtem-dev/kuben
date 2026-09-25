@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
@@ -17,7 +17,7 @@ func valid(t *testing.T, what string, err error) {
 
 func invalid(t *testing.T, what string, err error) {
 	t.Helper()
-	if kerr.CodeOf(err) != kerr.Validation {
+	if kerrors.CodeOf(err) != kerrors.Validation {
 		t.Errorf("%s: %v", what, err)
 	}
 }

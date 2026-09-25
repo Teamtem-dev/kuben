@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Problem is the Problem Details body. Field order and names match the Rust
@@ -28,23 +28,23 @@ type Problem struct {
 }
 
 // Status is the HTTP status of a code.
-func Status(code kerr.Code) int {
+func Status(code kerrors.Code) int {
 	switch code {
-	case kerr.NotFound:
+	case kerrors.NotFound:
 		return http.StatusNotFound
-	case kerr.Conflict:
+	case kerrors.Conflict:
 		return http.StatusConflict
-	case kerr.Unauthorized:
+	case kerrors.Unauthorized:
 		return http.StatusUnauthorized
-	case kerr.Forbidden, kerr.InsecureTransport:
+	case kerrors.Forbidden, kerrors.InsecureTransport:
 		return http.StatusForbidden
-	case kerr.Validation:
+	case kerrors.Validation:
 		return http.StatusUnprocessableEntity
-	case kerr.Unavailable:
+	case kerrors.Unavailable:
 		return http.StatusServiceUnavailable
-	case kerr.RateLimited:
+	case kerrors.RateLimited:
 		return http.StatusTooManyRequests
-	case kerr.Internal:
+	case kerrors.Internal:
 		return http.StatusInternalServerError
 	}
 	return http.StatusInternalServerError
@@ -53,13 +53,13 @@ func Status(code kerr.Code) int {
 // From is the problem an error answers with. Internal error text never
 // reaches the client; it is logged instead.
 func From(err error) (Problem, uint64) {
-	var e *kerr.Error
+	var e *kerrors.Error
 	if !errors.As(err, &e) || e == nil {
-		e = kerr.Wrap(err, "request failed")
+		e = kerrors.Wrap(err, "request failed")
 	}
 	status := Status(e.Code)
 	p := Problem{Code: string(e.Code), Title: http.StatusText(status), Status: status}
-	if e.Code != kerr.Internal {
+	if e.Code != kerrors.Internal {
 		p.Detail = e.Error()
 	}
 	return p, e.RetryAfterSecs
@@ -71,7 +71,7 @@ func Write(w http.ResponseWriter, logger *slog.Logger, err error) {
 	if p.Status >= 500 && logger != nil {
 		logger.Error("request failed", "error", err)
 	}
-	if p.Code == string(kerr.RateLimited) {
+	if p.Code == string(kerrors.RateLimited) {
 		w.Header().Set("Retry-After", strconv.FormatUint(retryAfter, 10))
 	}
 	WriteProblem(w, p)

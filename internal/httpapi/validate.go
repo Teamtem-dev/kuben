@@ -9,7 +9,7 @@ import (
 	"unicode"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // isLabel reports an RFC 1123 label of at most max bytes: `a-z`, `0-9`,
@@ -30,7 +30,7 @@ func isLabel(value string, max int) bool {
 // DNSLabel checks value as an RFC 1123 label of at most max bytes.
 func DNSLabel(field, value string, max int) error {
 	if !isLabel(value, max) {
-		return kerr.New(kerr.Validation,
+		return kerrors.New(kerrors.Validation,
 			"%s must use a-z, 0-9 and '-', must not start or end with '-', and be at most %d characters", field, max)
 	}
 	return nil
@@ -44,7 +44,7 @@ func Hostname(host string) error {
 		ok = ok && isLabel(ascii.Lower(l), 63)
 	}
 	if !ok {
-		return kerr.New(kerr.Validation, "`%s` is not a valid hostname", host)
+		return kerrors.New(kerrors.Validation, "`%s` is not a valid hostname", host)
 	}
 	return nil
 }
@@ -66,7 +66,7 @@ func EnvVarName(name string) error {
 		}
 	}
 	if !ok {
-		return kerr.New(kerr.Validation, "`%s` is not a valid environment variable name", name)
+		return kerrors.New(kerrors.Validation, "`%s` is not a valid environment variable name", name)
 	}
 	return nil
 }
@@ -78,7 +78,7 @@ func Image(image string) error {
 	ok := image != "" && len(image) <= 512 && !strings.HasPrefix(image, "-") &&
 		!strings.ContainsFunc(image, func(r rune) bool { return r <= ' ' || r >= 0x7f })
 	if !ok {
-		return kerr.New(kerr.Validation, "image must be a container image reference, e.g. nginx:1.27")
+		return kerrors.New(kerrors.Validation, "image must be a container image reference, e.g. nginx:1.27")
 	}
 	return nil
 }
@@ -88,7 +88,7 @@ func SecretKey(key string) error {
 	ok := key != "" && len(key) <= 253 &&
 		!strings.ContainsFunc(key, func(r rune) bool { return !isASCIIAlnum(r) && r != '-' && r != '_' && r != '.' })
 	if !ok {
-		return kerr.New(kerr.Validation, "`%s` is not a valid secret key", key)
+		return kerrors.New(kerrors.Validation, "`%s` is not a valid secret key", key)
 	}
 	return nil
 }
@@ -99,7 +99,7 @@ func Quantity(field, value string) error {
 	ok := value != "" && len(value) <= 32 && value[0] >= '0' && value[0] <= '9' &&
 		!strings.ContainsFunc(value, func(r rune) bool { return !isASCIIAlnum(r) && r != '.' })
 	if !ok {
-		return kerr.New(kerr.Validation, "%s must be a quantity such as 500m, 2 or 4Gi", field)
+		return kerrors.New(kerrors.Validation, "%s must be a quantity such as 500m, 2 or 4Gi", field)
 	}
 	return nil
 }
@@ -112,7 +112,7 @@ func ValidEmail(value string) error {
 	ok := len(value) <= 254 && !strings.ContainsFunc(value, unicode.IsSpace) &&
 		found && local != "" && strings.Contains(domain, ".") && !strings.Contains(domain, "@")
 	if !ok {
-		return kerr.New(kerr.Validation, "`%s` is not a valid email address", value)
+		return kerrors.New(kerrors.Validation, "`%s` is not a valid email address", value)
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func TimeZone(value string) error {
 	ok := value != "" && len(value) <= 64 &&
 		!strings.ContainsFunc(value, func(r rune) bool { return !isASCIIAlnum(r) && !strings.ContainsRune("/_-+", r) })
 	if !ok {
-		return kerr.New(kerr.Validation, "`%s` is not a valid time zone", value)
+		return kerrors.New(kerrors.Validation, "`%s` is not a valid time zone", value)
 	}
 	return nil
 }

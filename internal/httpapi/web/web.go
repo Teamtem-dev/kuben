@@ -15,7 +15,7 @@ import (
 	"path"
 	"strings"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/problem"
 )
 
@@ -57,7 +57,7 @@ func SecurityHeaders(h http.Header) {
 func (s *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	if strings.HasPrefix(p, "/api/") {
-		problem.Write(w, nil, kerr.New(kerr.NotFound, "no route for %s", p))
+		problem.Write(w, nil, kerrors.New(kerrors.NotFound, "no route for %s", p))
 		return
 	}
 	rel := strings.TrimPrefix(path.Clean("/"+p), "/")

@@ -15,7 +15,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/host"
@@ -88,7 +88,7 @@ func verifySetupToken(cfg config.Config, presented opt.Val[string], now time.Tim
 	given, ok := presented.Get()
 	current, age, found := readSetupToken(cfg, now)
 	if !ok || !found || age > SetupTokenTTL || subtle.ConstantTimeCompare([]byte(given), []byte(current)) != 1 {
-		return kerr.ErrForbidden
+		return kerrors.ErrForbidden
 	}
 	return nil
 }
@@ -202,10 +202,10 @@ func (s *Server) Setup(ctx context.Context, req *gen.SetupRequest) (gen.SetupRes
 		return nil, err
 	}
 	if !needed {
-		return nil, kerr.New(kerr.NotFound, "setup is complete; sign in instead")
+		return nil, kerrors.New(kerrors.NotFound, "setup is complete; sign in instead")
 	}
 	if !s.transportSecure(ctx) {
-		return nil, kerr.New(kerr.InsecureTransport, "%s", InsecureTransportHint(s.deps.Config))
+		return nil, kerrors.New(kerrors.InsecureTransport, "%s", InsecureTransportHint(s.deps.Config))
 	}
 	token := opt.None[string]()
 	if t, ok := req.Token.Get(); ok {
@@ -216,15 +216,15 @@ func (s *Server) Setup(ctx context.Context, req *gen.SetupRequest) (gen.SetupRes
 	}
 	email := ascii.Lower(strings.TrimSpace(req.Email))
 	if len(email) < 3 || !strings.Contains(email, "@") {
-		return nil, kerr.New(kerr.Validation, "enter a valid email address")
+		return nil, kerrors.New(kerrors.Validation, "enter a valid email address")
 	}
 	orgName := strings.TrimSpace(req.OrgName)
 	if orgName == "" {
-		return nil, kerr.New(kerr.Validation, "the organization needs a name")
+		return nil, kerrors.New(kerrors.Validation, "the organization needs a name")
 	}
 	minLen := s.deps.Config.Security.PasswordMinLength
 	if uint64(utf8.RuneCountInString(req.Password)) < minLen { //nolint:gosec // a count is never negative
-		return nil, kerr.New(kerr.Validation, "the password needs at least %d characters", minLen)
+		return nil, kerrors.New(kerrors.Validation, "the password needs at least %d characters", minLen)
 	}
 	var hash string
 	var hashErr error
@@ -232,7 +232,7 @@ func (s *Server) Setup(ctx context.Context, req *gen.SetupRequest) (gen.SetupRes
 		return nil, err
 	}
 	if hashErr != nil {
-		return nil, kerr.Wrap(hashErr, "hash the password")
+		return nil, kerrors.Wrap(hashErr, "hash the password")
 	}
 	slug := s.deps.Config.Bootstrap.OrgSlug
 	org, found, err := s.deps.Store.FindOrgBySlug(ctx, slug)

@@ -24,7 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -44,7 +44,7 @@ const (
 func controlText(name, value string, maxChars int) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" || utf8.RuneCountInString(value) > maxChars || strings.ContainsFunc(value, unicode.IsControl) {
-		return "", kerr.New(kerr.Validation, "%s must be 1 to %d printable characters", name, maxChars)
+		return "", kerrors.New(kerrors.Validation, "%s must be 1 to %d printable characters", name, maxChars)
 	}
 	return value, nil
 }
@@ -53,7 +53,7 @@ func controlText(name, value string, maxChars int) (string, error) {
 func controlMillis(name, value string) (int64, error) {
 	at, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil {
-		return 0, kerr.New(kerr.Validation, "%s is not an RFC 3339 time", name)
+		return 0, kerrors.New(kerrors.Validation, "%s is not an RFC 3339 time", name)
 	}
 	return at.UnixMilli(), nil
 }
@@ -72,10 +72,10 @@ func controlWindow(body *gen.CreateWindow, now, maxMs int64) (int64, int64, erro
 		return 0, 0, err
 	}
 	if ends <= max(starts, now) {
-		return 0, 0, kerr.New(kerr.Validation, "endsAt must be in the future and after startsAt")
+		return 0, 0, kerrors.New(kerrors.Validation, "endsAt must be in the future and after startsAt")
 	}
 	if ends-max(starts, now) > maxMs || starts-now > maxMs {
-		return 0, 0, kerr.New(kerr.Validation, "a window lasts at most %d days", maxMs/86_400_000)
+		return 0, 0, kerrors.New(kerrors.Validation, "a window lasts at most %d days", maxMs/86_400_000)
 	}
 	return starts, ends, nil
 }
@@ -97,7 +97,7 @@ func checkOwner(body *gen.OwnerDto) (store.NewOwner, error) {
 	if u, ok := body.RunbookUrl.Get(); ok {
 		url := strings.TrimSpace(u)
 		if (!strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://")) || len(url) > 2048 {
-			return store.NewOwner{}, kerr.New(kerr.Validation, "runbookUrl must be an http(s) URL")
+			return store.NewOwner{}, kerrors.New(kerrors.Validation, "runbookUrl must be an http(s) URL")
 		}
 		o.RunbookURL = opt.Some(url)
 	}
@@ -128,7 +128,7 @@ func (s *Server) GetProjectOwner(ctx context.Context, params gen.GetProjectOwner
 		return nil, err
 	}
 	if _, err := acc.Require(perm.ProjectRead, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *Server) PutProjectOwner(ctx context.Context, req *gen.OwnerDto, params 
 		return nil, err
 	}
 	if _, err := acc.Require(perm.ProjectWrite, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	owner, err := checkOwner(req)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *Server) setOwner(ctx context.Context, actor string, org ids.OrgID, proj
 		return gen.OwnerDto{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return gen.OwnerDto{}, kerr.New(kerr.Internal, "the owner is missing")
+		return gen.OwnerDto{}, kerrors.New(kerrors.Internal, "the owner is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return gen.OwnerDto{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -199,7 +199,7 @@ func applicationOf(ctx context.Context, t *store.Tenant, project ids.ProjectID, 
 	case err != nil:
 		return ids.ApplicationID{}, err //nolint:wrapcheck // a store error, answered as internal
 	case !found:
-		return ids.ApplicationID{}, kerr.New(kerr.NotFound, "app `%s`", app)
+		return ids.ApplicationID{}, kerrors.New(kerrors.NotFound, "app `%s`", app)
 	}
 	return id, nil
 }
@@ -216,7 +216,7 @@ func (s *Server) GetApplicationOwner(ctx context.Context, params gen.GetApplicat
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppRead, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
@@ -245,7 +245,7 @@ func (s *Server) PutApplicationOwner(ctx context.Context, req *gen.OwnerDto, par
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppWrite, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	owner, err := checkOwner(req)
 	if err != nil {
@@ -330,7 +330,7 @@ func (s *Server) environmentFor(ctx context.Context, p perm.Perm, project, envir
 		return access.Access{}, envScope{}, nil, err
 	}
 	if _, err := acc.Require(p, e.chain()); err != nil {
-		return access.Access{}, envScope{}, nil, err //nolint:wrapcheck // a kerr already
+		return access.Access{}, envScope{}, nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -380,7 +380,7 @@ func (s *Server) CreateFreeze(ctx context.Context, req *gen.CreateWindow, params
 	}
 	defer t.Rollback(ctx) //nolint:errcheck // committed on success
 	if req.App.IsSet() && !req.App.IsNull() {
-		return nil, kerr.New(kerr.Validation, "a freeze holds the whole environment")
+		return nil, kerrors.New(kerrors.Validation, "a freeze holds the whole environment")
 	}
 	now := s.deps.Clock.NowMs()
 	startsAt, endsAt, err := controlWindow(req, now, maxFreezeMs)
@@ -408,7 +408,7 @@ func (s *Server) CreateFreeze(ctx context.Context, req *gen.CreateWindow, params
 			return &dto, t.Commit(ctx) //nolint:wrapcheck // a store error, answered as internal
 		}
 	}
-	return nil, kerr.New(kerr.Internal, "the new freeze is missing")
+	return nil, kerrors.New(kerrors.Internal, "the new freeze is missing")
 }
 
 // LiftFreeze lifts a freeze early.
@@ -424,7 +424,7 @@ func (s *Server) LiftFreeze(ctx context.Context, params gen.LiftFreezeParams) (g
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !lifted:
-		return nil, kerr.New(kerr.NotFound, "freeze `%s` in force", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "freeze `%s` in force", params.ID)
 	}
 	if err := windowAudit(ctx, t, acc, e, "environment.freeze_lifted", params.ID.String()); err != nil {
 		return nil, err
@@ -460,7 +460,7 @@ func (s *Server) CreateSilence(ctx context.Context, req *gen.CreateWindow, param
 	}
 	defer t.Rollback(ctx) //nolint:errcheck // committed on success
 	if req.StartsAt.IsSet() && !req.StartsAt.IsNull() {
-		return nil, kerr.New(kerr.Validation, "a silence starts now")
+		return nil, kerrors.New(kerrors.Validation, "a silence starts now")
 	}
 	now := s.deps.Clock.NowMs()
 	_, endsAt, err := controlWindow(req, now, maxSilenceMs)
@@ -474,7 +474,7 @@ func (s *Server) CreateSilence(ctx context.Context, req *gen.CreateWindow, param
 		case err != nil:
 			return nil, err //nolint:wrapcheck // a store error, answered as internal
 		case !found:
-			return nil, kerr.New(kerr.NotFound, "app `%s`", app)
+			return nil, kerrors.New(kerrors.NotFound, "app `%s`", app)
 		}
 		target = opt.Some(rec.Target)
 	}
@@ -499,7 +499,7 @@ func (s *Server) CreateSilence(ctx context.Context, req *gen.CreateWindow, param
 			return &dto, t.Commit(ctx) //nolint:wrapcheck // a store error, answered as internal
 		}
 	}
-	return nil, kerr.New(kerr.Internal, "the new silence is missing")
+	return nil, kerrors.New(kerrors.Internal, "the new silence is missing")
 }
 
 // LiftSilence lifts a silence early.
@@ -515,7 +515,7 @@ func (s *Server) LiftSilence(ctx context.Context, params gen.LiftSilenceParams) 
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !lifted:
-		return nil, kerr.New(kerr.NotFound, "silence `%s` in force", params.ID)
+		return nil, kerrors.New(kerrors.NotFound, "silence `%s` in force", params.ID)
 	}
 	if err := windowAudit(ctx, t, acc, e, "alerts.silence_lifted", params.ID.String()); err != nil {
 		return nil, err
@@ -535,7 +535,7 @@ func (s *Server) appFor(ctx context.Context, p perm.Perm, project, environment, 
 		return access.Access{}, appScope{}, nil, err
 	}
 	if _, err := acc.Require(p, a.chain()); err != nil {
-		return access.Access{}, appScope{}, nil, err //nolint:wrapcheck // a kerr already
+		return access.Access{}, appScope{}, nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, a.env.project.org)
 	if err != nil {
@@ -561,7 +561,7 @@ func (s *Server) PauseApp(ctx context.Context, req *gen.Reason, params gen.Pause
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !paused:
-		return nil, kerr.New(kerr.Conflict, "app `%s` is paused already or being deleted", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` is paused already or being deleted", params.App)
 	}
 	if err := windowAudit(ctx, t, acc, a.env, "app.paused", reason); err != nil {
 		return nil, err
@@ -581,7 +581,7 @@ func (s *Server) ResumeApp(ctx context.Context, params gen.ResumeAppParams) (gen
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !resumed:
-		return nil, kerr.New(kerr.Conflict, "app `%s` is not paused", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` is not paused", params.App)
 	}
 	if err := windowAudit(ctx, t, acc, a.env, "app.resumed", params.App); err != nil {
 		return nil, err
@@ -598,7 +598,7 @@ func (s *Server) EmergencyRollback(ctx context.Context, req *gen.EmergencyRollba
 		return nil, err
 	}
 	if err := acc.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	a, err := s.findApp(ctx, acc, params.Project, params.Environment, params.App)
 	if err != nil {
@@ -606,7 +606,7 @@ func (s *Server) EmergencyRollback(ctx context.Context, req *gen.EmergencyRollba
 	}
 	for _, p := range []perm.Perm{perm.AppDeploy, perm.ReleaseApprove} {
 		if _, err := acc.Require(p, a.chain()); err != nil {
-			return nil, err //nolint:wrapcheck // a kerr already
+			return nil, err //nolint:wrapcheck // a kerrors already
 		}
 	}
 	why, err := controlText("reason", req.Reason, 1024)
@@ -643,7 +643,7 @@ func (s *Server) startEmergency(ctx context.Context, t *store.Tenant, acc access
 	case err != nil:
 		return store.RunSummary{}, ids.ReleaseID{}, err //nolint:wrapcheck // a store error, answered as internal
 	case !found:
-		return store.RunSummary{}, ids.ReleaseID{}, kerr.New(kerr.NotFound, "an earlier release of `%s` that ran successfully", params.App)
+		return store.RunSummary{}, ids.ReleaseID{}, kerrors.New(kerrors.NotFound, "an earlier release of `%s` that ran successfully", params.App)
 	}
 	_, actor := acc.Actor()
 	expected := a.app.DesiredGeneration
@@ -663,19 +663,19 @@ func (s *Server) startEmergency(ctx context.Context, t *store.Tenant, acc access
 	case store.StartedAccepted:
 		runID = st.Run
 	case store.StartedRejected:
-		return store.RunSummary{}, ids.ReleaseID{}, kerr.New(kerr.Conflict, "%s", st.Reject.Error())
+		return store.RunSummary{}, ids.ReleaseID{}, kerrors.New(kerrors.Conflict, "%s", st.Reject.Error())
 	case store.StartedSecretRevoked:
 		return store.RunSummary{}, ids.ReleaseID{}, errSecretRevoked()
 	case store.StartedReplayed, store.StartedKeyReused, store.StartedNotFound, store.StartedVulnerabilityBlocked,
 		store.StartedFrozen, store.StartedUntrusted:
-		return store.RunSummary{}, ids.ReleaseID{}, kerr.New(kerr.Conflict, "the rollback was not accepted: %s", startedDebug(started))
+		return store.RunSummary{}, ids.ReleaseID{}, kerrors.New(kerrors.Conflict, "the rollback was not accepted: %s", startedDebug(started))
 	}
 	summary, found, err := t.RunOfTarget(ctx, a.app.Target, runID)
 	switch {
 	case err != nil:
 		return store.RunSummary{}, ids.ReleaseID{}, err //nolint:wrapcheck // a store error, answered as internal
 	case !found:
-		return store.RunSummary{}, ids.ReleaseID{}, kerr.New(kerr.Internal, "the accepted run is missing")
+		return store.RunSummary{}, ids.ReleaseID{}, kerrors.New(kerrors.Internal, "the accepted run is missing")
 	}
 	return summary, rel, nil
 }

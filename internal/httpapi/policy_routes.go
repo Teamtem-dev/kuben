@@ -9,7 +9,7 @@ import (
 	"context"
 	"math"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
@@ -24,11 +24,11 @@ func scanGateFromDto(d gen.ScanGateDto) (scan.Gate, error) {
 	mode, err := scan.ParseGateMode(d.Mode)
 	if err != nil {
 		// The API names it a scan gate mode; the core parser's text differs.
-		return scan.Gate{}, kerr.New(kerr.Validation, "unknown scan gate mode `%s`", d.Mode)
+		return scan.Gate{}, kerrors.New(kerrors.Validation, "unknown scan gate mode `%s`", d.Mode)
 	}
 	severity, err := scan.ParseSeverity(d.Severity)
 	if err != nil {
-		return scan.Gate{}, err //nolint:wrapcheck // a kerr validation error
+		return scan.Gate{}, err //nolint:wrapcheck // a kerrors validation error
 	}
 	maxAge := scan.DefaultMaxAgeSecs
 	if v, ok := d.MaxAgeSecs.Get(); ok {
@@ -44,22 +44,22 @@ func scanGateFromDto(d gen.ScanGateDto) (scan.Gate, error) {
 
 func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy, error) {
 	if body == nil {
-		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation, "missing request body")
+		return policy.EnvironmentPolicy{}, kerrors.New(kerrors.Validation, "missing request body")
 	}
 	// Rust's u8 refused more than 255 while decoding the body (serde's
 	// message); 6 to 255 reach Validate below and get its message. The
 	// decoder already refused a negative count (minimum: 0).
 	if body.RequiredApprovals > math.MaxUint8 {
-		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation,
+		return policy.EnvironmentPolicy{}, kerrors.New(kerrors.Validation,
 			"requiredApprovals: invalid value: integer `%d`, expected u8", body.RequiredApprovals)
 	}
 	deployRole, err := perm.ParseRole(body.DeployRole)
 	if err != nil {
-		return policy.EnvironmentPolicy{}, err //nolint:wrapcheck // a kerr validation error
+		return policy.EnvironmentPolicy{}, err //nolint:wrapcheck // a kerrors validation error
 	}
 	approveRole, err := perm.ParseRole(body.ApproveRole)
 	if err != nil {
-		return policy.EnvironmentPolicy{}, err //nolint:wrapcheck // a kerr validation error
+		return policy.EnvironmentPolicy{}, err //nolint:wrapcheck // a kerrors validation error
 	}
 	// The contract types approvalTtlSecs as int32 with minimum 0, so the
 	// decoder refused negative values and Rust's u32 values above int32 cannot
@@ -84,7 +84,7 @@ func policyOf(body *gen.PutPolicy, current scan.Gate) (policy.EnvironmentPolicy,
 		Scan:              gate,
 	}
 	if err := p.Validate(); err != nil {
-		return policy.EnvironmentPolicy{}, kerr.New(kerr.Validation, "%s", err.Error())
+		return policy.EnvironmentPolicy{}, kerrors.New(kerrors.Validation, "%s", err.Error())
 	}
 	return p, nil
 }
@@ -131,7 +131,7 @@ func (s *Server) GetEnvironmentPolicy(
 	}
 	chain := e.chain()
 	if _, err := acc.Require(perm.EnvRead, chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	tenant, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -164,7 +164,7 @@ func (s *Server) PutEnvironmentPolicy(
 		return nil, err
 	}
 	if err := acc.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	e, err := s.findEnvironment(ctx, acc, params.Project, params.Environment)
 	if err != nil {
@@ -172,7 +172,7 @@ func (s *Server) PutEnvironmentPolicy(
 	}
 	chain := e.chain()
 	if _, err := acc.Require(perm.EnvWrite, chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	_, actor := acc.Actor()
 
@@ -202,7 +202,7 @@ func (s *Server) PutEnvironmentPolicy(
 
 	if next.Weakens(currentPolicy) {
 		if _, err := acc.Require(perm.EnvProtect, chain); err != nil {
-			return nil, err //nolint:wrapcheck // a kerr already
+			return nil, err //nolint:wrapcheck // a kerrors already
 		}
 	}
 

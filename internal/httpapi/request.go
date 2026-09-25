@@ -4,7 +4,7 @@ package api
 // record of an operation a request asks for, and duplicates as 409.
 
 import (
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -28,7 +28,7 @@ func requestAudit(a access.Access, action, targetKind, targetRef string) store.N
 // Any other error is returned as it is.
 func duplicate(err error, what string) error {
 	if store.IsUniqueViolation(err) {
-		return kerr.New(kerr.Conflict, "%s already exists", what)
+		return kerrors.New(kerrors.Conflict, "%s already exists", what)
 	}
 	return err
 }

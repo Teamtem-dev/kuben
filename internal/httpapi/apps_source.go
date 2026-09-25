@@ -11,7 +11,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
@@ -75,7 +75,7 @@ func sourceDto(b store.SourceBinding, sync opt.Val[ids.OperationID]) gen.SourceD
 
 // invalid is a validation failure saying err.
 func invalid(err error) error {
-	return kerr.New(kerr.Validation, "%s", err.Error())
+	return kerrors.New(kerrors.Validation, "%s", err.Error())
 }
 
 // imageRepository is `registry/path` without tag or digest, normalized like
@@ -83,7 +83,7 @@ func invalid(err error) error {
 func imageRepository(value string) (string, error) {
 	last := value[strings.LastIndexByte(value, '/')+1:]
 	if strings.Contains(value, "@") || strings.Contains(last, ":") {
-		return "", kerr.New(kerr.Validation,
+		return "", kerrors.New(kerrors.Validation,
 			"`%s` must name a repository without tag or digest; builds tag and pin it", value)
 	}
 	ref, err := oci.Parse(value)
@@ -167,10 +167,10 @@ func bindAndSync(
 	var id ids.SourceBindingID
 	switch b := bound.(type) {
 	case store.BoundInstallationMissing:
-		return store.SourceBinding{}, ids.OperationID{}, kerr.New(kerr.Validation,
+		return store.SourceBinding{}, ids.OperationID{}, kerrors.New(kerrors.Validation,
 			"installation %d is not linked to this organization", binding.InstallationID)
 	case store.BoundNotFound:
-		return store.SourceBinding{}, ids.OperationID{}, kerr.New(kerr.NotFound, "the app")
+		return store.SourceBinding{}, ids.OperationID{}, kerrors.New(kerrors.NotFound, "the app")
 	case store.BoundCreated:
 		id = b.ID
 	case store.BoundChanged:
@@ -184,7 +184,7 @@ func bindAndSync(
 		return store.SourceBinding{}, ids.OperationID{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !ok {
-		return store.SourceBinding{}, ids.OperationID{}, kerr.New(kerr.Internal, "the bound source is missing")
+		return store.SourceBinding{}, ids.OperationID{}, kerrors.New(kerrors.Internal, "the bound source is missing")
 	}
 	data := map[string]any{
 		"repository": binding.Repository.String(),
@@ -215,14 +215,14 @@ func (s *Server) createGitApp(
 		return gen.AppDto{}, err
 	}
 	if e.deleting() {
-		return gen.AppDto{}, kerr.New(kerr.Conflict, "environment `%s` is being deleted", e.env.Slug)
+		return gen.AppDto{}, kerrors.New(kerrors.Conflict, "environment `%s` is being deleted", e.env.Slug)
 	}
 	if err := s.ensureDomainsFree(ctx, e.project.org, e.namespace(), name, &spec); err != nil {
 		return gen.AppDto{}, err
 	}
 	placement, ok := e.env.Placement.Get()
 	if !ok {
-		return gen.AppDto{}, kerr.New(kerr.Conflict, "environment `%s` has no placement", e.env.Slug)
+		return gen.AppDto{}, kerrors.New(kerrors.Conflict, "environment `%s` has no placement", e.env.Slug)
 	}
 	project := e.project.project.ID
 	what := "app `" + name + "`"
@@ -252,7 +252,7 @@ func (s *Server) createGitApp(
 	if _, made, err := t.CreateConfigRevision(ctx, project, tgt, config, actor); err != nil {
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
 	} else if !made {
-		return gen.AppDto{}, kerr.New(kerr.Internal, "the new app is missing")
+		return gen.AppDto{}, kerrors.New(kerrors.Internal, "the new app is missing")
 	}
 	reference := e.project.project.Slug + "/" + e.env.Slug + "/" + name
 	if _, _, err := bindAndSync(ctx, t, a, project, tgt, binding, reference); err != nil {
@@ -263,7 +263,7 @@ func (s *Server) createGitApp(
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return gen.AppDto{}, kerr.New(kerr.Internal, "the new app is missing")
+		return gen.AppDto{}, kerrors.New(kerrors.Internal, "the new app is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -273,7 +273,7 @@ func (s *Server) createGitApp(
 
 // noGitSource is the 404 of an app without a Git source.
 func noGitSource(app string) error {
-	return kerr.New(kerr.NotFound, "a Git source of app `%s`", app)
+	return kerrors.New(kerrors.NotFound, "a Git source of app `%s`", app)
 }
 
 // GetAppSource is the app's Git source.
@@ -287,7 +287,7 @@ func (s *Server) GetAppSource(ctx context.Context, params gen.GetAppSourceParams
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
 	if err != nil {
@@ -318,7 +318,7 @@ func (s *Server) PutAppSource(ctx context.Context, req *gen.PutSource, params ge
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppWrite, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if _, err := s.github(); err != nil {
 		return nil, err
@@ -337,7 +337,7 @@ func (s *Server) PutAppSource(ctx context.Context, req *gen.PutSource, params ge
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if found && existing.PullRequest.IsSome() {
-		return nil, kerr.New(kerr.Conflict,
+		return nil, kerrors.New(kerrors.Conflict,
 			"a preview's app follows its pull request; change the source environment's app instead")
 	}
 	reference := params.Project + "/" + params.Environment + "/" + params.App
@@ -364,7 +364,7 @@ func (s *Server) SyncAppSource(ctx context.Context, params gen.SyncAppSourcePara
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppDeploy, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
 	if err != nil {

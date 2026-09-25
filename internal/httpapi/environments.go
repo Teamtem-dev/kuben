@@ -9,7 +9,7 @@ import (
 	"context"
 
 	"github.com/Teamtem-dev/kuben/internal/core/capacity"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
@@ -65,7 +65,7 @@ func (s *Server) ListEnvironments(ctx context.Context, params gen.ListEnvironmen
 		return nil, err
 	}
 	if _, err := a.Require(perm.EnvRead, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *Server) GetEnvironment(ctx context.Context, params gen.GetEnvironmentPa
 		return nil, err
 	}
 	if _, err := a.Require(perm.EnvRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	dto := environmentDto(e.project.project.Slug, e.env, e.view)
 	return &dto, nil
@@ -114,7 +114,7 @@ func environmentQuota(input gen.OptNilQuotaInput) (opt.Val[any], error) {
 			return opt.None[any](), err
 		}
 		if _, ok := capacity.CPUMillis(cpu); !ok {
-			return opt.None[any](), kerr.New(kerr.Validation, "quota.cpu `%s` is not a CPU quantity", cpu)
+			return opt.None[any](), kerrors.New(kerrors.Validation, "quota.cpu `%s` is not a CPU quantity", cpu)
 		}
 		quota["cpu"] = cpu
 	}
@@ -123,13 +123,13 @@ func environmentQuota(input gen.OptNilQuotaInput) (opt.Val[any], error) {
 			return opt.None[any](), err
 		}
 		if _, ok := capacity.Bytes(memory); !ok {
-			return opt.None[any](), kerr.New(kerr.Validation, "quota.memory `%s` is not a memory quantity", memory)
+			return opt.None[any](), kerrors.New(kerrors.Validation, "quota.memory `%s` is not a memory quantity", memory)
 		}
 		quota["memory"] = memory
 	}
 	if pods, ok := q.Pods.Get(); ok {
 		if pods < 0 {
-			return opt.None[any](), kerr.New(kerr.Validation, "quota.pods must not be negative")
+			return opt.None[any](), kerrors.New(kerrors.Validation, "quota.pods must not be negative")
 		}
 		quota["pods"] = pods
 	}
@@ -149,7 +149,7 @@ func (s *Server) CreateEnvironment(
 		return nil, err
 	}
 	if _, err := a.Require(perm.EnvWrite, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if err := DNSLabel("name", req.Name, 20); err != nil {
 		return nil, err
@@ -157,17 +157,17 @@ func (s *Server) CreateEnvironment(
 	resource := render.EnvironmentResourceName(p.project.Slug, req.Name)
 	namespace := render.NamespaceName(resource)
 	if len(namespace) > 63 {
-		return nil, kerr.New(kerr.Validation, "project and environment names are too long together")
+		return nil, kerrors.New(kerrors.Validation, "project and environment names are too long together")
 	}
 	quota, err := environmentQuota(req.Quota)
 	if err != nil {
 		return nil, err
 	}
 	if p.project.Deleting {
-		return nil, kerr.New(kerr.Conflict, "project `%s` is being deleted", p.project.Slug)
+		return nil, kerrors.New(kerrors.Conflict, "project `%s` is being deleted", p.project.Slug)
 	}
 	// Environment resources are cluster-wide.
-	taken := kerr.New(kerr.Conflict, "environment `%s` already exists", req.Name)
+	taken := kerrors.New(kerrors.Conflict, "environment `%s` already exists", req.Name)
 	if v, ok := s.deps.Projections.Environment(resource); ok && v.Org != opt.Some(p.org.String()) {
 		return nil, taken
 	}
@@ -196,7 +196,7 @@ func environmentKind(t gen.EnvType) store.EnvironmentKind {
 func (s *Server) createEnvironment(
 	ctx context.Context, a access.Access, p projectScope, name string, kind store.EnvironmentKind, quota opt.Val[any], namespace string,
 ) (store.EnvironmentRecord, error) {
-	taken := kerr.New(kerr.Conflict, "environment `%s` already exists", name)
+	taken := kerrors.New(kerrors.Conflict, "environment `%s` already exists", name)
 	what := "environment `" + name + "`"
 	_, actor := a.Actor()
 	t, err := s.deps.Store.Tenant(ctx, p.org)
@@ -250,7 +250,7 @@ func orConflict(err, conflict error) error {
 // admitEnvironment is admission::admit_environment: the organization's
 // environment quota (M4.5).
 func (s *Server) admitEnvironment(ctx context.Context, t *store.Tenant) error {
-	return t.AdmitEnvironment(ctx, s.deps.Config.Quota.OrgEnvironments) //nolint:wrapcheck // a kerr conflict or a store error
+	return t.AdmitEnvironment(ctx, s.deps.Config.Quota.OrgEnvironments) //nolint:wrapcheck // a kerrors conflict or a store error
 }
 
 // DeleteEnvironment deletes an environment. Production environments need
@@ -270,7 +270,7 @@ func (s *Server) DeleteEnvironment(ctx context.Context, params gen.DeleteEnviron
 		need = perm.EnvDeleteProtected
 	}
 	if _, err := a.Require(need, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -287,7 +287,7 @@ func (s *Server) DeleteEnvironment(ctx context.Context, params gen.DeleteEnviron
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !marked {
-		return nil, kerr.New(kerr.Conflict, "environment `%s` is being deleted", params.Environment)
+		return nil, kerrors.New(kerrors.Conflict, "environment `%s` is being deleted", params.Environment)
 	}
 	_, actor := a.Actor()
 	if _, err := t.Request(ctx, store.EnvironmentDelete, store.EnvironmentSubject(e.project.project.ID, e.env.ID), actor,

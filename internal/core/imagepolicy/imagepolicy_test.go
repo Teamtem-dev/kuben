@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/internal/core/imagepolicy"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -63,7 +63,7 @@ func TestPatternsParseAndPrint(t *testing.T) {
 			t.Errorf("Parse(%q) = %v, %v; globs need the tag: prefix", bad, p, err)
 			continue
 		}
-		if !errors.Is(err, kerr.ErrValidation) {
+		if !errors.Is(err, kerrors.ErrValidation) {
 			t.Errorf("Parse(%q): %v is not a validation error", bad, err)
 		}
 	}

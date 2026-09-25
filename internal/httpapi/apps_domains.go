@@ -39,7 +39,7 @@ func (s *Server) CheckAppDomains(ctx context.Context, params gen.CheckAppDomains
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppRead, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	cluster, err := s.cluster()
 	if err != nil {

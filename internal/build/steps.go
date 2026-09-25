@@ -9,7 +9,7 @@ package build
 
 import (
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	opbuild "github.com/Teamtem-dev/kuben/internal/core/ops/build"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/outcome"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
@@ -37,7 +37,7 @@ func ParseNext(s string) (Next, error) {
 	case NextSettle, NextCancelQueued, NextAdmit, NextObserve:
 		return n, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown kind of build work `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown kind of build work `%s`", s)
 }
 
 // NextFor is the work for an attempt in phase.

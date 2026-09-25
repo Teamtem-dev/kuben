@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/upgrade"
 )
@@ -100,7 +100,7 @@ func TestUpgradesGoForwardOneMinorAtATime(t *testing.T) {
 		if !errors.As(err, &pe) || pe.Kind != c.refused || got != "" {
 			t.Errorf("%s → %s = %q, %v; want %s", c.from, c.to, got, err, c.refused)
 		}
-		if !errors.Is(err, kerr.ErrValidation) {
+		if !errors.Is(err, kerrors.ErrValidation) {
 			t.Errorf("%s → %s: %v is not a validation error", c.from, c.to, err)
 		}
 	}
@@ -136,7 +136,7 @@ func TestStepsAndLevelsParse(t *testing.T) {
 			t.Errorf("ParseStep(%q) = %q, %v", s, got, err)
 		}
 	}
-	if _, err := upgrade.ParseStep("minor"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := upgrade.ParseStep("minor"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("got %v", err)
 	}
 	ordered := []upgrade.Level{upgrade.LevelOk, upgrade.LevelWarn, upgrade.LevelFail}
@@ -148,7 +148,7 @@ func TestStepsAndLevelsParse(t *testing.T) {
 			t.Errorf("%s must rank above %s", l, ordered[i-1])
 		}
 	}
-	if _, err := upgrade.ParseLevel("FAIL"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := upgrade.ParseLevel("FAIL"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("got %v", err)
 	}
 	if upgrade.Level("other").Rank() >= upgrade.LevelOk.Rank() {

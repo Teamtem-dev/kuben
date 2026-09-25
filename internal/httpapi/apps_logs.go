@@ -35,7 +35,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -109,7 +109,7 @@ func (s *logStreams) Acquire(user ids.UserID) (*logStreamPermit, error) {
 	}
 	mine := s.open[user]
 	if mine >= maxFollowsPerUser || total >= maxFollows {
-		return nil, kerr.TooMany(followRetryAfterSecs)
+		return nil, kerrors.TooMany(followRetryAfterSecs)
 	}
 	s.open[user] = mine + 1
 	return &logStreamPermit{
@@ -540,7 +540,7 @@ func (s *Server) GetAppEvents(ctx context.Context, params gen.GetAppEventsParams
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppRead, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	cluster, err := s.cluster()
 	if err != nil {
@@ -594,7 +594,7 @@ func (s *Server) GetAppLogs(ctx context.Context, params gen.GetAppLogsParams) (g
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppLogsRead, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	cluster, err := s.cluster()
 	if err != nil {
@@ -615,11 +615,11 @@ func (s *Server) GetAppLogs(ctx context.Context, params gen.GetAppLogsParams) (g
 		defer permit.Release()
 		w, ok := httpx.ResponseWriterFrom(ctx)
 		if !ok {
-			return nil, kerr.New(kerr.Internal, "response writer not available")
+			return nil, kerrors.New(kerrors.Internal, "response writer not available")
 		}
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			return nil, kerr.New(kerr.Internal, "streaming not supported")
+			return nil, kerrors.New(kerrors.Internal, "streaming not supported")
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")

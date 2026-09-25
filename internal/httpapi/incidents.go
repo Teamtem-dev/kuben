@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -107,10 +107,10 @@ func deliveryDto(d store.DeliveryRecord) gen.DeliveryDto {
 func checkEndpoint(body *gen.CreateEndpoint) ([]string, error) {
 	name := strings.TrimSpace(body.Name)
 	if name == "" || utf8.RuneCountInString(name) > 64 || strings.ContainsFunc(name, unicode.IsControl) {
-		return nil, kerr.New(kerr.Validation, "name must be 1 to 64 printable characters")
+		return nil, kerrors.New(kerrors.Validation, "name must be 1 to 64 printable characters")
 	}
 	if len(body.URL) > 2048 {
-		return nil, kerr.New(kerr.Validation, "the URL is too long")
+		return nil, kerrors.New(kerrors.Validation, "the URL is too long")
 	}
 	events := make([]string, 0, len(body.Events))
 	for _, e := range body.Events {
@@ -119,12 +119,12 @@ func checkEndpoint(body *gen.CreateEndpoint) ([]string, error) {
 	slices.Sort(events)
 	events = slices.Compact(events)
 	if len(events) == 0 || len(events) > 32 {
-		return nil, kerr.New(kerr.Validation, "subscribe to 1 to 32 events")
+		return nil, kerrors.New(kerrors.Validation, "subscribe to 1 to 32 events")
 	}
 	known := webhookEvents()
 	for _, e := range events {
 		if e != "*" && !slices.Contains(known, e) {
-			return nil, kerr.New(kerr.Validation, "unknown event `%s`", e)
+			return nil, kerrors.New(kerrors.Validation, "unknown event `%s`", e)
 		}
 	}
 	return events, nil
@@ -138,7 +138,7 @@ func (s *Server) orgTenant(ctx context.Context, a access.Access, p perm.Perm) (*
 		return nil, err
 	}
 	if _, err := a.Require(p, authz.OrgChain(org)); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, org)
 	if err != nil {
@@ -190,7 +190,7 @@ func (s *Server) touchIncident(ctx context.Context, id uuid.UUID, resolve bool) 
 		return err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !done {
-		return kerr.New(kerr.Conflict, "incident `%s` is not open%s", id, state)
+		return kerrors.New(kerrors.Conflict, "incident `%s` is not open%s", id, state)
 	}
 	if err := t.AppendAudit(ctx, requestAudit(a, action, "incident", id.String())); err != nil {
 		return err //nolint:wrapcheck // a store error, answered as internal

@@ -16,7 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -56,9 +56,9 @@ func (e *Invalid) Error() string {
 	return "not a valid source value: " + rustQuote(e.Value)
 }
 
-// Unwrap makes the error a validation failure for errors.Is and kerr.CodeOf.
+// Unwrap makes the error a validation failure for errors.Is and kerrors.CodeOf.
 func (e *Invalid) Unwrap() error {
-	return kerr.New(kerr.Validation, "%s", e.Error())
+	return kerrors.New(kerrors.Validation, "%s", e.Error())
 }
 
 // CommitSha is a full, lowercase commit SHA-1. Abbreviated SHAs and ref
@@ -255,7 +255,7 @@ func (p *RepoPath) UnmarshalJSON(data []byte) error { return unmarshalVia(data, 
 // stores what parse makes of it.
 func unmarshalVia[T any](data []byte, parse func(string) (T, error), into *T) error {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return kerr.New(kerr.Validation, "invalid type: null, expected a string")
+		return kerrors.New(kerrors.Validation, "invalid type: null, expected a string")
 	}
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {

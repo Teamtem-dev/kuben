@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -63,7 +63,7 @@ func buildDto(a store.BuildAttempt) gen.BuildDto {
 func buildID(value string) (ids.BuildAttemptID, error) {
 	u, err := uuid.Parse(value)
 	if err != nil {
-		return ids.BuildAttemptID{}, kerr.New(kerr.NotFound, "build `%s`", value)
+		return ids.BuildAttemptID{}, kerrors.New(kerrors.NotFound, "build `%s`", value)
 	}
 	return ids.From[ids.BuildAttempt](u), nil
 }
@@ -79,7 +79,7 @@ func (s *Server) ListBuilds(ctx context.Context, params gen.ListBuildsParams) (g
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	limit := min(max(params.Limit.Or(defaultBuildsLimit), 1), maxBuildsLimit)
 	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
@@ -109,7 +109,7 @@ func (s *Server) GetBuild(ctx context.Context, params gen.GetBuildParams) (gen.G
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	id, err := buildID(params.Build)
 	if err != nil {
@@ -135,7 +135,7 @@ func buildOfTarget(ctx context.Context, t *store.Tenant, tgt ids.TargetID, id id
 		return store.BuildAttempt{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return store.BuildAttempt{}, kerr.New(kerr.NotFound, "build `%s`", name)
+		return store.BuildAttempt{}, kerrors.New(kerrors.NotFound, "build `%s`", name)
 	}
 	return attempt, nil
 }
@@ -154,7 +154,7 @@ func (s *Server) CancelBuild(ctx context.Context, params gen.CancelBuildParams) 
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppDeploy, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	id, err := buildID(params.Build)
 	if err != nil {
@@ -174,7 +174,7 @@ func (s *Server) CancelBuild(ctx context.Context, params gen.CancelBuildParams) 
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !asked {
-		return nil, kerr.New(kerr.Conflict, "build `%s` already finished (%s)", params.Build, attempt.Phase)
+		return nil, kerrors.New(kerrors.Conflict, "build `%s` already finished (%s)", params.Build, attempt.Phase)
 	}
 	after, err := buildOfTarget(ctx, t, app.app.Target, id, params.Build)
 	if err != nil {

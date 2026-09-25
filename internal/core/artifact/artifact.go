@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Digest is an OCI content digest: `sha256:` with 64 or `sha512:` with 128
@@ -17,7 +17,7 @@ import (
 type Digest struct{ s string }
 
 // InvalidDigestError says that a string is not a digest. It is a
-// kerr.Validation error to errors.Is, errors.As and kerr.CodeOf.
+// kerrors.Validation error to errors.Is, errors.As and kerrors.CodeOf.
 type InvalidDigestError struct {
 	// Value is the refused string.
 	Value string
@@ -29,7 +29,7 @@ func (e *InvalidDigestError) Error() string {
 
 // Unwrap is the validation error the API reports.
 func (e *InvalidDigestError) Unwrap() error {
-	return kerr.New(kerr.Validation, "%s", e.Error())
+	return kerrors.New(kerrors.Validation, "%s", e.Error())
 }
 
 // ParseDigest reads a digest, or fails with an [*InvalidDigestError].

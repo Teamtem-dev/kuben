@@ -7,7 +7,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -49,7 +49,7 @@ func (s *Server) environmentNode(ctx context.Context, a access.Access, project, 
 func MemberID(member string) (ids.UserID, error) {
 	id, err := ids.Parse[ids.User](member)
 	if err != nil {
-		return ids.UserID{}, kerr.New(kerr.NotFound, "member `%s`", member)
+		return ids.UserID{}, kerrors.New(kerrors.NotFound, "member `%s`", member)
 	}
 	return id, nil
 }
@@ -70,7 +70,7 @@ func MayAssign(caller, current, granted opt.Val[perm.Role]) bool {
 
 func (s *Server) listScoped(ctx context.Context, a access.Access, n node) ([]gen.MemberDto, error) {
 	if _, err := a.Require(perm.OrgRead, n.chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	members, err := s.deps.Store.ScopedMembers(ctx, n.org, n.kind, n.id)
 	if err != nil {
@@ -95,21 +95,21 @@ func (s *Server) scopedRole(ctx context.Context, n node, user ids.UserID) (model
 
 func (s *Server) putScoped(ctx context.Context, a access.Access, n node, member, requested string) (gen.MemberDto, error) {
 	if err := a.ForbidToken(); err != nil {
-		return gen.MemberDto{}, err //nolint:wrapcheck // a kerr already
+		return gen.MemberDto{}, err //nolint:wrapcheck // a kerrors already
 	}
 	if _, err := a.Require(perm.UserAdmin, n.chain); err != nil {
-		return gen.MemberDto{}, err //nolint:wrapcheck // a kerr already
+		return gen.MemberDto{}, err //nolint:wrapcheck // a kerrors already
 	}
 	user, err := MemberID(member)
 	if err != nil {
 		return gen.MemberDto{}, err
 	}
 	if user == a.Current.User.ID {
-		return gen.MemberDto{}, kerr.New(kerr.Conflict, "you cannot change your own role")
+		return gen.MemberDto{}, kerrors.New(kerrors.Conflict, "you cannot change your own role")
 	}
 	role, err := perm.ParseRole(requested)
 	if err != nil {
-		return gen.MemberDto{}, err //nolint:wrapcheck // a kerr already
+		return gen.MemberDto{}, err //nolint:wrapcheck // a kerrors already
 	}
 	current, found, err := s.scopedRole(ctx, n, user)
 	if err != nil {
@@ -120,48 +120,48 @@ func (s *Server) putScoped(ctx context.Context, a access.Access, n node, member,
 		currentRole = opt.Some(current.Role)
 	}
 	if !MayAssign(authz.EffectiveRole(a.Subject, n.chain), currentRole, opt.Some(role)) {
-		return gen.MemberDto{}, kerr.ErrForbidden
+		return gen.MemberDto{}, kerrors.ErrForbidden
 	}
 	bound, err := s.deps.Store.BindScopedRole(ctx, n.org, user, n.kind, n.id, role)
 	if err != nil {
 		return gen.MemberDto{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !bound {
-		return gen.MemberDto{}, kerr.New(kerr.NotFound, "member `%s`", member)
+		return gen.MemberDto{}, kerrors.New(kerrors.NotFound, "member `%s`", member)
 	}
 	now, found, err := s.scopedRole(ctx, n, user)
 	if err != nil {
 		return gen.MemberDto{}, err
 	}
 	if !found {
-		return gen.MemberDto{}, kerr.New(kerr.Internal, "the bound role is missing")
+		return gen.MemberDto{}, kerrors.New(kerrors.Internal, "the bound role is missing")
 	}
 	return memberDto(now), nil
 }
 
 func (s *Server) removeScoped(ctx context.Context, a access.Access, n node, member string) error {
 	if err := a.ForbidToken(); err != nil {
-		return err //nolint:wrapcheck // a kerr already
+		return err //nolint:wrapcheck // a kerrors already
 	}
 	if _, err := a.Require(perm.UserAdmin, n.chain); err != nil {
-		return err //nolint:wrapcheck // a kerr already
+		return err //nolint:wrapcheck // a kerrors already
 	}
 	user, err := MemberID(member)
 	if err != nil {
 		return err
 	}
 	if user == a.Current.User.ID {
-		return kerr.New(kerr.Conflict, "you cannot remove your own role")
+		return kerrors.New(kerrors.Conflict, "you cannot remove your own role")
 	}
 	current, found, err := s.scopedRole(ctx, n, user)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return kerr.New(kerr.NotFound, "a role of member `%s` here", member)
+		return kerrors.New(kerrors.NotFound, "a role of member `%s` here", member)
 	}
 	if !MayAssign(authz.EffectiveRole(a.Subject, n.chain), opt.Some(current.Role), opt.None[perm.Role]()) {
-		return kerr.ErrForbidden
+		return kerrors.ErrForbidden
 	}
 	if _, err := s.deps.Store.UnbindScopedRole(ctx, n.org, user, n.kind, n.id); err != nil {
 		return err //nolint:wrapcheck // a store error, answered as internal

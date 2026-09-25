@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
 )
@@ -21,7 +21,7 @@ var cmpValues = cmp.AllowUnexported(
 
 func invalidKind(err error) source.InvalidKind {
 	var inv *source.Invalid
-	if !errors.As(err, &inv) || !errors.Is(err, kerr.ErrValidation) {
+	if !errors.As(err, &inv) || !errors.Is(err, kerrors.ErrValidation) {
 		return ""
 	}
 	return inv.Kind

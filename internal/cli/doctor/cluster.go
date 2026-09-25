@@ -15,7 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sdiscovery "k8s.io/client-go/discovery"
 
-	support "github.com/Teamtem-dev/kuben/internal/core/compat"
+	"github.com/Teamtem-dev/kuben/internal/core/compat"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	pdoctor "github.com/Teamtem-dev/kuben/internal/doctor"
@@ -66,14 +66,14 @@ func apiserverLines(ctx context.Context, r *Report, c registry.Cluster) {
 		r.Line(LevelFail, "kubernetes", "the API server did not say its version")
 	default:
 		r.Line(LevelOK, "kubernetes", "apiserver "+v.GitVersion)
-		envelopeLine(r, support.Kubernetes(), v.Major+"."+v.Minor)
+		envelopeLine(r, compat.Kubernetes(), v.Major+"."+v.Minor)
 	}
 }
 
 // envelopeLine is how version of a dependency fits the support envelope
 // (M4.12): OK when supported, WARN when untested, FAIL when unsupported.
-func envelopeLine(r *Report, rng support.VersionRange, version string) {
-	minor, ok := support.ParseMinor(version)
+func envelopeLine(r *Report, rng compat.VersionRange, version string) {
+	minor, ok := compat.ParseMinor(version)
 	if !ok {
 		r.Line(LevelWarn, "support envelope", fmt.Sprintf("cannot read the %s version %q", rng.Name, version))
 		return
@@ -81,11 +81,11 @@ func envelopeLine(r *Report, rng support.VersionRange, version string) {
 	fit, text := rng.Describe(minor)
 	level := LevelFail
 	switch fit {
-	case support.Supported:
+	case compat.Supported:
 		level = LevelOK
-	case support.Untested:
+	case compat.Untested:
 		level = LevelWarn
-	case support.Unsupported:
+	case compat.Unsupported:
 		level = LevelFail
 	}
 	r.Line(level, "support envelope", text)
@@ -101,7 +101,7 @@ func CheckCapabilities(r *Report, facts discovery.ClusterFacts) {
 		r.Line(LevelOK, "gateway-api", fmt.Sprintf("%s (%s channel)",
 			api.BundleVersion.Or("unknown version"), api.Channel.Or("unknown")))
 		if version, ok := api.BundleVersion.Get(); ok {
-			envelopeLine(r, support.GatewayAPI(), version)
+			envelopeLine(r, compat.GatewayAPI(), version)
 		}
 		readinessLine(r, "gateway-class", facts.GatewayClasses, "no GatewayClass is Accepted")
 	} else {

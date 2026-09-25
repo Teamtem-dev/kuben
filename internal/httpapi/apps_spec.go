@@ -14,9 +14,9 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
-	domain "github.com/Teamtem-dev/kuben/internal/core/dnsname"
+	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
@@ -51,7 +51,7 @@ func validateEnv(env []gen.EnvVarDto) error {
 			return err
 		}
 		if seen[e.Name] {
-			return kerr.New(kerr.Validation, "environment variable `%s` is set twice", e.Name)
+			return kerrors.New(kerrors.Validation, "environment variable `%s` is set twice", e.Name)
 		}
 		seen[e.Name] = true
 		secret, isSecret := e.Secret.Get()
@@ -59,7 +59,7 @@ func validateEnv(env []gen.EnvVarDto) error {
 			continue
 		}
 		if e.Value.IsSet() && !e.Value.IsNull() {
-			return kerr.New(kerr.Validation, "`%s`: set either value or secret, not both", e.Name)
+			return kerrors.New(kerrors.Validation, "`%s`: set either value or secret, not both", e.Name)
 		}
 		if err := DNSLabel("secret name", secret.Name, 63); err != nil {
 			return err
@@ -82,7 +82,7 @@ func validateDomains(domains []string) error {
 
 func validateReplicas(minimum, maximum uint32) error {
 	if maximum > maxAppReplicas || minimum > maximum {
-		return kerr.New(kerr.Validation, "replicas must satisfy 0 ≤ replicas ≤ max_replicas ≤ %d", maxAppReplicas)
+		return kerrors.New(kerrors.Validation, "replicas must satisfy 0 ≤ replicas ≤ max_replicas ≤ %d", maxAppReplicas)
 	}
 	return nil
 }
@@ -92,7 +92,7 @@ func validateHealthPath(path string) error {
 	if path == "" || (strings.HasPrefix(path, "/") && len(path) <= 256 && graphic) {
 		return nil
 	}
-	return kerr.New(kerr.Validation, "health_check_path must be an absolute path such as /healthz")
+	return kerrors.New(kerrors.Validation, "health_check_path must be an absolute path such as /healthz")
 }
 
 // quantityBytes is the bytes of a Kubernetes storage quantity (`5Gi`,
@@ -126,7 +126,7 @@ func quantityBytes(q string) (*big.Int, bool) {
 
 func validateVolumes(volumes []gen.VolumeDto) error {
 	if len(volumes) > maxAppVolumes {
-		return kerr.New(kerr.Validation, "at most %d volumes per app", maxAppVolumes)
+		return kerrors.New(kerrors.Validation, "at most %d volumes per app", maxAppVolumes)
 	}
 	names, paths := map[string]bool{}, map[string]bool{}
 	for _, v := range volumes {
@@ -137,13 +137,13 @@ func validateVolumes(volumes []gen.VolumeDto) error {
 		pathOK := strings.HasPrefix(p, "/") && p != "/" && len(p) <= 256 && !strings.Contains(p, "..") &&
 			!strings.ContainsFunc(p, unicode.IsSpace)
 		if !pathOK {
-			return kerr.New(kerr.Validation, "volume `%s`: mount_path must be an absolute path other than /", v.Name)
+			return kerrors.New(kerrors.Validation, "volume `%s`: mount_path must be an absolute path other than /", v.Name)
 		}
 		if b, ok := quantityBytes(volumeSize(v)); !ok || b.Sign() == 0 {
-			return kerr.New(kerr.Validation, "volume `%s`: size must be a quantity such as 1Gi or 500Mi", v.Name)
+			return kerrors.New(kerrors.Validation, "volume `%s`: size must be a quantity such as 1Gi or 500Mi", v.Name)
 		}
 		if names[v.Name] || paths[p] {
-			return kerr.New(kerr.Validation, "volume names and mount paths must be unique")
+			return kerrors.New(kerrors.Validation, "volume names and mount paths must be unique")
 		}
 		names[v.Name], paths[p] = true, true
 	}
@@ -161,7 +161,7 @@ func checkNoShrink(current []v1alpha1.Volume, next []gen.VolumeDto) error {
 			continue
 		}
 		if shrinks(volumeSize(n), current[i].Size) {
-			return kerr.New(kerr.Validation, "volume `%s` cannot shrink from %s to %s", n.Name, current[i].Size, volumeSize(n))
+			return kerrors.New(kerrors.Validation, "volume `%s` cannot shrink from %s to %s", n.Name, current[i].Size, volumeSize(n))
 		}
 	}
 	return nil
@@ -183,7 +183,7 @@ func shrinks(next, current string) bool {
 
 func validateSchedule(schedule, timeZone gen.OptNilString) error {
 	if s, ok := schedule.Get(); ok && trimSpace(s) != "" && !render.ValidSchedule(s) {
-		return kerr.New(kerr.Validation, "`%s` is not a cron expression (five fields, or @hourly/@daily/…)", s)
+		return kerrors.New(kerrors.Validation, "`%s` is not a cron expression (five fields, or @hourly/@daily/…)", s)
 	}
 	if tz, ok := timeZone.Get(); ok && tz != "" {
 		return TimeZone(tz)
@@ -193,7 +193,7 @@ func validateSchedule(schedule, timeZone gen.OptNilString) error {
 
 func validateFsGroup(group gen.OptNilInt64) error {
 	if g, ok := group.Get(); ok && (g < 0 || g > math.MaxInt32) {
-		return kerr.New(kerr.Validation, "fs_group must be a group id between 1 and 2147483647")
+		return kerrors.New(kerrors.Validation, "fs_group must be a group id between 1 and 2147483647")
 	}
 	return nil
 }
@@ -206,7 +206,7 @@ func port(p gen.OptNilInt32) (opt.Val[uint16], error) {
 		return opt.None[uint16](), nil
 	}
 	if v < 0 || v > math.MaxUint16 {
-		return opt.None[uint16](), kerr.New(kerr.Validation, "port: invalid value: integer `%d`, expected u16", v)
+		return opt.None[uint16](), kerrors.New(kerrors.Validation, "port: invalid value: integer `%d`, expected u16", v)
 	}
 	return opt.Some(uint16(v)), nil
 }
@@ -221,7 +221,7 @@ func validateSpec(spec *v1alpha1.AppSpec) error {
 	if err == nil || (errors.As(err, &build) && build != nil && build.Reason == render.ReasonAwaitingBuild) {
 		return nil
 	}
-	return kerr.New(kerr.Validation, "%s", err.Error())
+	return kerrors.New(kerrors.Validation, "%s", err.Error())
 }
 
 func toCRDEnv(e gen.EnvVarDto) v1alpha1.EnvVar {
@@ -302,7 +302,7 @@ func specFromCreate(body *gen.CreateApp) (v1alpha1.AppSpec, error) {
 	case !hasImage && hasGit:
 		source.Git = gitSource(git)
 	default:
-		return v1alpha1.AppSpec{}, kerr.New(kerr.Validation, "give exactly one of `image` and `git`")
+		return v1alpha1.AppSpec{}, kerrors.New(kerrors.Validation, "give exactly one of `image` and `git`")
 	}
 	size := body.Size.Or(v1alpha1.DefaultProcessSize)
 	if err := DNSLabel("size", size, 30); err != nil {
@@ -385,7 +385,7 @@ func updatedProcess(spec *v1alpha1.AppSpec) (string, error) {
 		names = append(names, n)
 	}
 	if len(names) == 0 {
-		return "", kerr.New(kerr.Validation, "app has no processes")
+		return "", kerrors.New(kerrors.Validation, "app has no processes")
 	}
 	slices.Sort(names)
 	return names[0], nil
@@ -519,7 +519,7 @@ func (s *Server) ensureDomainsFree(ctx context.Context, org ids.OrgID, namespace
 		return err
 	}
 	taken := func(host string) error {
-		return kerr.New(kerr.Conflict, "domain `%s` is already used by another app", host)
+		return kerrors.New(kerrors.Conflict, "domain `%s` is already used by another app", host)
 	}
 	owned := func(host string) (string, bool) {
 		i := slices.IndexFunc(spec.Domains, func(d v1alpha1.Domain) bool { return strings.EqualFold(d.Host, host) })
@@ -563,18 +563,18 @@ func (s *Server) ensureDomainsFree(ctx context.Context, org ids.OrgID, namespace
 // organization verified.
 func (s *Server) ensureDomainsClaimed(ctx context.Context, org ids.OrgID, spec *v1alpha1.AppSpec) error {
 	for _, d := range spec.Domains {
-		host, err := domain.Canonical(d.Host)
+		host, err := dnsname.Canonical(d.Host)
 		if err != nil {
-			return kerr.New(kerr.Validation, "%s", err.Error())
+			return kerrors.New(kerrors.Validation, "%s", err.Error())
 		}
 		_, owner, found, err := s.deps.Store.DomainOwner(ctx, host)
 		switch {
 		case err != nil:
 			return err //nolint:wrapcheck // a store error, answered as internal
 		case found && owner != org:
-			return kerr.New(kerr.Conflict, "domain `%s` is claimed by another organization", d.Host)
+			return kerrors.New(kerrors.Conflict, "domain `%s` is claimed by another organization", d.Host)
 		case !found && s.deps.Config.Domains.RequireClaim:
-			return kerr.New(kerr.Validation, "domain `%s` is not verified for this organization: claim it first", d.Host)
+			return kerrors.New(kerrors.Validation, "domain `%s` is not verified for this organization: claim it first", d.Host)
 		}
 	}
 	return nil

@@ -19,7 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -435,7 +435,7 @@ func (s *Server) DeployTemplate(
 	ctx context.Context, req *gen.DeployTemplate, params gen.DeployTemplateParams,
 ) (gen.DeployTemplateRes, error) {
 	if req == nil {
-		return nil, kerr.New(kerr.Validation, "missing request body")
+		return nil, kerrors.New(kerrors.Validation, "missing request body")
 	}
 	acc, err := s.access(ctx)
 	if err != nil {
@@ -447,10 +447,10 @@ func (s *Server) DeployTemplate(
 	}
 	chain := e.chain()
 	if _, err := acc.Require(perm.AppWrite, chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if _, err := acc.Require(perm.SecretWrite, chain); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, found := findTemplate(params.Template)
 	if !found {
@@ -501,7 +501,7 @@ func (s *Server) createCredentials(
 
 	_, err = secrets.Get(ctx, secretName, metav1.GetOptions{})
 	if err == nil {
-		return nil, kerr.New(kerr.Conflict, "secret `%s` already exists", secretName)
+		return nil, kerrors.New(kerrors.Conflict, "secret `%s` already exists", secretName)
 	} else if !apierrors.IsNotFound(err) {
 		return nil, kubeError(err, secretName)
 	}

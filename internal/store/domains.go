@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	domain "github.com/Teamtem-dev/kuben/internal/core/dnsname"
+	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
@@ -202,7 +202,7 @@ func (t *Tenant) VerifyClaim(ctx context.Context, id uuid.UUID, method string, p
 	if !found || claim.Status != "pending" {
 		return ClaimNotPending{}, nil
 	}
-	if _, err := exec(ctx, t.tx, op, lockSuffix, domain.LockKey(claim.Domain)); err != nil {
+	if _, err := exec(ctx, t.tx, op, lockSuffix, dnsname.LockKey(claim.Domain)); err != nil {
 		return nil, err
 	}
 	held, err := queryAll(ctx, t.tx, op, overlapping, func(row pgx.CollectableRow) (heldDomain, error) {
@@ -214,7 +214,7 @@ func (t *Tenant) VerifyClaim(ctx context.Context, id uuid.UUID, method string, p
 		return nil, err
 	}
 	for _, h := range held {
-		if h.org != org && domain.Overlaps(h.domain, claim.Domain) {
+		if h.org != org && dnsname.Overlaps(h.domain, claim.Domain) {
 			return ClaimTaken{Domain: h.domain}, nil
 		}
 	}
@@ -351,6 +351,6 @@ func (s *Store) DomainOwner(ctx context.Context, host string) (string, ids.OrgID
 		id, err := orgID(op, org)
 		o.org = id
 		return o, err
-	}, domain.Ancestors(host))
+	}, dnsname.Ancestors(host))
 	return o.domain, o.org, found, err
 }

@@ -13,7 +13,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -40,10 +40,10 @@ type Access struct {
 func Resolve(ctx context.Context, store Bindings, policy authz.Policy) (Access, error) {
 	current, ok := httpx.UserFrom(ctx)
 	if !ok {
-		return Access{}, kerr.ErrUnauthorized
+		return Access{}, kerrors.ErrUnauthorized
 	}
 	if current.User.MustChangePassword {
-		return Access{}, kerr.ErrForbidden
+		return Access{}, kerrors.ErrForbidden
 	}
 	rows, err := store.BindingsForUser(ctx, current.User.ID)
 	if err != nil {
@@ -100,7 +100,7 @@ func scopeOf(b model.RoleBinding) (authz.ScopeRef, bool) {
 
 // Require is a proof that the caller holds p on chain, or forbidden.
 func (a Access) Require(p perm.Perm, chain authz.ScopeChain) (authz.Proof, error) {
-	return authz.Check(a.policy, a.Subject, p, chain) //nolint:wrapcheck // a kerr already
+	return authz.Check(a.policy, a.Subject, p, chain) //nolint:wrapcheck // a kerrors already
 }
 
 // OrgIDs are the caller's organizations (for a token: exactly its own).
@@ -125,7 +125,7 @@ func (a Access) OrgRole(org ids.OrgID) opt.Val[perm.Role] {
 // token must not mint tokens, add members or change passwords.
 func (a Access) ForbidToken() error {
 	if a.Current.Token.IsSome() {
-		return kerr.ErrForbidden
+		return kerrors.ErrForbidden
 	}
 	return nil
 }

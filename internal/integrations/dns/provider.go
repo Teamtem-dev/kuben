@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	domain "github.com/Teamtem-dev/kuben/internal/core/dnsname"
+	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/integrations/outbound"
 	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/version"
@@ -184,7 +184,7 @@ func (c *Cloudflare) Verify(ctx context.Context) error {
 // ZoneFor is the account's zone holding name, looked for from the name
 // itself up to its registrable parent.
 func (c *Cloudflare) ZoneFor(ctx context.Context, name string) (Zone, bool, error) {
-	for _, candidate := range domain.Ancestors(name) {
+	for _, candidate := range dnsname.Ancestors(name) {
 		var zones []Zone
 		if err := c.call(ctx, http.MethodGet, "/zones?name="+QueryValue(candidate), nil, &zones); err != nil {
 			return Zone{}, false, err

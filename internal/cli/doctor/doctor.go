@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
-	support "github.com/Teamtem-dev/kuben/internal/core/compat"
+	"github.com/Teamtem-dev/kuben/internal/core/compat"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
@@ -172,9 +172,9 @@ func serverLines(r *Report, cfg config.Config, facts store.DatabaseFacts) {
 	url := cfg.Database.URL.Expose()
 	local := strings.Contains(url, "@localhost") || strings.Contains(url, "@127.0.0.1") || strings.Contains(url, "host=/")
 	major := uint32(max(facts.Major(), 0)) //nolint:gosec // not negative
-	fit, fits := support.PostgreSQL().Describe(support.Minor{Major: major, Minor: 0})
+	fit, fits := compat.PostgreSQL().Describe(compat.Minor{Major: major, Minor: 0})
 	level := LevelOK
-	if fit != support.Supported || facts.InRecovery || (!facts.TLS && !local) {
+	if fit != compat.Supported || facts.InRecovery || (!facts.TLS && !local) {
 		level = LevelWarn
 	}
 	transport := ", NOT encrypted: add sslmode=verify-full"
@@ -189,7 +189,7 @@ func serverLines(r *Report, cfg config.Config, facts store.DatabaseFacts) {
 		standby = ", a read-only standby"
 	}
 	r.Line(level, "database server", fmt.Sprintf("PostgreSQL %d%s%s", facts.Major(), transport, standby))
-	if fit != support.Supported {
+	if fit != compat.Supported {
 		r.Line(LevelWarn, "support envelope", fits)
 	}
 	if facts.ArchivesWAL() {

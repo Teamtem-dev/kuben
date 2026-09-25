@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -80,7 +80,7 @@ func (s *Server) ListReleases(ctx context.Context, params gen.ListReleasesParams
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	// One more than shown: the oldest shown run needs its predecessor.
 	runs, _, err := s.runsOf(ctx, app, releasePage+1)
@@ -133,20 +133,20 @@ func (s *Server) RollbackApp(ctx context.Context, req *gen.Rollback, params gen.
 		return nil, err
 	}
 	if _, err := a.Require(perm.AppDeploy, app.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
-	notFound := kerr.New(kerr.NotFound, "revision %d", req.Revision)
+	notFound := kerrors.New(kerrors.NotFound, "revision %d", req.Revision)
 	run, config, found, err := s.revision(ctx, app, req.Revision)
 	if err != nil || !found {
 		return nil, orConflict(err, notFound)
 	}
 	restored, ok := specOf(opt.Some(config), run.Image)
 	if !ok {
-		return nil, kerr.New(kerr.Validation, "revision %d cannot be restored", req.Revision)
+		return nil, kerrors.New(kerrors.Validation, "revision %d cannot be restored", req.Revision)
 	}
 	current, ok := desiredSpec(app.app)
 	if !ok {
-		return nil, kerr.New(kerr.Conflict, "app `%s` has no configuration yet", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` has no configuration yet", params.App)
 	}
 	spec := rollbackSpec(current, restored)
 	if err := validateSpec(&spec); err != nil {

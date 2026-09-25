@@ -1,7 +1,7 @@
 package config
 
 import (
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Role is a part of Kuben a process runs (`server.roles`).
@@ -22,7 +22,7 @@ func ParseRole(s string) (Role, error) {
 	case RoleAll, RoleAPI, RoleController, RoleActivator:
 		return r, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown variant `%s`, expected one of `all`, `api`, `controller`, `activator`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown variant `%s`, expected one of `all`, `api`, `controller`, `activator`", s)
 }
 
 // UnmarshalText makes configuration and JSON decoding refuse unknown roles.
@@ -81,5 +81,5 @@ func DecodeCookieSecure(v any) (CookieSecure, error) {
 			return CookieAuto{}, nil
 		}
 	}
-	return nil, kerr.New(kerr.Validation, "security.cookie_secure must be true, false or \"auto\"")
+	return nil, kerrors.New(kerrors.Validation, "security.cookie_secure must be true, false or \"auto\"")
 }

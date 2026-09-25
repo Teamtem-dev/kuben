@@ -35,7 +35,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/build"
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
 	"github.com/Teamtem-dev/kuben/internal/core/preview"
@@ -343,7 +343,7 @@ func (p *Lifecycle) create(
 		return "", err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !set {
-		return "", kerr.New(kerr.Internal, "the new preview environment is missing")
+		return "", kerrors.New(kerrors.Internal, "the new preview environment is missing")
 	}
 	if err := t.InsertPreview(ctx, store.NewPreview{
 		Environment: env, Project: project, InstallationID: event.InstallationID, Repository: event.Repository,
@@ -382,7 +382,7 @@ func (p *Lifecycle) copyApps(
 ) error {
 	branch, err := source.ParseBranchName(fmt.Sprintf("pull/%d", event.Number))
 	if err != nil {
-		return kerr.New(kerr.Internal, "preview branch: %v", err)
+		return kerrors.New(kerrors.Internal, "preview branch: %v", err)
 	}
 	for _, app := range sources {
 		tgt, err := t.CreateTarget(ctx, project, app.Application, placement)
@@ -398,7 +398,7 @@ func (p *Lifecycle) copyApps(
 			return err //nolint:wrapcheck // a store error, answered as internal
 		}
 		if !created {
-			return kerr.New(kerr.Internal, "the preview app is missing")
+			return kerrors.New(kerrors.Internal, "the preview app is missing")
 		}
 		binding := store.NewBinding{
 			InstallationID: event.InstallationID, Repository: event.Repository, Branch: branch,

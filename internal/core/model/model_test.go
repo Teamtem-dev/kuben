@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -119,10 +119,10 @@ func TestKindsParseAndPinTheirStrings(t *testing.T) {
 			t.Errorf("json of %s: %s", s, got)
 		}
 	}
-	if _, err := model.ParseSubjectKind("group"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := model.ParseSubjectKind("group"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("group: %v", err)
 	}
-	if _, err := model.ParseScopeKind("cluster"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := model.ParseScopeKind("cluster"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("cluster: %v", err)
 	}
 	var sk model.SubjectKind

@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
@@ -53,7 +53,7 @@ func (s *Server) RunApp(ctx context.Context, req *gen.RunJob, params gen.RunAppP
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppDeploy, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	process, err := processToRun(req, a.app)
 	if err != nil {
@@ -80,7 +80,7 @@ func processToRun(req *gen.RunJob, app store.AppRecord) (string, error) {
 			return p, nil
 		}
 	}
-	noProcess := kerr.New(kerr.Validation, "this app has no scheduled process")
+	noProcess := kerrors.New(kerrors.Validation, "this app has no scheduled process")
 	spec, ok := desiredSpec(app)
 	if !ok {
 		return "", noProcess

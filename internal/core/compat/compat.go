@@ -1,4 +1,4 @@
-// Package support has the support envelope (M4.12; plan §18.5): what a
+// Package compat has the support envelope (M4.12; plan §18.5): what a
 // Supported MVP installation runs on, and what is claimed about it. It
 // replaces the Rust module kuben-core/src/support.rs.
 //
@@ -6,7 +6,7 @@
 // it. A test keeps the bundle lock inside it. A version outside
 // [VersionRange.Tested] can still work ("untested"). A version below
 // [VersionRange.WorksFrom] is unsupported.
-package support
+package compat
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 // Minor is a `major.minor` version.
@@ -115,7 +115,7 @@ func ParseFit(s string) (Fit, error) {
 	case Supported, Untested, Unsupported:
 		return f, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown fit `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown fit `%s`", s)
 }
 
 func (f Fit) String() string { return string(f) }

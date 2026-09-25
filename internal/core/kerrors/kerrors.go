@@ -1,6 +1,6 @@
-// Package kerr is the domain error every layer shares. The API maps it to
+// Package kerrors is the domain error every layer shares. The API maps it to
 // RFC 9457 application/problem+json; the codes are part of the API contract.
-package kerr
+package kerrors
 
 import (
 	"errors"
@@ -58,7 +58,7 @@ func (e *Error) Error() string {
 // Unwrap is the error this one was made from, if any.
 func (e *Error) Unwrap() error { return e.cause }
 
-// Is matches errors of the same code, so errors.Is(err, kerr.ErrForbidden)
+// Is matches errors of the same code, so errors.Is(err, kerrors.ErrForbidden)
 // works for every forbidden error.
 func (e *Error) Is(target error) bool {
 	var t *Error

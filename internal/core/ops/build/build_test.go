@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/quick"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/build"
 )
@@ -26,7 +26,7 @@ func TestPhasesRoundTripThroughTheirNames(t *testing.T) {
 			t.Errorf("%s: got %s, %v", names[i], got, err)
 		}
 	}
-	if _, err := build.ParsePhase("done"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := build.ParsePhase("done"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("done: %v", err)
 	}
 }
@@ -45,7 +45,7 @@ func TestEventsRoundTripThroughTheirNames(t *testing.T) {
 			t.Errorf("%s: got %s, %v", names[i], got, err)
 		}
 	}
-	if _, err := build.ParseEvent("done"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := build.ParseEvent("done"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("done: %v", err)
 	}
 }

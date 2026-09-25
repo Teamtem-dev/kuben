@@ -16,7 +16,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -253,7 +253,7 @@ func (s *Server) PromoteApp(ctx context.Context, req *gen.Promote, params gen.Pr
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppRead, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	targetEnv, err := s.promotionTarget(ctx, acc, a, params.Project, req.ToEnvironment)
 	if err != nil {
@@ -261,11 +261,11 @@ func (s *Server) PromoteApp(ctx context.Context, req *gen.Promote, params gen.Pr
 	}
 	source, ok := desiredSpec(a.app)
 	if !ok {
-		return nil, kerr.New(kerr.Conflict, "app `%s` has no configuration yet", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` has no configuration yet", params.App)
 	}
 	release, ok := a.app.Release.Get()
 	if !ok {
-		return nil, kerr.New(kerr.Conflict, "app `%s` has no release yet", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` has no release yet", params.App)
 	}
 	t, err := s.deps.Store.Tenant(ctx, a.env.project.org)
 	if err != nil {
@@ -355,7 +355,7 @@ func (s *Server) deployPromotion(
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return gen.AppDto{}, kerr.New(kerr.Internal, "the promoted app is missing")
+		return gen.AppDto{}, kerrors.New(kerrors.Internal, "the promoted app is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return gen.AppDto{}, err //nolint:wrapcheck // a store error, answered as internal
@@ -377,13 +377,13 @@ func (s *Server) promotionTarget(
 		return envScope{}, err
 	}
 	if targetEnv.env.ID == a.env.env.ID {
-		return envScope{}, kerr.New(kerr.Validation, "choose a different target environment")
+		return envScope{}, kerrors.New(kerrors.Validation, "choose a different target environment")
 	}
 	if _, err := acc.Require(perm.ReleasePromote, targetEnv.chain()); err != nil {
-		return envScope{}, err //nolint:wrapcheck // a kerr already
+		return envScope{}, err //nolint:wrapcheck // a kerrors already
 	}
 	if targetEnv.deleting() {
-		return envScope{}, kerr.New(kerr.Conflict, "environment `%s` is being deleted", targetEnv.env.Slug)
+		return envScope{}, kerrors.New(kerrors.Conflict, "environment `%s` is being deleted", targetEnv.env.Slug)
 	}
 	return targetEnv, nil
 }
@@ -395,7 +395,7 @@ func createPromotionTarget(
 ) (ids.TargetID, error) {
 	placement, ok := targetEnv.env.Placement.Get()
 	if !ok {
-		return ids.TargetID{}, kerr.New(kerr.Conflict, "environment `%s` has no placement", targetEnv.env.Slug)
+		return ids.TargetID{}, kerrors.New(kerrors.Conflict, "environment `%s` has no placement", targetEnv.env.Slug)
 	}
 	id, err := t.CreateTarget(ctx, project, application, placement)
 	if err != nil {

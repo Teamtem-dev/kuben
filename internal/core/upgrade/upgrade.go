@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -103,7 +103,7 @@ func ParseStep(s string) (Step, error) {
 	case Same, Patch, Minor, Major:
 		return st, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown upgrade step `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown upgrade step `%s`", s)
 }
 
 // PathErrorKind says why a step is refused.
@@ -150,9 +150,9 @@ func (e *PathError) Error() string {
 	return fmt.Sprintf("%s → %s is not supported", e.From, e.To)
 }
 
-// Unwrap makes the error a validation failure for errors.Is and kerr.CodeOf.
+// Unwrap makes the error a validation failure for errors.Is and kerrors.CodeOf.
 func (e *PathError) Unwrap() error {
-	return kerr.New(kerr.Validation, "%s", e.Error())
+	return kerrors.New(kerrors.Validation, "%s", e.Error())
 }
 
 // StepBetween says whether going from from to to is supported; major is the

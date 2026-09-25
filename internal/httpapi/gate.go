@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"slices"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/problem"
 )
@@ -36,9 +36,9 @@ func (s *Server) gate(next http.Handler) http.Handler {
 		u, ok := httpx.UserFrom(r.Context())
 		switch {
 		case !ok:
-			problem.Write(w, s.deps.Logger, kerr.ErrUnauthorized)
+			problem.Write(w, s.deps.Logger, kerrors.ErrUnauthorized)
 		case u.User.MustChangePassword && !slices.Contains(userOperations, route.OperationID()):
-			problem.Write(w, s.deps.Logger, kerr.ErrForbidden)
+			problem.Write(w, s.deps.Logger, kerrors.ErrForbidden)
 		default:
 			next.ServeHTTP(w, r)
 		}

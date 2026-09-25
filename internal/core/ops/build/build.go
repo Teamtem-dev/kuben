@@ -14,7 +14,7 @@
 package build
 
 import (
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops"
 )
 
@@ -161,7 +161,7 @@ func ParsePhase(s string) (Phase, error) {
 	if _, ok := transitions[Phase(s)]; ok {
 		return Phase(s), nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown build phase `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown build phase `%s`", s)
 }
 
 // ParseEvent reads an event by its wire name.
@@ -171,7 +171,7 @@ func ParseEvent(s string) (Event, error) {
 			return e, nil
 		}
 	}
-	return "", kerr.New(kerr.Validation, "unknown build event `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown build event `%s`", s)
 }
 
 func (p Phase) String() string { return string(p) }

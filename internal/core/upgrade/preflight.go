@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -28,7 +28,7 @@ func ParseLevel(s string) (Level, error) {
 	case LevelOk, LevelWarn, LevelFail:
 		return l, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown finding level `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown finding level `%s`", s)
 }
 
 // Rank orders levels by seriousness: ok < warn < fail. An unknown level

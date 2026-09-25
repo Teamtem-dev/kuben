@@ -17,7 +17,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/apidocs"
@@ -162,7 +162,7 @@ func New(deps Deps) (*Server, error) {
 	routes, err := gen.NewServer(s,
 		gen.WithErrorHandler(s.writeError),
 		gen.WithNotFound(func(w http.ResponseWriter, r *http.Request) {
-			problem.Write(w, s.deps.Logger, kerr.New(kerr.NotFound, "no route for %s", r.URL.Path))
+			problem.Write(w, s.deps.Logger, kerrors.New(kerrors.NotFound, "no route for %s", r.URL.Path))
 		}),
 		gen.WithMethodNotAllowed(func(w http.ResponseWriter, _ *http.Request, allowed string) {
 			w.Header().Set("Allow", allowed)
@@ -187,9 +187,9 @@ func (s *Server) writeError(ctx context.Context, w http.ResponseWriter, _ *http.
 	var params *ogenerrors.DecodeParamsError
 	switch {
 	case errors.As(err, &decode), errors.As(err, &params):
-		err = kerr.New(kerr.Validation, "%s", err.Error())
+		err = kerrors.New(kerrors.Validation, "%s", err.Error())
 	case store.IsUniqueViolation(err):
-		err = kerr.New(kerr.Conflict, "it already exists")
+		err = kerrors.New(kerrors.Conflict, "it already exists")
 	case errors.Is(err, ht.ErrNotImplemented):
 		problem.WriteProblem(w, problem.Problem{
 			Code: "not_implemented", Title: http.StatusText(http.StatusNotImplemented),
@@ -207,7 +207,7 @@ func (s *Server) writeError(ctx context.Context, w http.ResponseWriter, _ *http.
 // event stream, the probes and the console.
 func (s *Server) Handler() http.Handler {
 	sec := s.deps.Config.Security
-	forbidden := func(w http.ResponseWriter) { problem.Write(w, s.deps.Logger, kerr.ErrForbidden) }
+	forbidden := func(w http.ResponseWriter) { problem.Write(w, s.deps.Logger, kerrors.ErrForbidden) }
 
 	var rest http.Handler = s.routes
 	rest = s.gate(rest)
@@ -263,7 +263,7 @@ func recoverPanics(logger *slog.Logger, next http.Handler) http.Handler {
 					panic(v) //nolint:forbidigo // net/http's way to abort a response
 				}
 				logger.Error("handler panicked", "panic", v, "path", r.URL.Path)
-				problem.Write(w, nil, kerr.New(kerr.Internal, "panic"))
+				problem.Write(w, nil, kerrors.New(kerrors.Internal, "panic"))
 			}
 		}()
 		next.ServeHTTP(w, r)

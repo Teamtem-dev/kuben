@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
@@ -86,7 +86,7 @@ func TestTagsDigestsAndEscapesAreRefused(t *testing.T) {
 	refused := func(what string, body gen.PutSource) {
 		t.Helper()
 		_, err := api.NewBinding(&body)
-		if kerr.CodeOf(err) != kerr.Validation {
+		if kerrors.CodeOf(err) != kerrors.Validation {
 			t.Errorf("%s: %v", what, err)
 		}
 	}

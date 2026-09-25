@@ -9,7 +9,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -56,7 +56,7 @@ func TestResolve(t *testing.T) {
 	}
 	user := model.User{ID: ids.New[ids.User](), IsActive: true}
 	ctx := context.Background()
-	if _, err := access.Resolve(ctx, rows, authz.RolePolicy{}); !errors.Is(err, kerr.ErrUnauthorized) {
+	if _, err := access.Resolve(ctx, rows, authz.RolePolicy{}); !errors.Is(err, kerrors.ErrUnauthorized) {
 		t.Fatalf("no principal: %v", err)
 	}
 	a, err := access.Resolve(httpx.WithUser(ctx, httpx.CurrentUser{User: user, Via: httpx.ViaSession}), rows, authz.RolePolicy{})
@@ -74,15 +74,15 @@ func TestResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(a.OrgIDs()) != 1 || a.OrgIDs()[0] != orgB || !errors.Is(a.ForbidToken(), kerr.ErrForbidden) {
+	if len(a.OrgIDs()) != 1 || a.OrgIDs()[0] != orgB || !errors.Is(a.ForbidToken(), kerrors.ErrForbidden) {
 		t.Fatalf("a token sees its own org only: %+v", a.OrgIDs())
 	}
-	if _, err := a.Require(perm.OrgRead, authz.OrgChain(orgA)); !errors.Is(err, kerr.ErrForbidden) {
+	if _, err := a.Require(perm.OrgRead, authz.OrgChain(orgA)); !errors.Is(err, kerrors.ErrForbidden) {
 		t.Fatalf("got %v", err)
 	}
 	invited := user
 	invited.MustChangePassword = true
-	if _, err := access.Resolve(httpx.WithUser(ctx, httpx.CurrentUser{User: invited}), rows, authz.RolePolicy{}); !errors.Is(err, kerr.ErrForbidden) {
+	if _, err := access.Resolve(httpx.WithUser(ctx, httpx.CurrentUser{User: invited}), rows, authz.RolePolicy{}); !errors.Is(err, kerrors.ErrForbidden) {
 		t.Fatalf("a temporary password comes first: %v", err)
 	}
 }

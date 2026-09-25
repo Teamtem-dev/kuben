@@ -9,7 +9,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -71,7 +71,7 @@ func (s *Server) ListAudit(ctx context.Context, params gen.ListAuditParams) (gen
 		}
 	}
 	if len(orgs) == 0 {
-		return nil, kerr.ErrForbidden
+		return nil, kerrors.ErrForbidden
 	}
 	events := []model.AuditEvent{}
 	for _, org := range orgs {

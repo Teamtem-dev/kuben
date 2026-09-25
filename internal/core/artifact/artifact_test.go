@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
 const sha256 = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -47,8 +47,8 @@ func TestInvalidDigestsAreValidationErrors(t *testing.T) {
 	if err.Error() != `not an OCI sha256 or sha512 digest: "latest"` {
 		t.Errorf("got %s", err)
 	}
-	if !errors.Is(err, kerr.ErrValidation) || kerr.CodeOf(err) != kerr.Validation {
-		t.Errorf("got code %s", kerr.CodeOf(err))
+	if !errors.Is(err, kerrors.ErrValidation) || kerrors.CodeOf(err) != kerrors.Validation {
+		t.Errorf("got code %s", kerrors.CodeOf(err))
 	}
 }
 

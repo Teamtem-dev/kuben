@@ -13,7 +13,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/build"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
@@ -137,15 +137,15 @@ func TestProviderErrorsBecomeProblems(t *testing.T) {
 	cases := []struct {
 		err  error
 		want string
-		code kerr.Code
+		code kerrors.Code
 	}{
-		{build.NotFound{What: "installation 7"}, "validation failed: GitHub does not know installation 7", kerr.Validation},
-		{build.Refused{Reason: "HTTP 401"}, "validation failed: GitHub refused access: HTTP 401", kerr.Validation},
-		{build.Unavailable{Reason: "HTTP 502"}, "unavailable: GitHub: HTTP 502", kerr.Unavailable},
+		{build.NotFound{What: "installation 7"}, "validation failed: GitHub does not know installation 7", kerrors.Validation},
+		{build.Refused{Reason: "HTTP 401"}, "validation failed: GitHub refused access: HTTP 401", kerrors.Validation},
+		{build.Unavailable{Reason: "HTTP 502"}, "unavailable: GitHub: HTTP 502", kerrors.Unavailable},
 	}
 	for _, c := range cases {
 		got := api.ProviderError(c.err)
-		if got.Error() != c.want || kerr.CodeOf(got) != c.code {
+		if got.Error() != c.want || kerrors.CodeOf(got) != c.code {
 			t.Errorf("%v: %v", c.err, got)
 		}
 	}

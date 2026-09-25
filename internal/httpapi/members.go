@@ -9,7 +9,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -47,7 +47,7 @@ func memberDtos(members []model.Member) []gen.MemberDto {
 func orgOf(a access.Access) (ids.OrgID, error) {
 	orgs := a.OrgIDs()
 	if len(orgs) == 0 {
-		return ids.OrgID{}, kerr.ErrForbidden
+		return ids.OrgID{}, kerrors.ErrForbidden
 	}
 	return orgs[0], nil
 }
@@ -56,7 +56,7 @@ func orgOf(a access.Access) (ids.OrgID, error) {
 func callerRole(a access.Access, org ids.OrgID) (perm.Role, error) {
 	role, ok := a.OrgRole(org).Get()
 	if !ok {
-		return "", kerr.ErrForbidden
+		return "", kerrors.ErrForbidden
 	}
 	return role, nil
 }
@@ -69,20 +69,20 @@ func (s *Server) memberAdmin(ctx context.Context) (access.Access, ids.OrgID, err
 		return access.Access{}, ids.OrgID{}, err
 	}
 	if err := a.ForbidToken(); err != nil {
-		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 	}
 	org, err := orgOf(a)
 	if err != nil {
 		return access.Access{}, ids.OrgID{}, err
 	}
 	if _, err := a.Require(perm.UserAdmin, authz.OrgChain(org)); err != nil {
-		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+		return access.Access{}, ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 	}
 	return a, org, nil
 }
 
 func (s *Server) findMember(ctx context.Context, org ids.OrgID, id string) (model.Member, error) {
-	notFound := kerr.New(kerr.NotFound, "member `%s`", id)
+	notFound := kerrors.New(kerrors.NotFound, "member `%s`", id)
 	user, err := ids.Parse[ids.User](id)
 	if err != nil {
 		return model.Member{}, notFound
@@ -110,7 +110,7 @@ func (s *Server) ListMembers(ctx context.Context) (gen.ListMembersRes, error) {
 		return nil, err
 	}
 	if _, err := a.Require(perm.OrgRead, authz.OrgChain(org)); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	members, err := s.deps.Store.ListMembers(ctx, org)
 	if err != nil {
@@ -129,14 +129,14 @@ func (s *Server) InviteMember(ctx context.Context, req *gen.InviteMember) (gen.I
 	}
 	role, err := perm.ParseRole(req.Role.Or(string(perm.Developer)))
 	if err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	caller, err := callerRole(a, org)
 	if err != nil {
 		return nil, err
 	}
 	if role.Rank() > caller.Rank() {
-		return nil, kerr.ErrForbidden
+		return nil, kerrors.ErrForbidden
 	}
 	email := ascii.Lower(strings.TrimSpace(req.Email))
 	if err := ValidEmail(email); err != nil {
@@ -175,7 +175,7 @@ func (s *Server) inviteeAccount(
 		}
 		for _, m := range members {
 			if m.User.ID == existing.User.ID {
-				return model.User{}, opt.None[string](), kerr.New(kerr.Conflict, "`%s` is already a member", email)
+				return model.User{}, opt.None[string](), kerrors.New(kerrors.Conflict, "`%s` is already a member", email)
 			}
 		}
 		return existing.User, opt.None[string](), nil
@@ -189,7 +189,7 @@ func (s *Server) inviteeAccount(
 		return model.User{}, opt.None[string](), err
 	}
 	if hashErr != nil {
-		return model.User{}, opt.None[string](), kerr.Wrap(hashErr, "hash the temporary password")
+		return model.User{}, opt.None[string](), kerrors.Wrap(hashErr, "hash the temporary password")
 	}
 	name := opt.None[string]()
 	if n, ok := displayName.Get(); ok {
@@ -212,14 +212,14 @@ func (s *Server) UpdateMember(ctx context.Context, req *gen.UpdateMember, params
 	}
 	role, err := perm.ParseRole(req.Role)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	target, err := s.findMember(ctx, org, params.Member)
 	if err != nil {
 		return nil, err
 	}
 	if target.User.ID == a.Current.User.ID {
-		return nil, kerr.New(kerr.Conflict, "you cannot change your own role")
+		return nil, kerrors.New(kerrors.Conflict, "you cannot change your own role")
 	}
 	caller, err := callerRole(a, org)
 	if err != nil {
@@ -227,7 +227,7 @@ func (s *Server) UpdateMember(ctx context.Context, req *gen.UpdateMember, params
 	}
 	touchesOwner := target.Role == perm.Owner || role == perm.Owner
 	if (touchesOwner && caller != perm.Owner) || role.Rank() > caller.Rank() {
-		return nil, kerr.ErrForbidden
+		return nil, kerrors.ErrForbidden
 	}
 	if target.Role == perm.Owner && role != perm.Owner {
 		owners, err := s.deps.Store.CountOwners(ctx, org)
@@ -235,7 +235,7 @@ func (s *Server) UpdateMember(ctx context.Context, req *gen.UpdateMember, params
 			return nil, err //nolint:wrapcheck // a store error, answered as internal
 		}
 		if owners <= 1 {
-			return nil, kerr.New(kerr.Conflict, "the last owner cannot be demoted")
+			return nil, kerrors.New(kerrors.Conflict, "the last owner cannot be demoted")
 		}
 	}
 	if err := s.deps.Store.SetOrgRole(ctx, org, target.User.ID, role); err != nil {
@@ -257,7 +257,7 @@ func (s *Server) RemoveMember(ctx context.Context, params gen.RemoveMemberParams
 		return nil, err
 	}
 	if target.User.ID == a.Current.User.ID {
-		return nil, kerr.New(kerr.Conflict, "you cannot remove yourself")
+		return nil, kerrors.New(kerrors.Conflict, "you cannot remove yourself")
 	}
 	if target.Role == perm.Owner {
 		caller, err := callerRole(a, org)
@@ -265,14 +265,14 @@ func (s *Server) RemoveMember(ctx context.Context, params gen.RemoveMemberParams
 			return nil, err
 		}
 		if caller != perm.Owner {
-			return nil, kerr.ErrForbidden
+			return nil, kerrors.ErrForbidden
 		}
 		owners, err := s.deps.Store.CountOwners(ctx, org)
 		if err != nil {
 			return nil, err //nolint:wrapcheck // a store error, answered as internal
 		}
 		if owners <= 1 {
-			return nil, kerr.New(kerr.Conflict, "the last owner cannot be removed")
+			return nil, kerrors.New(kerrors.Conflict, "the last owner cannot be removed")
 		}
 	}
 	// Bindings, membership and the member's tokens of this org go together.

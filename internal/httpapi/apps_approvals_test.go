@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
@@ -24,7 +24,7 @@ import (
 
 // approvals.rs refusals_map_to_http.
 func TestRefusalsMapToHTTP(t *testing.T) {
-	if err := api.RefusalErr(policy.ErrSelfApproval); !errors.Is(err, kerr.ErrForbidden) {
+	if err := api.RefusalErr(policy.ErrSelfApproval); !errors.Is(err, kerrors.ErrForbidden) {
 		t.Errorf("self-approval = %v, want forbidden", err)
 	}
 	for _, e := range []policy.ApprovalError{
@@ -33,12 +33,12 @@ func TestRefusalsMapToHTTP(t *testing.T) {
 		policy.ErrAlreadyDecided,
 		policy.ErrStalePlan,
 	} {
-		var k *kerr.Error
+		var k *kerrors.Error
 		if err := api.RefusalErr(e); !errors.As(err, &k) {
-			t.Errorf("%s: %v is not a kerr.Error", e, err)
+			t.Errorf("%s: %v is not a kerrors.Error", e, err)
 			continue
 		}
-		if k.Code != kerr.Conflict || k.Detail != string(e) {
+		if k.Code != kerrors.Conflict || k.Detail != string(e) {
 			t.Errorf("%s: got %s %q, want a conflict with its message", e, k.Code, k.Detail)
 		}
 	}

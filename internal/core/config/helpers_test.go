@@ -8,16 +8,16 @@ import (
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 )
 
-// kerrOf is the *kerr.Error in err's chain, by value, and whether there is one.
-func kerrOf(err error) (kerr.Error, bool) {
-	var e *kerr.Error
+// kerrOf is the *kerrors.Error in err's chain, by value, and whether there is one.
+func kerrOf(err error) (kerrors.Error, bool) {
+	var e *kerrors.Error
 	if errors.As(err, &e) && e != nil {
 		return *e, true
 	}
-	return kerr.Error{}, false
+	return kerrors.Error{}, false
 }
 
 // jail is a configuration source that touches neither /etc nor the process

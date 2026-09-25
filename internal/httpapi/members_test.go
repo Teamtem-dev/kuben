@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
@@ -22,7 +22,7 @@ func TestEmailAddresses(t *testing.T) {
 		}
 	}
 	for _, e := range invalid {
-		if err := api.ValidEmail(e); kerr.CodeOf(err) != kerr.Validation {
+		if err := api.ValidEmail(e); kerrors.CodeOf(err) != kerrors.Validation {
 			t.Errorf("%q: %v", e, err)
 		}
 	}

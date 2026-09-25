@@ -16,7 +16,7 @@ import (
 	"unicode"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
@@ -47,7 +47,7 @@ func registryLoginDto(s store.SecretSummary) (gen.RegistryLoginDto, bool) {
 // references carry it.
 func registryName(given string) (string, error) {
 	given = ascii.Lower(strings.TrimSpace(given))
-	invalid := kerr.New(kerr.Validation, "`%s` is not a registry name such as ghcr.io", given)
+	invalid := kerrors.New(kerrors.Validation, "`%s` is not a registry name such as ghcr.io", given)
 	if given == "" || strings.ContainsAny(given, "/@") {
 		return "", invalid
 	}
@@ -65,11 +65,11 @@ func checkLogin(body *gen.PutRegistryLogin) error {
 		{"username", body.Username}, {"password", body.Password},
 	} {
 		if field.value == "" || len(field.value) > maxLoginField || strings.ContainsFunc(field.value, unicode.IsControl) {
-			return kerr.New(kerr.Validation, "the %s must be 1 to %d printable characters", field.name, maxLoginField)
+			return kerrors.New(kerrors.Validation, "the %s must be 1 to %d printable characters", field.name, maxLoginField)
 		}
 	}
 	if strings.Contains(body.Username, ":") {
-		return kerr.New(kerr.Validation, "the username cannot contain `:`")
+		return kerrors.New(kerrors.Validation, "the username cannot contain `:`")
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func (s *Server) ListRegistryLogins(ctx context.Context, params gen.ListRegistry
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	stored, err := s.storedSecrets(ctx, e)
 	if err != nil {
@@ -115,7 +115,7 @@ func (s *Server) PutRegistryLogin(
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if err := DNSLabel("login name", params.Name, 63); err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func (s *Server) PutRegistryLogin(
 	}
 	saved, ok := registryLoginDto(summary)
 	if !found || !ok {
-		return nil, kerr.New(kerr.Internal, "the new registry login is missing")
+		return nil, kerrors.New(kerrors.Internal, "the new registry login is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -163,7 +163,7 @@ func (s *Server) DeleteRegistryLogin(ctx context.Context, params gen.DeleteRegis
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	name := params.Name
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
@@ -171,7 +171,7 @@ func (s *Server) DeleteRegistryLogin(ctx context.Context, params gen.DeleteRegis
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
-	notFound := kerr.New(kerr.NotFound, "registry login `%s`", name)
+	notFound := kerrors.New(kerrors.NotFound, "registry login `%s`", name)
 	current, found, err := t.Secret(ctx, e.env.ID, name)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -191,7 +191,7 @@ func (s *Server) DeleteRegistryLogin(ctx context.Context, params gen.DeleteRegis
 		}
 		return &gen.DeleteRegistryLoginNoContent{}, nil
 	case store.SecretDeletedInUse:
-		return nil, kerr.New(kerr.Conflict, "registry login `%s` is read as a secret by %s", name, strings.Join(d.Apps, ", "))
+		return nil, kerrors.New(kerrors.Conflict, "registry login `%s` is read as a secret by %s", name, strings.Join(d.Apps, ", "))
 	case store.SecretDeletedNotFound, nil:
 	}
 	return nil, notFound

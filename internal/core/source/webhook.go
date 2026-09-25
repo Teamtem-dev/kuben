@@ -7,7 +7,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
 	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -44,7 +44,7 @@ func ParsePullAction(s string) (PullAction, error) {
 	case PullOpened, PullUpdated, PullClosed:
 		return a, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown pull request action `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown pull request action `%s`", s)
 }
 
 // PullEvent is a pull request event.
@@ -91,7 +91,7 @@ func ParseInstallationAction(s string) (InstallationAction, error) {
 	case InstallationCreated, InstallationDeleted, InstallationSuspended, InstallationUnsuspended:
 		return a, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown installation action `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown installation action `%s`", s)
 }
 
 // InstallationEvent is a change to an installation of the GitHub App.

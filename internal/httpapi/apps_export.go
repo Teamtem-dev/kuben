@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-faster/jx"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
@@ -209,7 +209,7 @@ func rawObject(doc map[string]any) (map[string]jx.Raw, error) {
 	for key, value := range doc {
 		text, err := wire.CanonicalValue(value)
 		if err != nil {
-			return nil, kerr.Wrap(err, "encode the export")
+			return nil, kerrors.Wrap(err, "encode the export")
 		}
 		out[key] = jx.Raw(text)
 	}

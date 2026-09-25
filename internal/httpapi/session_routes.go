@@ -9,7 +9,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
@@ -48,7 +48,7 @@ func (s *Server) withPermit(ctx context.Context, f func()) error {
 		f()
 		return nil
 	case <-ctx.Done():
-		return kerr.Wrap(ctx.Err(), "waiting to hash a password")
+		return kerrors.Wrap(ctx.Err(), "waiting to hash a password")
 	}
 }
 
@@ -59,7 +59,7 @@ func (s *Server) Login(ctx context.Context, req *gen.LoginRequest) (gen.LoginRes
 	ip := httpx.RequestFrom(ctx).IP
 	if wait := s.throttle.check(ctx, email, ip); wait > 0 {
 		s.auditLogin(ctx, opt.None[model.User](), false, email, "throttled")
-		return nil, kerr.TooMany(wait)
+		return nil, kerrors.TooMany(wait)
 	}
 	creds, found, err := s.deps.Store.FindUserByEmail(ctx, email)
 	if err != nil {
@@ -90,7 +90,7 @@ func (s *Server) Login(ctx context.Context, req *gen.LoginRequest) (gen.LoginRes
 	if !found || !ok || ssoOnly || !creds.User.IsActive || creds.PasswordHash.IsNone() {
 		s.throttle.recordFailure(ctx, email, ip)
 		s.auditLogin(ctx, account, false, email, "failure")
-		return nil, kerr.ErrUnauthorized
+		return nil, kerrors.ErrUnauthorized
 	}
 	s.throttle.recordSuccess(ctx, email, ip)
 	s.auditLogin(ctx, account, true, email, "success")
@@ -170,7 +170,7 @@ func (s *Server) Logout(ctx context.Context) error {
 func (s *Server) GetMe(ctx context.Context) (gen.GetMeRes, error) {
 	c, ok := httpx.UserFrom(ctx)
 	if !ok {
-		return nil, kerr.ErrUnauthorized
+		return nil, kerrors.ErrUnauthorized
 	}
 	return userDto(c), nil
 }
@@ -180,17 +180,17 @@ func (s *Server) GetMe(ctx context.Context) (gen.GetMeRes, error) {
 func (s *Server) ChangePassword(ctx context.Context, req *gen.ChangePassword) (gen.ChangePasswordRes, error) {
 	c, ok := httpx.UserFrom(ctx)
 	if !ok {
-		return nil, kerr.ErrUnauthorized
+		return nil, kerrors.ErrUnauthorized
 	}
 	if c.Token.IsSome() {
-		return nil, kerr.ErrForbidden
+		return nil, kerrors.ErrForbidden
 	}
 	minLen := s.deps.Config.Security.PasswordMinLength
 	if uint64(utf8.RuneCountInString(req.NewPassword)) < minLen { //nolint:gosec // a count is never negative
-		return nil, kerr.New(kerr.Validation, "the new password needs at least %d characters", minLen)
+		return nil, kerrors.New(kerrors.Validation, "the new password needs at least %d characters", minLen)
 	}
 	if req.NewPassword == req.CurrentPassword {
-		return nil, kerr.New(kerr.Validation, "the new password must differ from the current one")
+		return nil, kerrors.New(kerrors.Validation, "the new password must differ from the current one")
 	}
 	stored := s.deps.Hasher.DummyHash()
 	if creds, found, err := s.deps.Store.FindUserByEmail(ctx, c.User.Email); err != nil {
@@ -209,10 +209,10 @@ func (s *Server) ChangePassword(ctx context.Context, req *gen.ChangePassword) (g
 		return nil, err
 	}
 	if !verified {
-		return nil, kerr.New(kerr.Validation, "the current password is incorrect")
+		return nil, kerrors.New(kerrors.Validation, "the current password is incorrect")
 	}
 	if hashErr != nil {
-		return nil, kerr.Wrap(hashErr, "hash the new password")
+		return nil, kerrors.Wrap(hashErr, "hash the new password")
 	}
 	if err := s.deps.Store.SetPasswordHash(ctx, c.User.ID, hash); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal

@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 )
@@ -38,7 +38,7 @@ func TestOrgBindingAppliesToNestedProject(t *testing.T) {
 func TestBindingOnOtherOrgIsRejected(t *testing.T) {
 	s := subject(perm.Owner, authz.OrgScope(ids.New[ids.Org]()))
 	proof, err := authz.Check(authz.RolePolicy{}, s, perm.OrgRead, authz.OrgChain(ids.New[ids.Org]()))
-	if !errors.Is(err, kerr.ErrForbidden) {
+	if !errors.Is(err, kerrors.ErrForbidden) {
 		t.Fatalf("got %v", err)
 	}
 	if proof.Valid() {

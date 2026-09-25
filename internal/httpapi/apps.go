@@ -22,7 +22,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -192,11 +192,11 @@ func desiredSpec(record store.AppRecord) (v1alpha1.AppSpec, bool) {
 func configOf(spec *v1alpha1.AppSpec) (any, error) {
 	data, err := json.Marshal(spec)
 	if err != nil {
-		return nil, kerr.Wrap(err, "an app spec")
+		return nil, kerrors.Wrap(err, "an app spec")
 	}
 	config, err := wire.DecodeAny(data)
 	if err != nil {
-		return nil, kerr.Wrap(err, "an app spec")
+		return nil, kerrors.Wrap(err, "an app spec")
 	}
 	if object, ok := config.(map[string]any); ok {
 		delete(object, "source")
@@ -268,9 +268,9 @@ func (s *Server) resolve(ctx context.Context, e envScope, image string) (oci.Res
 		return resolved, nil
 	case oci.IsUnreachable(err) || oci.IsRateLimited(err):
 		// Rust met a rate limit as an unreachable registry: 503 either way.
-		return oci.Resolved{}, kerr.New(kerr.Unavailable, "%s", err.Error())
+		return oci.Resolved{}, kerrors.New(kerrors.Unavailable, "%s", err.Error())
 	}
-	return oci.Resolved{}, kerr.New(kerr.Validation, "%s", err.Error())
+	return oci.Resolved{}, kerrors.New(kerrors.Validation, "%s", err.Error())
 }
 
 // imageLogin is e's login for the registry of image, when image is a tag
@@ -358,7 +358,7 @@ func (s *Server) deploy(ctx context.Context, t *store.Tenant, a access.Access, c
 	if err != nil {
 		return err
 	}
-	missing := kerr.New(kerr.NotFound, "the app")
+	missing := kerrors.New(kerrors.NotFound, "the app")
 	revision, found, err := t.CreateConfigRevision(ctx, c.project, c.target, config, actor)
 	if err != nil {
 		return err //nolint:wrapcheck // a store error, answered as internal
@@ -408,7 +408,7 @@ func (s *Server) releaseOf(ctx context.Context, t *store.Tenant, c change, actor
 	case resolvedArtifact:
 		image = a.image
 	case nil:
-		return ids.ReleaseID{}, kerr.Wrap(nil, "a change without an artifact")
+		return ids.ReleaseID{}, kerrors.Wrap(nil, "a change without an artifact")
 	}
 	id, _, err := t.CreateRelease(ctx, c.project, store.PortableRelease{
 		Application:     c.application,
@@ -429,27 +429,27 @@ func startedErr(started store.Started) error {
 	case store.StartedAccepted, store.StartedReplayed:
 		return nil
 	case store.StartedRejected:
-		return kerr.New(kerr.Conflict, "%s", st.Reject.Error())
+		return kerrors.New(kerrors.Conflict, "%s", st.Reject.Error())
 	case store.StartedNotFound:
-		return kerr.New(kerr.NotFound, "that release of this app")
+		return kerrors.New(kerrors.NotFound, "that release of this app")
 	case store.StartedSecretRevoked:
 		return errSecretRevoked()
 	case store.StartedVulnerabilityBlocked:
-		return kerr.New(kerr.Conflict, "the environment's vulnerability gate refuses this release")
+		return kerrors.New(kerrors.Conflict, "the environment's vulnerability gate refuses this release")
 	case store.StartedFrozen:
-		return kerr.New(kerr.Conflict, "the environment is frozen: only an emergency rollback passes until the freeze ends")
+		return kerrors.New(kerrors.Conflict, "the environment is frozen: only an emergency rollback passes until the freeze ends")
 	case store.StartedUntrusted:
 		return errUntrusted()
 	case store.StartedKeyReused:
-		return kerr.Wrap(nil, "a deployment without a key was a replay")
+		return kerrors.Wrap(nil, "a deployment without a key was a replay")
 	}
-	return kerr.Wrap(nil, "an unknown start result")
+	return kerrors.Wrap(nil, "an unknown start result")
 }
 
 // errSecretRevoked refuses a run because a secret it references has a
 // revoked current revision.
 func errSecretRevoked() error {
-	return kerr.New(kerr.Conflict, "a secret this app references has its current revision revoked: set a new value first")
+	return kerrors.New(kerrors.Conflict, "a secret this app references has its current revision revoked: set a new value first")
 }
 
 // ensureMayDeploy refuses a deployment a may not start on tgt under its
@@ -461,7 +461,7 @@ func ensureMayDeploy(ctx context.Context, t *store.Tenant, a access.Access, tgt 
 		return err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if found && !revision.Policy.MayDeploy(authz.EffectiveRole(a.Subject, chain)) {
-		return kerr.ErrForbidden
+		return kerrors.ErrForbidden
 	}
 	return nil
 }
@@ -474,14 +474,14 @@ func (s *Server) createApp(ctx context.Context, a access.Access, e envScope, nam
 		return gen.AppDto{}, err
 	}
 	if e.deleting() {
-		return gen.AppDto{}, kerr.New(kerr.Conflict, "environment `%s` is being deleted", e.env.Slug)
+		return gen.AppDto{}, kerrors.New(kerrors.Conflict, "environment `%s` is being deleted", e.env.Slug)
 	}
 	namespace := e.namespace()
 	if err := s.ensureDomainsFree(ctx, e.project.org, namespace, name, &spec); err != nil {
 		return gen.AppDto{}, err
 	}
 	if spec.Source.Image == nil {
-		return gen.AppDto{}, kerr.New(kerr.Validation, "an app needs an image")
+		return gen.AppDto{}, kerrors.New(kerrors.Validation, "an app needs an image")
 	}
 	resolved, err := s.resolve(ctx, e, *spec.Source.Image)
 	if err != nil {
@@ -489,7 +489,7 @@ func (s *Server) createApp(ctx context.Context, a access.Access, e envScope, nam
 	}
 	placement, ok := e.env.Placement.Get()
 	if !ok {
-		return gen.AppDto{}, kerr.New(kerr.Conflict, "environment `%s` has no placement", e.env.Slug)
+		return gen.AppDto{}, kerrors.New(kerrors.Conflict, "environment `%s` has no placement", e.env.Slug)
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -540,7 +540,7 @@ func (s *Server) newApp(
 		return store.AppRecord{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return store.AppRecord{}, kerr.Wrap(nil, "the new app is missing")
+		return store.AppRecord{}, kerrors.Wrap(nil, "the new app is missing")
 	}
 	return record, nil
 }

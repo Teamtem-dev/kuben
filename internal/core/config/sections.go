@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 
 	"github.com/Teamtem-dev/kuben/internal/core/capacity"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
@@ -209,7 +209,7 @@ func (q QuotaCfg) OrgLimits() (capacity.Limits, error) {
 		}
 		n, ok := read(text)
 		if !ok {
-			return opt.None[uint64](), kerr.New(kerr.Validation, "quota.%s `%s` is not a quantity", name, text)
+			return opt.None[uint64](), kerrors.New(kerrors.Validation, "quota.%s `%s` is not a quantity", name, text)
 		}
 		return opt.Some(n), nil
 	}

@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -19,7 +19,7 @@ import (
 
 // access resolves the caller's authority for the request in ctx.
 func (s *Server) access(ctx context.Context) (access.Access, error) {
-	return access.Resolve(ctx, s.deps.Store, s.policy) //nolint:wrapcheck // kerr errors already
+	return access.Resolve(ctx, s.deps.Store, s.policy) //nolint:wrapcheck // kerrors errors already
 }
 
 // Timestamp is the RFC 3339 time of a millisecond timestamp, with as many
@@ -84,7 +84,7 @@ func (s *Server) GetProject(ctx context.Context, params gen.GetProjectParams) (g
 		return nil, err
 	}
 	if _, err := a.Require(perm.ProjectRead, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	dto := projectDto(p.org, p.project, p.view)
 	return &dto, nil
@@ -102,19 +102,19 @@ func (s *Server) CreateProject(ctx context.Context, req *gen.CreateProject) (gen
 	}
 	displayName := strings.TrimFunc(req.DisplayName, unicode.IsSpace)
 	if displayName == "" || len(displayName) > 100 {
-		return nil, kerr.New(kerr.Validation, "display_name must be 1–100 characters")
+		return nil, kerrors.New(kerrors.Validation, "display_name must be 1–100 characters")
 	}
 	orgs := a.OrgIDs()
 	if len(orgs) == 0 {
-		return nil, kerr.ErrForbidden
+		return nil, kerrors.ErrForbidden
 	}
 	org := orgs[0]
 	if _, err := a.Require(perm.ProjectWrite, authz.OrgChain(org)); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	// Project resources are cluster-wide: a name another organization
 	// holds there is taken.
-	taken := kerr.New(kerr.Conflict, "project `%s` already exists", req.Name)
+	taken := kerrors.New(kerrors.Conflict, "project `%s` already exists", req.Name)
 	if v, ok := s.deps.Projections.Project(req.Name); ok && v.Org != opt.Some(org.String()) {
 		return nil, taken
 	}
@@ -165,7 +165,7 @@ func (s *Server) DeleteProject(ctx context.Context, params gen.DeleteProjectPara
 		return nil, err
 	}
 	if _, err := a.Require(perm.ProjectWrite, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *Server) DeleteProject(ctx context.Context, params gen.DeleteProjectPara
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if remaining > 0 {
-		return nil, kerr.New(kerr.Conflict, "project `%s` still has %d environment(s); delete them first",
+		return nil, kerrors.New(kerrors.Conflict, "project `%s` still has %d environment(s); delete them first",
 			params.Project, remaining)
 	}
 	marked, err := t.MarkProjectDeleting(ctx, p.project.ID)
@@ -185,7 +185,7 @@ func (s *Server) DeleteProject(ctx context.Context, params gen.DeleteProjectPara
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !marked {
-		return nil, kerr.New(kerr.Conflict, "project `%s` is being deleted", params.Project)
+		return nil, kerrors.New(kerrors.Conflict, "project `%s` is being deleted", params.Project)
 	}
 	_, actor := a.Actor()
 	if _, err := t.Request(ctx, store.ProjectDelete, store.ProjectSubject(p.project.ID), actor,

@@ -17,9 +17,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
-	domain "github.com/Teamtem-dev/kuben/internal/core/dnsname"
+	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/doctor"
@@ -51,7 +51,7 @@ func (s *Server) GetAppDoctor(ctx context.Context, params gen.GetAppDoctorParams
 		return nil, err
 	}
 	if _, err := acc.Require(perm.AppRead, a.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	cluster, err := s.cluster()
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *Server) domainChecks(ctx context.Context, a appScope) ([]doctor.Check, 
 	}
 	var checks []doctor.Check
 	for _, name := range hosts {
-		host, err := domain.Canonical(name)
+		host, err := dnsname.Canonical(name)
 		if err != nil {
 			continue
 		}
@@ -168,7 +168,7 @@ func (s *Server) domainChecks(ctx context.Context, a appScope) ([]doctor.Check, 
 		case found:
 			holder = doctor.ClaimOthers{}
 		}
-		zone := domain.LockKey(host)
+		zone := dnsname.LockKey(host)
 		servers, lookupErr := s.deps.DNS.NS(ctx, zone)
 		checks = append(checks,
 			doctor.ClaimCheck(host, holder, s.deps.Config.Domains.RequireClaim),
@@ -334,17 +334,17 @@ func doctorReport(checks []doctor.Check, graph evidence.Graph, findings []eviden
 func rawMembers(v any) (map[string]jx.Raw, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
-		return nil, kerr.Wrap(err, "encode the doctor's report")
+		return nil, kerrors.Wrap(err, "encode the doctor's report")
 	}
 	var members map[string]json.RawMessage
 	if err := json.Unmarshal(data, &members); err != nil {
-		return nil, kerr.Wrap(err, "encode the doctor's report")
+		return nil, kerrors.Wrap(err, "encode the doctor's report")
 	}
 	out := make(map[string]jx.Raw, len(members))
 	for key, member := range members {
 		text, err := wire.Canonical(member)
 		if err != nil {
-			return nil, kerr.Wrap(err, "encode the doctor's report")
+			return nil, kerrors.Wrap(err, "encode the doctor's report")
 		}
 		out[key] = jx.Raw(text)
 	}

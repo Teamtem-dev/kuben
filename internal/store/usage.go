@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -75,7 +75,7 @@ func (t *Tenant) AdmitEnvironment(ctx context.Context, quota opt.Val[uint64]) er
 		return err
 	}
 	if n >= limit {
-		return kerr.New(kerr.Conflict, "the organization's quota allows %d environments", limit)
+		return kerrors.New(kerrors.Conflict, "the organization's quota allows %d environments", limit)
 	}
 	return nil
 }

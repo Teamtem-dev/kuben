@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
@@ -41,7 +41,7 @@ func TestMemberIDsAreUserIDs(t *testing.T) {
 	if _, err := api.MemberID("0192f3a1-0000-7000-8000-00000000000a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := api.MemberID("bob"); kerr.CodeOf(err) != kerr.NotFound {
+	if _, err := api.MemberID("bob"); kerrors.CodeOf(err) != kerrors.NotFound {
 		t.Fatalf("bob: %v", err)
 	}
 	var body gen.PutScopedRole

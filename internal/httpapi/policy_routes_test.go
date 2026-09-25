@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
@@ -109,8 +109,8 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 // it is its detail.
 func expectValidation(t *testing.T, err error, message string) {
 	t.Helper()
-	var k *kerr.Error
-	if !errors.As(err, &k) || k.Code != kerr.Validation {
+	var k *kerrors.Error
+	if !errors.As(err, &k) || k.Code != kerrors.Validation {
 		t.Errorf("%v is not a validation error (want %q)", err, message)
 		return
 	}

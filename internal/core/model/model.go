@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 )
@@ -79,7 +79,7 @@ func ParseSubjectKind(s string) (SubjectKind, error) {
 	case SubjectUser, SubjectTeam, SubjectToken:
 		return k, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown subject kind `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown subject kind `%s`", s)
 }
 
 func (k SubjectKind) String() string { return string(k) }
@@ -111,7 +111,7 @@ func ParseScopeKind(s string) (ScopeKind, error) {
 	case ScopeOrg, ScopeProject, ScopeEnvironment, ScopeApp:
 		return k, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown scope kind `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown scope kind `%s`", s)
 }
 
 func (k ScopeKind) String() string { return string(k) }

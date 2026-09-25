@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 )
 
@@ -218,7 +218,7 @@ func TestPoliciesParseAndPinTheirStrings(t *testing.T) {
 			t.Errorf("%s: got %s, %v", s, got, perr)
 		}
 	}
-	if _, err := target.ParseDeployPolicy("Auto"); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := target.ParseDeployPolicy("Auto"); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("got %v", err)
 	}
 	var state target.State

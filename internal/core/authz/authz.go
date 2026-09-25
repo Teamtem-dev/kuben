@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 )
@@ -123,7 +123,7 @@ type Policy interface {
 // otherwise. It is the only way to a valid Proof.
 func Check(policy Policy, subject Subject, p perm.Perm, chain ScopeChain) (Proof, error) {
 	if !policy.Allowed(subject, p, chain) {
-		return Proof{}, kerr.ErrForbidden
+		return Proof{}, kerrors.ErrForbidden
 	}
 	return Proof{user: subject.User, perm: p, scope: chain.Leaf(), minted: true}, nil
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
@@ -120,21 +120,21 @@ func ValidTokenName(name string) bool {
 func tokenRole(a access.Access, requested string) (perm.Role, ids.OrgID, error) {
 	role, err := perm.ParseRole(requested)
 	if err != nil {
-		return "", ids.OrgID{}, err //nolint:wrapcheck // a kerr already
+		return "", ids.OrgID{}, err //nolint:wrapcheck // a kerrors already
 	}
 	if role == perm.Owner {
-		return "", ids.OrgID{}, kerr.New(kerr.Validation, "tokens are capped at `admin`")
+		return "", ids.OrgID{}, kerrors.New(kerrors.Validation, "tokens are capped at `admin`")
 	}
 	orgs := a.OrgIDs()
 	if len(orgs) == 0 {
-		return "", ids.OrgID{}, kerr.ErrForbidden
+		return "", ids.OrgID{}, kerrors.ErrForbidden
 	}
 	own, ok := a.OrgRole(orgs[0]).Get()
 	if !ok {
-		return "", ids.OrgID{}, kerr.ErrForbidden
+		return "", ids.OrgID{}, kerrors.ErrForbidden
 	}
 	if role.Rank() > own.Rank() {
-		return "", ids.OrgID{}, kerr.New(kerr.Validation, "a `%s` cannot create a `%s` token", own, role)
+		return "", ids.OrgID{}, kerrors.New(kerrors.Validation, "a `%s` cannot create a `%s` token", own, role)
 	}
 	return role, orgs[0], nil
 }
@@ -147,7 +147,7 @@ func (s *Server) tokenScope(ctx context.Context, a access.Access, req *gen.Creat
 	case !hasProject && !hasEnv:
 		return project, env, nil
 	case !hasProject:
-		return project, env, kerr.New(kerr.Validation, "environment requires project")
+		return project, env, kerrors.New(kerrors.Validation, "environment requires project")
 	case !hasEnv:
 		found, err := s.findProject(ctx, a, p)
 		if err != nil {
@@ -170,11 +170,11 @@ func (s *Server) CreateToken(ctx context.Context, req *gen.CreateToken) (gen.Cre
 		return nil, err
 	}
 	if err := a.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	name := strings.TrimSpace(req.Name)
 	if !ValidTokenName(name) {
-		return nil, kerr.New(kerr.Validation, "name must be 1–64 printable characters")
+		return nil, kerrors.New(kerrors.Validation, "name must be 1–64 printable characters")
 	}
 	role, org, err := tokenRole(a, req.Role.Or(string(perm.Developer)))
 	if err != nil {
@@ -186,7 +186,7 @@ func (s *Server) CreateToken(ctx context.Context, req *gen.CreateToken) (gen.Cre
 	}
 	days := int64(req.ExpiresInDays.Or(tokenDefaultTTLDays))
 	if days < 1 || days > tokenMaxTTLDays {
-		return nil, kerr.New(kerr.Validation, "expires_in_days must be between 1 and %d", tokenMaxTTLDays)
+		return nil, kerrors.New(kerrors.Validation, "expires_in_days must be between 1 and %d", tokenMaxTTLDays)
 	}
 	plaintext, id, secretHash := auth.NewAPIToken()
 	token, err := s.deps.Store.CreateToken(ctx, store.NewToken{
@@ -216,7 +216,7 @@ func (s *Server) ListTokens(ctx context.Context) ([]gen.TokenDto, error) {
 		return nil, err
 	}
 	if err := a.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	tokens, err := s.deps.Store.ListTokens(ctx, a.Current.User.ID)
 	if err != nil {
@@ -240,9 +240,9 @@ func (s *Server) RevokeToken(ctx context.Context, params gen.RevokeTokenParams) 
 		return nil, err
 	}
 	if err := a.ForbidToken(); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
-	notFound := kerr.New(kerr.NotFound, "token `%s`", params.Token)
+	notFound := kerrors.New(kerrors.NotFound, "token `%s`", params.Token)
 	id, err := ids.Parse[ids.Token](params.Token)
 	if err != nil {
 		return nil, notFound

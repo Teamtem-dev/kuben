@@ -48,7 +48,7 @@ type and reproduce the exact wire form; add a test that pins it.
 
 - A Rust enum without data is a named string type with constants that carry
   the wire strings, plus `ParseX(string) (X, error)` returning a
-  `kerr.Validation` error. Every `switch` over it lists every constant (the
+  `kerrors.Validation` error. Every `switch` over it lists every constant (the
   `exhaustive` linter fails the build otherwise); `default:` is not a way
   around it.
 - A Rust enum **with** data is a sealed interface: an unexported marker
@@ -64,7 +64,7 @@ type and reproduce the exact wire form; add a test that pins it.
 
 ## Errors
 
-- Domain failures are `*kerr.Error` with a stable code; wrap with
+- Domain failures are `*kerrors.Error` with a stable code; wrap with
   `fmt.Errorf("doing x: %w", err)` so the chain stays inspectable with
   `errors.Is/As`. A module whose Rust error enum is matched on by callers
   keeps a typed error of its own.

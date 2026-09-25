@@ -5,7 +5,7 @@ package api
 import (
 	"context"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/preview"
@@ -99,7 +99,7 @@ func (s *Server) GetPreviewPolicy(ctx context.Context, params gen.GetPreviewPoli
 		return nil, err
 	}
 	if _, err := acc.Require(perm.ProjectRead, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
@@ -140,10 +140,10 @@ func checkPreviewPolicy(req *gen.PutPreviewPolicy) (uint32, uint32, error) {
 		maxActive = uint32(v) //nolint:gosec // non-negative: the decoder enforces minimum 0
 	}
 	if ttl == 0 || ttl > preview.MaxTTLHours {
-		return 0, 0, kerr.New(kerr.Validation, "ttlHours must be 1 to %d", preview.MaxTTLHours)
+		return 0, 0, kerrors.New(kerrors.Validation, "ttlHours must be 1 to %d", preview.MaxTTLHours)
 	}
 	if maxActive < 1 || maxActive > maxPreviewsLimit {
-		return 0, 0, kerr.New(kerr.Validation, "maxActive must be 1 to 100")
+		return 0, 0, kerrors.New(kerrors.Validation, "maxActive must be 1 to 100")
 	}
 	return ttl, maxActive, nil
 }
@@ -159,7 +159,7 @@ func (s *Server) PutPreviewPolicy(ctx context.Context, req *gen.PutPreviewPolicy
 		return nil, err
 	}
 	if _, err := acc.Require(perm.ProjectWrite, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	ttl, maxActive, err := checkPreviewPolicy(req)
 	if err != nil {
@@ -175,10 +175,10 @@ func (s *Server) PutPreviewPolicy(ctx context.Context, req *gen.PutPreviewPolicy
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found || src.Deleting {
-		return nil, kerr.New(kerr.Validation, "no environment `%s`", req.SourceEnvironment)
+		return nil, kerrors.New(kerrors.Validation, "no environment `%s`", req.SourceEnvironment)
 	}
 	if src.EnvType == "preview" {
-		return nil, kerr.New(kerr.Validation, "a preview cannot be the source of previews")
+		return nil, kerrors.New(kerrors.Validation, "a preview cannot be the source of previews")
 	}
 	_, actor := acc.Actor()
 	settings := store.PreviewPolicy{
@@ -209,7 +209,7 @@ func (s *Server) ListPreviews(ctx context.Context, params gen.ListPreviewsParams
 		return nil, err
 	}
 	if _, err := acc.Require(perm.EnvRead, p.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, p.org)
 	if err != nil {
@@ -236,7 +236,7 @@ func (s *Server) activePreview(ctx context.Context, acc access.Access, project, 
 		return envScope{}, store.PreviewRecord{}, err
 	}
 	if _, err := acc.Require(perm.EnvWrite, e.chain()); err != nil {
-		return envScope{}, store.PreviewRecord{}, err //nolint:wrapcheck // a kerr already
+		return envScope{}, store.PreviewRecord{}, err //nolint:wrapcheck // a kerrors already
 	}
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
@@ -248,7 +248,7 @@ func (s *Server) activePreview(ctx context.Context, acc access.Access, project, 
 		return envScope{}, store.PreviewRecord{}, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found || !pv.Active() {
-		return envScope{}, store.PreviewRecord{}, kerr.New(kerr.NotFound, "active preview `%s`", environment)
+		return envScope{}, store.PreviewRecord{}, kerrors.New(kerrors.NotFound, "active preview `%s`", environment)
 	}
 	return e, pv, nil
 }
@@ -258,7 +258,7 @@ func (s *Server) ExtendPreview(ctx context.Context, req *gen.ExtendPreview, para
 	// int32 with minimum 0 in the contract: the decoder refused negatives.
 	hours := uint32(req.Hours) //nolint:gosec // non-negative: the decoder enforces minimum 0
 	if hours == 0 || hours > preview.MaxTTLHours {
-		return nil, kerr.New(kerr.Validation, "hours must be 1 to %d", preview.MaxTTLHours)
+		return nil, kerrors.New(kerrors.Validation, "hours must be 1 to %d", preview.MaxTTLHours)
 	}
 	keep := req.Keep.Or(false)
 	acc, err := s.access(ctx)
@@ -289,7 +289,7 @@ func (s *Server) ExtendPreview(ctx context.Context, req *gen.ExtendPreview, para
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.Internal, "the preview is missing")
+		return nil, kerrors.New(kerrors.Internal, "the preview is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal

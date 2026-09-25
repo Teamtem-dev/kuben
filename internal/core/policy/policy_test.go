@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
@@ -104,7 +104,7 @@ func TestInvalidPoliciesAreRefused(t *testing.T) {
 			if got.Error() != tt.message {
 				t.Errorf("got %q, want %q", got.Error(), tt.message)
 			}
-			if !errors.Is(err, kerr.ErrValidation) || errors.Is(err, kerr.ErrConflict) {
+			if !errors.Is(err, kerrors.ErrValidation) || errors.Is(err, kerrors.ErrConflict) {
 				t.Error("a refused policy is a validation failure")
 			}
 		})
@@ -244,7 +244,7 @@ func TestDecisionsNeedTheShownPlanAndAnOpenWindow(t *testing.T) {
 			t.Errorf("%s: got %v, %v", tt.name, got, err)
 		}
 	}
-	if _, err := policy.Decide(run, "bob", false, policy.Decision("maybe"), hash, 0); !errors.Is(err, kerr.ErrValidation) {
+	if _, err := policy.Decide(run, "bob", false, policy.Decision("maybe"), hash, 0); !errors.Is(err, kerrors.ErrValidation) {
 		t.Errorf("an unknown decision: got %v", err)
 	}
 }
@@ -479,7 +479,7 @@ func TestParsing(t *testing.T) {
 	_, errKind := policy.ParseChangeKind("redeploy")
 	_, errDecision := policy.ParseDecision("approved")
 	for _, err := range []error{errKind, errDecision} {
-		if !errors.Is(err, kerr.ErrValidation) {
+		if !errors.Is(err, kerrors.ErrValidation) {
 			t.Errorf("got %v, want a validation error", err)
 		}
 	}

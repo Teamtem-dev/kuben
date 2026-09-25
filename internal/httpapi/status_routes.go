@@ -24,7 +24,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/status"
@@ -187,7 +187,7 @@ func (s *Server) GetPublicStatus(ctx context.Context, params gen.GetPublicStatus
 		return nil, err
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "status page `%s`", params.Slug)
+		return nil, kerrors.New(kerrors.NotFound, "status page `%s`", params.Slug)
 	}
 
 	built, err := s.buildPublicStatus(ctx, page)
@@ -224,7 +224,7 @@ func (s *Server) GetStatusPage(ctx context.Context, params gen.GetStatusPagePara
 		return nil, err
 	}
 	if !found {
-		return nil, kerr.New(kerr.NotFound, "the status page of `%s`", params.Project)
+		return nil, kerrors.New(kerrors.NotFound, "the status page of `%s`", params.Project)
 	}
 
 	environments, err := tenant.Environments(ctx, p.project.ID)
@@ -253,10 +253,10 @@ func validatePutStatusPage(req *gen.PutStatusPage) (string, error) {
 	title := strings.TrimSpace(req.Title)
 	titleRunes := utf8.RuneCountInString(title)
 	if titleRunes == 0 || titleRunes > 100 || strings.IndexFunc(title, unicode.IsControl) >= 0 {
-		return "", kerr.New(kerr.Validation, "title must be 1 to 100 printable characters")
+		return "", kerrors.New(kerrors.Validation, "title must be 1 to 100 printable characters")
 	}
 	if len(req.Environments) == 0 || len(req.Environments) > 20 {
-		return "", kerr.New(kerr.Validation, "list 1 to 20 environments")
+		return "", kerrors.New(kerrors.Validation, "list 1 to 20 environments")
 	}
 	return title, nil
 }
@@ -297,7 +297,7 @@ func (s *Server) PutStatusPage(ctx context.Context, req *gen.PutStatusPage, para
 			return e.Slug == name && !e.Deleting
 		})
 		if i < 0 {
-			return nil, kerr.New(kerr.Validation, "no environment `%s`", name)
+			return nil, kerrors.New(kerrors.Validation, "no environment `%s`", name)
 		}
 		envIDs = append(envIDs, known[i].ID)
 	}
@@ -358,7 +358,7 @@ func (s *Server) DeleteStatusPage(ctx context.Context, params gen.DeleteStatusPa
 		return nil, err
 	}
 	if !deleted {
-		return nil, kerr.New(kerr.NotFound, "the status page of `%s`", params.Project)
+		return nil, kerrors.New(kerrors.NotFound, "the status page of `%s`", params.Project)
 	}
 	if err := tenant.AppendAudit(ctx, requestAudit(acc, "status-page.deleted", "project", params.Project)); err != nil {
 		return nil, err

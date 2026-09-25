@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
@@ -81,9 +81,9 @@ func (e Error) Error() string {
 	return "invalid policy: " + string(e.Kind)
 }
 
-// Is makes every policy error match kerr.ErrValidation: the API answers a
+// Is makes every policy error match kerrors.ErrValidation: the API answers a
 // refused policy as a validation failure.
-func (e Error) Is(target error) bool { return target == error(kerr.ErrValidation) }
+func (e Error) Is(target error) bool { return target == error(kerrors.ErrValidation) }
 
 // EnvironmentPolicy is one revision of an environment's policy. The zero
 // value is not a valid policy; [Open] is the default one.
@@ -165,7 +165,7 @@ func (p *EnvironmentPolicy) UnmarshalJSON(data []byte) error {
 		{"approvalTtlSecs", hasTTL},
 	} {
 		if !field.present {
-			return kerr.New(kerr.Validation, "missing field `%s`", field.name)
+			return kerrors.New(kerrors.Validation, "missing field `%s`", field.name)
 		}
 	}
 	deployRole, err := perm.ParseRole(deploy)
@@ -232,7 +232,7 @@ func ParseChangeKind(s string) (ChangeKind, error) {
 	case Deploy, Rollback, Promotion, Build, Restart, Handover, Rotation, Emergency:
 		return k, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown kind of change `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown kind of change `%s`", s)
 }
 
 // ApprovalsFor is how many approvals a change of kind needs. Restarts and
@@ -288,7 +288,7 @@ func ParseDecision(s string) (Decision, error) {
 	case Approve, Reject:
 		return d, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown decision `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown decision `%s`", s)
 }
 
 // Stored is the stored name of the decision (`approved`, `rejected`); empty
@@ -399,7 +399,7 @@ func Decide(run Pending, approver string, decidedBefore bool, decision Decision,
 		}
 		return Waiting{Remaining: run.Required - count}, nil
 	}
-	return nil, kerr.New(kerr.Validation, "unknown decision `%s`", string(decision))
+	return nil, kerrors.New(kerrors.Validation, "unknown decision `%s`", string(decision))
 }
 
 // Hex is a plan hash as the API shows it.

@@ -21,7 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
@@ -88,10 +88,10 @@ func legacySelector() string {
 // checkValues checks the keys and sizes of data.
 func checkValues(data map[string]string) error {
 	if len(data) == 0 {
-		return kerr.New(kerr.Validation, "a secret needs at least one key")
+		return kerrors.New(kerrors.Validation, "a secret needs at least one key")
 	}
 	if len(data) > maxSecretKeys {
-		return kerr.New(kerr.Validation, "a secret holds at most %d keys", maxSecretKeys)
+		return kerrors.New(kerrors.Validation, "a secret holds at most %d keys", maxSecretKeys)
 	}
 	total := 0
 	for _, k := range slices.Sorted(maps.Keys(data)) {
@@ -105,7 +105,7 @@ func checkValues(data map[string]string) error {
 		sealed = len(text)
 	}
 	if total > maxSecretBytes || sealed > maxSealedBytes {
-		return kerr.New(kerr.Validation, "secret values exceed %d bytes", maxSecretBytes)
+		return kerrors.New(kerrors.Validation, "secret values exceed %d bytes", maxSecretBytes)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func checkValues(data map[string]string) error {
 func (s *Server) keyring() (*secrets.Keyring, error) {
 	k, ok := s.deps.Keyring.Get()
 	if !ok || k == nil {
-		return nil, kerr.New(kerr.Unavailable, "secret encryption is not configured")
+		return nil, kerrors.New(kerrors.Unavailable, "secret encryption is not configured")
 	}
 	return k, nil
 }
@@ -128,7 +128,7 @@ func secretReference(e envScope, name string) string {
 // errUntrusted refuses secrets to an untrusted preview (apps/mod.rs
 // untrusted).
 func errUntrusted() error {
-	return kerr.New(kerr.Conflict, "this preview comes from a fork: it cannot use secrets or registry logins")
+	return kerrors.New(kerrors.Conflict, "this preview comes from a fork: it cannot use secrets or registry logins")
 }
 
 // ListSecrets lists the secrets of an environment (names and keys).
@@ -142,7 +142,7 @@ func (s *Server) ListSecrets(ctx context.Context, params gen.ListSecretsParams) 
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretRead, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	stored, err := s.storedSecrets(ctx, e)
 	if err != nil {
@@ -194,7 +194,7 @@ func (s *Server) PutSecret(ctx context.Context, req *gen.PutSecret, params gen.P
 		return nil, err
 	}
 	if _, err := a.Require(perm.SecretWrite, e.chain()); err != nil {
-		return nil, err //nolint:wrapcheck // a kerr already
+		return nil, err //nolint:wrapcheck // a kerrors already
 	}
 	if err := DNSLabel("secret name", params.Secret, 63); err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func (s *Server) PutSecret(ctx context.Context, req *gen.PutSecret, params gen.P
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !found {
-		return nil, kerr.New(kerr.Internal, "the new secret revision is missing")
+		return nil, kerrors.New(kerrors.Internal, "the new secret revision is missing")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -247,7 +247,7 @@ func (s *Server) storeRevision(ctx context.Context, t *store.Tenant, a access.Ac
 	if err != nil {
 		return err
 	}
-	deleting := kerr.New(kerr.Conflict, "environment `%s` is being deleted", e.env.Slug)
+	deleting := kerrors.New(kerrors.Conflict, "environment `%s` is being deleted", e.env.Slug)
 	if e.deleting() {
 		return deleting
 	}
@@ -271,14 +271,14 @@ func (s *Server) storeRevision(ctx context.Context, t *store.Tenant, a access.Ac
 	case store.ReservationNoEnvironment:
 		return deleting
 	case store.ReservationTaken:
-		return kerr.New(kerr.Conflict, "%s", r.Why)
+		return kerrors.New(kerrors.Conflict, "%s", r.Why)
 	case nil:
-		return kerr.New(kerr.Internal, "no reservation")
+		return kerrors.New(kerrors.Internal, "no reservation")
 	}
 	who := secrets.Identity{Org: e.project.org.String(), Secret: reserved.Secret.String(), Revision: reserved.Revision}
 	sealed, err := keyring.SealValues(who, n.values)
 	if err != nil {
-		return kerr.New(kerr.Internal, "sealing a secret failed: %s", err.Error())
+		return kerrors.New(kerrors.Internal, "sealing a secret failed: %s", err.Error())
 	}
 	keys := slices.Sorted(maps.Keys(n.values))
 	audit := requestAudit(a, "secret.revision.created", "secret", secretReference(e, n.name))
@@ -301,5 +301,5 @@ func (s *Server) registryLogin(ctx context.Context, t *store.Tenant, e envScope,
 	if err != nil {
 		return opt.None[secrets.RegistryLogin](), err
 	}
-	return keyring.OpenRegistryLogin(ctx, t, e.project.org, e.env.ID, registry) //nolint:wrapcheck // a kerr or store error
+	return keyring.OpenRegistryLogin(ctx, t, e.project.org, e.env.ID, registry) //nolint:wrapcheck // a kerrors or store error
 }

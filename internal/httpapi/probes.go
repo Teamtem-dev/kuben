@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-faster/jx"
 
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 )
@@ -34,13 +34,13 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 // GetHealthDetails is the health of every subsystem (authenticated).
 func (s *Server) GetHealthDetails(ctx context.Context) (*gen.HealthDetails, error) {
 	if _, ok := httpx.UserFrom(ctx); !ok {
-		return nil, kerr.ErrUnauthorized
+		return nil, kerrors.ErrUnauthorized
 	}
 	subsystems := gen.HealthDetailsSubsystems{}
 	for _, n := range s.deps.Health.Details() {
 		raw, err := json.Marshal(n.Subsystem)
 		if err != nil {
-			return nil, kerr.Wrap(err, "health details")
+			return nil, kerrors.Wrap(err, "health details")
 		}
 		subsystems[n.Name] = jx.Raw(raw)
 	}

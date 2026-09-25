@@ -9,7 +9,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/build"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
@@ -98,8 +98,8 @@ func TestBuildIdsAreUuids(t *testing.T) {
 		t.Errorf("a UUID: %v", err)
 	}
 	_, err := api.BuildID("nope")
-	var e *kerr.Error
-	if !errors.As(err, &e) || e.Code != kerr.NotFound {
+	var e *kerrors.Error
+	if !errors.As(err, &e) || e.Code != kerrors.NotFound {
 		t.Errorf("not a UUID: %v", err)
 	}
 }

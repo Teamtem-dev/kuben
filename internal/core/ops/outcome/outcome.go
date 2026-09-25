@@ -19,7 +19,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
 
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
@@ -76,7 +76,7 @@ func ParseBuildFailure(s string) (BuildFailure, error) {
 		Unschedulable, CredentialsRefused, InvalidBudget:
 		return f, nil
 	}
-	return "", kerr.New(kerr.Validation, "unknown build failure `%s`", s)
+	return "", kerrors.New(kerrors.Validation, "unknown build failure `%s`", s)
 }
 
 // String is the stored code.

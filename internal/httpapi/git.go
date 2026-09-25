@@ -19,7 +19,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/build"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
@@ -44,7 +44,7 @@ const (
 func (s *Server) github() (*github.App, error) {
 	app, ok := s.deps.GitHub.Get()
 	if !ok || app == nil {
-		return nil, kerr.New(kerr.Unavailable, "Git sources are not configured on this server (git.github_app_id)")
+		return nil, kerrors.New(kerrors.Unavailable, "Git sources are not configured on this server (git.github_app_id)")
 	}
 	return app, nil
 }
@@ -57,11 +57,11 @@ func providerError(err error) error {
 	var unavailable build.Unavailable
 	switch {
 	case errors.As(err, &notFound):
-		return kerr.New(kerr.Validation, "GitHub does not know %s", notFound.What)
+		return kerrors.New(kerrors.Validation, "GitHub does not know %s", notFound.What)
 	case errors.As(err, &refused):
-		return kerr.New(kerr.Validation, "GitHub refused access: %s", refused.Reason)
+		return kerrors.New(kerrors.Validation, "GitHub refused access: %s", refused.Reason)
 	case errors.As(err, &unavailable):
-		return kerr.New(kerr.Unavailable, "GitHub: %s", unavailable.Reason)
+		return kerrors.New(kerrors.Unavailable, "GitHub: %s", unavailable.Reason)
 	}
 	return err
 }
@@ -111,7 +111,7 @@ func (s *Server) LinkGitInstallation(ctx context.Context, req *gen.LinkInstallat
 		return nil, providerError(err)
 	}
 	if installation.Suspended {
-		return nil, kerr.New(kerr.Validation, "the installation is suspended on GitHub")
+		return nil, kerrors.New(kerrors.Validation, "the installation is suspended on GitHub")
 	}
 	t, err := s.deps.Store.Tenant(ctx, c.org)
 	if err != nil {
@@ -123,7 +123,7 @@ func (s *Server) LinkGitInstallation(ctx context.Context, req *gen.LinkInstallat
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if !linked {
-		return nil, kerr.New(kerr.Conflict, "the installation is linked to another organization")
+		return nil, kerrors.New(kerrors.Conflict, "the installation is linked to another organization")
 	}
 	if err := t.Commit(ctx); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
@@ -234,7 +234,7 @@ func (s *Server) githubEvent(ctx context.Context, parsed source.WebhookEvent, de
 	case source.PullEvent:
 		return s.pullEvent(ctx, delivery, body, e)
 	}
-	return 0, "", kerr.New(kerr.Internal, "unknown webhook event %T", parsed)
+	return 0, "", kerrors.New(kerrors.Internal, "unknown webhook event %T", parsed)
 }
 
 func (s *Server) installationEvent(ctx context.Context, action source.InstallationAction, id uint64) (int, string, error) {
@@ -286,7 +286,7 @@ func (s *Server) receiveDelivery(
 	case store.ReceivedChanged:
 		return ids.OrgID{}, opt.Some(webhookAnswer{http.StatusConflict, "deliveryChanged"}), nil
 	}
-	return ids.OrgID{}, opt.None[webhookAnswer](), kerr.New(kerr.Internal, "unknown receipt %T", received)
+	return ids.OrgID{}, opt.None[webhookAnswer](), kerrors.New(kerrors.Internal, "unknown receipt %T", received)
 }
 
 // webhookAnswer is a status and an outcome.

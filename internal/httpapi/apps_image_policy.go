@@ -6,7 +6,7 @@ import (
 	"context"
 
 	"github.com/Teamtem-dev/kuben/internal/core/imagepolicy"
-	kerr "github.com/Teamtem-dev/kuben/internal/core/kerrors"
+	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
@@ -49,7 +49,7 @@ func (s *Server) GetImagePolicy(ctx context.Context, params gen.GetImagePolicyPa
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !found:
-		return nil, kerr.New(kerr.NotFound, "an image policy of `%s`", params.App)
+		return nil, kerrors.New(kerrors.NotFound, "an image policy of `%s`", params.App)
 	}
 	return imagePolicyDto(policy), nil
 }
@@ -64,28 +64,28 @@ func (s *Server) PutImagePolicy(ctx context.Context, req *gen.PutImagePolicy, pa
 	defer t.Rollback(ctx) //nolint:errcheck // committed on success
 	pattern, err := imagepolicy.Parse(req.Pattern)
 	if err != nil {
-		return nil, kerr.New(kerr.Validation, "%s", err)
+		return nil, kerrors.New(kerrors.Validation, "%s", err)
 	}
 	interval := req.IntervalSecs.Or(defaultPolicyInterval)
 	if interval < int32(imagepolicy.MinIntervalSecs) || interval > int32(imagepolicy.MaxIntervalSecs) {
-		return nil, kerr.New(kerr.Validation, "intervalSecs must be %d to %d", imagepolicy.MinIntervalSecs, imagepolicy.MaxIntervalSecs)
+		return nil, kerrors.New(kerrors.Validation, "intervalSecs must be %d to %d", imagepolicy.MinIntervalSecs, imagepolicy.MaxIntervalSecs)
 	}
 	given, ok := req.Repository.Get()
 	if !ok {
 		if given, ok = a.app.Image.Get(); !ok {
-			return nil, kerr.New(kerr.Validation, "the app has no image yet: name the repository")
+			return nil, kerrors.New(kerrors.Validation, "the app has no image yet: name the repository")
 		}
 	}
 	reference, err := oci.Parse(given)
 	if err != nil {
-		return nil, kerr.New(kerr.Validation, "%s", err)
+		return nil, kerrors.New(kerrors.Validation, "%s", err)
 	}
 	repository := reference.Repository()
 	switch _, bound, err := t.BindingOfTarget(ctx, a.app.Target); {
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case bound:
-		return nil, kerr.New(kerr.Conflict, "app `%s` builds from Git: its builds decide what it runs", params.App)
+		return nil, kerrors.New(kerrors.Conflict, "app `%s` builds from Git: its builds decide what it runs", params.App)
 	}
 	_, actor := acc.Actor()
 	err = t.SetImagePolicy(ctx, store.NewImagePolicy{
@@ -105,7 +105,7 @@ func (s *Server) PutImagePolicy(ctx context.Context, req *gen.PutImagePolicy, pa
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !found:
-		return nil, kerr.New(kerr.Internal, "the policy is missing")
+		return nil, kerrors.New(kerrors.Internal, "the policy is missing")
 	}
 	return imagePolicyDto(saved), t.Commit(ctx) //nolint:wrapcheck // a store error, answered as internal
 }
@@ -121,7 +121,7 @@ func (s *Server) DeleteImagePolicy(ctx context.Context, params gen.DeleteImagePo
 	case err != nil:
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	case !deleted:
-		return nil, kerr.New(kerr.NotFound, "an image policy of `%s`", params.App)
+		return nil, kerrors.New(kerrors.NotFound, "an image policy of `%s`", params.App)
 	}
 	record := requestAudit(acc, "image-policy.deleted", "app", params.Project+"/"+params.Environment+"/"+params.App)
 	if err := t.AppendAudit(ctx, record); err != nil {
