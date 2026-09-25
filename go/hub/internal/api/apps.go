@@ -256,11 +256,13 @@ func (s *Server) appView(namespace, name string) opt.Val[projection.AppView] {
 }
 
 // resolve resolves image to a digest at its registry (option A), pulling
-// with the environment's login for that registry when it has one. Registry
-// logins need the secret keyring (slice S2); until then a tag is resolved
-// anonymously.
-func (s *Server) resolve(ctx context.Context, image string) (oci.Resolved, error) {
-	resolved, err := s.deps.Images.ResolveAs(ctx, image, opt.None[oci.Login]())
+// with e's login for that registry when it has one.
+func (s *Server) resolve(ctx context.Context, e envScope, image string) (oci.Resolved, error) {
+	login, err := s.imageLogin(ctx, e, image)
+	if err != nil {
+		return oci.Resolved{}, err
+	}
+	resolved, err := s.deps.Images.ResolveAs(ctx, image, login)
 	switch {
 	case err == nil:
 		return resolved, nil
@@ -269,6 +271,32 @@ func (s *Server) resolve(ctx context.Context, image string) (oci.Resolved, error
 		return oci.Resolved{}, kerr.New(kerr.Unavailable, "%s", err.Error())
 	}
 	return oci.Resolved{}, kerr.New(kerr.Validation, "%s", err.Error())
+}
+
+// imageLogin is e's login for the registry of image, when image is a tag
+// (a digest needs no registry) and e has one.
+func (s *Server) imageLogin(ctx context.Context, e envScope, image string) (opt.Val[oci.Login], error) {
+	reference, err := oci.Parse(image)
+	if err != nil {
+		return opt.None[oci.Login](), nil //nolint:nilerr // the resolver reports the malformed reference
+	}
+	if _, isTag := reference.Reference.(oci.Tag); !isTag {
+		return opt.None[oci.Login](), nil
+	}
+	t, err := s.deps.Store.Tenant(ctx, e.project.org)
+	if err != nil {
+		return opt.None[oci.Login](), err //nolint:wrapcheck // a store error, answered as internal
+	}
+	defer t.Rollback(ctx) //nolint:errcheck // read only
+	login, err := s.registryLogin(ctx, t, e, reference.Registry)
+	if err != nil {
+		return opt.None[oci.Login](), err
+	}
+	l, ok := login.Get()
+	if !ok {
+		return opt.None[oci.Login](), nil
+	}
+	return opt.Some(oci.Login{Username: l.Username, Password: l.Password}), nil
 }
 
 // deployArtifact is what a deployment runs (apps/mod.rs Artifact): a newly
@@ -411,7 +439,7 @@ func startedErr(started store.Started) error {
 	case store.StartedFrozen:
 		return kerr.New(kerr.Conflict, "the environment is frozen: only an emergency rollback passes until the freeze ends")
 	case store.StartedUntrusted:
-		return kerr.New(kerr.Conflict, "this preview comes from a fork: it cannot use secrets or registry logins")
+		return errUntrusted()
 	case store.StartedKeyReused:
 		return kerr.Wrap(nil, "a deployment without a key was a replay")
 	}
@@ -455,7 +483,7 @@ func (s *Server) createApp(ctx context.Context, a access.Access, e envScope, nam
 	if spec.Source.Image == nil {
 		return gen.AppDto{}, kerr.New(kerr.Validation, "an app needs an image")
 	}
-	resolved, err := s.resolve(ctx, *spec.Source.Image)
+	resolved, err := s.resolve(ctx, e, *spec.Source.Image)
 	if err != nil {
 		return gen.AppDto{}, err
 	}

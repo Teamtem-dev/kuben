@@ -87,7 +87,8 @@ func newServerWithProjections(t *testing.T, edit func(*config.Config)) (*client,
 		Hasher:      auth.InsecureForTests(),
 		Health:      h,
 		Projections: p,
-		Images:      testImages(t),
+		Images:      privateImages{testImages(t)},
+		Keyring:     opt.Some(testKeyring()),
 		Console:     web.NewFS(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>console")}}),
 	})
 	if err != nil {

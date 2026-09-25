@@ -30,6 +30,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
 )
@@ -74,6 +75,9 @@ type Deps struct {
 	// Usage is this replica's live usage window (M5.5), absent without a
 	// cluster.
 	Usage opt.Val[*usage.Buffer]
+	// Keyring seals and opens managed secret values (M4.4); without it
+	// secrets and registry logins cannot be set (503).
+	Keyring opt.Val[*secrets.Keyring]
 }
 
 // Server implements the generated handler interface. Operations not ported

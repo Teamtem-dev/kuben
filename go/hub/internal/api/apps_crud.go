@@ -182,7 +182,7 @@ func (s *Server) UpdateApp(ctx context.Context, req *gen.UpdateApp, params gen.U
 func (s *Server) updateArtifact(ctx context.Context, app appScope, image string, given bool) (deployArtifact, error) {
 	current, hasImage := app.app.Image.Get()
 	if given && (!hasImage || image != current) {
-		resolved, err := s.resolve(ctx, image)
+		resolved, err := s.resolve(ctx, app.env, image)
 		if err != nil {
 			return nil, err
 		}
