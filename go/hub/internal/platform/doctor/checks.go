@@ -21,8 +21,8 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 )
 
-// rank orders the verdicts from best to worst, as the Rust enum's Ord.
-func (s Status) rank() int {
+// Rank orders the verdicts from best to worst, as the Rust enum's Ord.
+func (s Status) Rank() int {
 	switch s {
 	case StatusOK:
 		return 0
@@ -41,7 +41,7 @@ func (s Status) rank() int {
 func Overall(checks []Check) Status {
 	worst := StatusOK
 	for _, c := range checks {
-		if c.Status.rank() > worst.rank() {
+		if c.Status.Rank() > worst.Rank() {
 			worst = c.Status
 		}
 	}
