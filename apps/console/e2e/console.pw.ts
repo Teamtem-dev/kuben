@@ -7,16 +7,24 @@ const locales = [
     locale: 'en',
     dir: 'ltr',
     signIn: 'Sign in to Kuben',
+    setup: 'Set up Kuben',
     deployments: 'Deployments',
-    live: 'Live',
+    logs: 'Logs',
+    overview: 'Overview',
+    settings: 'Settings',
+    previous: 'Previous container',
     doctor: 'Doctor',
   },
   {
     locale: 'fa',
     dir: 'rtl',
     signIn: 'ورود به کوبن',
+    setup: 'راه‌اندازی کوبن',
     deployments: 'استقرارها',
-    live: 'زنده',
+    logs: 'لاگ‌ها',
+    overview: 'نمای کلی',
+    settings: 'تنظیمات',
+    previous: 'container قبلی',
     doctor: 'Doctor',
   },
 ] as const
@@ -39,13 +47,35 @@ for (const l of locales) {
         expect(csp).toEqual([])
       })
 
-      test('app page: deployment timeline and live logs', async ({ page }) => {
+      test('first-run setup page', async ({ page }) => {
+        const csp = await watchCsp(page)
+        await prefer(page, l.locale, theme)
+        await mockApi(page, { signedIn: false, setupNeeded: true })
+        await page.goto('/setup')
+        await expect(page.getByRole('heading', { name: l.setup })).toBeVisible()
+        await expect(page.locator('input[name="org_name"]')).toBeVisible()
+        await expect(page.locator('input[name="password"]')).toHaveAttribute('minlength', '12')
+        await expectAccessible(page)
+        expect(csp).toEqual([])
+      })
+
+      test('app page: overview, deployment timeline and live logs in their tabs', async ({ page }) => {
         const csp = await watchCsp(page)
         await prefer(page, l.locale, theme)
         await mockApi(page)
         await page.goto('/projects/shop/prod/web')
+        await expect(page.getByRole('tab', { name: l.overview, selected: true })).toBeVisible()
+        await expect(page.getByText('web-web-7d9c-x2x9q', { exact: true })).toBeVisible()
+        await expectAccessible(page)
+
+        await page.getByRole('tab', { name: l.deployments }).click()
+        await expect(page).toHaveURL(/\?tab=deployments$/)
         await expect(page.getByRole('heading', { name: l.deployments })).toBeVisible()
         await expect(page.getByText('ghcr.io/acme/web@sha256:0123', { exact: false })).toBeVisible()
+        await expectAccessible(page)
+
+        await page.getByRole('tab', { name: l.logs }).click()
+        await expect(page).toHaveURL(/\?tab=logs$/)
         const log = page.locator('pre[dir="ltr"]')
         await expect(log).toContainText('GET / 200')
         await expect(log).toContainText('[web-worker-5f6b-q8w2e]')
@@ -57,10 +87,48 @@ for (const l of locales) {
       test('previous container logs', async ({ page }) => {
         await prefer(page, l.locale, theme)
         await mockApi(page)
-        await page.goto('/projects/shop/prod/web')
-        const previous = l.locale === 'fa' ? 'container قبلی' : 'Previous container'
-        await page.getByText(previous, { exact: true }).click()
+        await page.goto('/projects/shop/prod/web?tab=logs')
+        await page.getByRole('radio', { name: l.previous }).click()
         await expect(page.locator('pre[dir="ltr"]')).toContainText('previous crash: out of memory')
+      })
+
+      test('app settings: deleting asks for the name in a dialog', async ({ page }) => {
+        const csp = await watchCsp(page)
+        await prefer(page, l.locale, theme)
+        await mockApi(page)
+        await page.goto('/projects/shop/prod/web?tab=settings')
+        await expect(page.getByRole('tab', { name: l.settings, selected: true })).toBeVisible()
+        await page.getByRole('button', { name: l.locale === 'fa' ? 'حذف اپ' : 'Delete app' }).click()
+        const dialog = page.getByRole('alertdialog')
+        await expect(dialog).toBeVisible()
+        const confirm = dialog.getByRole('button', { name: l.locale === 'fa' ? 'حذف اپ' : 'Delete app' })
+        await expect(confirm).toBeDisabled()
+        await dialog.getByRole('textbox').fill('web')
+        await expect(confirm).toBeEnabled()
+        await expectAccessible(page)
+        await page.keyboard.press('Escape')
+        await expect(dialog).toBeHidden()
+        expect(csp).toEqual([])
+      })
+
+      test('projects, a project, an environment', async ({ page }) => {
+        const csp = await watchCsp(page)
+        await prefer(page, l.locale, theme)
+        await mockApi(page)
+        await page.goto('/')
+        const main = page.getByRole('main')
+        await main.getByRole('link', { name: /Shop/ }).click()
+        await expect(page).toHaveURL(/\/projects\/shop$/)
+        await expect(page.getByRole('heading', { level: 1, name: 'Shop' })).toBeVisible()
+        await expectAccessible(page)
+        await main.getByRole('link', { name: /prod/ }).click()
+        await expect(page).toHaveURL(/\/projects\/shop\/prod$/)
+        await expect(main.getByRole('link', { name: /web/ })).toHaveAttribute(
+          'href',
+          '/projects/shop/prod/web',
+        )
+        await expectAccessible(page)
+        expect(csp).toEqual([])
       })
 
       test('Doctor page', async ({ page }) => {
@@ -159,6 +227,20 @@ test('the account menu, theme and language menus', async ({ page }) => {
   await expectAccessible(page)
 })
 
+test('the account page: profile, password and a way to the API tokens', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/account')
+  await expect(page.getByRole('heading', { level: 1, name: 'Account' })).toBeVisible()
+  await expect(page.getByText('owner@example.com', { exact: true }).first()).toBeVisible()
+  await expect(page.getByLabel('New password', { exact: true })).toHaveAttribute('minlength', '12')
+  await page.getByRole('link', { name: 'Manage API tokens' }).click()
+  await expect(page).toHaveURL(/\/tokens$/)
+  const table = page.getByRole('table')
+  await expect(table.getByRole('cell', { name: /github-actions/ })).toBeVisible()
+  await expect(table.getByRole('button', { name: 'Revoke' })).toBeVisible()
+  await expectAccessible(page)
+})
+
 test('the skip link moves focus to the page content', async ({ page }) => {
   await mockApi(page)
   await page.goto('/projects/shop/prod/web')
@@ -171,7 +253,7 @@ test('the skip link moves focus to the page content', async ({ page }) => {
 })
 
 // Kuben serves the console with a strict policy (no 'unsafe-inline'; see
-// crates/kuben-api/src/web.rs, which fixtures.ts reads): every page, and the
+// go/hub/internal/api/web/web.go, which fixtures.ts reads): every page, and the
 // overlays that lock scrolling or bring their own styles, must pass it.
 test.describe('content security policy', () => {
   const pages = [
@@ -186,6 +268,10 @@ test.describe('content security policy', () => {
     '/projects/shop',
     '/projects/shop/prod',
     '/projects/shop/prod/web',
+    '/projects/shop/prod/web?tab=deployments',
+    '/projects/shop/prod/web?tab=releases',
+    '/projects/shop/prod/web?tab=logs',
+    '/projects/shop/prod/web?tab=settings',
     '/projects/shop/prod/web/doctor',
   ]
 
@@ -207,6 +293,20 @@ test.describe('content security policy', () => {
       expect(csp).toEqual([])
     })
   }
+
+  test('no violation with a form dialog open', async ({ page }) => {
+    const csp = await watchCsp(page)
+    await mockApi(page)
+    await page.goto('/')
+    await page.getByRole('main').getByRole('button', { name: 'New project' }).click()
+    const dialog = page.getByRole('dialog', { name: 'New project' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.locator('input[name="name"]')).toBeFocused()
+    await expectAccessible(page)
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toBeHidden()
+    expect(csp).toEqual([])
+  })
 
   test('no violation in the phone drawer', async ({ page }) => {
     const csp = await watchCsp(page)

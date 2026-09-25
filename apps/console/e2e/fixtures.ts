@@ -64,6 +64,35 @@ export const projects = [
   },
 ]
 
+export const environment = {
+  name: 'prod',
+  resource_name: 'shop-prod',
+  project: 'shop',
+  env_type: 'production',
+  namespace: 'kb-shop-prod',
+  phase: 'Active',
+  ready: true,
+  message: null,
+  deleting: false,
+  deletion_scheduled_at: null,
+  created_at: '2026-09-16T08:30:00Z',
+}
+
+export const tokens = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000c1',
+    name: 'github-actions',
+    prefix: 'kbn_pat_0190f3c6',
+    role: 'developer',
+    project: 'shop',
+    environment: null,
+    expires_at: now + 90 * 86_400_000,
+    last_used_at: now - 3_600_000,
+    revoked: false,
+    created_at: now - 86_400_000,
+  },
+]
+
 const process = (name: string, schedule: string | null = null) => ({
   name,
   command: [],
@@ -213,14 +242,19 @@ const sse = (events: [string, unknown][]) =>
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
-/** Answer the console's API calls; `signedIn: false` shows the sign-in page. */
-export async function mockApi(page: Page, { signedIn = true } = {}) {
+/**
+ * Answer the console's API calls; `signedIn: false` shows the sign-in page,
+ * `setupNeeded: true` the first-run setup.
+ */
+export async function mockApi(page: Page, { signedIn = true, setupNeeded = false } = {}) {
   const appPath = '/api/v1/projects/shop/environments/prod/apps/web'
   await page.route('http://kuben.test/**', serveConsole)
   await page.route('http://kuben.test/api/**', async (route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
-    if (path === '/api/v1/setup') return json(route, { needed: false, token_required: false, secure: true })
+    if (path === '/api/v1/setup') {
+      return json(route, { needed: setupNeeded, token_required: false, secure: true })
+    }
     if (path === '/api/v1/me') {
       return signedIn
         ? json(route, user)
@@ -284,7 +318,19 @@ export async function mockApi(page: Page, { signedIn = true } = {}) {
       ])
     }
     if (path === '/api/v1/projects') return json(route, projects)
-    if (path === '/api/v1/projects/shop/environments') return json(route, [])
+    if (path === '/api/v1/projects/shop') return json(route, projects[0])
+    if (path === '/api/v1/projects/shop/environments') return json(route, [environment])
+    if (path === '/api/v1/projects/shop/environments/prod') return json(route, environment)
+    if (path === '/api/v1/projects/shop/environments/prod/apps') return json(route, [app])
+    if (path === '/api/v1/tokens') return json(route, tokens)
+    if (
+      path === '/api/v1/templates' ||
+      path === '/api/v1/projects/shop/environments/prod/secrets' ||
+      path === '/api/v1/projects/shop/environments/prod/registries' ||
+      path === '/api/v1/projects/shop/environments/prod/detached'
+    ) {
+      return json(route, [])
+    }
     return json(
       route,
       { code: 'not_found', title: 'Not Found', status: 404, detail: `no mock for ${path}` },
