@@ -69,3 +69,10 @@ taking a new release. The components import `cn` from `@/lib/utils`
 instead (clsx + tailwind-merge, shadcn's classic implementation), the
 alias `components.json` names. Re-apply after `shadcn add`:
 `sed -i '' 's#from "cn"#from "@/lib/utils"#' src/components/ui/*.tsx`.
+
+## Dialogs scroll within the viewport (dialog.tsx, alert-dialog.tsx)
+
+A dialog taller than the window (the CI trust policy form on a short
+screen) put its buttons outside the viewport where they could not be
+reached. `DialogContent` and `AlertDialogContent` carry
+`max-h-[calc(100dvh-2rem)] overflow-y-auto`; re-apply after `shadcn add`.

@@ -268,7 +268,7 @@ test('domains: a pending claim shows its TXT record to copy', async ({ page }) =
   await expect(page.getByText('kuben-verify=4f1d2c', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(2)
   await expect(page.getByRole('button', { name: 'Verify' })).toBeVisible()
-  await page.getByRole('main').getByRole('button', { name: 'Claim' }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Claim', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Claim' }).getByLabel('Domain')).toBeFocused()
 })
 
@@ -436,7 +436,7 @@ test('environment page: a detached app and what it left behind', async ({ page }
 test('app page: usage window and detaching behind a dialog', async ({ page }) => {
   await mockApi(page)
   await page.goto('/projects/shop/prod/web')
-  const timeWindow = page.getByRole('group', { name: 'Time window' })
+  const timeWindow = page.getByRole('radiogroup', { name: 'Time window' })
   await expect(timeWindow.getByRole('radio', { name: '1 hour' })).toBeChecked()
   await expect(page.getByRole('img', { name: 'CPU over time' })).toBeVisible()
 
