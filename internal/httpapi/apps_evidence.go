@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // The observations behind an app's evidence graph (M5.5,
 // routes/apps/evidence.rs): SQL for builds and runs, the cluster for the

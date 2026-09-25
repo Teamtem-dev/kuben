@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // A project's preview settings and previews (M5.1; routes/previews.rs).
 

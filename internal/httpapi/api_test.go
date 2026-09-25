@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -15,7 +15,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/health"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/web"
@@ -81,7 +81,7 @@ func newServerWithProjections(t *testing.T, edit func(*config.Config)) (*client,
 	}
 	h := health.New(clock.System{})
 	h.SetReady(true)
-	server, err := api.New(api.Deps{
+	server, err := httpapi.New(httpapi.Deps{
 		Config:      cfg,
 		Store:       st,
 		Hasher:      auth.InsecureForTests(),

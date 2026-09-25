@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // One-click templates (scenario 8, routes/templates.rs): a small, reviewed
 // catalogue of single-process services. Generated credentials are stored in

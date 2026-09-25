@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Deployment approvals (M4.1, routes/apps/approvals.rs): who may start a
 // deployment under an environment's policy, and the approve/reject decisions

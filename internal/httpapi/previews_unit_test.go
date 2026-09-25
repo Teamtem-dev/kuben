@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -46,7 +46,7 @@ func TestPreviewsAsTheAPIShowsThem(t *testing.T) {
 		}},
 	}
 	for _, c := range cases {
-		dto := api.PreviewDtoOf(c.p, 1_000)
+		dto := httpapi.PreviewDtoOf(c.p, 1_000)
 		raw, err := dto.MarshalJSON()
 		if err != nil {
 			t.Fatal(err)
@@ -59,7 +59,7 @@ func TestPreviewsAsTheAPIShowsThem(t *testing.T) {
 			t.Errorf("%s (-want +got):\n%s", c.name, diff)
 		}
 	}
-	if got := api.PreviewDtoOf(expired, 1_000).RemainingSeconds; got != 0 {
+	if got := httpapi.PreviewDtoOf(expired, 1_000).RemainingSeconds; got != 0 {
 		t.Errorf("expired: %d seconds left", got)
 	}
 }
@@ -83,7 +83,7 @@ func TestPreviewSettingsAreBounded(t *testing.T) {
 		{name: "too many", maxActive: gen.NewOptInt32(101), wantErr: "validation failed: maxActive must be 1 to 100"},
 	}
 	for _, c := range cases {
-		ttl, maxActive, err := api.CheckPreviewPolicy(&gen.PutPreviewPolicy{
+		ttl, maxActive, err := httpapi.CheckPreviewPolicy(&gen.PutPreviewPolicy{
 			Enabled: true, SourceEnvironment: "prod", TtlHours: c.ttl, MaxActive: c.maxActive,
 		})
 		if c.wantErr != "" {

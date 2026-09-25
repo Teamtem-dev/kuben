@@ -1,4 +1,4 @@
-package serve
+package server
 
 // Internals of builds.go under test.
 var (

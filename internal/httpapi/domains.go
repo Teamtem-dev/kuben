@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Domain claims, DNS provider accounts and an app's DNS records (M5.2,
 // routes/domains.rs).

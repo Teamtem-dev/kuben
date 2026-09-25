@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Apps of an environment on the SQL model (routes/apps/mod.rs, ADR-032).
 //

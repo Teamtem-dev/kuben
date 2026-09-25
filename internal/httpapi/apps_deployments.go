@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Deploy acceptance on the SQL model (routes/apps/deployments.rs, ADR-032;
 // plan §8.2).

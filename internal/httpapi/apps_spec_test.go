@@ -1,11 +1,11 @@
-package api_test
+package httpapi_test
 
 import (
 	"math/big"
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 )
 
@@ -24,7 +24,7 @@ func sampleSpec(t *testing.T) v1alpha1.AppSpec {
 func TestUpdateChangesOnlyGivenFields(t *testing.T) {
 	s := sampleSpec(t)
 	u := gen.UpdateApp{Image: gen.NewOptNilString(" nginx:1.28 "), Replicas: gen.NewOptNilInt32(3)}
-	if err := api.ApplyUpdate(&s, &u); err != nil {
+	if err := httpapi.ApplyUpdate(&s, &u); err != nil {
 		t.Fatal(err)
 	}
 	if s.Source.Image == nil || *s.Source.Image != "nginx:1.28" {
@@ -55,7 +55,7 @@ func TestUpdateValidates(t *testing.T) {
 	}
 	for i, u := range bad {
 		s := sampleSpec(t)
-		if err := api.ApplyUpdate(&s, &u); err == nil {
+		if err := httpapi.ApplyUpdate(&s, &u); err == nil {
 			t.Errorf("update %d is accepted", i)
 		}
 	}
@@ -65,13 +65,13 @@ func TestUpdateValidates(t *testing.T) {
 func TestEnvValuesAreHiddenWithoutPermission(t *testing.T) {
 	prod := "prod"
 	plain := v1alpha1.EnvVar{Name: "MODE", Value: &prod}
-	if v, ok := api.FromCRDEnv(plain, true).Value.Get(); !ok || v != "prod" {
+	if v, ok := httpapi.FromCRDEnv(plain, true).Value.Get(); !ok || v != "prod" {
 		t.Fatal("with permission")
 	}
-	if api.FromCRDEnv(plain, false).Value.IsSet() {
+	if httpapi.FromCRDEnv(plain, false).Value.IsSet() {
 		t.Fatal("without permission")
 	}
-	secret := api.ToCRDEnv(gen.EnvVarDto{
+	secret := httpapi.ToCRDEnv(gen.EnvVarDto{
 		Name: "TOKEN", Value: gen.NewOptNilString("ignored"),
 		Secret: gen.NewOptNilSecretRef(gen.SecretRef{Name: "api", Key: "token"}),
 	})
@@ -87,31 +87,31 @@ func volume(name, path, size string) gen.VolumeDto {
 // spec.rs quantities_and_volume_rules.
 func TestQuantitiesAndVolumeRules(t *testing.T) {
 	for text, want := range map[string]int64{"5Gi": 5 << 30, "500Mi": 500 << 20, "10G": 10_000_000_000} {
-		if got, ok := api.QuantityBytes(text); !ok || got.Cmp(big.NewInt(want)) != 0 {
+		if got, ok := httpapi.QuantityBytes(text); !ok || got.Cmp(big.NewInt(want)) != 0 {
 			t.Errorf("%s: %v", text, got)
 		}
 	}
-	if _, ok := api.QuantityBytes("1.5Gi"); ok {
+	if _, ok := httpapi.QuantityBytes("1.5Gi"); ok {
 		t.Error("1.5Gi")
 	}
-	if err := api.ValidateVolumes([]gen.VolumeDto{volume("data", "/data", "5Gi")}); err != nil {
+	if err := httpapi.ValidateVolumes([]gen.VolumeDto{volume("data", "/data", "5Gi")}); err != nil {
 		t.Fatal(err)
 	}
 	for _, bad := range []gen.VolumeDto{
 		volume("data", "/", "1Gi"), volume("data", "data", "1Gi"), volume("data", "/d", "lots"), volume("Data", "/d", "1Gi"),
 	} {
-		if api.ValidateVolumes([]gen.VolumeDto{bad}) == nil {
+		if httpapi.ValidateVolumes([]gen.VolumeDto{bad}) == nil {
 			t.Errorf("%+v", bad)
 		}
 	}
-	if api.ValidateVolumes([]gen.VolumeDto{volume("a", "/x", "1Gi"), volume("b", "/x", "1Gi")}) == nil {
+	if httpapi.ValidateVolumes([]gen.VolumeDto{volume("a", "/x", "1Gi"), volume("b", "/x", "1Gi")}) == nil {
 		t.Error("duplicate path")
 	}
-	current := api.ToCRDVolumes([]gen.VolumeDto{volume("data", "/data", "5Gi")})
-	if err := api.CheckNoShrink(current, []gen.VolumeDto{volume("data", "/data", "10Gi")}); err != nil {
+	current := httpapi.ToCRDVolumes([]gen.VolumeDto{volume("data", "/data", "5Gi")})
+	if err := httpapi.CheckNoShrink(current, []gen.VolumeDto{volume("data", "/data", "10Gi")}); err != nil {
 		t.Error(err)
 	}
-	if api.CheckNoShrink(current, []gen.VolumeDto{volume("data", "/data", "1Gi")}) == nil {
+	if httpapi.CheckNoShrink(current, []gen.VolumeDto{volume("data", "/data", "1Gi")}) == nil {
 		t.Error("shrink")
 	}
 }
@@ -133,24 +133,24 @@ func createBody(schedule string, port int32, replicas int32, volumes []gen.Volum
 // spec.rs create_spec_applies_controller_rules.
 func TestCreateSpecAppliesControllerRules(t *testing.T) {
 	body := createBody("0 3 * * *", 0, 1, nil)
-	job, err := api.SpecFromCreate(&body)
+	job, err := httpapi.SpecFromCreate(&body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := job.Runtime.Processes["job"]; !ok {
 		t.Fatalf("%+v", job.Runtime)
 	}
-	if err := api.ValidateSpec(&job); err != nil {
+	if err := httpapi.ValidateSpec(&job); err != nil {
 		t.Fatal(err)
 	}
 	body = createBody("@daily", 80, 1, nil)
-	bad, err := api.SpecFromCreate(&body)
-	if err != nil || api.ValidateSpec(&bad) == nil {
+	bad, err := httpapi.SpecFromCreate(&body)
+	if err != nil || httpapi.ValidateSpec(&bad) == nil {
 		t.Fatal("scheduled with port")
 	}
 	body = createBody("", 80, 2, []gen.VolumeDto{volume("data", "/data", "1Gi")})
-	scaled, err := api.SpecFromCreate(&body)
-	if err != nil || api.ValidateSpec(&scaled) == nil {
+	scaled, err := httpapi.SpecFromCreate(&body)
+	if err != nil || httpapi.ValidateSpec(&scaled) == nil {
 		t.Fatal("volume needs one replica")
 	}
 
@@ -159,21 +159,21 @@ func TestCreateSpecAppliesControllerRules(t *testing.T) {
 	git.Git = gen.NewOptNilPutSource(gen.PutSource{
 		InstallationId: 7, Repository: "acme/shop", Branch: "main", ImageRepository: "ghcr.io/acme/shop",
 	})
-	fromGit, err := api.SpecFromCreate(&git)
+	fromGit, err := httpapi.SpecFromCreate(&git)
 	if err != nil || fromGit.Source.Image != nil || fromGit.Source.Git == nil || fromGit.Source.Git.Repo != "acme/shop" {
 		t.Fatalf("git: %+v %v", fromGit.Source, err)
 	}
-	if err := api.ValidateSpec(&fromGit); err != nil {
+	if err := httpapi.ValidateSpec(&fromGit); err != nil {
 		t.Fatalf("a git app awaits its build: %v", err)
 	}
 	both := git
 	both.Image = gen.NewOptNilString("nginx:1.27")
-	if _, err := api.SpecFromCreate(&both); err == nil {
+	if _, err := httpapi.SpecFromCreate(&both); err == nil {
 		t.Fatal("image and git together")
 	}
 	both.Git = gen.OptNilPutSource{}
 	both.Image = gen.NewOptNilString("  ")
-	if _, err := api.SpecFromCreate(&both); err == nil {
+	if _, err := httpapi.SpecFromCreate(&both); err == nil {
 		t.Fatal("neither")
 	}
 }

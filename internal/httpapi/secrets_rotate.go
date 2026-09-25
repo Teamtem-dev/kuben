@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Rolling a secret out, deleting it, and its revisions (routes/secrets.rs).
 

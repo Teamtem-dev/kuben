@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/doctor"
 	"github.com/Teamtem-dev/kuben/internal/evidence"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/integrations/dns"
 	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
@@ -103,7 +103,7 @@ func doctorCluster(t *testing.T) registry.Cluster {
 // fake for name servers and provider accounts; its URL.
 func doctorServer(t *testing.T, f fixture, cluster registry.Cluster, fake *fakeDNS) string {
 	t.Helper()
-	return serverOn(t, f, func(d *api.Deps) {
+	return serverOn(t, f, func(d *httpapi.Deps) {
 		d.Images = testImages(t)
 		d.Cluster = opt.Some(registry.Single(cluster))
 		d.Resolver = hosts{"api.example.com": {"127.0.0.1"}}
@@ -293,7 +293,7 @@ func TestAppDoctorAsksTheClusterWhenFactsAreOld(t *testing.T) {
 	f.seedApp()
 	recordFacts(t, f, discovery.ClusterFacts{
 		GatewayClasses: []discovery.Readiness{{Name: "traefik", Ready: true}},
-	}, clock.System{}.NowMs()-api.FactsFreshMs)
+	}, clock.System{}.NowMs()-httpapi.FactsFreshMs)
 	alice := doctorClient(t, f, doctorCluster(t))
 	status, body, _ := alice.do("GET", doctorPath, nil)
 	if status != http.StatusOK {
@@ -349,7 +349,7 @@ func TestDoctorReportShape(t *testing.T) {
 	graph := evidence.Of([]evidence.Node{
 		evidence.NewNode(evidence.Pods, doctor.StatusFail, "no pods").Fact("no pod of the app is known"),
 	})
-	report, err := api.DoctorReportOf([]doctor.Check{
+	report, err := httpapi.DoctorReportOf([]doctor.Check{
 		{ID: "dns", Subject: "a", Status: doctor.StatusOK, Detail: "fine"},
 		{ID: "claim", Subject: "a", Status: doctor.StatusWarn, Detail: "d", Hint: opt.Some("h")},
 	}, graph, evidence.Diagnose(graph))
@@ -385,7 +385,7 @@ func TestDoctorReportShape(t *testing.T) {
 	if diff := cmp.Diff(wantFinding, gotFinding); diff != "" {
 		t.Fatalf("finding (-want +got):\n%s", diff)
 	}
-	empty, err := api.DoctorReportOf(nil, evidence.Of(nil), evidence.Diagnose(evidence.Of(nil)))
+	empty, err := httpapi.DoctorReportOf(nil, evidence.Of(nil), evidence.Diagnose(evidence.Of(nil)))
 	if err != nil || empty.Status != "ok" || len(empty.Checks) != 0 || len(empty.Findings) != 0 ||
 		string(empty.Graph["nodes"]) != "[]" || string(empty.Graph["edges"]) != "[]" {
 		t.Fatalf("no checks: %+v %v", empty, err)
@@ -502,7 +502,7 @@ func TestAppDoctorWithoutAKeyringCannotSeeTheProxy(t *testing.T) {
 	recordFacts(t, f, discovery.ClusterFacts{}, clock.System{}.NowMs())
 	addProvider(t, f, "good")
 	fake := &fakeDNS{records: []dns.ProviderRecord{{ID: "r1", Name: "api.example.com", RecordType: "A", Proxied: true}}}
-	base := serverOn(t, f, func(d *api.Deps) {
+	base := serverOn(t, f, func(d *httpapi.Deps) {
 		d.Cluster = opt.Some(registry.Single(doctorCluster(t)))
 		d.Resolver = hosts{}
 		d.DNS = fake
@@ -525,7 +525,7 @@ func TestAgentStaleAfterThreeHeartbeats(t *testing.T) {
 		{math.MaxUint64 / 3, math.MaxUint64 / 3 * 3},
 		{math.MaxUint64/3 + 1, math.MaxUint64},
 	} {
-		if got := api.AgentStaleAfter(c.heartbeat); got != c.want {
+		if got := httpapi.AgentStaleAfter(c.heartbeat); got != c.want {
 			t.Errorf("heartbeat %d: %d, want %d", c.heartbeat, got, c.want)
 		}
 	}

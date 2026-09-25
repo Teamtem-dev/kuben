@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Secrets of an environment (routes/secrets.rs, M4.4, ADR-030). Values are
 // write-only: they can be set and replaced, never read back.

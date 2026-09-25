@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Private registry logins of an environment (routes/registries.rs, M4.4,
 // ADR-030).

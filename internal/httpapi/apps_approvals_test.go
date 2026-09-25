@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -15,7 +15,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
@@ -24,7 +24,7 @@ import (
 
 // approvals.rs refusals_map_to_http.
 func TestRefusalsMapToHTTP(t *testing.T) {
-	if err := api.RefusalErr(policy.ErrSelfApproval); !errors.Is(err, kerrors.ErrForbidden) {
+	if err := httpapi.RefusalErr(policy.ErrSelfApproval); !errors.Is(err, kerrors.ErrForbidden) {
 		t.Errorf("self-approval = %v, want forbidden", err)
 	}
 	for _, e := range []policy.ApprovalError{
@@ -34,7 +34,7 @@ func TestRefusalsMapToHTTP(t *testing.T) {
 		policy.ErrStalePlan,
 	} {
 		var k *kerrors.Error
-		if err := api.RefusalErr(e); !errors.As(err, &k) {
+		if err := httpapi.RefusalErr(e); !errors.As(err, &k) {
 			t.Errorf("%s: %v is not a kerrors.Error", e, err)
 			continue
 		}
@@ -63,7 +63,7 @@ func TestDecisionsRejectUnknownFields(t *testing.T) {
 // absent, never leaves them out.
 func TestApprovalAbsentValuesAreNull(t *testing.T) {
 	runID := uuid.MustParse("0192f3a1-0000-7000-8000-000000000001")
-	dto := api.ApprovalDtoOf(runID, store.RunApproval{
+	dto := httpapi.ApprovalDtoOf(runID, store.RunApproval{
 		Phase:       run.Planned,
 		RequestedBy: "user:alice",
 		Decisions:   []store.ApprovalRecord{{Approver: "bob", Decision: policy.Approve, DecidedAt: 7}},
@@ -94,7 +94,7 @@ func TestApprovalAbsentValuesAreNull(t *testing.T) {
 	}
 
 	// Present values, including an empty plan hash (Some(empty) in Rust).
-	dto = api.ApprovalDtoOf(runID, store.RunApproval{
+	dto = httpapi.ApprovalDtoOf(runID, store.RunApproval{
 		Phase:     run.AwaitingApproval,
 		ExpiresAt: opt.Some[int64](42),
 		PlanHash:  opt.Some([]byte{}),
@@ -154,7 +154,7 @@ func TestEligibleToDecide(t *testing.T) {
 		{"another approver decides", as(bobID), appr, true, true},
 		{"a second approver decides", as(carolID), decided, true, true},
 	} {
-		if got := api.Eligible(tc.acc, tc.appr, tc.mayApprove); got != tc.want {
+		if got := httpapi.Eligible(tc.acc, tc.appr, tc.mayApprove); got != tc.want {
 			t.Errorf("%s: eligible = %v, want %v", tc.name, got, tc.want)
 		}
 	}

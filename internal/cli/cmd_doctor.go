@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Teamtem-dev/kuben/internal/cli/doctor"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 )
 
 func doctorCmd(g *globals) *cobra.Command {
@@ -20,7 +20,7 @@ func doctorCmd(g *globals) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return doctor.Run(c.Context(), cfg, opts, versionString(), g.stdout, serve.Logger(cfg.Telemetry)) //nolint:wrapcheck // explains itself
+			return doctor.Run(c.Context(), cfg, opts, versionString(), g.stdout, server.Logger(cfg.Telemetry)) //nolint:wrapcheck // explains itself
 		},
 	}
 	cmd.Flags().BoolVar(&opts.Cluster, "cluster", false,

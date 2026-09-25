@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -18,7 +18,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oidc"
@@ -40,7 +40,7 @@ const ciPolicyBody = `{"name": "shop-deploy", "project": "shop", "repository": "
 
 // Ported from routes/ci.rs: bodies_become_deny_by_default_policies.
 func TestBodiesBecomeDenyByDefaultPolicies(t *testing.T) {
-	p, err := api.TrustPolicy(createCIPolicy(t, ciPolicyBody))
+	p, err := httpapi.TrustPolicy(createCIPolicy(t, ciPolicyBody))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,12 +50,12 @@ func TestBodiesBecomeDenyByDefaultPolicies(t *testing.T) {
 	}
 	owner := createCIPolicy(t, ciPolicyBody)
 	owner.Role = gen.NewOptNilString("owner")
-	if _, err := api.TrustPolicy(owner); err == nil {
+	if _, err := httpapi.TrustPolicy(owner); err == nil {
 		t.Error("an owner policy")
 	}
 	fork := createCIPolicy(t, ciPolicyBody)
 	fork.Refs = []string{"refs/pull/*"}
-	if _, err := api.TrustPolicy(fork); err == nil {
+	if _, err := httpapi.TrustPolicy(fork); err == nil {
 		t.Error("a pull-request ref")
 	}
 	var unknown gen.CreateCiPolicy
@@ -67,15 +67,15 @@ func TestBodiesBecomeDenyByDefaultPolicies(t *testing.T) {
 // Ported from routes/ci.rs: bearer_tokens_are_read_strictly.
 func TestBearerTokensAreReadStrictly(t *testing.T) {
 	h := http.Header{}
-	if token, ok := api.Bearer(h); ok {
+	if token, ok := httpapi.Bearer(h); ok {
 		t.Errorf("no header: %q", token)
 	}
 	h.Set("Authorization", "Basic abc")
-	if token, ok := api.Bearer(h); ok {
+	if token, ok := httpapi.Bearer(h); ok {
 		t.Errorf("basic: %q", token)
 	}
 	h.Set("Authorization", "Bearer  ey.x.y ")
-	if token, ok := api.Bearer(h); !ok || token != "ey.x.y" {
+	if token, ok := httpapi.Bearer(h); !ok || token != "ey.x.y" {
 		t.Errorf("bearer: %q %v", token, ok)
 	}
 }
@@ -88,7 +88,7 @@ func TestTokenNamesSayWhereTheyCameFrom(t *testing.T) {
 		"repository_owner_id": "2", "ref": "refs/heads/main", "event_name": "push", "run_id": "77"}`), &claims); err != nil {
 		t.Fatal(err)
 	}
-	policy, err := api.TrustPolicy(createCIPolicy(t, ciPolicyBody))
+	policy, err := httpapi.TrustPolicy(createCIPolicy(t, ciPolicyBody))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +96,12 @@ func TestTokenNamesSayWhereTheyCameFrom(t *testing.T) {
 		Org: ids.New[ids.Org](), Project: ids.New[ids.Project](), Name: strings.Repeat("x", 70),
 		Repository: "acme/shop", Policy: policy, CreatedBy: ids.New[ids.User](),
 	}
-	if n := utf8.RuneCountInString(api.CITokenName(long, claims)); n != 64 {
+	if n := utf8.RuneCountInString(httpapi.CITokenName(long, claims)); n != 64 {
 		t.Errorf("a long name has %d characters", n)
 	}
 	short := long
 	short.Name = "deploy"
-	if got := api.CITokenName(short, claims); got != "ci:deploy:acme/shop#77" {
+	if got := httpapi.CITokenName(short, claims); got != "ci:deploy:acme/shop#77" {
 		t.Errorf("name: %s", got)
 	}
 }
@@ -181,13 +181,13 @@ func newCITrust(t *testing.T) ciTrust {
 
 	cfg := config.Default()
 	ciConfig(&cfg)
-	server, err := api.New(api.Deps{Config: cfg, Store: f.store})
+	server, err := httpapi.New(httpapi.Deps{Config: cfg, Store: f.store})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The exchange runs beside the fixture's server, on the same database.
 	mux := http.NewServeMux()
-	mux.Handle(api.CIExchangePath, server.CIExchangeOn(verifier))
+	mux.Handle(httpapi.CIExchangePath, server.CIExchangeOn(verifier))
 	exchange := httptest.NewServer(mux)
 	t.Cleanup(exchange.Close)
 	return ciTrust{
@@ -199,7 +199,7 @@ func newCITrust(t *testing.T) ciTrust {
 // exchange posts the fixture token name for policy.
 func (c ciTrust) exchange(name, policy string) (int, map[string]any) {
 	c.t.Helper()
-	status, body, _ := c.ci.do("POST", api.CIExchangePath, map[string]any{"policy": policy},
+	status, body, _ := c.ci.do("POST", httpapi.CIExchangePath, map[string]any{"policy": policy},
 		"Authorization", "Bearer "+c.tokens[name], httpx.ClientHeader, "")
 	return status, body
 }
@@ -215,7 +215,7 @@ func TestM4UntrustedCITokensGetNothing(t *testing.T) {
 	if status, _ := c.exchange("valid", ids.New[ids.Token]().String()); status != 401 {
 		t.Errorf("an unknown policy: %d", status)
 	}
-	if status, _, _ := c.ci.do("POST", api.CIExchangePath, map[string]any{"policy": c.policy}, httpx.ClientHeader, ""); status != 401 {
+	if status, _, _ := c.ci.do("POST", httpapi.CIExchangePath, map[string]any{"policy": c.policy}, httpx.ClientHeader, ""); status != 401 {
 		t.Errorf("no provider token: %d", status)
 	}
 }
@@ -267,26 +267,26 @@ func TestM4TrustedCIGetsAScopedTokenOnce(t *testing.T) {
 // router).
 func TestTheExchangeIsMountedOnItsOwn(t *testing.T) {
 	off := newFixture(t).browser()
-	status, body, _ := off.do("POST", api.CIExchangePath, map[string]any{"policy": "x"}, httpx.ClientHeader, "")
+	status, body, _ := off.do("POST", httpapi.CIExchangePath, map[string]any{"policy": "x"}, httpx.ClientHeader, "")
 	if status != 404 || body["detail"] != "CI trust is not configured" {
 		t.Fatalf("CI trust off: %d %v", status, body)
 	}
 	on := newFixtureWith(t, ciConfig).browser()
-	status, body, _ = on.do("POST", api.CIExchangePath, map[string]any{"policy": "x"}, httpx.ClientHeader, "")
+	status, body, _ = on.do("POST", httpapi.CIExchangePath, map[string]any{"policy": "x"}, httpx.ClientHeader, "")
 	want := map[string]any{"title": "unauthorized", "detail": "the CI token is not trusted"}
 	if status != 401 || !cmp.Equal(body, want) {
 		t.Fatalf("no provider token, no session, no console header: %d %v", status, body)
 	}
-	status, body, _ = on.do("POST", api.CIExchangePath, "x", "Authorization", "Bearer ey.x.y", httpx.ClientHeader, "")
+	status, body, _ = on.do("POST", httpapi.CIExchangePath, "x", "Authorization", "Bearer ey.x.y", httpx.ClientHeader, "")
 	if status != 422 || body["detail"] != `send {"policy": "<id>"}` {
 		t.Fatalf("a body that is not a request: %d %v", status, body)
 	}
-	status, _, headers := on.do("GET", api.CIExchangePath, nil)
+	status, _, headers := on.do("GET", httpapi.CIExchangePath, nil)
 	if status != 405 || headers.Get("Allow") != "POST" {
 		t.Fatalf("GET: %d %v", status, headers)
 	}
 	big := map[string]any{"policy": strings.Repeat("x", 4<<10)}
-	if status, _, _ := on.do("POST", api.CIExchangePath, big, httpx.ClientHeader, ""); status != 413 {
+	if status, _, _ := on.do("POST", httpapi.CIExchangePath, big, httpx.ClientHeader, ""); status != 413 {
 		t.Fatalf("a body over 4 KiB: %d", status)
 	}
 }

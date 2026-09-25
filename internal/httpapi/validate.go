@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Input validation shared by the REST handlers (routes/validate.rs).
 // Errors are user-facing (`422 validation_failed`), so messages say what is

@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -157,9 +157,9 @@ func TestStatusPageDto(t *testing.T) {
 		Environments: []string{"prod"},
 		Path:         "/status/shop-status",
 		UpdatedBy:    "user:alice",
-		UpdatedAt:    api.Timestamp(1_700_000_000_000),
+		UpdatedAt:    httpapi.Timestamp(1_700_000_000_000),
 	}
-	if diff := cmp.Diff(want, api.StatusPageDtoOf(page, []string{"prod"})); diff != "" {
+	if diff := cmp.Diff(want, httpapi.StatusPageDtoOf(page, []string{"prod"})); diff != "" {
 		t.Errorf("dto (-want +got):\n%s", diff)
 	}
 }

@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Apps on the SQL model: create, read, update and delete, and rolling
 // restart, which acts on the materialized workloads directly (an app its

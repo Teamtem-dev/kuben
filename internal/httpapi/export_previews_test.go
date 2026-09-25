@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Preview internals under test.
 var (

@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/integrations/sso"
@@ -44,16 +44,16 @@ func testSSO(t *testing.T, cfg config.Config) opt.Val[*sso.Client] {
 func TestTheStateCookieIsScopedAndShortLived(t *testing.T) {
 	secure := config.Default()
 	secure.Security.CookieSecure = config.CookieFixed(true)
-	c := api.SSOState(secure, "abc", 600)
+	c := httpapi.SSOState(secure, "abc", 600)
 	if got := c.String(); got != "kuben_sso=abc; Path=/api/v1/auth/sso; Max-Age=600; HttpOnly; Secure; SameSite=Lax" {
 		t.Errorf("cookie: %s", got)
 	}
 	plain := config.Default()
 	plain.Security.CookieSecure = config.CookieFixed(false)
-	if api.SSOState(plain, "", 0).Secure {
+	if httpapi.SSOState(plain, "", 0).Secure {
 		t.Error("secure over http")
 	}
-	removal := api.SSOStateRemoval(plain).String()
+	removal := httpapi.SSOStateRemoval(plain).String()
 	if removal != "kuben_sso=; Path=/api/v1/auth/sso; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; HttpOnly; SameSite=Lax" {
 		t.Errorf("removal: %s", removal)
 	}

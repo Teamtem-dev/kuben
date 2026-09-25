@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"strings"
@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/doctor"
 	"github.com/Teamtem-dev/kuben/internal/evidence"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 )
 
@@ -23,7 +23,7 @@ func TestDeploymentsFailOnTheirConditions(t *testing.T) {
 			Type: appsv1.DeploymentProgressing, Status: "False", Reason: "ProgressDeadlineExceeded",
 		}}},
 	}
-	node := api.DeploymentNode([]appsv1.Deployment{failed}, nil)
+	node := httpapi.DeploymentNode([]appsv1.Deployment{failed}, nil)
 	if node.Status != doctor.StatusFail || len(node.Evidence) == 0 ||
 		!strings.Contains(node.Evidence[0], "ProgressDeadlineExceeded") {
 		t.Fatalf("a deadline exceeded: %+v", node)
@@ -31,7 +31,7 @@ func TestDeploymentsFailOnTheirConditions(t *testing.T) {
 	if node.Evidence[0] != "web-web: Progressing False (ProgressDeadlineExceeded)" {
 		t.Fatalf("fact: %q", node.Evidence[0])
 	}
-	if got := api.DeploymentNode(nil, nil).Status; got != doctor.StatusFail {
+	if got := httpapi.DeploymentNode(nil, nil).Status; got != doctor.StatusFail {
 		t.Fatalf("no Deployment: %s", got)
 	}
 
@@ -42,12 +42,12 @@ func TestDeploymentsFailOnTheirConditions(t *testing.T) {
 			Type: appsv1.DeploymentAvailable, Status: "False",
 		}}},
 	}
-	node = api.DeploymentNode([]appsv1.Deployment{unavailable}, nil)
+	node = httpapi.DeploymentNode([]appsv1.Deployment{unavailable}, nil)
 	if node.Status != doctor.StatusFail || node.Evidence[0] != "web-worker: Available False (-)" {
 		t.Fatalf("unavailable: %+v", node)
 	}
 	fine := appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "web-web"}}
-	if node := api.DeploymentNode([]appsv1.Deployment{fine}, nil); node.Status != doctor.StatusOK ||
+	if node := httpapi.DeploymentNode([]appsv1.Deployment{fine}, nil); node.Status != doctor.StatusOK ||
 		node.Subject != "1 Deployment(s)" || len(node.Evidence) != 0 {
 		t.Fatalf("fine: %+v", node)
 	}
@@ -63,7 +63,7 @@ func TestChecksFoldIntoLayers(t *testing.T) {
 		check("claim", doctor.StatusWarn),
 		check("route", doctor.StatusOK),
 	}
-	dns, ok := api.FromChecks(evidence.DNS, "DNS", checks, []string{"dns", "claim"})
+	dns, ok := httpapi.FromChecks(evidence.DNS, "DNS", checks, []string{"dns", "claim"})
 	if !ok {
 		t.Fatal("node")
 	}
@@ -73,7 +73,7 @@ func TestChecksFoldIntoLayers(t *testing.T) {
 	if dns.Evidence[0] != "a.example.com: d" {
 		t.Fatalf("fact: %q", dns.Evidence[0])
 	}
-	if _, ok := api.FromChecks(evidence.TLS, "TLS", checks, []string{"certificate"}); ok {
+	if _, ok := httpapi.FromChecks(evidence.TLS, "TLS", checks, []string{"certificate"}); ok {
 		t.Fatal("nothing checked")
 	}
 }
@@ -83,16 +83,16 @@ func TestPodsNode(t *testing.T) {
 	pod := func(name string, ready bool) *projection.PodView {
 		return &projection.PodView{Name: name, Phase: projection.PodRunning, Ready: ready}
 	}
-	if node := api.PodsNode(nil); node.Status != doctor.StatusFail || node.Subject != "no pods" {
+	if node := httpapi.PodsNode(nil); node.Status != doctor.StatusFail || node.Subject != "no pods" {
 		t.Fatalf("no pods: %+v", node)
 	}
-	if node := api.PodsNode([]*projection.PodView{pod("a", true)}); node.Status != doctor.StatusOK ||
+	if node := httpapi.PodsNode([]*projection.PodView{pod("a", true)}); node.Status != doctor.StatusOK ||
 		node.Subject != "1 of 1 pods ready" || node.Action.IsSome() {
 		t.Fatalf("ready: %+v", node)
 	}
 	pending := pod("b", false)
 	pending.Phase = projection.PodPending
-	node := api.PodsNode([]*projection.PodView{pod("a", true), pending})
+	node := httpapi.PodsNode([]*projection.PodView{pod("a", true), pending})
 	if action, _ := node.Action.Get(); node.Status != doctor.StatusWarn || len(node.Evidence) != 1 ||
 		node.Evidence[0] != "b: pending" || action != "Read the app's logs and events (app → Logs)." {
 		t.Fatalf("pending: %+v", node)
@@ -100,11 +100,11 @@ func TestPodsNode(t *testing.T) {
 	crashing := pod("c", false)
 	crashing.Reason = opt.Some("CrashLoopBackOff")
 	crashing.Restarts = 4
-	node = api.PodsNode([]*projection.PodView{pod("a", true), crashing})
+	node = httpapi.PodsNode([]*projection.PodView{pod("a", true), crashing})
 	if node.Status != doctor.StatusFail || node.Evidence[0] != "c: CrashLoopBackOff (4 restarts)" {
 		t.Fatalf("crashing: %+v", node)
 	}
-	if node := api.PodsNode([]*projection.PodView{pod("a", false)}); node.Status != doctor.StatusFail {
+	if node := httpapi.PodsNode([]*projection.PodView{pod("a", false)}); node.Status != doctor.StatusFail {
 		t.Fatalf("none ready: %+v", node)
 	}
 }
@@ -117,7 +117,7 @@ func TestBuildPhasesReadAsRustDebug(t *testing.T) {
 	}{
 		{build.Failed, "Failed"}, {build.VerifyingOutput, "VerifyingOutput"}, {build.CancelRequested, "CancelRequested"},
 	} {
-		if got := api.DebugName(c.phase); got != c.want {
+		if got := httpapi.DebugName(c.phase); got != c.want {
 			t.Fatalf("%s: %q, want %q", c.phase, got, c.want)
 		}
 	}

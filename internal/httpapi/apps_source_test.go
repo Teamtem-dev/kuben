@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -32,7 +32,7 @@ func sourceBody(image string) gen.PutSource {
 // routes/apps/source.rs bindings_are_validated_and_normalized.
 func TestBindingsAreValidatedAndNormalized(t *testing.T) {
 	body := sourceBody("registry.example.com:5000/acme/shop")
-	b, err := api.NewBinding(&body)
+	b, err := httpapi.NewBinding(&body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,13 +55,13 @@ func TestBindingsAreValidatedAndNormalized(t *testing.T) {
 		t.Errorf("installation %d, pull request %v", b.InstallationID, b.PullRequest)
 	}
 	hub := sourceBody("acme/shop")
-	if b, err := api.NewBinding(&hub); err != nil || b.ImageRepository != "docker.io/acme/shop" {
+	if b, err := httpapi.NewBinding(&hub); err != nil || b.ImageRepository != "docker.io/acme/shop" {
 		t.Errorf("Docker Hub: %v %v", b.ImageRepository, err)
 	}
 	// Nothing given for the strategy, context and Dockerfile: auto, the
 	// root and the default.
 	bare := gen.PutSource{InstallationId: 1, Repository: "a/b", Branch: "main", ImageRepository: "ghcr.io/a/b"}
-	b, err = api.NewBinding(&bare)
+	b, err = httpapi.NewBinding(&bare)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestBindingsAreValidatedAndNormalized(t *testing.T) {
 
 // routes/apps/source.rs the_spec_mirrors_the_binding.
 func TestTheSpecMirrorsTheBinding(t *testing.T) {
-	git := api.GitSource(sourceBody("ghcr.io/acme/shop"))
+	git := httpapi.GitSource(sourceBody("ghcr.io/acme/shop"))
 	if git.Repo != "acme/shop" || git.Path != "./apps/web/" {
 		t.Errorf("repo %s, path %s", git.Repo, git.Path)
 	}
@@ -85,7 +85,7 @@ func TestTheSpecMirrorsTheBinding(t *testing.T) {
 func TestTagsDigestsAndEscapesAreRefused(t *testing.T) {
 	refused := func(what string, body gen.PutSource) {
 		t.Helper()
-		_, err := api.NewBinding(&body)
+		_, err := httpapi.NewBinding(&body)
 		if kerrors.CodeOf(err) != kerrors.Validation {
 			t.Errorf("%s: %v", what, err)
 		}
@@ -109,12 +109,12 @@ func TestImageRepositoryRefusalsSayWhy(t *testing.T) {
 		{"Upper/Case", "validation failed: `Upper/Case` is not an image reference"},
 	}
 	for _, c := range cases {
-		if _, err := api.ImageRepository(c.image); err == nil || err.Error() != c.want {
+		if _, err := httpapi.ImageRepository(c.image); err == nil || err.Error() != c.want {
 			t.Errorf("%s: %v", c.image, err)
 		}
 	}
 	// A port is not a tag: only the last path part is looked at.
-	if got, err := api.ImageRepository("localhost:5000/shop"); err != nil || got != "localhost:5000/shop" {
+	if got, err := httpapi.ImageRepository("localhost:5000/shop"); err != nil || got != "localhost:5000/shop" {
 		t.Errorf("a registry port: %s %v", got, err)
 	}
 }
@@ -130,7 +130,7 @@ func TestSourcesShowTheirBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := store.SourceBinding{InstallationID: 9, Repository: repo, Branch: branch, ImageRepository: "ghcr.io/acme/shop"}
-	dto := api.SourceDtoOf(b, opt.None[ids.OperationID]())
+	dto := httpapi.SourceDtoOf(b, opt.None[ids.OperationID]())
 	raw, err := json.Marshal(&dto)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestSourcesShowTheirBinding(t *testing.T) {
 		t.Errorf("source (-want +got):\n%s", diff)
 	}
 	sync := ids.New[ids.Operation]()
-	if dto := api.SourceDtoOf(b, opt.Some(sync)); dto.SyncOperation.Or("") != sync.String() {
+	if dto := httpapi.SourceDtoOf(b, opt.Some(sync)); dto.SyncOperation.Or("") != sync.String() {
 		t.Errorf("sync operation %v", dto.SyncOperation)
 	}
 }

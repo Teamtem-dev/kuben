@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -22,21 +22,21 @@ func TestPromotionKeepsTargetDomainsAndScalingAndReportsChanges(t *testing.T) {
 	source := sampleSpec(t)
 	source.Source = v1alpha1.SourceFromImage("nginx:1.28")
 	source.Env = []v1alpha1.EnvVar{
-		api.ToCRDEnv(gen.EnvVarDto{
+		httpapi.ToCRDEnv(gen.EnvVarDto{
 			Name:   "DATABASE_URL",
 			Secret: gen.NewOptNilSecretRef(gen.SecretRef{Name: "db", Key: "url"}),
 		}),
 	}
 
 	targetSpec := sampleSpec(t)
-	targetSpec.Domains = api.ToDomains([]string{"shop.acme.com"})
+	targetSpec.Domains = httpapi.ToDomains([]string{"shop.acme.com"})
 	if web, ok := targetSpec.Runtime.Processes["web"]; ok {
 		web.Replicas = v1alpha1.Replicas{Min: 3, Max: 6}
 		web.Size = "large"
 		targetSpec.Runtime.Processes["web"] = web
 	}
 
-	promoted := api.PromoteSpec(&source, &targetSpec)
+	promoted := httpapi.PromoteSpec(&source, &targetSpec)
 	if promoted.Source.Image == nil || *promoted.Source.Image != "nginx:1.28" {
 		t.Fatalf("promoted image: %v", promoted.Source.Image)
 	}
@@ -50,7 +50,7 @@ func TestPromotionKeepsTargetDomainsAndScalingAndReportsChanges(t *testing.T) {
 		t.Fatalf("promoted size: %v", promoted.Runtime.Processes["web"].Size)
 	}
 
-	changes := api.SpecChanges(&targetSpec, &promoted)
+	changes := httpapi.SpecChanges(&targetSpec, &promoted)
 	if !slices.Contains(changes, "image: nginx:1.27 → nginx:1.28") {
 		t.Fatalf("changes missing image: %v", changes)
 	}
@@ -58,17 +58,17 @@ func TestPromotionKeepsTargetDomainsAndScalingAndReportsChanges(t *testing.T) {
 		t.Fatalf("changes missing env: %v", changes)
 	}
 
-	createChanges := api.SpecChanges(nil, &promoted)
+	createChanges := httpapi.SpecChanges(nil, &promoted)
 	if len(createChanges) == 0 || !strings.HasPrefix(createChanges[0], "create the app") {
 		t.Fatalf("create changes: %v", createChanges)
 	}
-	sameChanges := api.SpecChanges(&promoted, &promoted)
+	sameChanges := httpapi.SpecChanges(&promoted, &promoted)
 	if len(sameChanges) != 0 {
 		t.Fatalf("same changes not empty: %v", sameChanges)
 	}
 
 	none := map[string]map[string]struct{}{}
-	missing := api.MissingSecrets(&promoted, none)
+	missing := httpapi.MissingSecrets(&promoted, none)
 	if len(missing) != 1 {
 		t.Fatalf("missing secrets with none: %v", missing)
 	}
@@ -76,7 +76,7 @@ func TestPromotionKeepsTargetDomainsAndScalingAndReportsChanges(t *testing.T) {
 	have := map[string]map[string]struct{}{
 		"db": {"url": struct{}{}},
 	}
-	missing = api.MissingSecrets(&promoted, have)
+	missing = httpapi.MissingSecrets(&promoted, have)
 	if len(missing) != 0 {
 		t.Fatalf("missing secrets with have: %v", missing)
 	}

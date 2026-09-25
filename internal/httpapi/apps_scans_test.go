@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 )
 
@@ -42,7 +42,7 @@ func TestScansShowTheNewestScanAndTheGate(t *testing.T) {
 		ScannedAt: 1_500,
 	}
 	release := uuid.MustParse("0192f3a1-0000-7000-8000-000000000001")
-	dto := api.AppScansDtoOf(gen.NewOptNilUUID(release), scan.Block{Reasons: []string{"CVE-2026-7"}},
+	dto := httpapi.AppScansDtoOf(gen.NewOptNilUUID(release), scan.Block{Reasons: []string{"CVE-2026-7"}},
 		[]string{"sha256:a", "sha256:b"}, map[string]scan.Summary{"sha256:a": summary},
 		map[string]struct{}{"sha256:b": {}})
 	want := map[string]any{
@@ -68,7 +68,7 @@ func TestScansShowTheNewestScanAndTheGate(t *testing.T) {
 	}
 
 	summary.DBUpdatedAt = opt.Some[int64](0)
-	if s := api.ScanDtoOf(summary); s.DatabaseUpdatedAt.Or("") != "1970-01-01T00:00:00Z" {
+	if s := httpapi.ScanDtoOf(summary); s.DatabaseUpdatedAt.Or("") != "1970-01-01T00:00:00Z" {
 		t.Errorf("database time: %v", s.DatabaseUpdatedAt)
 	}
 }
@@ -77,12 +77,12 @@ func TestScansShowTheNewestScanAndTheGate(t *testing.T) {
 func TestAnAppWithoutAReleaseHasNoScans(t *testing.T) {
 	var none gen.OptNilUUID
 	none.SetToNull()
-	dto := api.AppScansDtoOf(none, scan.Pass{}, nil, nil, nil)
+	dto := httpapi.AppScansDtoOf(none, scan.Pass{}, nil, nil, nil)
 	want := map[string]any{"release": nil, "gate": "pass", "reasons": []any{}, "images": []any{}}
 	if diff := cmp.Diff(want, jsonOf(t, &dto)); diff != "" {
 		t.Errorf("no release (-want +got):\n%s", diff)
 	}
-	warn := api.AppScansDtoOf(none, scan.Warn{}, nil, nil, nil)
+	warn := httpapi.AppScansDtoOf(none, scan.Warn{}, nil, nil, nil)
 	if warn.Gate != "warn" || warn.Reasons == nil {
 		t.Errorf("warn: %+v", warn)
 	}
@@ -91,7 +91,7 @@ func TestAnAppWithoutAReleaseHasNoScans(t *testing.T) {
 // The SBOM goes out as stored (gzip bytes, not JSON text) under the name
 // Rust gave it.
 func TestTheSbomIsSentAsStored(t *testing.T) {
-	if got := api.SbomFile("api", "sha256:abc"); got != `attachment; filename="api-sha256-abc.cdx.json"` {
+	if got := httpapi.SbomFile("api", "sha256:abc"); got != `attachment; filename="api-sha256-abc.cdx.json"` {
 		t.Errorf("file: %s", got)
 	}
 	gz := []byte{0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, '"', ','}

@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Scheduled runs: "run now" for a scheduled process (scenario 7,
 // routes/apps/jobs.rs).

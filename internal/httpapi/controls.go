@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Operational controls (M4.9; routes/controls.rs): owners, change freezes,
 // paused delivery, alert silences and emergency rollbacks. Each has one

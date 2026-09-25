@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 )
 
@@ -25,7 +25,7 @@ const webhookSecret = "s3cret"
 // no database: every delivery tested here is answered before one is read.
 func webhookHandler(t *testing.T, app opt.Val[*github.App]) http.Handler {
 	t.Helper()
-	server, err := api.New(api.Deps{Config: config.Default(), GitHub: app})
+	server, err := httpapi.New(httpapi.Deps{Config: config.Default(), GitHub: app})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func signature(body []byte) string {
 
 // delivery is a request to the webhook with headers (name, value pairs).
 func delivery(method string, body []byte, headers ...string) *http.Request {
-	r := httptest.NewRequest(method, api.GithubWebhookPath, bytes.NewReader(body))
+	r := httptest.NewRequest(method, httpapi.GithubWebhookPath, bytes.NewReader(body))
 	for i := 0; i+1 < len(headers); i += 2 {
 		r.Header.Set(headers[i], headers[i+1])
 	}
@@ -144,12 +144,12 @@ func TestProviderErrorsBecomeProblems(t *testing.T) {
 		{build.Unavailable{Reason: "HTTP 502"}, "unavailable: GitHub: HTTP 502", kerrors.Unavailable},
 	}
 	for _, c := range cases {
-		got := api.ProviderError(c.err)
+		got := httpapi.ProviderError(c.err)
 		if got.Error() != c.want || kerrors.CodeOf(got) != c.code {
 			t.Errorf("%v: %v", c.err, got)
 		}
 	}
-	if got := api.ProviderError(other); !errors.Is(got, other) {
+	if got := httpapi.ProviderError(other); !errors.Is(got, other) {
 		t.Errorf("another error: %v", got)
 	}
 }

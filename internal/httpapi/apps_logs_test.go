@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 )
@@ -51,32 +51,32 @@ func TestAnAppsObjectsAreToldApartFromItsNeighbours(t *testing.T) {
 		{"Service", "api", false},
 	}
 	for _, c := range cases {
-		if got := api.Belongs(c.kind, c.name, "web", workloads, pods); got != c.want {
+		if got := httpapi.Belongs(c.kind, c.name, "web", workloads, pods); got != c.want {
 			t.Errorf("belongs(%s %s) = %v, want %v", c.kind, c.name, got, c.want)
 		}
 	}
 }
 
 func TestAFollowedLogLineKeepsItsTimeAndIsCutOnACharacter(t *testing.T) {
-	timeStr, line := api.SplitLine("2026-09-16T10:00:00.123456789Z hello world")
+	timeStr, line := httpapi.SplitLine("2026-09-16T10:00:00.123456789Z hello world")
 	if timeStr != opt.Some("2026-09-16T10:00:00.123456789Z") || line != "hello world" {
 		t.Errorf("split = %v %q", timeStr, line)
 	}
-	timeStr, line = api.SplitLine("no time here")
+	timeStr, line = httpapi.SplitLine("no time here")
 	if timeStr.IsSome() || line != "no time here" {
 		t.Errorf("split = %v %q", timeStr, line)
 	}
-	_, cut := api.SplitLine("2026-09-16T10:00:00Z " + strings.Repeat("é", api.MaxLine))
-	if len(cut) > api.MaxLine || strings.Trim(cut, "é") != "" {
+	_, cut := httpapi.SplitLine("2026-09-16T10:00:00Z " + strings.Repeat("é", httpapi.MaxLine))
+	if len(cut) > httpapi.MaxLine || strings.Trim(cut, "é") != "" {
 		t.Errorf("cut to %d bytes, not on a character", len(cut))
 	}
 }
 
 func TestFollowedLogsAreCappedPerUserAndFreedWhenClosed(t *testing.T) {
-	streams := api.NewLogStreams()
+	streams := httpapi.NewLogStreams()
 	alice, bob := ids.New[ids.User](), ids.New[ids.User]()
-	held := make([]*api.LogStreamPermit, 0, api.MaxFollowsPerUser)
-	for range api.MaxFollowsPerUser {
+	held := make([]*httpapi.LogStreamPermit, 0, httpapi.MaxFollowsPerUser)
+	for range httpapi.MaxFollowsPerUser {
 		permit, err := streams.Acquire(alice)
 		if err != nil {
 			t.Fatalf("a place: %v", err)
@@ -124,7 +124,7 @@ func TestLogTextIsSplitAsRustLines(t *testing.T) {
 		{long + "\nlast", []string{long, "last"}},
 	}
 	for _, c := range cases {
-		if diff := cmp.Diff(c.want, api.TextLines(c.text)); diff != "" {
+		if diff := cmp.Diff(c.want, httpapi.TextLines(c.text)); diff != "" {
 			t.Errorf("lines(%q) (-want +got):\n%s", c.text, diff)
 		}
 	}
@@ -146,7 +146,7 @@ func TestInvalidUTF8IsDescribedAsRustDoes(t *testing.T) {
 		{[]byte{0xC0, 0x80}, "invalid utf-8 sequence of 1 bytes from index 0"},
 	}
 	for _, c := range cases {
-		if got := api.UTF8ErrorText(c.text); got != c.want {
+		if got := httpapi.UTF8ErrorText(c.text); got != c.want {
 			t.Errorf("%x: %q, want %q", c.text, got, c.want)
 		}
 	}
@@ -157,13 +157,13 @@ func TestLogLinesAndEndsWriteEveryMember(t *testing.T) {
 		value any
 		want  string
 	}{
-		{api.LogLine{Pod: "web-1", Line: "hi"}, `{"pod":"web-1","process":null,"time":null,"line":"hi"}`},
+		{httpapi.LogLine{Pod: "web-1", Line: "hi"}, `{"pod":"web-1","process":null,"time":null,"line":"hi"}`},
 		{
-			api.LogLine{Pod: "web-1", Process: opt.Some("web"), Time: opt.Some("2026-09-16T10:00:00Z"), Line: "hi"},
+			httpapi.LogLine{Pod: "web-1", Process: opt.Some("web"), Time: opt.Some("2026-09-16T10:00:00Z"), Line: "hi"},
 			`{"pod":"web-1","process":"web","time":"2026-09-16T10:00:00Z","line":"hi"}`,
 		},
-		{api.LogEnd{}, `{"pod":null,"error":null}`},
-		{api.LogEnd{Pod: opt.Some("web-1"), Error: opt.Some("gone")}, `{"pod":"web-1","error":"gone"}`},
+		{httpapi.LogEnd{}, `{"pod":null,"error":null}`},
+		{httpapi.LogEnd{Pod: opt.Some("web-1"), Error: opt.Some("gone")}, `{"pod":"web-1","error":"gone"}`},
 	}
 	for _, c := range cases {
 		got, err := json.Marshal(c.value)
@@ -177,17 +177,17 @@ func TestLogLinesAndEndsWriteEveryMember(t *testing.T) {
 }
 
 func TestEventsAreFramedAsAxumWritesThem(t *testing.T) {
-	line := api.SSEEvent("line", api.LogLine{Pod: "web-1", Line: "a<b>&\u2028\"\\u2028\n"})
+	line := httpapi.SSEEvent("line", httpapi.LogLine{Pod: "web-1", Line: "a<b>&\u2028\"\\u2028\n"})
 	want := "event: line\ndata: {\"pod\":\"web-1\",\"process\":null,\"time\":null,\"line\":\"a<b>&\u2028\\\"\\\\u2028\\n\"}\n\n"
 	if string(line) != want {
 		t.Errorf("line event:\n%q\nwant\n%q", line, want)
 	}
-	end := api.SSEEvent("end", api.LogEnd{Pod: opt.Some("web-1")})
+	end := httpapi.SSEEvent("end", httpapi.LogEnd{Pod: opt.Some("web-1")})
 	if string(end) != "event: end\ndata: {\"pod\":\"web-1\",\"error\":null}\n\n" {
 		t.Errorf("end event: %q", end)
 	}
-	if api.SSEPing != ": ping\n\n" {
-		t.Errorf("keep-alive: %q", api.SSEPing)
+	if httpapi.SSEPing != ": ping\n\n" {
+		t.Errorf("keep-alive: %q", httpapi.SSEPing)
 	}
 }
 
@@ -281,7 +281,7 @@ func TestAKubernetesEventBecomesAnAppEvent(t *testing.T) {
 		},
 	}}
 	for _, c := range cases {
-		if diff := cmp.Diff(c.want, rowOf(api.AppEventFrom(&c.event))); diff != "" {
+		if diff := cmp.Diff(c.want, rowOf(httpapi.AppEventFrom(&c.event))); diff != "" {
 			t.Errorf("%s (-want +got):\n%s", c.name, diff)
 		}
 	}
@@ -306,7 +306,7 @@ func TestEventsAreNewestFirstNeverSeenLastAndTiesKeepTheirOrder(t *testing.T) {
 		event("f", opt.Some("2026-09-16T10:00:02.5Z")), // compared as text, as Rust did
 		event("g", opt.Some("2026-09-16T10:00:01Z")),
 	}
-	api.SortEvents(events)
+	httpapi.SortEvents(events)
 	got := make([]string, 0, len(events))
 	for _, e := range events {
 		got = append(got, e.Name)
@@ -329,7 +329,7 @@ func TestAnEmptyProcessIsAFilterToo(t *testing.T) {
 	pod("web-4", opt.Some(""))
 	names := func(process opt.Val[string]) []string {
 		out := []string{}
-		for _, v := range api.PodsOf(p, "ns", "web", process) {
+		for _, v := range httpapi.PodsOf(p, "ns", "web", process) {
 			out = append(out, v.Name)
 		}
 		return out
@@ -351,7 +351,7 @@ func TestAnEmptyProcessIsAFilterToo(t *testing.T) {
 	for i := range 12 {
 		pod("many-"+string(rune('a'+i)), opt.Some("many"))
 	}
-	if n := len(api.PodsOf(p, "ns", "web", opt.Some("many"))); n != 10 {
+	if n := len(httpapi.PodsOf(p, "ns", "web", opt.Some("many"))); n != 10 {
 		t.Errorf("%d pods read at once, want 10", n)
 	}
 }
@@ -361,38 +361,38 @@ type failingReader struct{}
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
 
 func TestAPodsLinesAreReadAsFuturesLinesReadsThem(t *testing.T) {
-	line := func(t opt.Val[string], text string) api.LogPiece {
-		return api.LinePiece(api.LogLine{Pod: "web-1", Process: opt.Some("web"), Time: t, Line: text})
+	line := func(t opt.Val[string], text string) httpapi.LogPiece {
+		return httpapi.LinePiece(httpapi.LogLine{Pod: "web-1", Process: opt.Some("web"), Time: t, Line: text})
 	}
 	none := opt.None[string]()
 	cases := []struct {
 		name string
 		body io.Reader
-		want []api.LogPiece
+		want []httpapi.LogPiece
 		end  opt.Val[string]
 	}{{
 		name: "lines, CRLF, an empty line and a last one without newline",
 		body: strings.NewReader("2026-09-16T10:00:00Z one\r\ntwo\r\r\n\nthree\r"),
-		want: []api.LogPiece{
+		want: []httpapi.LogPiece{
 			line(opt.Some("2026-09-16T10:00:00Z"), "one"), line(none, "two\r"), line(none, ""), line(none, "three\r"),
 		},
 		end: none,
 	}, {
 		name: "a line that is not UTF-8 ends the read",
 		body: strings.NewReader("ok\nbad \xff\nlater\n"),
-		want: []api.LogPiece{line(none, "ok")},
+		want: []httpapi.LogPiece{line(none, "ok")},
 		end:  opt.Some("stream did not contain valid UTF-8"),
 	}, {
 		name: "a read error drops the partial line and ends the read",
 		body: io.MultiReader(strings.NewReader("a\npartial"), failingReader{}),
-		want: []api.LogPiece{line(none, "a")},
+		want: []httpapi.LogPiece{line(none, "a")},
 		end:  opt.Some("connection reset"),
 	}}
 	for _, c := range cases {
-		out := make(chan api.LogPiece, 16)
-		end, ok := api.ReadLines(t.Context(), c.body, "web-1", opt.Some("web"), out)
+		out := make(chan httpapi.LogPiece, 16)
+		end, ok := httpapi.ReadLines(t.Context(), c.body, "web-1", opt.Some("web"), out)
 		close(out)
-		got := []api.LogPiece{}
+		got := []httpapi.LogPiece{}
 		for p := range out {
 			got = append(got, p)
 		}
@@ -415,14 +415,14 @@ func TestAPodsLinesAreReadAsFuturesLinesReadsThem(t *testing.T) {
 // what it wrote.
 func follow(
 	t *testing.T, c clock.Clock, limit, rescan time.Duration, pods func() []*projection.PodView,
-	read func(*projection.PodView, *corev1.PodLogOptions), pieces <-chan api.LogPiece,
+	read func(*projection.PodView, *corev1.PodLogOptions), pieces <-chan httpapi.LogPiece,
 ) (stop func() string) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	var buf bytes.Buffer
 	done := make(chan error, 1)
 	go func() {
-		done <- api.RunFollow(ctx, &buf, c, limit, rescan, time.Hour, 200, pods, read, pieces)
+		done <- httpapi.RunFollow(ctx, &buf, c, limit, rescan, time.Hour, 200, pods, read, pieces)
 	}()
 	return func() string {
 		cancel()
@@ -439,26 +439,26 @@ func noRead(*projection.PodView, *corev1.PodLogOptions) {}
 
 func TestAFollowedLogEndsAtItsLimitWithoutAPod(t *testing.T) {
 	var buf bytes.Buffer
-	err := api.RunFollow(t.Context(), &buf, clock.Fixed(0), time.Millisecond, time.Hour, time.Hour, 200,
+	err := httpapi.RunFollow(t.Context(), &buf, clock.Fixed(0), time.Millisecond, time.Hour, time.Hour, 200,
 		noPods, noRead, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "event: end\ndata: {\"pod\":null,\"error\":\"" + api.LimitMessage + "\"}\n\n"
+	want := "event: end\ndata: {\"pod\":null,\"error\":\"" + httpapi.LimitMessage + "\"}\n\n"
 	if buf.String() != want {
 		t.Errorf("got %q, want %q", buf.String(), want)
 	}
 }
 
 func TestTheSameEndOfAPodIsToldOnce(t *testing.T) {
-	pieces := make(chan api.LogPiece)
+	pieces := make(chan httpapi.LogPiece)
 	stop := follow(t, clock.Fixed(0), time.Hour, time.Hour, noPods, noRead, pieces)
-	pieces <- api.LinePiece(api.LogLine{Pod: "web-1", Line: "hi"})
-	pieces <- api.EndPiece("web-1", opt.Some("boom"))
-	pieces <- api.EndPiece("web-1", opt.Some("boom"))
-	pieces <- api.EndPiece("web-1", opt.None[string]())
-	pieces <- api.EndPiece("web-1", opt.None[string]())
-	pieces <- api.EndPiece("web-2", opt.Some("boom"))
+	pieces <- httpapi.LinePiece(httpapi.LogLine{Pod: "web-1", Line: "hi"})
+	pieces <- httpapi.EndPiece("web-1", opt.Some("boom"))
+	pieces <- httpapi.EndPiece("web-1", opt.Some("boom"))
+	pieces <- httpapi.EndPiece("web-1", opt.None[string]())
+	pieces <- httpapi.EndPiece("web-1", opt.None[string]())
+	pieces <- httpapi.EndPiece("web-2", opt.Some("boom"))
 	want := "event: line\ndata: {\"pod\":\"web-1\",\"process\":null,\"time\":null,\"line\":\"hi\"}\n\n" +
 		"event: end\ndata: {\"pod\":\"web-1\",\"error\":\"boom\"}\n\n" +
 		"event: end\ndata: {\"pod\":\"web-1\",\"error\":null}\n\n" +
@@ -504,12 +504,12 @@ func TestAPodIsReadAgainFromWhereItsReadEnded(t *testing.T) {
 		}
 		reads <- readCall{pod.Name, opts.Container, opt.FromPtr(opts.TailLines), opt.FromPtr(opts.SinceSeconds)}
 	}
-	pieces := make(chan api.LogPiece)
+	pieces := make(chan httpapi.LogPiece)
 	stop := follow(t, &steps{now: []int64{1_000, 43_500}}, time.Hour, time.Millisecond, pods, read, pieces)
 
 	want := []readCall{{Pod: "web-1", Container: "web", Tail: opt.Some(int64(200))}}
 	got := []readCall{<-reads}
-	pieces <- api.EndPiece("web-1", opt.None[string]())
+	pieces <- httpapi.EndPiece("web-1", opt.None[string]())
 	want = append(want, readCall{Pod: "web-1", Container: "web", Since: opt.Some(int64(42))})
 	got = append(got, <-reads)
 	mu.Lock()
@@ -528,9 +528,9 @@ func TestAQuietFollowedLogIsKeptAlive(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- api.RunFollow(ctx, w, clock.Fixed(0), time.Hour, time.Hour, time.Millisecond, 200, noPods, noRead, nil)
+		done <- httpapi.RunFollow(ctx, w, clock.Fixed(0), time.Hour, time.Hour, time.Millisecond, 200, noPods, noRead, nil)
 	}()
-	got := make([]byte, len(api.SSEPing))
+	got := make([]byte, len(httpapi.SSEPing))
 	if _, err := io.ReadFull(r, got); err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +545,7 @@ func TestAQuietFollowedLogIsKeptAlive(t *testing.T) {
 }
 
 func TestAFollowedLogBypassesTheRequestTimeout(t *testing.T) {
-	server, err := api.New(api.Deps{Config: config.Default()})
+	server, err := httpapi.New(httpapi.Deps{Config: config.Default()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,7 +571,7 @@ func TestAFollowedLogBypassesTheRequestTimeout(t *testing.T) {
 	}
 	for _, c := range cases {
 		r := httptest.NewRequest(c.method, c.target, nil)
-		if got := api.FollowsLogs(server, r); got != c.want {
+		if got := httpapi.FollowsLogs(server, r); got != c.want {
 			t.Errorf("%s %s: %v, want %v", c.method, c.target, got, c.want)
 		}
 	}

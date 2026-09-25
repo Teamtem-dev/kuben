@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // An app's CPU and memory (M5.5, routes/apps/metrics.rs): the last hour
 // from this replica's live window, the last week from hourly rollups.

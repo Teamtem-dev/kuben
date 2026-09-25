@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"slices"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
 func TestEmailAddresses(t *testing.T) {
@@ -17,16 +17,16 @@ func TestEmailAddresses(t *testing.T) {
 		"carol@example.com\t", strings.Repeat("a", 250) + "@b.cd",
 	}
 	for _, e := range valid {
-		if err := api.ValidEmail(e); err != nil {
+		if err := httpapi.ValidEmail(e); err != nil {
 			t.Errorf("%q: %v", e, err)
 		}
 	}
 	for _, e := range invalid {
-		if err := api.ValidEmail(e); kerrors.CodeOf(err) != kerrors.Validation {
+		if err := httpapi.ValidEmail(e); kerrors.CodeOf(err) != kerrors.Validation {
 			t.Errorf("%q: %v", e, err)
 		}
 	}
-	if err := api.ValidEmail("carol"); err == nil || err.Error() != "validation failed: `carol` is not a valid email address" {
+	if err := httpapi.ValidEmail("carol"); err == nil || err.Error() != "validation failed: `carol` is not a valid email address" {
 		t.Fatal(err)
 	}
 }

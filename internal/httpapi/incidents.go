@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Incidents and webhook endpoints of an organization (M4.10;
 // routes/incidents.rs).

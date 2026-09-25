@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // An app's DNS records, written through a DNS provider account (M5.2,
 // routes/domains.rs sync_app).

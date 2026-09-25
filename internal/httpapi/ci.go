@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // External CI trust (routes/ci.rs, M4.2): trust policies of an
 // organization, and the exchange of a GitHub Actions OIDC token for a

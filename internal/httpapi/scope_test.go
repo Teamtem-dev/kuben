@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
@@ -27,7 +27,7 @@ func TestEnvironmentShortNames(t *testing.T) {
 		{"shop", "shop-", "shop-"},
 	}
 	for _, c := range cases {
-		if got := api.EnvironmentShortName(c[0], c[1]); got != c[2] {
+		if got := httpapi.EnvironmentShortName(c[0], c[1]); got != c[2] {
 			t.Errorf("%s in %s: %s, want %s", c[1], c[0], got, c[2])
 		}
 	}

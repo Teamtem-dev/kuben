@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"io"
@@ -14,7 +14,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/notify"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -37,12 +37,12 @@ func TestEndpointsSubscribeToKnownEvents(t *testing.T) {
 	body := func(name string, events ...string) *gen.CreateEndpoint {
 		return &gen.CreateEndpoint{Name: name, URL: "https://hooks.example.com/kuben", Events: events}
 	}
-	events, err := api.CheckEndpoint(body("pager", "deployment.failed", "deployment.failed", "*"))
+	events, err := httpapi.CheckEndpoint(body("pager", "deployment.failed", "deployment.failed", "*"))
 	if diff := cmp.Diff([]string{"*", "deployment.failed"}, events); err != nil || diff != "" {
 		t.Fatalf("events (-want +got):\n%s %v", diff, err)
 	}
 	for _, bad := range []*gen.CreateEndpoint{body("", "*"), body("pager"), body("pager", "deploy.everything")} {
-		if _, err := api.CheckEndpoint(bad); err == nil {
+		if _, err := httpapi.CheckEndpoint(bad); err == nil {
 			t.Errorf("%+v was accepted", bad)
 		}
 	}

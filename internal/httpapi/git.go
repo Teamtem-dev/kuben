@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Git providers (M3): the GitHub App's installations and its webhook
 // (routes/git.rs).

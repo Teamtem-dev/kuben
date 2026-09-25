@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 )
 
@@ -30,7 +30,7 @@ func TestNobodyGrantsOrRemovesAboveTheirOwnRole(t *testing.T) {
 		{none, none, some(perm.Viewer), false, "no role here"},
 	}
 	for _, c := range cases {
-		if got := api.MayAssign(c.caller, c.current, c.granted); got != c.want {
+		if got := httpapi.MayAssign(c.caller, c.current, c.granted); got != c.want {
 			t.Errorf("%s: %v", c.why, got)
 		}
 	}
@@ -38,10 +38,10 @@ func TestNobodyGrantsOrRemovesAboveTheirOwnRole(t *testing.T) {
 
 // routes/access.rs member_ids_are_user_ids.
 func TestMemberIDsAreUserIDs(t *testing.T) {
-	if _, err := api.MemberID("0192f3a1-0000-7000-8000-00000000000a"); err != nil {
+	if _, err := httpapi.MemberID("0192f3a1-0000-7000-8000-00000000000a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := api.MemberID("bob"); kerrors.CodeOf(err) != kerrors.NotFound {
+	if _, err := httpapi.MemberID("bob"); kerrors.CodeOf(err) != kerrors.NotFound {
 		t.Fatalf("bob: %v", err)
 	}
 	var body gen.PutScopedRole

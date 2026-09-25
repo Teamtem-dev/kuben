@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import "github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 

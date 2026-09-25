@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Environment protection policy routes (M4.1, routes/policy.rs): approvals,
 // who deploys, who approves and how long a change waits, and the vulnerability

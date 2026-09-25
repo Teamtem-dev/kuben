@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"fmt"
@@ -9,29 +9,29 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 )
 
 // routes/secrets.rs values_are_bounded.
 func TestValuesAreBounded(t *testing.T) {
 	one := func(k, v string) map[string]string { return map[string]string{k: v} }
-	if err := api.CheckValues(one("url", "postgres://db")); err != nil {
+	if err := httpapi.CheckValues(one("url", "postgres://db")); err != nil {
 		t.Fatal(err)
 	}
 	many := map[string]string{}
-	for i := range api.MaxSecretKeys + 1 {
+	for i := range httpapi.MaxSecretKeys + 1 {
 		many[fmt.Sprintf("k%d", i)] = "v"
 	}
 	for name, bad := range map[string]map[string]string{
 		"empty":   {},
 		"bad key": one("bad key", "x"),
-		"big":     one("big", strings.Repeat("x", api.MaxSecretBytes+1)),
+		"big":     one("big", strings.Repeat("x", httpapi.MaxSecretBytes+1)),
 		// Escaping grows the sealed object beyond the raw size.
-		"escaped": one("escaped", strings.Repeat("\x01", api.MaxSecretBytes/2)),
+		"escaped": one("escaped", strings.Repeat("\x01", httpapi.MaxSecretBytes/2)),
 		"many":    many,
 	} {
-		if err := api.CheckValues(bad); err == nil {
+		if err := httpapi.CheckValues(bad); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
@@ -51,7 +51,7 @@ func TestPutRollsOutUnlessToldNotTo(t *testing.T) {
 	if err := body.UnmarshalJSON([]byte(`{"data":{},"value":1}`)); err == nil {
 		t.Fatal("an unknown member is accepted")
 	}
-	if got := api.LegacySelector(); got != "app.kubernetes.io/managed-by=kuben,!kuben.dev/secret-id" {
+	if got := httpapi.LegacySelector(); got != "app.kubernetes.io/managed-by=kuben,!kuben.dev/secret-id" {
 		t.Fatal(got)
 	}
 }

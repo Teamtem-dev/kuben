@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
@@ -41,8 +41,8 @@ func exportMaterial(t *testing.T) store.ExportMaterial {
 }
 
 // exportSubject is routes/apps/export.rs subject().
-func exportSubject() api.ExportSubject {
-	return api.ExportSubject{
+func exportSubject() httpapi.ExportSubject {
+	return httpapi.ExportSubject{
 		Project: "shop", Environment: "prod", App: "web", Namespace: "shop-prod", Delivery: "controller",
 		ExportedAt: "2026-09-17T00:00:00Z",
 	}
@@ -83,12 +83,12 @@ func jsonAt(v any, path ...any) any {
 }
 
 func TestAnExportHoldsManifestsReferencesAndARunbook(t *testing.T) {
-	doc := generic(t, api.ExportDocument(exportSubject(), exportMaterial(t)))
+	doc := generic(t, httpapi.ExportDocument(exportSubject(), exportMaterial(t)))
 	checks := []struct {
 		path []any
 		want any
 	}{
-		{[]any{"format"}, api.ExportFormat},
+		{[]any{"format"}, httpapi.ExportFormat},
 		{[]any{"manifests", "kind"}, "List"},
 		{[]any{"manifests", "items", 0, "metadata", "namespace"}, "shop-prod"},
 		{[]any{"manifests", "items", 2, "metadata", "namespace"}, "other"},
@@ -128,7 +128,7 @@ func TestAnAppWithoutRoutesOrVolumesGetsAShorterRunbook(t *testing.T) {
 	m := exportMaterial(t)
 	m.Resources = jsonValue(t, `[{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"w"}}]`)
 	m.Secrets = nil
-	doc := generic(t, api.ExportDocument(exportSubject(), m))
+	doc := generic(t, httpapi.ExportDocument(exportSubject(), m))
 	steps, _ := doc["runbook"].([]any)
 	if len(steps) != 5 {
 		t.Errorf("steps: %v", steps)
@@ -162,7 +162,7 @@ const (
 )
 
 func TestTheRunbookSaysWhatRustSaid(t *testing.T) {
-	doc := generic(t, api.ExportDocument(exportSubject(), exportMaterial(t)))
+	doc := generic(t, httpapi.ExportDocument(exportSubject(), exportMaterial(t)))
 	want := []any{
 		stepSecrets, stepApply, stepExternal,
 		"Routing: the HTTPRoute serves web.example.com through Gateway kuben-system/kuben. While Kuben runs, " +
@@ -183,7 +183,7 @@ func TestTheExportWireFormIsPinned(t *testing.T) {
 	m := exportMaterial(t)
 	m.Resources = jsonValue(t, `[{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"w"}}]`)
 	m.Capabilities = jsonValue(t, `{"gateway":"kuben-system/kuben"}`)
-	got, err := jsonx.CanonicalValue(api.ExportDocument(exportSubject(), m))
+	got, err := jsonx.CanonicalValue(httpapi.ExportDocument(exportSubject(), m))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestTheExportWireFormIsPinned(t *testing.T) {
 func TestAnExportWithoutAGatewaySaysNone(t *testing.T) {
 	m := exportMaterial(t)
 	m.Capabilities = nil
-	doc := generic(t, api.ExportDocument(exportSubject(), m))
+	doc := generic(t, httpapi.ExportDocument(exportSubject(), m))
 	refs, _ := doc["references"].(map[string]any)
 	if gw, has := refs["gateway"]; !has || gw != nil {
 		t.Errorf("gateway: %v %v", gw, has)

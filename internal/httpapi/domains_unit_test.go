@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -37,7 +37,7 @@ func TestAppDomainHostsReadTheSpecOrTheConfiguration(t *testing.T) {
 		{name: "a configuration that is no object", config: opt.Some(jsonValue(t, `[1]`))},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got := api.AppDomainHosts(store.AppRecord{Config: c.config, Image: c.image})
+			got := httpapi.AppDomainHosts(store.AppRecord{Config: c.config, Image: c.image})
 			if diff := cmp.Diff(c.want, got); diff != "" {
 				t.Fatalf("hosts (-want +got):\n%s", diff)
 			}
@@ -50,7 +50,7 @@ func TestAppDomainHostsReadTheSpecOrTheConfiguration(t *testing.T) {
 // order is not part of the contract: the documents are compared decoded.
 func TestDomainDtosWriteNulls(t *testing.T) {
 	id := uuid.MustParse("01890a5d-ac96-774b-bcce-b302099a8057")
-	claim := api.ClaimDtoOf(store.DomainClaim{
+	claim := httpapi.ClaimDtoOf(store.DomainClaim{
 		ID: id, Domain: "shop.example.com", Token: "kuben-x", Status: "revoked", CreatedBy: "user:a",
 		CreatedAt: 0, RevokedAt: opt.Some[int64](5), RevokedBy: opt.Some("user:a"),
 	})
@@ -64,7 +64,7 @@ func TestDomainDtosWriteNulls(t *testing.T) {
 	if diff := cmp.Diff(jsonValue(t, want), jsonValue(t, string(data))); diff != "" {
 		t.Fatalf("claim (-want +got):\n%s", diff)
 	}
-	change := api.HostSkipped("shop.example.com", "the provider holds no zone for it")
+	change := httpapi.HostSkipped("shop.example.com", "the provider holds no zone for it")
 	data, err = change.MarshalJSON()
 	if err != nil {
 		t.Fatal(err)

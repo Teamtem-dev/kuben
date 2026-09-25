@@ -1,10 +1,10 @@
-package serve_test
+package server_test
 
 import (
 	"log/slog"
 	"testing"
 
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 )
 
 func TestTheLogLevelIsTheGlobalDirective(t *testing.T) {
@@ -17,7 +17,7 @@ func TestTheLogLevelIsTheGlobalDirective(t *testing.T) {
 		"TRACE":                               slog.LevelDebug,
 		"error":                               slog.LevelError,
 	} {
-		if got := serve.LogLevel(directives); got != want {
+		if got := server.LogLevel(directives); got != want {
 			t.Errorf("%q: %v, want %v", directives, got, want)
 		}
 	}

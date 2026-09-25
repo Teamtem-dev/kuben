@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Internals of the promote, jobs and app-domains routes under test.
 var (

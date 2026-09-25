@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/cli/upgrade"
 	opsupgrade "github.com/Teamtem-dev/kuben/internal/maintenance/upgrade"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -22,7 +22,7 @@ func migrateCmd(g *globals) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logger := serve.Logger(cfg.Telemetry)
+			logger := server.Logger(cfg.Telemetry)
 			ctx, stop := runCtx(c)
 			defer stop()
 			st, err := store.ConnectUnmigrated(ctx, cfg.Database)

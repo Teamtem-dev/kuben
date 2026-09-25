@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Export and detach (routes/apps/export.rs; M4.11, plan §17 exit path, S08).
 //

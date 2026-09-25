@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/health"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/integrations/dns"
@@ -122,19 +122,19 @@ func (p fakeProvider) Delete(_ context.Context, _ dns.Zone, id string) error {
 
 // serverOn is a server on f's store and projections, with the keyring and
 // images of the tests and the deps edit changes; its URL.
-func serverOn(t *testing.T, f fixture, edit func(*api.Deps)) string {
+func serverOn(t *testing.T, f fixture, edit func(*httpapi.Deps)) string {
 	t.Helper()
 	cfg := config.Default()
 	cfg.Server.Bind = "127.0.0.1:3000"
 	h := health.New(clock.System{})
 	h.SetReady(true)
-	deps := api.Deps{
+	deps := httpapi.Deps{
 		Config: cfg, Store: f.store, Hasher: auth.InsecureForTests(), Health: h,
 		Projections: f.projections, Images: privateImages{testImages(t)},
 		Keyring: opt.Some(testKeyring()),
 	}
 	edit(&deps)
-	server, err := api.New(deps)
+	server, err := httpapi.New(deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func serverOn(t *testing.T, f fixture, edit func(*api.Deps)) string {
 // lb.example.net, as tests/http.rs's m5 domain scenario sets it up.
 func domainsServer(t *testing.T, f fixture, fake *fakeDNS) string {
 	t.Helper()
-	return serverOn(t, f, func(d *api.Deps) {
+	return serverOn(t, f, func(d *httpapi.Deps) {
 		d.Config.Domains.CnameTarget = opt.Some("lb.example.net")
 		d.DNS = fake
 	})
@@ -379,7 +379,7 @@ func TestClaimsAndProvidersAreListedRevokedAndRemoved(t *testing.T) {
 		t.Fatalf("removed twice: %d", status)
 	}
 
-	locked := signInAt(t, serverOn(t, f, func(d *api.Deps) {
+	locked := signInAt(t, serverOn(t, f, func(d *httpapi.Deps) {
 		d.DNS = &fakeDNS{}
 		d.Keyring = opt.None[*keyring.Keyring]()
 	}), "alice@example.com")
@@ -394,7 +394,7 @@ func TestADNSPassWithoutACnameTargetNeedsTheCluster(t *testing.T) {
 	f := newFixture(t)
 	f.sqlApp()
 	addProvider(t, f, "good")
-	alice := signInAt(t, serverOn(t, f, func(d *api.Deps) { d.DNS = &fakeDNS{} }), "alice@example.com")
+	alice := signInAt(t, serverOn(t, f, func(d *httpapi.Deps) { d.DNS = &fakeDNS{} }), "alice@example.com")
 	const sync = "/api/v1/projects/shop/environments/prod/apps/api/dns"
 	if status, _ := alice.postList(sync, map[string]any{"provider": "cf"}); status != http.StatusServiceUnavailable {
 		t.Fatalf("no cluster: %d", status)

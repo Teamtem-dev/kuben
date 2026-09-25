@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // What an app says about itself (M2.12): its log lines, once or followed
 // live, and the Kubernetes events of its own objects (routes/apps/logs.rs).

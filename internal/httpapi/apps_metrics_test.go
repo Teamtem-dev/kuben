@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/usage"
 )
@@ -58,7 +58,7 @@ func TestM5MetricsAreNeverInvented(t *testing.T) {
 	want := map[string]any{
 		"window": "7d", "available": true, "reason": nil,
 		"points": []any{map[string]any{
-			"at": api.Timestamp(hour), "cpuMillis": 100.0, "memoryBytes": 1_000.0,
+			"at": httpapi.Timestamp(hour), "cpuMillis": 100.0, "memoryBytes": 1_000.0,
 			"cpuMax": 400.0, "memoryMax": 2_000.0, "pods": nil,
 		}},
 	}
@@ -75,13 +75,13 @@ func TestM5MetricsAreNeverInvented(t *testing.T) {
 func TestLiveMetricsAreNeverInvented(t *testing.T) {
 	var b usage.Buffer
 	const now int64 = 1_757_894_400_000
-	points, reason := api.LiveMetrics(opt.Some(&b), "kb-shop-prod", "api", now)
+	points, reason := httpapi.LiveMetrics(opt.Some(&b), "kb-shop-prod", "api", now)
 	if why, ok := reason.Get(); len(points) != 0 || !ok || !strings.Contains(why, "no samples") {
 		t.Fatalf("empty: %v, %v", points, reason)
 	}
 	b.Record(usage.SeriesKey{Namespace: "kb-shop-prod", App: "api", Org: "o"},
 		usage.Sample{At: now, CPUMillis: 250, MemoryBytes: 64 << 20, Pods: 2})
-	points, reason = api.LiveMetrics(opt.Some(&b), "kb-shop-prod", "api", now)
+	points, reason = httpapi.LiveMetrics(opt.Some(&b), "kb-shop-prod", "api", now)
 	if reason.IsSome() || len(points) != 1 {
 		t.Fatalf("live: %v, %v", points, reason)
 	}
@@ -100,7 +100,7 @@ func TestLiveMetricsAreNeverInvented(t *testing.T) {
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("live point (-want +got):\n%s", diff)
 	}
-	if _, reason := api.LiveMetrics(opt.None[*usage.Buffer](), "kb-shop-prod", "api", now); reason.IsNone() {
+	if _, reason := httpapi.LiveMetrics(opt.None[*usage.Buffer](), "kb-shop-prod", "api", now); reason.IsNone() {
 		t.Error("no collector, no reason")
 	}
 }

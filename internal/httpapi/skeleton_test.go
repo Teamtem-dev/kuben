@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"io"
@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 )
@@ -162,7 +162,7 @@ func TestSetupOnAPublicAddressNeedsTheInstallerToken(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.Server.StateDir = optString(dir)
-	token, err := api.IssueSetupToken(cfg)
+	token, err := httpapi.IssueSetupToken(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestSetupOnAPublicAddressNeedsTheInstallerToken(t *testing.T) {
 	if status, _, _ := plain.do("POST", "/api/v1/setup", right, https...); status != http.StatusOK {
 		t.Fatalf("right token: %d", status)
 	}
-	if _, err := os.Stat(api.SetupTokenPath(cfg)); !os.IsNotExist(err) {
+	if _, err := os.Stat(httpapi.SetupTokenPath(cfg)); !os.IsNotExist(err) {
 		t.Fatalf("used tokens are removed: %v", err)
 	}
 }

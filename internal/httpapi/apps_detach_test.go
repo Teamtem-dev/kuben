@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -76,7 +76,7 @@ func TestM4ExportDetachAndRelease(t *testing.T) {
 	}
 	f.deliverWithPlan(run)
 	status, export, _ := alice.do("GET", base+"/export", nil)
-	if status != http.StatusOK || export["format"] != api.ExportFormat {
+	if status != http.StatusOK || export["format"] != httpapi.ExportFormat {
 		t.Fatalf("export: %d %v", status, export)
 	}
 	if items, _ := jsonAt(export, "manifests", "items").([]any); len(items) != 2 {
@@ -141,7 +141,7 @@ func TestM4ExportDetachAndRelease(t *testing.T) {
 		t.Errorf("released twice: %d", status)
 	}
 	status, one, _ := alice.do("GET", prodPath+"/detached/"+id, nil)
-	if status != http.StatusOK || jsonAt(one, "export", "format") != api.ExportFormat {
+	if status != http.StatusOK || jsonAt(one, "export", "format") != httpapi.ExportFormat {
 		t.Fatalf("one: %d %v", status, one)
 	}
 	if by, _ := one["releasedBy"].(string); !strings.HasPrefix(by, "user:") {

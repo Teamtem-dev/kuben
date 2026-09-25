@@ -1,4 +1,4 @@
-package serve
+package server
 
 // AgentLink in `kuben serve` (serve.rs agent_link, spawn_local_agent and
 // the agentlink task): the hub's endpoint for cluster agents (ADR-027). It

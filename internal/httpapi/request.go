@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // What the SQL-backed routes share (routes/request.rs, ADR-032): the audit
 // record of an operation a request asks for, and duplicates as 409.

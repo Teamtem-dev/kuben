@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // The vulnerability state of an app's current release (M4.6): the newest
 // scan of each image, what the environment's gate says about it, and the

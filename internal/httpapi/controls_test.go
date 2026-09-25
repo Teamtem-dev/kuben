@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -26,11 +26,11 @@ func windowBody(starts, ends string) *gen.CreateWindow {
 // controls.rs windows_are_bounded.
 func TestWindowsAreBounded(t *testing.T) {
 	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC).UnixMilli()
-	starts, ends, err := api.ControlWindow(windowBody("", "2026-09-18T12:00:00Z"), now, api.MaxFreezeMs)
+	starts, ends, err := httpapi.ControlWindow(windowBody("", "2026-09-18T12:00:00Z"), now, httpapi.MaxFreezeMs)
 	if err != nil || starts != now || ends != now+86_400_000 {
 		t.Fatalf("a day from now: %d %d %v", starts, ends, err)
 	}
-	if _, _, err := api.ControlWindow(windowBody("2026-09-20T00:00:00Z", "2026-09-21T00:00:00Z"), now, api.MaxFreezeMs); err != nil {
+	if _, _, err := httpapi.ControlWindow(windowBody("2026-09-20T00:00:00Z", "2026-09-21T00:00:00Z"), now, httpapi.MaxFreezeMs); err != nil {
 		t.Fatalf("a freeze to come: %v", err)
 	}
 	for _, bad := range []*gen.CreateWindow{
@@ -39,11 +39,11 @@ func TestWindowsAreBounded(t *testing.T) {
 		windowBody("", "2026-12-01T00:00:00Z"),
 		windowBody("", "tomorrow"),
 	} {
-		if _, _, err := api.ControlWindow(bad, now, api.MaxFreezeMs); err == nil {
+		if _, _, err := httpapi.ControlWindow(bad, now, httpapi.MaxFreezeMs); err == nil {
 			t.Errorf("%+v was accepted", bad)
 		}
 	}
-	if _, _, err := api.ControlWindow(windowBody("", "2026-09-26T00:00:00Z"), now, api.MaxSilenceMs); err == nil {
+	if _, _, err := httpapi.ControlWindow(windowBody("", "2026-09-26T00:00:00Z"), now, httpapi.MaxSilenceMs); err == nil {
 		t.Error("a silence of more than a week was accepted")
 	}
 }
@@ -58,19 +58,19 @@ func TestOwnersAndReasonsAreChecked(t *testing.T) {
 		}
 		return o
 	}
-	if _, err := api.CheckOwner(owner("payments", "https://wiki/pay")); err != nil {
+	if _, err := httpapi.CheckOwner(owner("payments", "https://wiki/pay")); err != nil {
 		t.Errorf("a valid owner: %v", err)
 	}
-	if _, err := api.CheckOwner(owner(" ", "")); err == nil {
+	if _, err := httpapi.CheckOwner(owner(" ", "")); err == nil {
 		t.Error("a blank owner was accepted")
 	}
-	if _, err := api.CheckOwner(owner("payments", "javascript:alert(1)")); err == nil {
+	if _, err := httpapi.CheckOwner(owner("payments", "javascript:alert(1)")); err == nil {
 		t.Error("a script URL was accepted")
 	}
-	if got, err := api.ControlText("reason", "  outage  ", 10); err != nil || got != "outage" {
+	if got, err := httpapi.ControlText("reason", "  outage  ", 10); err != nil || got != "outage" {
 		t.Errorf("trimmed: %q %v", got, err)
 	}
-	if _, err := api.ControlText("reason", "a\nb", 10); err == nil {
+	if _, err := httpapi.ControlText("reason", "a\nb", 10); err == nil {
 		t.Error("a control character was accepted")
 	}
 }

@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Browser sign-in with the identity provider (auth/sso.rs, M4.3).
 //

@@ -1,6 +1,6 @@
 // Package previews is preview environments (M5.1; previews.rs): pull
 // request events, their lifecycle and the janitor. The HTTP routes that
-// read and change previews stay in internal/api.
+// read and change previews stay in internal/httpapi.
 //
 // A pull request of a repository the source environment of a project
 // builds from gets a preview:

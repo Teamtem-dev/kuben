@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
@@ -222,7 +222,7 @@ func sameJSON(t *testing.T, a, b any) bool {
 func record(t *testing.T) store.AppRecord {
 	t.Helper()
 	spec := sampleSpec(t)
-	config, err := api.ConfigOf(&spec)
+	config, err := httpapi.ConfigOf(&spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,12 +240,12 @@ func TestTheConfigurationIsTheSpecWithoutItsImage(t *testing.T) {
 	if object, _ := config.(map[string]any); object["source"] != nil {
 		t.Fatalf("source in the configuration: %v", config)
 	}
-	back, ok := api.DesiredSpec(r)
+	back, ok := httpapi.DesiredSpec(r)
 	spec := sampleSpec(t)
 	if !ok || !sameJSON(t, back, spec) {
 		t.Fatalf("the round trip is lossless: %+v", back)
 	}
-	dto := api.AppDtoOf("shop", "prod", r, opt.None[projection.AppView]())
+	dto := httpapi.AppDtoOf("shop", "prod", r, opt.None[projection.AppView]())
 	image, _ := dto.Image.Get()
 	port, _ := dto.Processes[0].Port.Get()
 	if image != "nginx:1.27" || port != 80 || dto.Ready {
@@ -258,7 +258,7 @@ func TestAnAgentDeliveredAppShowsItsAgentsReport(t *testing.T) {
 	runtime := store.RuntimeStatus{Generation: 1, Phase: "applying", URL: opt.Some("https://shop.example.com")}
 	applying := record(t)
 	applying.Delivery, applying.Runtime = store.DeliveryAgent, opt.Some(runtime)
-	dto := api.AppDtoOf("shop", "prod", applying, opt.None[projection.AppView]())
+	dto := httpapi.AppDtoOf("shop", "prod", applying, opt.None[projection.AppView]())
 	if reason, _ := dto.Reason.Get(); dto.Ready || reason != "Applying" {
 		t.Fatalf("applying: %+v", dto)
 	}
@@ -269,13 +269,13 @@ func TestAnAgentDeliveredAppShowsItsAgentsReport(t *testing.T) {
 	ready := applying
 	runtime.Phase = "ready"
 	ready.Runtime = opt.Some(runtime)
-	dto = api.AppDtoOf("shop", "prod", ready, opt.None[projection.AppView]())
+	dto = httpapi.AppDtoOf("shop", "prod", ready, opt.None[projection.AppView]())
 	if !dto.Ready || !dto.Reason.IsNull() {
 		t.Fatalf("ready: %+v", dto)
 	}
 	deleting := ready
 	deleting.Deleting = true
-	if api.AppDtoOf("shop", "prod", deleting, opt.None[projection.AppView]()).Ready {
+	if httpapi.AppDtoOf("shop", "prod", deleting, opt.None[projection.AppView]()).Ready {
 		t.Fatal("deleting")
 	}
 
@@ -283,7 +283,7 @@ func TestAnAgentDeliveredAppShowsItsAgentsReport(t *testing.T) {
 	runtime.Phase, runtime.Reason = "failed", opt.Some("ProgressDeadlineExceeded")
 	runtime.Message = opt.Some("web-web did not roll out")
 	failed.Runtime = opt.Some(runtime)
-	dto = api.AppDtoOf("shop", "prod", failed, opt.None[projection.AppView]())
+	dto = httpapi.AppDtoOf("shop", "prod", failed, opt.None[projection.AppView]())
 	reason, _ := dto.Reason.Get()
 	message, _ := dto.Message.Get()
 	if dto.Ready || reason != "ProgressDeadlineExceeded" || message != "web-web did not roll out" {
@@ -292,7 +292,7 @@ func TestAnAgentDeliveredAppShowsItsAgentsReport(t *testing.T) {
 
 	unreported := record(t)
 	unreported.Delivery = store.DeliveryAgent
-	dto = api.AppDtoOf("shop", "prod", unreported, opt.None[projection.AppView]())
+	dto = httpapi.AppDtoOf("shop", "prod", unreported, opt.None[projection.AppView]())
 	if dto.Ready || !dto.URL.IsNull() {
 		t.Fatalf("the agent has not reported yet: %+v", dto)
 	}
@@ -300,14 +300,14 @@ func TestAnAgentDeliveredAppShowsItsAgentsReport(t *testing.T) {
 
 // admission.rs environment_quotas_become_limits.
 func TestEnvironmentQuotasBecomeLimits(t *testing.T) {
-	if !api.EnvLimits(opt.None[any]()).IsUnlimited() {
+	if !httpapi.EnvLimits(opt.None[any]()).IsUnlimited() {
 		t.Fatal("no quota")
 	}
-	l := api.EnvLimits(opt.Some(jsonValue(t, `{"cpu":"4","memory":"8Gi","pods":20}`)))
+	l := httpapi.EnvLimits(opt.Some(jsonValue(t, `{"cpu":"4","memory":"8Gi","pods":20}`)))
 	if l.CPUMillis != opt.Some[uint64](4000) || l.MemoryBytes != opt.Some[uint64](8<<30) || l.Pods != opt.Some[uint64](20) {
 		t.Fatalf("%+v", l)
 	}
-	if !api.EnvLimits(opt.Some[any]("broken")).IsUnlimited() {
+	if !httpapi.EnvLimits(opt.Some[any]("broken")).IsUnlimited() {
 		t.Fatal("broken")
 	}
 }
@@ -315,11 +315,11 @@ func TestEnvironmentQuotasBecomeLimits(t *testing.T) {
 // admission.rs stored_configurations_are_measured_without_their_image.
 func TestStoredConfigurationsAreMeasuredWithoutTheirImage(t *testing.T) {
 	config := jsonValue(t, `{"runtime":{"processes":{"web":{"port":80,"replicas":{"min":2,"max":2}}}}}`)
-	spec, ok := api.SpecOf(opt.Some(config), opt.Some(api.AnyImage))
+	spec, ok := httpapi.SpecOf(opt.Some(config), opt.Some(httpapi.AnyImage))
 	if !ok {
 		t.Fatal("spec")
 	}
-	d, err := api.Peak(&spec, render.DefaultPlatform())
+	d, err := httpapi.Peak(&spec, render.DefaultPlatform())
 	if err != nil {
 		t.Fatal(err)
 	}

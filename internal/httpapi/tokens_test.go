@@ -1,10 +1,10 @@
-package api_test
+package httpapi_test
 
 import (
 	"strings"
 	"testing"
 
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
 func TestTokenNames(t *testing.T) {
@@ -19,7 +19,7 @@ func TestTokenNames(t *testing.T) {
 		"c1 control \u0085 here": false,
 	}
 	for name, want := range cases {
-		if got := api.ValidTokenName(name); got != want {
+		if got := httpapi.ValidTokenName(name); got != want {
 			t.Errorf("%q: %v, want %v", name, got, want)
 		}
 	}

@@ -1,4 +1,4 @@
-package serve_test
+package server_test
 
 import (
 	"go/build"

@@ -1,4 +1,4 @@
-package serve_test
+package server_test
 
 import (
 	"encoding/base64"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
 )
 
@@ -26,14 +26,14 @@ func TestTheKeyringIsCreatedOnceAndMustBeTheInstallations(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := config.Default()
 	cfg.Server.StateDir = opt.Some(t.TempDir())
-	first, err := serve.SecretKeyring(ctx, cfg, st, logger)
+	first, err := server.SecretKeyring(ctx, cfg, st, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Server.StateDir.Or(""), "secrets.keyring")); err != nil {
 		t.Fatalf("the default file: %v", err)
 	}
-	again, err := serve.SecretKeyring(ctx, cfg, st, logger)
+	again, err := server.SecretKeyring(ctx, cfg, st, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestTheKeyringIsCreatedOnceAndMustBeTheInstallations(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Secrets.KeyringFile = opt.Some(other)
-	if _, err := serve.SecretKeyring(ctx, cfg, st, logger); err == nil ||
+	if _, err := server.SecretKeyring(ctx, cfg, st, logger); err == nil ||
 		!strings.Contains(err.Error(), "every replica must read the same keyring") {
 		t.Fatalf("another installation's keyring: %v", err)
 	}

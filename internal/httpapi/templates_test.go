@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -12,33 +12,33 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 )
 
 // template is the catalogue entry id; the test fails without it.
-func template(t *testing.T, id string) api.TemplateDef {
+func template(t *testing.T, id string) httpapi.TemplateDef {
 	t.Helper()
-	for _, tpl := range api.TemplatesCatalogue() {
+	for _, tpl := range httpapi.TemplatesCatalogue() {
 		if tpl.ID == id {
 			return tpl
 		}
 	}
 	t.Fatalf("no template %q", id)
-	return api.TemplateDef{}
+	return httpapi.TemplateDef{}
 }
 
 // Ported from routes/templates.rs: every_template_builds_valid_objects.
 func TestEveryTemplateBuildsValidObjects(t *testing.T) {
-	for _, tpl := range api.TemplatesCatalogue() {
+	for _, tpl := range httpapi.TemplatesCatalogue() {
 		t.Run(tpl.ID, func(t *testing.T) {
-			r, err := api.RenderTemplate(tpl, "svc")
+			r, err := httpapi.RenderTemplate(tpl, "svc")
 			if err != nil {
 				t.Fatalf("render: %v", err)
 			}
-			if err := api.ValidateSpec(&r.Spec); err != nil {
+			if err := httpapi.ValidateSpec(&r.Spec); err != nil {
 				t.Fatalf("validate the spec: %v", err)
 			}
 
@@ -69,7 +69,7 @@ func TestEveryTemplateBuildsValidObjects(t *testing.T) {
 			}
 			resources := plan.ResourcesJSON()
 			for _, value := range r.Secret {
-				if len(value) != api.SecretLen {
+				if len(value) != httpapi.SecretLen {
 					continue
 				}
 				if strings.Contains(string(spec), value) {
@@ -86,16 +86,16 @@ func TestEveryTemplateBuildsValidObjects(t *testing.T) {
 // Ported from routes/templates.rs: credentials_are_random_and_connection_urls_complete.
 func TestCredentialsAreRandomAndConnectionUrlsComplete(t *testing.T) {
 	pg := template(t, "postgres")
-	a, err := api.RenderTemplate(pg, "db")
+	a, err := httpapi.RenderTemplate(pg, "db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := api.RenderTemplate(pg, "db")
+	b, err := httpapi.RenderTemplate(pg, "db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(a.Secret["password"]); got != api.SecretLen {
-		t.Errorf("password length %d, want %d", got, api.SecretLen)
+	if got := len(a.Secret["password"]); got != httpapi.SecretLen {
+		t.Errorf("password length %d, want %d", got, httpapi.SecretLen)
 	}
 	if a.Secret["password"] == b.Secret["password"] {
 		t.Errorf("two renders share a password")
@@ -103,12 +103,12 @@ func TestCredentialsAreRandomAndConnectionUrlsComplete(t *testing.T) {
 	if want := fmt.Sprintf("postgres://app:%s@db:5432/app", a.Secret["password"]); a.Secret["url"] != want {
 		t.Errorf("url %q, want %q", a.Secret["url"], want)
 	}
-	if got := api.CredentialsSecret("db"); got != "db-credentials" {
+	if got := httpapi.CredentialsSecret("db"); got != "db-credentials" {
 		t.Errorf("credentials secret %q", got)
 	}
 
 	seen := map[string]bool{}
-	for _, tpl := range api.TemplatesCatalogue() {
+	for _, tpl := range httpapi.TemplatesCatalogue() {
 		if seen[tpl.ID] {
 			t.Errorf("template id %q is not unique", tpl.ID)
 		}
@@ -119,7 +119,7 @@ func TestCredentialsAreRandomAndConnectionUrlsComplete(t *testing.T) {
 // The optional fields become the CRD's pointers, and a rendered spec shares
 // nothing with the catalogue.
 func TestRenderedSpecsOwnTheirValues(t *testing.T) {
-	gitea, err := api.RenderTemplate(template(t, "gitea"), "git")
+	gitea, err := httpapi.RenderTemplate(template(t, "gitea"), "git")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestRenderedSpecsOwnTheirValues(t *testing.T) {
 	}
 
 	whoamiDef := template(t, "whoami")
-	whoami, err := api.RenderTemplate(whoamiDef, "echo")
+	whoami, err := httpapi.RenderTemplate(whoamiDef, "echo")
 	if err != nil {
 		t.Fatal(err)
 	}

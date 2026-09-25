@@ -1,4 +1,4 @@
-package serve_test
+package server_test
 
 import (
 	"context"
@@ -20,26 +20,26 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func TestElectionNeedsANamespaceOnlyWhenEnabled(t *testing.T) {
 	var cfg config.Config
-	if e, err := serve.Election(cfg); err != nil || e.IsSome() {
+	if e, err := server.Election(cfg); err != nil || e.IsSome() {
 		t.Fatalf("off: %v %v", e, err)
 	}
 	cfg.Kube.LeaderElection = true
 	cfg.Kube.Namespace = opt.Some("kuben-system")
-	e, err := serve.Election(cfg)
+	e, err := server.Election(cfg)
 	got, ok := e.Get()
 	if err != nil || !ok || got.Namespace != "kuben-system" || !strings.Contains(got.Identity, "_") {
 		t.Fatalf("on: %+v %v", got, err)
 	}
 	// Outside a pod, without kube.namespace, there is nowhere for the Lease.
 	cfg.Kube.Namespace = opt.None[string]()
-	if _, err := serve.Election(cfg); err == nil || !strings.Contains(err.Error(), "KUBEN_KUBE__NAMESPACE") {
+	if _, err := server.Election(cfg); err == nil || !strings.Contains(err.Error(), "KUBEN_KUBE__NAMESPACE") {
 		t.Fatalf("no namespace: %v", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestAClusterMakesTheServerReadyOnceTheInformersListed(t *testing.T) {
 	h := health.New(clock.System{})
 	p := projection.New()
 	ctx, cancel := context.WithCancel(context.Background())
-	done := serve.StartCluster(ctx, cfg, fakeRegistry(), p, h, quiet())
+	done := server.StartCluster(ctx, cfg, fakeRegistry(), p, h, quiet())
 
 	deadline := time.Now().Add(10 * time.Second)
 	for !h.IsReady() {
@@ -84,7 +84,7 @@ func TestAClusterMakesTheServerReadyOnceTheInformersListed(t *testing.T) {
 
 	cancel()
 	stopped := make(chan struct{})
-	go func() { serve.WaitAll(done, 10*time.Second, quiet()); close(stopped) }()
+	go func() { server.WaitAll(done, 10*time.Second, quiet()); close(stopped) }()
 	select {
 	case <-stopped:
 	case <-time.After(15 * time.Second):

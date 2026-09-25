@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Doctor internals under test (routes/apps/doctor.rs).
 var DoctorReportOf = doctorReport

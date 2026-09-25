@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"errors"
@@ -13,12 +13,12 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
 // routes/apps/jobs.rs manual_job_names_fit_the_limit.
 func TestManualJobNamesFitTheLimit(t *testing.T) {
-	name := api.ManualJobName(strings.Repeat("x", 80), 1_757_548_800)
+	name := httpapi.ManualJobName(strings.Repeat("x", 80), 1_757_548_800)
 	if len(name) > 63 || !strings.HasSuffix(name, "-run-1757548800") {
 		t.Fatalf("name: len=%d, name=%s", len(name), name)
 	}
@@ -69,7 +69,7 @@ func TestStartManualJob(t *testing.T) {
 		},
 	}
 	client := fake.NewClientset(cron)
-	name, err := api.StartManualJob(t.Context(), client, "kb-shop-prod", "api-report", 1_757_548_800_999)
+	name, err := httpapi.StartManualJob(t.Context(), client, "kb-shop-prod", "api-report", 1_757_548_800_999)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestStartManualJob(t *testing.T) {
 	}
 
 	// The empty process's CronJob `api-` does not exist: 404.
-	_, err = api.StartManualJob(t.Context(), client, "kb-shop-prod", "api-", 1_757_548_800_000)
+	_, err = httpapi.StartManualJob(t.Context(), client, "kb-shop-prod", "api-", 1_757_548_800_000)
 	var ke *kerrors.Error
 	if !errors.As(err, &ke) || ke.Code != kerrors.NotFound {
 		t.Fatalf("expected not found, got %v", err)
@@ -105,7 +105,7 @@ func TestStartManualJob(t *testing.T) {
 // Seconds of the clock, floored; a time before the epoch is 0.
 func TestUnixSeconds(t *testing.T) {
 	for ms, want := range map[int64]uint64{0: 0, 999: 0, 1000: 1, 1_757_548_800_999: 1_757_548_800, -5: 0} {
-		if got := api.UnixSeconds(ms); got != want {
+		if got := httpapi.UnixSeconds(ms); got != want {
 			t.Fatalf("UnixSeconds(%d) = %d, want %d", ms, got, want)
 		}
 	}

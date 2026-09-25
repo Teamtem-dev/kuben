@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 )
 
 func TestAuditPageSizes(t *testing.T) {
@@ -23,7 +23,7 @@ func TestAuditPageSizes(t *testing.T) {
 		{opt.Some[int64](1 << 62), 200},
 	}
 	for _, c := range cases {
-		if got := api.AuditPageSize(c.limit); got != c.want {
+		if got := httpapi.AuditPageSize(c.limit); got != c.want {
 			t.Errorf("%v: %d, want %d", c.limit, got, c.want)
 		}
 	}
@@ -46,7 +46,7 @@ func TestAuditStatusIsAU16(t *testing.T) {
 		{opt.Some[any]([]any{float64(403)}), opt.None[int32]()},
 	}
 	for _, c := range cases {
-		if got := api.AuditStatus(c.data); got != c.want {
+		if got := httpapi.AuditStatus(c.data); got != c.want {
 			t.Errorf("%v: %v, want %v", c.data, got, c.want)
 		}
 	}

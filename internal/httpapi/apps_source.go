@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // An app's Git source (M3): which repository and branch it builds from,
 // how, and where the image goes. Binding or changing the source asks for a

@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
 	"github.com/Teamtem-dev/kuben/internal/health"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/web"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
@@ -42,7 +42,7 @@ func newGitFixture(t *testing.T) fixture {
 	cfg.Server.Bind = "127.0.0.1:3000" // loopback: no setup token needed
 	h := health.New(clock.System{})
 	h.SetReady(true)
-	server, err := api.New(api.Deps{
+	server, err := httpapi.New(httpapi.Deps{
 		Config:      cfg,
 		Store:       st,
 		Hasher:      auth.InsecureForTests(),
@@ -134,7 +134,7 @@ func (f fixture) githubDelivery(event string, body map[string]any) (int, map[str
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequest("POST", f.c.base+api.GithubWebhookPath, bytes.NewReader(data))
+	req, err := http.NewRequest("POST", f.c.base+httpapi.GithubWebhookPath, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}

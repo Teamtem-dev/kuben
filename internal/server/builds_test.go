@@ -1,4 +1,4 @@
-package serve_test
+package server_test
 
 import (
 	"crypto/rand"
@@ -20,14 +20,14 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 )
 
 func TestTheBuildNamespaceIsCreatedForRootlessBuildKit(t *testing.T) {
 	client := fake.NewClientset()
 	ctx := t.Context()
 	for range 2 {
-		if err := serve.EnsureBuildNamespace(ctx, client, "kuben-builds"); err != nil {
+		if err := server.EnsureBuildNamespace(ctx, client, "kuben-builds"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -47,7 +47,7 @@ func TestTheBuildNamespaceIsCreatedForRootlessBuildKit(t *testing.T) {
 
 	// A namespace the operator made is used as it is.
 	own := fake.NewClientset(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "builds", Labels: map[string]string{"a": "b"}}})
-	if err := serve.EnsureBuildNamespace(ctx, own, "builds"); err != nil {
+	if err := server.EnsureBuildNamespace(ctx, own, "builds"); err != nil {
 		t.Fatal(err)
 	}
 	ns, err = own.CoreV1().Namespaces().Get(ctx, "builds", metav1.GetOptions{})
@@ -77,7 +77,7 @@ func app(t *testing.T) (config.GitCfg, *github.App) {
 	git.GithubWebhookSecret = config.Secret("hook")
 	var cfg config.Config
 	cfg.Git = git
-	got, err := serve.GithubApp(cfg, quiet())
+	got, err := server.GithubApp(cfg, quiet())
 	a, ok := got.Get()
 	if err != nil || !ok {
 		t.Fatalf("app: %v", err)
@@ -88,13 +88,13 @@ func app(t *testing.T) (config.GitCfg, *github.App) {
 func TestGitSourcesAreOffUnlessConfiguredAndStopTheServerWhenBroken(t *testing.T) {
 	var cfg config.Config
 	cfg.Git = config.DefaultGitCfg()
-	if got, err := serve.GithubApp(cfg, quiet()); err != nil || got.IsSome() {
+	if got, err := server.GithubApp(cfg, quiet()); err != nil || got.IsSome() {
 		t.Errorf("unconfigured: %v %v", got, err)
 	}
 	cfg.Git.GithubAppID = opt.Some[uint64](7)
 	cfg.Git.GithubPrivateKeyFile = opt.Some(filepath.Join(t.TempDir(), "missing.pem"))
 	cfg.Git.GithubWebhookSecret = config.Secret("hook")
-	if _, err := serve.GithubApp(cfg, quiet()); err == nil || !strings.HasPrefix(err.Error(), "Git sources: ") {
+	if _, err := server.GithubApp(cfg, quiet()); err == nil || !strings.HasPrefix(err.Error(), "Git sources: ") {
 		t.Errorf("an unreadable key: %v", err)
 	}
 }
@@ -129,7 +129,7 @@ func TestBuildsRunOnlyOnAControllerWithAClusterAndGitSources(t *testing.T) {
 		if c.cluster {
 			cluster = opt.Some(r)
 		}
-		done, err := serve.StartBuilds(t.Context(), c.cfg, nil, cluster, c.app, h, quiet())
+		done, err := server.StartBuilds(t.Context(), c.cfg, nil, cluster, c.app, h, quiet())
 		if err != nil || len(done) != 0 {
 			t.Errorf("%s: %d started, %v", c.name, len(done), err)
 		}
@@ -148,7 +148,7 @@ func TestBuildsRunOnlyOnAControllerWithAClusterAndGitSources(t *testing.T) {
 	cfg.Build.Namespace = opt.Some("builds")
 	cfg.Build.RegistryAuthFile = opt.Some(filepath.Join(t.TempDir(), "missing"))
 	r := fakeRegistry()
-	_, err := serve.StartBuilds(t.Context(), cfg, nil, opt.Some(r), opt.Some(a), h, quiet())
+	_, err := server.StartBuilds(t.Context(), cfg, nil, opt.Some(r), opt.Some(a), h, quiet())
 	if err == nil || !strings.HasPrefix(err.Error(), "reading build.registry_auth_file ") {
 		t.Errorf("unreadable credentials: %v", err)
 	}

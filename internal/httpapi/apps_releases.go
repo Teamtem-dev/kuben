@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Release history and rollback (routes/apps/releases.rs, scenario 5), from
 // the app's deployment runs: each run is a revision, numbered by the target

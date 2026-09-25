@@ -1,4 +1,4 @@
-package serve
+package server
 
 // Git sources and builds in `kuben serve` (serve.rs github_app,
 // spawn_builds and ensure_build_namespace).

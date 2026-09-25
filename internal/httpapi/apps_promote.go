@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Promotion of an app to another environment of the same project
 // (scenario 10), with a dry-run diff (routes/apps/promote.rs). The target

@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // The export and detach routes (routes/apps/export.rs, M4.11); the
 // document itself is apps_export.go.

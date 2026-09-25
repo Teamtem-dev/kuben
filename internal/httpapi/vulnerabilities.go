@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Vulnerability exceptions of an organization (M4.6): one finding may pass
 // the scan gates until the exception expires or is revoked. Granting one

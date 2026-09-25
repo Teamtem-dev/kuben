@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Public status pages (M5.3, routes/status.rs).
 //

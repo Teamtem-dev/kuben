@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/core/policy"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -29,7 +29,7 @@ func putBody(approvals int32, deploy, approve string) *gen.PutPolicy {
 
 // policy.rs bodies_become_valid_policies.
 func TestBodiesBecomeValidPolicies(t *testing.T) {
-	p, err := api.PolicyOf(putBody(2, "admin", "owner"), scan.Production())
+	p, err := httpapi.PolicyOf(putBody(2, "admin", "owner"), scan.Production())
 	if err != nil {
 		t.Fatalf("valid body: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 		RequireScan: gen.NewOptBool(true),
 		MaxAgeSecs:  gen.NewOptInt32(86_400),
 	})
-	p, err = api.PolicyOf(gated, scan.Off())
+	p, err = httpapi.PolicyOf(gated, scan.Off())
 	if err != nil {
 		t.Fatalf("gated body: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 			RequireScan: gen.NewOptBool(false),
 			MaxAgeSecs:  gen.NewOptInt32(tc.age),
 		})
-		_, err := api.PolicyOf(bad, scan.Off())
+		_, err := httpapi.PolicyOf(bad, scan.Off())
 		expectValidation(t, err, tc.message)
 	}
 
@@ -88,7 +88,7 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 		{putBody(1, "developer", "developer"), "the approve role `developer` cannot approve releases"},
 		{putBody(1, "root", "admin"), ""},
 	} {
-		_, err := api.PolicyOf(tc.body, scan.Off())
+		_, err := httpapi.PolicyOf(tc.body, scan.Off())
 		expectValidation(t, err, tc.message)
 	}
 
@@ -96,7 +96,7 @@ func TestBodiesBecomeValidPolicies(t *testing.T) {
 	if err := parsed.UnmarshalJSON([]byte(`{"requiredApprovals":1,"deployRole":"developer","approveRole":"admin"}`)); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	p, err = api.PolicyOf(&parsed, scan.Off())
+	p, err = httpapi.PolicyOf(&parsed, scan.Off())
 	if err != nil {
 		t.Fatalf("parsed body: %v", err)
 	}
@@ -122,7 +122,7 @@ func expectValidation(t *testing.T, err error, message string) {
 // policy.rs environments_without_a_policy_show_the_open_one, plus the null
 // updatedBy and updatedAt Rust writes then.
 func TestEnvironmentsWithoutPolicyShowOpenOne(t *testing.T) {
-	dto := api.PolicyDtoOf(opt.None[store.PolicyRevision]())
+	dto := httpapi.PolicyDtoOf(opt.None[store.PolicyRevision]())
 	if dto.Revision != 0 || dto.RequiredApprovals != 0 || dto.DeployRole != "developer" {
 		t.Errorf("open policy = %+v", dto)
 	}
@@ -139,7 +139,7 @@ func TestEnvironmentsWithoutPolicyShowOpenOne(t *testing.T) {
 		}
 	}
 
-	dto = api.PolicyDtoOf(opt.Some(store.PolicyRevision{
+	dto = httpapi.PolicyDtoOf(opt.Some(store.PolicyRevision{
 		Revision:  3,
 		Policy:    policy.Production(),
 		CreatedBy: "user:a",

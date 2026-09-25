@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 )
 
@@ -33,7 +33,7 @@ func TestCheckHostsSortsAndJudges(t *testing.T) {
 		"shop.example.com": {"2001:db8::1", "203.0.113.10", "203.0.113.9", "203.0.113.9"},
 		"api.example.com":  {"198.51.100.20", "198.51.100.3"},
 	}
-	checks, err := api.CheckHosts(t.Context(), r, []string{"shop.example.com", "api.example.com", "gone.example.com"}, gateway)
+	checks, err := httpapi.CheckHosts(t.Context(), r, []string{"shop.example.com", "api.example.com", "gone.example.com"}, gateway)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCheckHostsSortsAndJudges(t *testing.T) {
 		t.Fatalf("checks (-want +got):\n%s", diff)
 	}
 
-	unknown, err := api.CheckHosts(t.Context(), r, []string{"api.example.com"}, nil)
+	unknown, err := httpapi.CheckHosts(t.Context(), r, []string{"api.example.com"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

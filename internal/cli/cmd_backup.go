@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/maintenance/backup"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 )
 
 func backupCmd(g *globals) *cobra.Command {
@@ -56,7 +56,7 @@ func restoreCmd(g *globals) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return backup.Restore(c.Context(), cfg, opts, g.stdout, serve.Logger(cfg.Telemetry)) //nolint:wrapcheck // explains itself
+			return backup.Restore(c.Context(), cfg, opts, g.stdout, server.Logger(cfg.Telemetry)) //nolint:wrapcheck // explains itself
 		},
 	}
 	flags := cmd.Flags()

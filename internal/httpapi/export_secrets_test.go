@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Internals of secrets.go and registries.go under test.
 var (

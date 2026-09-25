@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // DNS check of an app's hostnames against the gateway (scenario 9,
 // routes/apps/domains.rs). The verdicts are the doctor's.

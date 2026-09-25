@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -66,7 +66,7 @@ func TestBuildsShowTheirImageAndOutcome(t *testing.T) {
 		FinishedAt:          opt.Some[int64](3),
 		BuildConfigRevision: 0,
 	}
-	dto := api.BuildDtoOf(attempt)
+	dto := httpapi.BuildDtoOf(attempt)
 	if image, ok := dto.Image.Get(); !ok || image != "ghcr.io/acme/shop@"+buildDigest {
 		t.Errorf("image = %v", dto.Image)
 	}
@@ -94,10 +94,10 @@ func TestBuildsShowTheirImageAndOutcome(t *testing.T) {
 
 // routes/apps/builds.rs build_ids_are_uuids.
 func TestBuildIdsAreUuids(t *testing.T) {
-	if _, err := api.BuildID("0192f3a1-0000-7000-8000-000000000001"); err != nil {
+	if _, err := httpapi.BuildID("0192f3a1-0000-7000-8000-000000000001"); err != nil {
 		t.Errorf("a UUID: %v", err)
 	}
-	_, err := api.BuildID("nope")
+	_, err := httpapi.BuildID("nope")
 	var e *kerrors.Error
 	if !errors.As(err, &e) || e.Code != kerrors.NotFound {
 		t.Errorf("not a UUID: %v", err)

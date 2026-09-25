@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Internals of the build, scan, source and Git routes under test.
 var (

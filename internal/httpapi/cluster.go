@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // The cluster as the routes reach it (routes/scope.rs cluster, kube_error).
 

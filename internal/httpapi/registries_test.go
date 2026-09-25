@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
 	"github.com/Teamtem-dev/kuben/internal/keyring"
@@ -58,13 +58,13 @@ func TestRegistriesAreNamedAsImageReferencesNameThem(t *testing.T) {
 		{"localhost:5000", "localhost:5000"},
 		{"docker.io", "docker.io"},
 	} {
-		got, err := api.RegistryName(tc.given)
+		got, err := httpapi.RegistryName(tc.given)
 		if err != nil || got != tc.want {
 			t.Errorf("%q: %q %v", tc.given, got, err)
 		}
 	}
 	for _, bad := range []string{"", "ghcr.io/acme", "acme", "ghcr.io@x", "https://ghcr.io"} {
-		if _, err := api.RegistryName(bad); err == nil {
+		if _, err := httpapi.RegistryName(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
 	}
@@ -75,7 +75,7 @@ func TestLoginsAreBounded(t *testing.T) {
 	login := func(username, password string) *gen.PutRegistryLogin {
 		return &gen.PutRegistryLogin{Registry: "ghcr.io", Username: username, Password: password}
 	}
-	if err := api.CheckLogin(login("bot", "token")); err != nil {
+	if err := httpapi.CheckLogin(login("bot", "token")); err != nil {
 		t.Fatal(err)
 	}
 	for _, bad := range []*gen.PutRegistryLogin{
@@ -83,9 +83,9 @@ func TestLoginsAreBounded(t *testing.T) {
 		login("bot", ""),
 		login("a:b", "token"),
 		login("bot", "line\nbreak"),
-		login("bot", strings.Repeat("x", api.MaxLoginField+1)),
+		login("bot", strings.Repeat("x", httpapi.MaxLoginField+1)),
 	} {
-		if err := api.CheckLogin(bad); err == nil {
+		if err := httpapi.CheckLogin(bad); err == nil {
 			t.Errorf("%q accepted", bad.Username)
 		}
 	}

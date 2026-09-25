@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -30,7 +30,7 @@ func exceptionBody(vulnerability string, days int32) gen.CreateException {
 // routes/vulnerabilities.rs exceptions_are_bounded.
 func TestExceptionsAreBounded(t *testing.T) {
 	for _, ok := range []gen.CreateException{exceptionBody("CVE-2026-12345", 30), exceptionBody("GHSA-abcd-1234-efgh", 90)} {
-		if err := api.CheckException(&ok); err != nil {
+		if err := httpapi.CheckException(&ok); err != nil {
 			t.Errorf("%s: %v", ok.Vulnerability, err)
 		}
 	}
@@ -60,14 +60,14 @@ func TestExceptionsAreBounded(t *testing.T) {
 		}(), "validation failed: owner must be 1 to 256 printable characters"},
 	}
 	for _, c := range cases {
-		if err := api.CheckException(&c.body); err == nil || err.Error() != c.want {
+		if err := httpapi.CheckException(&c.body); err == nil || err.Error() != c.want {
 			t.Errorf("%+v: %v, want %s", c.body, err, c.want)
 		}
 	}
 	// The id is judged trimmed; 256 characters (not bytes) are fine.
 	padded := exceptionBody("  CVE-1  ", 1)
 	padded.Owner = strings.Repeat("é", 256)
-	if err := api.CheckException(&padded); err != nil {
+	if err := httpapi.CheckException(&padded); err != nil {
 		t.Errorf("padded: %v", err)
 	}
 }
@@ -79,18 +79,18 @@ func TestExceptionsSayWhetherTheyAreInForce(t *testing.T) {
 		ID: uuid.Nil, Vulnerability: "CVE-1", Reason: "r", Owner: "o", CreatedBy: "user:x",
 		CreatedAt: 0, ExpiresAt: 2_000,
 	}
-	dto := api.ExceptionDtoOf(e, 1_000)
+	dto := httpapi.ExceptionDtoOf(e, 1_000)
 	if !dto.Active || !dto.Project.IsNull() || !dto.RevokedAt.IsNull() {
 		t.Errorf("in force: %+v", dto)
 	}
 	if dto.CreatedAt != "1970-01-01T00:00:00Z" || dto.ExpiresAt != "1970-01-01T00:00:02Z" {
 		t.Errorf("times: %s %s", dto.CreatedAt, dto.ExpiresAt)
 	}
-	if api.ExceptionDtoOf(e, 2_000).Active {
+	if httpapi.ExceptionDtoOf(e, 2_000).Active {
 		t.Error("an expired exception is in force")
 	}
 	e.RevokedAt = opt.Some[int64](1_500)
-	revoked := api.ExceptionDtoOf(e, 1_000)
+	revoked := httpapi.ExceptionDtoOf(e, 1_000)
 	if revoked.Active || revoked.RevokedAt.Or("") != "1970-01-01T00:00:01.5Z" {
 		t.Errorf("revoked: %+v", revoked)
 	}

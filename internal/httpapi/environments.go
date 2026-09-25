@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Environments of a project, on the SQL model (routes/environments.rs,
 // ADR-032). SQL holds them and their placement; the materializer writes the

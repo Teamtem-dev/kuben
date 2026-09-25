@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // An app's image update policy (M5.4): routes/apps/image_policy.rs.
 

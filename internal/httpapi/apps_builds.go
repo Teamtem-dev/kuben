@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // An app's builds (M3): what was built from which commit, where it stands,
 // why it failed, and which release and deployment run it produced

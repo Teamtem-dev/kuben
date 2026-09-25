@@ -24,7 +24,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/host"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -193,10 +193,10 @@ func storePassword(ctx context.Context, c registry.Cluster, namespace, email, pa
 // link again.
 func AnnounceSetup(cfg config.Config, stderr Stderr, advertise opt.Val[string], now time.Time, logger *slog.Logger) {
 	token := opt.None[string]()
-	if api.SetupTokenRequired(cfg) {
-		t, err := api.CurrentOrNewSetupToken(cfg, now)
+	if httpapi.SetupTokenRequired(cfg) {
+		t, err := httpapi.CurrentOrNewSetupToken(cfg, now)
 		if err != nil {
-			logger.Error("cannot write the setup token", "error", err, "file", api.SetupTokenPath(cfg))
+			logger.Error("cannot write the setup token", "error", err, "file", httpapi.SetupTokenPath(cfg))
 			return
 		}
 		token = opt.Some(t)
@@ -206,12 +206,12 @@ func AnnounceSetup(cfg config.Config, stderr Stderr, advertise opt.Val[string], 
 		return
 	}
 	logger.Warn("no admin account yet: finish the setup in the browser; `kuben setup-token` prints the link",
-		"url", api.SetupURL(cfg, opt.None[string](), advertise))
+		"url", httpapi.SetupURL(cfg, opt.None[string](), advertise))
 }
 
 // SetupBanner is the text that sends the operator to the setup page.
 func SetupBanner(cfg config.Config, token, advertise opt.Val[string]) string {
-	url, notes := api.SetupGuide(cfg, token, advertise)
+	url, notes := httpapi.SetupGuide(cfg, token, advertise)
 	lines := []string{"", "  No admin account yet. Finish the setup in your browser:", "", "    " + url, ""}
 	for _, n := range notes {
 		lines = append(lines, "  "+n)

@@ -1,4 +1,4 @@
-// Package serve runs the server (crates/kuben/src/serve.rs): configuration
+// Package server runs the server (crates/kuben/src/serve.rs): configuration
 // to listening socket, the shared state, background work, and the ordered
 // shutdown. Wired so far: the database, health, the API and the console,
 // and with a cluster the informers, the readiness gate, capability
@@ -6,7 +6,7 @@
 // reconcilers and the drift watch; on controller replicas AgentLink, the
 // endpoint cluster agents dial, and with builds enabled the build worker
 // and the rescans.
-package serve
+package server
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/host"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/internal/integrations/sso"
@@ -195,7 +195,7 @@ func serveAPI(ctx context.Context, cfg config.Config, cluster opt.Val[*registry.
 	if err != nil {
 		return err
 	}
-	server, err := api.New(api.Deps{
+	server, err := httpapi.New(httpapi.Deps{
 		SSO:         single,
 		GitHub:      app,
 		Usage:       live,

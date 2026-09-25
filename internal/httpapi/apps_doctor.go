@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Doctor of an app (M2.13, routes/apps/doctor.rs): every check between the
 // app and a visitor, from the Gateway's class to the agent that delivers

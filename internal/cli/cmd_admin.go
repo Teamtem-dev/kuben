@@ -19,7 +19,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -36,7 +36,7 @@ func resetAdminCmd(g *globals) *cobra.Command {
 			}
 			ctx, stop := runCtx(c)
 			defer stop()
-			return resetAdmin(ctx, cfg, password, g.stdout, serve.Logger(cfg.Telemetry))
+			return resetAdmin(ctx, cfg, password, g.stdout, server.Logger(cfg.Telemetry))
 		},
 	}
 	cmd.Flags().StringVar(&password, "password", "", "New password. If omitted, a random one is generated and printed")
@@ -120,7 +120,7 @@ func agentTokenCmd(g *globals) *cobra.Command {
 			}
 			ctx, stop := runCtx(c)
 			defer stop()
-			return agentToken(ctx, cfg, opts, g.stdout, serve.Logger(cfg.Telemetry))
+			return agentToken(ctx, cfg, opts, g.stdout, server.Logger(cfg.Telemetry))
 		},
 	}
 	flags := cmd.Flags()

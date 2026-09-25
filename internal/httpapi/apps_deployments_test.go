@@ -1,4 +1,4 @@
-package api_test
+package httpapi_test
 
 import (
 	"net/http"
@@ -10,7 +10,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	api "github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -173,12 +173,12 @@ func TestScenario5ReleasesAreNewestFirstAndRollbackIsAuthorized(t *testing.T) {
 
 // deployments.rs images_must_be_pinned_by_digest.
 func TestImagesMustBePinnedByDigest(t *testing.T) {
-	repository, digest, err := api.PinnedImage("ghcr.io/acme/api@" + deployDigest)
+	repository, digest, err := httpapi.PinnedImage("ghcr.io/acme/api@" + deployDigest)
 	if err != nil || repository != "ghcr.io/acme/api" || digest.String() != deployDigest {
 		t.Fatalf("%s %s %v", repository, digest, err)
 	}
 	for _, bad := range []string{"ghcr.io/acme/api:1.2", "ghcr.io/acme/api@latest", "@" + deployDigest} {
-		if _, _, err := api.PinnedImage(bad); err == nil {
+		if _, _, err := httpapi.PinnedImage(bad); err == nil {
 			t.Errorf("%s is not pinned", bad)
 		}
 	}
@@ -186,14 +186,14 @@ func TestImagesMustBePinnedByDigest(t *testing.T) {
 
 // deployments.rs idempotency_keys_are_bounded.
 func TestIdempotencyKeysAreBounded(t *testing.T) {
-	if key, err := api.IdempotencyKey(gen.OptNilString{}, "user:a"); err != nil || key.IsSome() {
+	if key, err := httpapi.IdempotencyKey(gen.OptNilString{}, "user:a"); err != nil || key.IsSome() {
 		t.Fatalf("none: %v %v", key, err)
 	}
-	key, err := api.IdempotencyKey(gen.NewOptNilString("deploy-42"), "user:a")
+	key, err := httpapi.IdempotencyKey(gen.NewOptNilString("deploy-42"), "user:a")
 	if k, ok := key.Get(); err != nil || !ok || k.Key != "deploy-42" {
 		t.Fatalf("key: %v %v", key, err)
 	}
-	if _, err := api.IdempotencyKey(gen.NewOptNilString(strings.Repeat("x", 201)), "user:a"); err == nil {
+	if _, err := httpapi.IdempotencyKey(gen.NewOptNilString(strings.Repeat("x", 201)), "user:a"); err == nil {
 		t.Fatal("too long")
 	}
 }
@@ -201,10 +201,10 @@ func TestIdempotencyKeysAreBounded(t *testing.T) {
 // releases.rs rollback_keeps_domains_and_volumes.
 func TestRollbackKeepsDomainsAndVolumes(t *testing.T) {
 	current := sampleSpec(t)
-	current.Domains = api.ToDomains([]string{"api.acme.com"})
+	current.Domains = httpapi.ToDomains([]string{"api.acme.com"})
 	old := sampleSpec(t)
 	old.Source = v1alpha1.SourceFromImage("nginx:1.25")
-	restored := api.RollbackSpec(current, old)
+	restored := httpapi.RollbackSpec(current, old)
 	if restored.Source.Image == nil || *restored.Source.Image != "nginx:1.25" || restored.Domains[0].Host != "api.acme.com" {
 		t.Fatalf("%+v", restored)
 	}
@@ -224,12 +224,12 @@ func TestReasonsFollowTheRuns(t *testing.T) {
 	cases := []struct {
 		got, want string
 	}{
-		{api.ReleaseReason(created, none), "create"},
-		{api.ReleaseReason(scaled, opt.Some(created)), "config"},
-		{api.ReleaseReason(upgraded, opt.Some(scaled)), "deploy"},
-		{api.ReleaseReason(record(4, "rollback", first), opt.Some(upgraded)), "rollback"},
-		{api.ReleaseReason(record(1, "promotion", first), none), "promote"},
-		{api.ReleaseReason(record(2, "restart", first), opt.Some(record(1, "deploy", first))), "restart"},
+		{httpapi.ReleaseReason(created, none), "create"},
+		{httpapi.ReleaseReason(scaled, opt.Some(created)), "config"},
+		{httpapi.ReleaseReason(upgraded, opt.Some(scaled)), "deploy"},
+		{httpapi.ReleaseReason(record(4, "rollback", first), opt.Some(upgraded)), "rollback"},
+		{httpapi.ReleaseReason(record(1, "promotion", first), none), "promote"},
+		{httpapi.ReleaseReason(record(2, "restart", first), opt.Some(record(1, "deploy", first))), "restart"},
 	}
 	for i, c := range cases {
 		if c.got != c.want {

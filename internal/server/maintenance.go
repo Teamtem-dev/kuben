@@ -1,4 +1,4 @@
-package serve
+package server
 
 // The housekeeping serve.rs starts once the database is ready: retention
 // budgets, the backup watch and the install journal.

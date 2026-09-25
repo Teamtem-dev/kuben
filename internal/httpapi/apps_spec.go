@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Request bodies for creating and updating apps, their validation, and the
 // translation into an App spec (routes/apps/spec.rs).

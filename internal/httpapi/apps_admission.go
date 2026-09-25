@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 // Resource admission of app changes (routes/apps/admission.rs, M4.5; plan
 // §11, §16).

@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	serve "github.com/Teamtem-dev/kuben/internal/server"
+	"github.com/Teamtem-dev/kuben/internal/server"
 )
 
 // serveOpts are the options of `kuben serve`.
@@ -41,7 +41,7 @@ func serveCmd(g *globals) *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(c.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return serve.Run(ctx, cfg, serve.Logger(cfg.Telemetry)) //nolint:wrapcheck // already explained
+			return server.Run(ctx, cfg, server.Logger(cfg.Telemetry)) //nolint:wrapcheck // already explained
 		},
 	}
 	flags := cmd.Flags()
