@@ -1,6 +1,6 @@
 // Package upgrade is `kuben upgrade-check` (crates/kuben/src/cli/upgrade.rs,
 // M4.8), run with the *new* binary before it replaces the old one: it prints
-// the findings of internal/ops/upgrade's preflight and fails when any does.
+// the findings of internal/maintenance/upgrade's preflight and fails when any does.
 package upgrade
 
 import (

@@ -20,7 +20,7 @@ import (
 )
 
 // Ported from crates/kuben-agent/src/enroll.rs (the hub's side; the device
-// key's test is in kubenapi/protocol).
+// key's test is in agentlink/protocol).
 
 const day = 24 * time.Hour
 

@@ -9,7 +9,7 @@
 //   serde_json = "1"
 //   serde = "1"
 //
-// then run `cargo run --offline -- <repo>/go/kubenapi/v1alpha1/testdata/objects`.
+// then run `cargo run --offline -- <repo>/api/v1alpha1/testdata/objects`.
 // For every <kind>-<name>.in.json it decodes the object with the Rust type
 // and writes what serde_json encodes back (<name>.rust.json), or the decode
 // error (<name>.rust.err).

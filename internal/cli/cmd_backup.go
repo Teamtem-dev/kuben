@@ -1,7 +1,7 @@
 package cli
 
 // `kuben backup` and `kuben restore` (BackupOpts, RestoreOpts; the work is
-// package cli/backup).
+// package maintenance/backup).
 
 import (
 	"github.com/spf13/cobra"

@@ -3,8 +3,8 @@
 // Content-Security-Policy; hashed assets are cached forever; `/api/` paths
 // never fall through to the app.
 //
-// The console build is copied into dist/ before `go build` (turbo task
-// hub#build); without it the page says the UI is not embedded, as a Rust
+// The console build is copied into dist/ before `go build` (the turbo task
+// `go:build`); without it the page says the UI is not embedded, as a Rust
 // build without the embed-ui feature did.
 package web
 

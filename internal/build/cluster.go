@@ -1,7 +1,7 @@
 package build
 
 // The worker's objects in the cluster (worker.rs, `// ---- cluster ----`):
-// the BuildRun (dynamic client, the kubenapi type), and the Job, Secret and
+// the BuildRun (dynamic client, the api/v1alpha1 type), and the Job, Secret and
 // Pods (typed client-go).
 
 import (

@@ -4,5 +4,5 @@
 // crates/kuben-platform/src/agentlink.rs and local_agent.rs (the SQL
 // registry, the listener `kuben serve` hosts, the materializer's dispatch
 // and the local agent's enrollment). The wire types and the TLS
-// configurations both ends share are in kubenapi/protocol.
+// configurations both ends share are in agentlink/protocol.
 package agentlink

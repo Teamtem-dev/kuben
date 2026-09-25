@@ -117,32 +117,58 @@ linters:
               desc: use log/slog.
             - pkg: io/ioutil
               desc: deprecated; use io and os.
+        # The layering of ARCHITECTURE.md. depguard sees direct imports only;
+        # internal/server's layering_test.go checks that the server does not
+        # reach internal/cli transitively either.
         core-is-pure:
+          list-mode: lax
           files:
             - "**/internal/core/**"
+          allow:
+            - github.com/Teamtem-dev/kuben/internal/core
+            - github.com/Teamtem-dev/kuben/internal/jsonx
           deny:
-            - pkg: github.com/Teamtem-dev/kuben/internal/store
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/platform
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/httpapi
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/integrations
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/notify
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/apiclient
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/previews
-              desc: core performs no IO.
-            - pkg: github.com/Teamtem-dev/kuben/internal/imagewatch
-              desc: core performs no IO.
+            - pkg: github.com/Teamtem-dev/kuben
+              desc: core imports only core and jsonx (both pure); it performs no IO.
             - pkg: net/http
               desc: core performs no IO.
             - pkg: database/sql$
               desc: core performs no IO (database/sql/driver for Valuer is fine).
             - pkg: os$
               desc: core performs no IO; config loading is the one allowed exception.
+        agent-is-small:
+          list-mode: lax
+          files:
+            - "**/internal/agent/**"
+            - "**/cmd/kuben-agent/**"
+          allow:
+            - github.com/Teamtem-dev/kuben/internal/agent
+            - github.com/Teamtem-dev/kuben/internal/agentlink/protocol
+            - github.com/Teamtem-dev/kuben/api/v1alpha1
+            - github.com/Teamtem-dev/kuben/internal/core
+            - github.com/Teamtem-dev/kuben/internal/jsonx
+            - github.com/Teamtem-dev/kuben/internal/version
+          deny:
+            - pkg: github.com/Teamtem-dev/kuben
+              desc: the agent applies envelopes and nothing else (ADR-027); it never imports the hub's packages.
+            - pkg: sigs.k8s.io/controller-runtime
+              desc: the agent stays small; client-go is enough.
+        httpapi-behind-server:
+          files:
+            - $all
+            - "!**/internal/server/**"
+            - "!**/internal/httpapi/**"
+          deny:
+            - pkg: github.com/Teamtem-dev/kuben/internal/httpapi$
+              desc: only internal/server mounts the HTTP API; share code through a package below it.
+        cli-is-a-leaf:
+          files:
+            - $all
+            - "!**/internal/cli/**"
+            - "!**/cmd/kuben/**"
+          deny:
+            - pkg: github.com/Teamtem-dev/kuben/internal/cli
+              desc: the CLI only parses flags and prints; what others need lives outside internal/cli.
     forbidigo:
       forbid:
         - pattern: ^fmt\.Print.*$

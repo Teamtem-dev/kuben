@@ -69,7 +69,7 @@ func Scheme() (*runtime.Scheme, error) {
 // RunAll applies the CRDs, then runs the project, environment, gateway and
 // app controllers until ctx ends; every App is reconciled again when the
 // KubenConfig singleton or the discovered facts change. It returns nil
-// once ctx ends. The caller elects the leader (platform/leader) and
+// once ctx ends. The caller elects the leader (kube/leader) and
 // supervises: an error means the set stopped and should be restarted.
 func RunAll(ctx context.Context, d Deps) error {
 	if d.Cluster.Config == nil {

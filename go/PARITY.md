@@ -53,7 +53,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `oidc.rs` | 465 | 5 | integrations/oidc | ported | 5 → 6 (+ key fetch, cache, refresh and outage against an httptest issuer); the shared JWKS/RS256 parts serve SSO in S4 |
 | kuben-api | `openapi.rs` | 231 | 2 | httpapi/gen (ogen) + httpapi/genspec | dropped | spec first: the contract generates the server |
 | kuben-api | `previews.rs` | 464 | 0 | previews | ported | 0 → 5 Go unit tests: pull request lifecycle (OnPull, called by git.go), janitor (Sweep, Verify every tenth round; an unclear answer never deletes) started in serve/background.go on a ticker |
-| kuben-api | `setup.rs` | 375 | 2 | httpapi (setup.go) | ported | 2 → 2; setup_guide/setup_url are SetupGuide/SetupURL (the advertised address is passed in; host::console_url) |
+| kuben-api | `setup.rs` | 375 | 2 | httpapi (setup.go), firstrun (setuptoken.go) | ported | 2 → 2; setup_guide/setup_url are SetupGuide/SetupURL (the advertised address is passed in; host::console_url) |
 | kuben-api | `sso.rs` | 554 | 5 | integrations/sso | ported | 5 → 5; reuses integrations/oidc (JWKS, RS256) |
 | kuben-api | `state.rs` | 151 | 0 | httpapi (server.go Deps) | ported | ApiState and its with_* builders are the fields of api.Deps (usage, DNS, images, keyring, SSO, GitHub OIDC, GitHub App); an unset field is the zero value or opt.None, as the builders defaulted |
 | kuben-api | `stream.rs` | 248 | 2 | httpapi/stream, kube/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
@@ -170,7 +170,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `materializer/progress.rs` | 134 | 2 | kube/materializer (progress.go) | ported | 2 → 2 |
 | kuben-platform | `materializer/render.rs` | 652 | 7 | kube/materializer (render.go) | ported | 7 → 7; the config revision is decoded by `v1alpha1.DecodeAppSpec`, which refuses missing or null required members as serde did |
 | kuben-platform | `materializer/secrets.rs` | 339 | 3 | kube/materializer (secrets.go) | ported | 3 → 3; writing and collecting revision Secrets against an API server were untested in Rust too (envtest later) |
-| kuben-platform | `materializer/worker.rs` | 663 | 1 | kube/materializer (worker.go, plan.go) | ported | 1 → 1; kube-rs typed Api → dynamic client + serde-compatible JSON of the kubenapi types, server-side apply as `kuben-materializer` |
+| kuben-platform | `materializer/worker.rs` | 663 | 1 | kube/materializer (worker.go, plan.go) | ported | 1 → 1; kube-rs typed Api → dynamic client + serde-compatible JSON of the api/v1alpha1 types, server-side apply as `kuben-materializer` |
 | kuben-platform | `materializer/write.rs` | 100 | 1 | kube/materializer (kube.go) | ported | 1 → 1 |
 | kuben-platform | `controller/app.rs` | 357 | 1 | kube/controller (app.go), kube/render (Build) | ported | 1 → 5 Go tests (+ fake-client reconciles: apply/prune/status, GatewayAPIMissing, build error, hand-over); reads Rust made live go through the API reader; `blockOwnerDeletion: false` stripped to match kube-rs owner refs |
 | kuben-platform | `controller/crd_apply.rs` | 21 | 0 | kube/controller (crds.go) | ported | 0 → 2 Go tests; embedded byte-identical copy of charts/kuben/crds/kuben.dev_all.yaml (pinned by a test while the chart file exists) |
@@ -231,7 +231,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/upgrades.rs` | 260 | 1 | store (upgrades.go) | ported | 1 → 3 Go tests (+ version order, char truncation) |
 | kuben-store | `repo/usage.rs` | 127 | 1 | store (usage.go) | ported | 1 → 1 |
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
-| kuben-agent | `tests/link.rs` | 756 | 15 | agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (the hub module requires go/agent for it) |
+| kuben-agent | `tests/link.rs` | 756 | 15 | agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (internal/agentlink tests import internal/agent/link) |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | ported | 3 → 3; run by the CI job `go-kind` against a kind cluster (KUBEN_TEST_KUBE=1), as Rust ran them with --ignored in its kind job |
 | kuben-api | `tests/http.rs` | 3927 | 44 | httpapi (*_test.go) | ported | 44 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies, m4 SSO (3), m5 domain claims and DNS records, m4 signed webhooks and incidents, m4 export and detach, m4 scan gate, m5 previews |
 | kuben-api | `tests/oci.rs` | 41 | 2 | integrations/oci (network_test.go) | ported | 2 → 2, run only with KUBEN_TEST_NETWORK=1 (Rust: --ignored) |

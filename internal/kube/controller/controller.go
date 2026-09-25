@@ -8,7 +8,7 @@
 // The plumbing is controller-runtime (watches, caches, work queues); the
 // objects written, their order, the status fields, condition reasons and
 // messages and the requeue intervals are the Rust controllers'. The pure
-// builders are in platform/render.
+// builders are in kube/render.
 package controller
 
 import (
