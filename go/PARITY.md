@@ -25,16 +25,16 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `cli/setup/mod.rs` | 2210 | 10 |  | todo | |
 | kuben | `cli/setup/plan.rs` | 258 | 1 |  | todo | |
 | kuben | `cli/setup/platform.rs` | 1138 | 6 |  | todo | |
-| kuben-agent | `bootstrap.rs` | 237 | 2 |  | todo | |
-| kuben-agent | `enroll.rs` | 903 | 9 |  | todo | |
-| kuben-agent | `hub.rs` | 495 | 0 |  | todo | |
-| kuben-agent | `lib.rs` | 27 | 0 |  | todo | |
-| kuben-agent | `link.rs` | 576 | 3 |  | todo | |
-| kuben-agent | `main.rs` | 328 | 3 |  | todo | |
-| kuben-agent | `protocol.rs` | 436 | 9 |  | todo | |
-| kuben-agent | `runtime.rs` | 657 | 4 |  | todo | |
-| kuben-agent | `state.rs` | 351 | 4 |  | todo | |
-| kuben-agent | `tls.rs` | 323 | 6 |  | todo | |
+| kuben-agent | `bootstrap.rs` | 237 | 2 | agent/bootstrap | ported | 2 → 2 |
+| kuben-agent | `enroll.rs` | 903 | 9 | kubenapi/protocol (enroll.go), platform/agentlink (enroll.go, ca.go) | ported | 9 → 9 (+ the certificate shape rcgen gave) |
+| kuben-agent | `hub.rs` | 495 | 0 | platform/agentlink (hub.go, server.go) | ported | 0 in Rust; covered by the tests/link.rs port |
+| kuben-agent | `lib.rs` | 27 | 0 | agent (doc.go) | ported |  |
+| kuben-agent | `link.rs` | 576 | 3 | agent/link | ported | 3 → 3 |
+| kuben-agent | `main.rs` | 328 | 3 | agent/cmd/kuben-agent | ported | 3 → 3; cobra and slog JSON (message texts and log field names differ; `RUST_LOG` only as a plain level) |
+| kuben-agent | `protocol.rs` | 436 | 9 | kubenapi/protocol | ported | 9 → 9 (+ byte and strictness pins; byte fixtures hand-written from the serde attributes, to regenerate with the Rust compat generator) |
+| kuben-agent | `runtime.rs` | 657 | 4 | agent/runtime | ported | 4 → 4 |
+| kuben-agent | `state.rs` | 351 | 4 | agent/state | ported | 4 → 4 |
+| kuben-agent | `tls.rs` | 323 | 6 | kubenapi/protocol (tls.go) | ported | 6 → 6 |
 | kuben-api | `audit.rs` | 205 | 3 | api (audit.go) | ported |  |
 | kuben-api | `authz.rs` | 180 | 1 | api/access | ported |  |
 | kuben-api | `client.rs` | 483 | 4 |  | todo | |
@@ -143,7 +143,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-crd | `v1alpha1/runtime.rs` | 228 | 6 | kubenapi/v1alpha1 (runtime.go) | ported | 6/6 tests (runtime_test.go): CEL and OpenAPI rules of the manifest run by the apiextensions-apiserver validators |
 | kuben-crd | `v1alpha1/task.rs` | 228 | 4 | kubenapi/v1alpha1 (task.go) | ported | 4/4 tests (task_test.go), same validators |
 | kuben-platform | `activator.rs` | 22 | 0 |  | todo | |
-| kuben-platform | `agentlink.rs` | 580 | 3 |  | todo | |
+| kuben-platform | `agentlink.rs` | 580 | 3 | platform/agentlink | ported | 3 → 3 |
 | kuben-platform | `discovery.rs` | 734 | 5 | platform/discovery | ported | 5 → 19 Go tests (+ probes over fake clientsets, the loop against its store, the Watch); tokio `watch` → `discovery.Watch` (SUBSTITUTIONS.md) |
 | kuben-platform | `doctor.rs` | 701 | 4 | platform/doctor | ported | 4 → 9: every check, the overall verdict, the port probe (injectable dialer), the lookup, the KubenConfig and Gateway readers |
 | kuben-platform | `duration.rs` | 57 | 2 | platform/controller (duration.go) | ported | 2 → 2 Go tests; unexported, returns whole seconds (u64) so huge grace periods saturate like Rust |
@@ -151,7 +151,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
 | kuben-platform | `leader.rs` | 313 | 2 | platform/leader | ported | client-go leaderelection (SUBSTITUTIONS.md); `decisions` tested the hand-written protocol and `timing_is_consistent` the constants, which client-go itself refuses when inconsistent → 1 Go test: two replicas over a fake clientset, one leader, hand-over on release |
 | kuben-platform | `lib.rs` | 39 | 0 |  | todo | |
-| kuben-platform | `local_agent.rs` | 341 | 2 |  | todo | |
+| kuben-platform | `local_agent.rs` | 341 | 2 | platform/agentlink (local.go) | ported | 2 → 2 |
 | kuben-platform | `registry.rs` | 212 | 4 | platform/registry | ported | 4 → 4 |
 | kuben-platform | `secrets.rs` | 664 | 10 | platform/secrets | ported | 10 → 12 (+ opening the Rust-sealed `testdata/compat/secrets.json`, + `Prepare` against PostgreSQL) |
 | kuben-platform | `supervise.rs` | 133 | 3 | platform/supervise | ported | 3 → 3 |
@@ -190,7 +190,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `lib.rs` | 13 | 0 | store (package doc) | ported | |
 | kuben-store | `testing.rs` | 55 | 0 | store/pgtest | ported | skip → failure with KUBEN_REQUIRE_PG=1; schema dropped after the test; `Schema` for migrator tests |
 | kuben-store | `repo/acceptance.rs` | 451 | 3 | store (acceptance_test.go) | ported | 3 → 3; the panicking handler is a recovered panic with the deferred rollback a Go server runs |
-| kuben-store | `repo/agents.rs` | 875 | 7 | store (agents.go, partial) | partial | `Delivery`, `record_runtime_observation`, `target_delivery`, `runtime_observation`, `hand_over_to_agent` (for the catalog and the materializer); enrollment, links, tokens, handover and the 7 tests follow with the agent work |
+| kuben-store | `repo/agents.rs` | 875 | 7 | store (agents.go) | ported | 7 → 7 |
 | kuben-store | `repo/audit.rs` | 130 | 0 | store (audit.go) | ported | covered by the tests/matrix.rs port |
 | kuben-store | `repo/backups.rs` | 357 | 2 | store (backups.go) | ported | 2 → 2 |
 | kuben-store | `repo/builds.rs` | 1794 | 11 | store (builds.go) | ported | 11 → 12 (+ `TestBuildHelpersMatchRust`); `AssertSqlSafe(format!(…))` queries are Go constant expressions with the same text |
@@ -227,15 +227,15 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/upgrades.rs` | 260 | 1 | store (upgrades.go) | ported | 1 → 3 Go tests (+ version order, char truncation) |
 | kuben-store | `repo/usage.rs` | 127 | 1 | store (usage.go) | ported | 1 → 1 |
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
-| kuben-agent | `tests/link.rs` | 756 | 15 |  | todo | |
-| kuben-agent | `tests/runtime.rs` | 297 | 3 |  | todo | |
+| kuben-agent | `tests/link.rs` | 756 | 15 | platform/agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (the hub module requires go/agent for it) |
+| kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | partial | 3 → 3 written, never run: they need a cluster with controllers (kind), as Rust's `#[ignore]`; skipped unless `KUBEN_TEST_KUBE=1` (a kind CI job is still to add) |
 | kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 35 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3). Left with their slices: scan gate (S3); SSO, webhooks and incidents, export and detach (S4); previews, domain claims, image policies (S5) |
 | kuben-api | `tests/oci.rs` | 41 | 2 |  | todo | |
-| kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 |  | todo | |
+| kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 | platform/agentlink (mtls_test.go) | ported | 6 → 6 |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 | platform/controller (execution_crds_test.go) + platform/kubetest | ported | 2 → 2 against envtest's API server |
 | kuben-platform | `tests/materializer.rs` | 633 | 5 | platform/materializer (cluster_test.go) | ported | 5 → 5 against envtest and PostgreSQL; plus a controller smoke test (platform/controller run_cluster_test.go) |
 | kuben-platform | `tests/two_writer_cas.rs` | 185 | 3 | platform/kubetest (cas_test.go) | ported | 3 → 3 against envtest's API server |
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 10, ported 151, todo 68.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 10, ported 166, todo 53.
