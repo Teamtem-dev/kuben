@@ -85,7 +85,7 @@ const (
 var agentManifest string
 
 // Datastore is how k3s keeps its own state.
-type Datastore string
+type Datastore string //nolint:recvcheck // Set mutates flag, accessors are value receivers
 
 // The datastores, with their command-line names.
 const (
@@ -96,11 +96,11 @@ const (
 )
 
 // String is the command-line name; the zero value is the default, sqlite.
-func (d *Datastore) String() string {
-	if *d == "" {
+func (d Datastore) String() string {
+	if d == "" {
 		return string(DatastoreSqlite)
 	}
-	return string(*d)
+	return string(d)
 }
 
 // Set reads a command-line value as clap's ValueEnum did.
@@ -114,7 +114,7 @@ func (d *Datastore) Set(value string) error {
 }
 
 // Type names the value in help.
-func (*Datastore) Type() string { return "DATASTORE" }
+func (Datastore) Type() string { return "DATASTORE" }
 
 // debugName is the datastore as Rust's `{:?}` printed it.
 func (d Datastore) debugName() string {
@@ -368,6 +368,9 @@ type revision struct {
 }
 
 func revisionOf(u *unstructured.Unstructured) revision {
+	if u == nil {
+		return revision{}
+	}
 	if g, found, err := unstructured.NestedInt64(u.Object, "metadata", "generation"); err == nil && found {
 		return revision{generation: g, hasGeneration: true}
 	}
@@ -386,7 +389,10 @@ func applyObject(ctx context.Context, c cluster, obj *unstructured.Unstructured,
 	if err != nil {
 		return false, err
 	}
-	return !found || revisionOf(live) != revisionOf(after), nil
+	if !found || live == nil {
+		return true, nil
+	}
+	return revisionOf(live) != revisionOf(after), nil
 }
 
 // ensureObject creates value when it is missing and records who owns it;
@@ -413,7 +419,10 @@ func ensureObject(ctx context.Context, c cluster, book *journal.Book, name strin
 
 func crdEstablished(ctx context.Context, c cluster, name string) bool {
 	crd, found, err := c.get(ctx, "apiextensions.k8s.io/v1", "CustomResourceDefinition", "", name)
-	return err == nil && found && conditionTrue(crd.Object, "Established", "status", "conditions")
+	if err != nil || !found || crd == nil {
+		return false
+	}
+	return conditionTrue(crd.Object, "Established", "status", "conditions")
 }
 
 // documents are the YAML documents of text as JSON objects (integers as
@@ -507,6 +516,48 @@ func (m *machine) ensurePlatform(ctx context.Context, kubeconfig string, wanted 
 	return book.Done(changed, detail)
 }
 
+func (m *machine) ensureCertManager(ctx context.Context, c cluster, book *journal.Book, cm bundle.CertManager, track func(bool, error) error) (opt.Val[string], error) {
+	if crdEstablished(ctx, c, "clusterissuers.cert-manager.io") && !book.Journal().Owns(journal.KindKubernetesObject, CertManager) {
+		if _, err := book.Claim(journal.KindKubernetesObject, CertManager, false); err != nil {
+			return opt.None[string](), err
+		}
+		return opt.Some("cert-manager already installed (kept; it needs Gateway API support enabled)"), nil
+	}
+	archive, err := m.certManagerArchive(ctx, cm)
+	if err != nil {
+		return opt.None[string](), err
+	}
+	if err := track(ensureObject(ctx, c, book, CertManager, certManagerChart(cm, archive))); err != nil {
+		return opt.None[string](), err
+	}
+	return opt.None[string](), nil
+}
+
+func (m *machine) ensureAcmeIssuer(ctx context.Context, c cluster, book *journal.Book, wanted Wanted, webhook bool) (bool, opt.Val[string], error) {
+	email, ok := wanted.AcmeEmail.Get()
+	if !ok {
+		return false, opt.None[string](), nil
+	}
+	if !webhook {
+		return false, opt.Some("cert-manager is not ready yet: run kuben setup again to add the ClusterIssuer"), nil
+	}
+	// The webhook answers a moment after it is Available.
+	applied, err := false, errors.New("not tried")
+	for range 30 {
+		applied, err = ensureObject(ctx, c, book, ClusterIssuer, clusterIssuer(email, wanted.AcmeStaging))
+		if err == nil {
+			break
+		}
+		if m.sleep(ctx, 2*time.Second) != nil {
+			break
+		}
+	}
+	if err != nil {
+		return false, opt.None[string](), err
+	}
+	return applied, opt.None[string](), nil
+}
+
 func (m *machine) platformObjects(ctx context.Context, c cluster, wanted Wanted, agent bool, book *journal.Book,
 	b bundle.Bundle,
 ) (bool, []string, error) {
@@ -545,19 +596,12 @@ func (m *machine) platformObjects(ctx context.Context, c cluster, wanted Wanted,
 			return false, nil, err
 		}
 	}
-	if crdEstablished(ctx, c, "clusterissuers.cert-manager.io") && !book.Journal().Owns(journal.KindKubernetesObject, CertManager) {
-		if _, err := book.Claim(journal.KindKubernetesObject, CertManager, false); err != nil {
-			return false, nil, err
-		}
-		notes = append(notes, "cert-manager already installed (kept; it needs Gateway API support enabled)")
-	} else {
-		archive, err := m.certManagerArchive(ctx, b.CertManager)
-		if err != nil {
-			return false, nil, err
-		}
-		if err := track(ensureObject(ctx, c, book, CertManager, certManagerChart(b.CertManager, archive))); err != nil {
-			return false, nil, err
-		}
+	cmNote, err := m.ensureCertManager(ctx, c, book, b.CertManager, track)
+	if err != nil {
+		return false, nil, err
+	}
+	if note, ok := cmNote.Get(); ok {
+		notes = append(notes, note)
 	}
 	if !m.eventually(ctx, 5*time.Minute, func() bool { return gatewayClassAccepted(ctx, c) }) {
 		notes = append(notes, fmt.Sprintf("GatewayClass %s is not accepted yet", GatewayClass))
@@ -565,27 +609,14 @@ func (m *machine) platformObjects(ctx context.Context, c cluster, wanted Wanted,
 	webhook := m.eventually(ctx, 5*time.Minute, func() bool {
 		return deploymentAvailable(ctx, c, "cert-manager", "app.kubernetes.io/component=webhook")
 	})
-	if email, ok := wanted.AcmeEmail.Get(); ok {
-		if !webhook {
-			notes = append(notes, "cert-manager is not ready yet: run kuben setup again to add the ClusterIssuer")
-			return changed, notes, nil
-		}
-		// The webhook answers a moment after it is Available.
-		applied, err := false, errors.New("not tried")
-		for range 30 {
-			applied, err = ensureObject(ctx, c, book, ClusterIssuer, clusterIssuer(email, wanted.AcmeStaging))
-			if err == nil {
-				break
-			}
-			if m.sleep(ctx, 2*time.Second) != nil {
-				break
-			}
-		}
-		if err != nil {
-			return false, nil, err
-		}
-		changed = changed || applied
+	acmeApplied, acmeNote, err := m.ensureAcmeIssuer(ctx, c, book, wanted, webhook)
+	if err != nil {
+		return false, nil, err
 	}
+	if note, ok := acmeNote.Get(); ok {
+		notes = append(notes, note)
+	}
+	changed = changed || acmeApplied
 	return changed, notes, nil
 }
 
@@ -810,7 +841,10 @@ func (m *machine) ensureConsole(ctx context.Context, kubeconfig, host, hub strin
 
 func gatewayClassAccepted(ctx context.Context, c cluster) bool {
 	class, found, err := c.get(ctx, "gateway.networking.k8s.io/v1", "GatewayClass", "", GatewayClass)
-	return err == nil && found && conditionTrue(class.Object, "Accepted", "status", "conditions")
+	if err != nil || !found || class == nil {
+		return false
+	}
+	return conditionTrue(class.Object, "Accepted", "status", "conditions")
 }
 
 // deploymentAvailable reports whether a Deployment matching selector in
@@ -834,7 +868,7 @@ func deploymentAvailable(ctx context.Context, c cluster, namespace, selector str
 func k3sChartDone(ctx context.Context, c cluster, chart string, expected bool) bool {
 	// Until k3s registered its HelmChart kind, or wrote the chart.
 	live, found, err := c.get(ctx, "helm.cattle.io/v1", "HelmChart", "kube-system", chart)
-	if err != nil || !found {
+	if err != nil || !found || live == nil {
 		return !expected
 	}
 	job, ok := member(live.Object, "status", "jobName").(string)
@@ -842,7 +876,7 @@ func k3sChartDone(ctx context.Context, c cluster, chart string, expected bool) b
 		return false // Not started yet.
 	}
 	j, found, err := c.get(ctx, "batch/v1", "Job", "kube-system", job)
-	if err != nil || !found {
+	if err != nil || !found || j == nil {
 		return false
 	}
 	succeeded, found, err := unstructured.NestedInt64(j.Object, "status", "succeeded")
@@ -900,7 +934,7 @@ func (m *machine) purgeObjects(ctx context.Context, kubeconfig string, j *journa
 		{TraefikConfig, traefikConfig()},
 		{Namespace, namespaceObject()},
 	} {
-		if owns(r.name) && !(keepApps && slices.Contains(serving, r.name)) {
+		if owns(r.name) && (!keepApps || !slices.Contains(serving, r.name)) {
 			remove = append(remove, r)
 		}
 	}
@@ -949,7 +983,7 @@ func (m *machine) retainedInventory(ctx context.Context, kubeconfig string) ([]s
 		return strings.Join(items, ", ")
 	}
 	qualified := func(items []unstructured.Unstructured) []string {
-		out := []string{}
+		out := make([]string, 0, len(items))
 		for _, i := range items {
 			out = append(out, i.GetNamespace()+"/"+i.GetName())
 		}

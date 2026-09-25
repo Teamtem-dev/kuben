@@ -317,7 +317,10 @@ func writePrivate(path string, data []byte) error {
 // Rust's Path::is_file.
 func isFile(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular()
+	if err != nil || info == nil {
+		return false
+	}
+	return info.Mode().IsRegular()
 }
 
 // Freshness says whether the newest good backup (finished at last) is fresh
@@ -445,7 +448,7 @@ func writeBackup(ctx context.Context, cfg config.Config, st *store.Store, root s
 	if err := os.MkdirAll(dir, 0o777); err != nil { //nolint:gosec // the umask applies; the directory itself is made 0700 below
 		return "", Manifest{}, fmt.Errorf("creating %s: %w", dir, err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // directory permission 0700
 		return "", Manifest{}, err //nolint:wrapcheck // names the path
 	}
 	dump := joinPath(dir, DumpFile)
@@ -513,7 +516,7 @@ func prune(root string, keep uint32) (int, error) {
 	if err != nil {
 		return 0, err //nolint:wrapcheck // names the path
 	}
-	var backups []string
+	backups := []string{}
 	for _, e := range entries {
 		path := joinPath(root, e.Name())
 		if strings.HasPrefix(e.Name(), Prefix) && isFile(joinPath(path, ManifestFile)) {

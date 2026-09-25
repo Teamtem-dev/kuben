@@ -54,8 +54,10 @@ func TestLinesAreRedacted(t *testing.T) {
 func TestExposureChecksOnlyWarn(t *testing.T) {
 	var out bytes.Buffer
 	r := doctor.NewReport(&out)
-	doctor.ExposureLine(r, pdoctor.Check{ID: "gateway", Subject: "", Status: pdoctor.StatusFail, Detail: "does not exist",
-		Hint: opt.Some("fix it")})
+	doctor.ExposureLine(r, pdoctor.Check{
+		ID: "gateway", Subject: "", Status: pdoctor.StatusFail, Detail: "does not exist",
+		Hint: opt.Some("fix it"),
+	})
 	doctor.ExposureLine(r, pdoctor.Check{ID: "port-80", Subject: "80", Status: pdoctor.StatusUnknown, Detail: "no address"})
 	want := "[WARN] gateway: does not exist — fix it\n[WARN] port-80 80: unknown: no address\n"
 	if diff := cmp.Diff(want, out.String()); diff != "" || r.Failed() {

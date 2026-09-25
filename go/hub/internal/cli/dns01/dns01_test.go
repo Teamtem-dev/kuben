@@ -41,8 +41,10 @@ func TestIssuersAnswerDNS01ThroughCloudflare(t *testing.T) {
 		{member(t, secret, "metadata", "namespace"), "cert-manager"},
 		{member(t, secret, "stringData", "api-token"), "tok"},
 		{member(t, issuer, "spec", "acme", "server"), dns01.LetsEncrypt},
-		{member(t, issuer, "spec", "acme", "solvers", "dns01", "cloudflare", "apiTokenSecretRef"),
-			map[string]any{"name": "letsencrypt-dns-cloudflare", "key": "api-token"}},
+		{
+			member(t, issuer, "spec", "acme", "solvers", "dns01", "cloudflare", "apiTokenSecretRef"),
+			map[string]any{"name": "letsencrypt-dns-cloudflare", "key": "api-token"},
+		},
 		{member(t, issuer, "metadata", "name"), "letsencrypt-dns"},
 	}
 	for i, c := range checks {

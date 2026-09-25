@@ -325,7 +325,7 @@ func (EndEvent) followEvent()  {}
 // sequence; so is a broken connection, after which the sequence ends.
 func (c Client) FollowLogs(ctx context.Context, app AppPath, options LogOptions) (iter.Seq2[FollowEvent, error], error) {
 	path := app.api() + "/logs" + options.query(true)
-	response, err := c.send(ctx, http.MethodGet, path, nil, nil)
+	response, err := c.send(ctx, http.MethodGet, path, nil, nil) //nolint:bodyclose // closed by the returned iterator
 	if err != nil {
 		return nil, err
 	}

@@ -103,10 +103,11 @@ func buildNode(newest opt.Val[buildFacts]) evidence.Node {
 	}
 	phase := debugName(b.phase)
 	status := doctor.StatusOK
-	switch {
-	case b.phase == build.Failed:
+	//exhaustive:ignore // only failed, cancelled, blocked deviate from OK
+	switch b.phase {
+	case build.Failed:
 		status = doctor.StatusFail
-	case b.phase == build.Cancelled || b.phase == build.Blocked:
+	case build.Cancelled, build.Blocked:
 		status = doctor.StatusWarn
 	}
 	node := evidence.NewNode(evidence.Build, status, "build of "+b.commit).
@@ -142,10 +143,11 @@ func releaseNode(newest opt.Val[runFacts]) evidence.Node {
 		return evidence.NewNode(evidence.Release, doctor.StatusWarn, "never deployed").WithAction("Deploy the app.")
 	}
 	status := doctor.StatusOK
-	switch {
-	case r.phase == run.Failed || r.phase == run.RecoveryFailed || r.phase == run.ManualActionRequired:
+	//exhaustive:ignore // only failing/blocking phases deviate from OK
+	switch r.phase {
+	case run.Failed, run.RecoveryFailed, run.ManualActionRequired:
 		status = doctor.StatusFail
-	case r.phase == run.AwaitingApproval || r.phase == run.Blocked:
+	case run.AwaitingApproval, run.Blocked:
 		status = doctor.StatusWarn
 	}
 	node := evidence.NewNode(evidence.Release, status, "revision "+strconv.FormatUint(r.generation, 10)).
@@ -154,10 +156,11 @@ func releaseNode(newest opt.Val[runFacts]) evidence.Node {
 	if image, ok := r.image.Get(); ok {
 		node = node.Fact("image " + image)
 	}
-	switch {
-	case r.phase == run.AwaitingApproval:
+	//exhaustive:ignore // only actions for approval or failure
+	switch r.phase {
+	case run.AwaitingApproval:
 		node = node.WithAction("Ask an approver to approve the run.")
-	case r.phase == run.Failed:
+	case run.Failed:
 		node = node.WithAction("Read the run's timeline, fix the cause and deploy again, or roll back.")
 	}
 	return node

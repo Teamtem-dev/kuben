@@ -178,6 +178,32 @@ func (p *Previews) applyIn(ctx context.Context, org ids.OrgID, project ids.Proje
 	return result, nil
 }
 
+func handleClosedPreview(ctx context.Context, t *store.Tenant, active store.PreviewRecord, isActive bool, event source.PullEvent) (string, error) {
+	if !isActive {
+		return "noPreview", nil
+	}
+	audit := pullAudit(event, "closePreview", active.Environment)
+	if _, err := destroyPreview(ctx, t, active, store.CloseClosed, event.UpdatedAt, audit); err != nil {
+		return "", err
+	}
+	return "closed", nil
+}
+
+func (p *Previews) updateActivePreview(ctx context.Context, t *store.Tenant, active store.PreviewRecord, settings store.PreviewPolicy, event source.PullEvent, now int64) (string, error) {
+	touched, err := t.TouchPreview(ctx, active.EnvironmentID, event.HeadRepository, event.HeadBranch, event.Head,
+		event.UpdatedAt, preview.Expiry(now, settings.TTLHours, opt.Some(active.ExpiresAt)))
+	if err != nil {
+		return "", err //nolint:wrapcheck // a store error, answered as internal
+	}
+	if !touched {
+		return "stale", nil
+	}
+	if err := syncPreviewApps(ctx, t, active.EnvironmentID, event); err != nil {
+		return "", err
+	}
+	return "synced", nil
+}
+
 func (p *Previews) apply(ctx context.Context, t *store.Tenant, project ids.ProjectID, event source.PullEvent) (string, error) {
 	settings, found, err := t.PreviewPolicy(ctx, project)
 	if err != nil {
@@ -191,32 +217,14 @@ func (p *Previews) apply(ctx context.Context, t *store.Tenant, project ids.Proje
 		return "", err //nolint:wrapcheck // a store error, answered as internal
 	}
 	if event.Action == source.PullClosed || !event.Open {
-		if !isActive {
-			return "noPreview", nil
-		}
-		audit := pullAudit(event, "closePreview", active.Environment)
-		if _, err := destroyPreview(ctx, t, active, store.CloseClosed, event.UpdatedAt, audit); err != nil {
-			return "", err
-		}
-		return "closed", nil
+		return handleClosedPreview(ctx, t, active, isActive, event)
 	}
 	if event.FromFork() && !settings.AllowForks {
 		return "forkRefused", nil
 	}
 	now := p.clock.NowMs()
 	if isActive {
-		touched, err := t.TouchPreview(ctx, active.EnvironmentID, event.HeadRepository, event.HeadBranch, event.Head,
-			event.UpdatedAt, preview.Expiry(now, settings.TTLHours, opt.Some(active.ExpiresAt)))
-		if err != nil {
-			return "", err //nolint:wrapcheck // a store error, answered as internal
-		}
-		if !touched {
-			return "stale", nil
-		}
-		if err := syncPreviewApps(ctx, t, active.EnvironmentID, event); err != nil {
-			return "", err
-		}
-		return "synced", nil
+		return p.updateActivePreview(ctx, t, active, settings, event, now)
 	}
 	epoch, closedAt, err := t.PreviewEpoch(ctx, project, event.Repository, event.Number)
 	if err != nil {

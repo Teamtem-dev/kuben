@@ -167,19 +167,23 @@ func TestKnowsWhereTheDataLivesAndHowToInstallPostgreSQL(t *testing.T) {
 }
 
 func TestParsesPortAnswers(t *testing.T) {
-	for answer, want := range map[string]opt.Val[uint16]{
-		" 3001 ": opt.Some[uint16](3001),
-		"0":      opt.None[uint16](),
-		"70000":  opt.None[uint16](),
-		"three":  opt.None[uint16](),
-	} {
-		port, ok := parsePort(answer)
+	tests := []struct {
+		answer string
+		want   opt.Val[uint16]
+	}{
+		{" 3001 ", opt.Some[uint16](3001)},
+		{"0", opt.None[uint16]()},
+		{"70000", opt.None[uint16]()},
+		{"three", opt.None[uint16]()},
+	}
+	for _, tc := range tests {
+		port, ok := parsePort(tc.answer)
 		got := opt.None[uint16]()
 		if ok {
 			got = opt.Some(port)
 		}
-		if got != want {
-			t.Errorf("%q: %v", answer, got)
+		if got != tc.want {
+			t.Errorf("%q: %v", tc.answer, got)
 		}
 	}
 }

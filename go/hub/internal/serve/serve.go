@@ -25,6 +25,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/bootstrap"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/cli/upgrade"
@@ -36,6 +37,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/metrics"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/usage"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
@@ -152,33 +154,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	var serveErr error
 	if cfg.HasRole(config.RoleAPI) {
-		live := opt.None[*usage.Buffer]()
-		if r, ok := cluster.Get(); ok {
-			buffer, done := startUsage(ctx, r.Primary(), st, h, logger)
-			live, subsystems = opt.Some(buffer), append(subsystems, done)
-		}
-		single, err := ssoClient(cfg, logger)
-		if err != nil {
-			return err
-		}
-		server, err := api.New(api.Deps{
-			SSO:         single,
-			GitHub:      app,
-			Usage:       live,
-			Config:      cfg,
-			Store:       st,
-			Hasher:      auth.HasherFromConfig(cfg.Security),
-			Health:      h,
-			Cluster:     cluster,
-			Projections: projections,
-			Logger:      logger,
-			InCluster:   inCluster,
-			Keyring:     opt.Some(keyring),
-		})
-		if err != nil {
-			return fmt.Errorf("api: %w", err)
-		}
-		serveErr = listen(ctx, cfg, server.Handler(), h, logger)
+		serveErr = serveAPI(ctx, cfg, cluster, st, h, app, projections, keyring, inCluster, &subsystems, logger)
 	} else {
 		<-ctx.Done()
 		logger.Info("shutting down")
@@ -205,6 +181,37 @@ func waitAll(done []<-chan struct{}, timeout time.Duration, logger *slog.Logger)
 			return
 		}
 	}
+}
+
+func serveAPI(ctx context.Context, cfg config.Config, cluster opt.Val[*registry.Registry], st *store.Store, h *health.Health, app opt.Val[*github.App], projections *projection.Projections, keyring *secrets.Keyring, inCluster bool, subsystems *[]<-chan struct{}, logger *slog.Logger) error {
+	live := opt.None[*usage.Buffer]()
+	if r, ok := cluster.Get(); ok {
+		buffer, done := startUsage(ctx, r.Primary(), st, h, logger)
+		live = opt.Some(buffer)
+		*subsystems = append(*subsystems, done)
+	}
+	single, err := ssoClient(cfg, logger)
+	if err != nil {
+		return err
+	}
+	server, err := api.New(api.Deps{
+		SSO:         single,
+		GitHub:      app,
+		Usage:       live,
+		Config:      cfg,
+		Store:       st,
+		Hasher:      auth.HasherFromConfig(cfg.Security),
+		Health:      h,
+		Cluster:     cluster,
+		Projections: projections,
+		Logger:      logger,
+		InCluster:   inCluster,
+		Keyring:     opt.Some(keyring),
+	})
+	if err != nil {
+		return fmt.Errorf("api: %w", err)
+	}
+	return listen(ctx, cfg, server.Handler(), h, logger)
 }
 
 func listen(ctx context.Context, cfg config.Config, handler http.Handler, h *health.Health, logger *slog.Logger) error {
@@ -316,7 +323,10 @@ func firstAdmin(ctx context.Context, cfg config.Config, st *store.Store, cluster
 // terminal), as Rust's IsTerminal did.
 func stderrIsTerminal() bool {
 	info, err := os.Stderr.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	if err != nil || info == nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 // AdvertiseIP is this machine's address as other machines reach it (the

@@ -31,7 +31,7 @@ import (
 
 // InitialAdminSecret is the Secret that receives a generated admin password
 // when Kuben runs in a pod.
-const InitialAdminSecret = "kuben-initial-admin"
+const InitialAdminSecret = "kuben-initial-admin" //nolint:gosec // not a credential; the name of the Kubernetes Secret
 
 // InitialAdminFile receives a generated admin password when a binary runs
 // without a terminal (a systemd unit), in the installation's state

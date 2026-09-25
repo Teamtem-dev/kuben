@@ -174,7 +174,8 @@ func (s *Server) githubWebhook() http.Handler {
 func (s *Server) serveGithubWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
+		var maxBytes *http.MaxBytesError
+		if errors.As(err, &maxBytes) {
 			w.WriteHeader(http.StatusRequestEntityTooLarge)
 			return
 		}

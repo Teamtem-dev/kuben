@@ -226,7 +226,7 @@ func (m *machine) ensureCluster(ctx context.Context, opts Opts, owner ids, book 
 	current, err := os.ReadFile(kubeCopy) //nolint:gosec // our own copy
 	copied := err != nil || !bytes.Equal(current, content)
 	if copied {
-		if err := os.WriteFile(kubeCopy, content, 0o600); err != nil {
+		if err := os.WriteFile(kubeCopy, content, 0o600); err != nil { //nolint:gosec // setup's local file copy
 			return "", err //nolint:wrapcheck // names the path
 		}
 	}

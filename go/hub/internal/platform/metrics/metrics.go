@@ -112,6 +112,9 @@ func (m *Metrics) AuditWriteFailed() {
 
 // Handler is the Prometheus text exposition of the registry.
 func (m *Metrics) Handler() http.Handler {
+	if m == nil || m.registry == nil {
+		return http.NotFoundHandler()
+	}
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
 
@@ -120,6 +123,10 @@ func (m *Metrics) Handler() http.Handler {
 // bound is logged, not fatal: metrics are then off.
 func Serve(ctx context.Context, m *Metrics, bind string, logger *slog.Logger) <-chan struct{} {
 	done := make(chan struct{})
+	if m == nil {
+		close(done)
+		return done
+	}
 	if _, err := net.ResolveTCPAddr("tcp", bind); err != nil {
 		logger.Warn("invalid metrics bind address; metrics disabled", "bind", bind)
 		close(done)

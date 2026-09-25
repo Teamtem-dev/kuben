@@ -48,24 +48,24 @@ func TestEndpointsSubscribeToKnownEvents(t *testing.T) {
 	}
 }
 
-// delivery is a request the receiver got.
-type delivery struct {
+// receivedDelivery is a request the receiver got.
+type receivedDelivery struct {
 	header http.Header
 	body   []byte
 }
 
 // receiver is tests/http.rs receiver: a webhook receiver on loopback;
 // every request goes to the channel and is answered with 204.
-func receiver(t *testing.T) (string, <-chan delivery) {
+func receiver(t *testing.T) (string, <-chan receivedDelivery) {
 	t.Helper()
-	got := make(chan delivery, 16)
+	got := make(chan receivedDelivery, 16)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("the body: %v", err)
 		}
 		w.WriteHeader(http.StatusNoContent)
-		got <- delivery{header: r.Header.Clone(), body: body}
+		got <- receivedDelivery{header: r.Header.Clone(), body: body}
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL + "/hook", got
@@ -177,11 +177,11 @@ func TestM4SignedWebhooksAndIncidents(t *testing.T) {
 
 // receivedEvents reads n deliveries, checks their signatures and returns
 // their events, sorted.
-func receivedEvents(t *testing.T, received <-chan delivery, secret string, n int) []string {
+func receivedEvents(t *testing.T, received <-chan receivedDelivery, secret string, n int) []string {
 	t.Helper()
 	var events []string
 	for range n {
-		var d delivery
+		var d receivedDelivery
 		select {
 		case d = <-received:
 		case <-time.After(10 * time.Second):

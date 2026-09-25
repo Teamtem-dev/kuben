@@ -16,8 +16,10 @@ func TestPasswordsLeaveTheURL(t *testing.T) {
 		url, bare string
 		password  opt.Val[string]
 	}{
-		{"postgres://kuben:s%40cret@db:5432/kuben?sslmode=verify-full",
-			"postgres://kuben@db:5432/kuben?sslmode=verify-full", opt.Some("s@cret")},
+		{
+			"postgres://kuben:s%40cret@db:5432/kuben?sslmode=verify-full",
+			"postgres://kuben@db:5432/kuben?sslmode=verify-full", opt.Some("s@cret"),
+		},
 		{"postgres://kuben@db/kuben", "postgres://kuben@db/kuben", opt.None[string]()},
 		{"postgresql:///kuben?host=/run/postgresql", "postgresql:///kuben?host=/run/postgresql", opt.None[string]()},
 	}

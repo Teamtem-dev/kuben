@@ -128,14 +128,16 @@ func roleCheck(ctx context.Context, r *Report, st *store.Store) {
 
 func cookieCheck(r *Report, cfg config.Config) {
 	_, auto := cfg.Security.CookieSecure.(config.CookieAuto)
-	if warning, ok := cfg.InsecureCookieWarning(config.InCluster()); ok {
+	warning, hasWarn := cfg.InsecureCookieWarning(config.InCluster())
+	switch {
+	case hasWarn:
 		r.Line(LevelWarn, "cookies", warning)
-	} else if cfg.CookieSecure() {
+	case cfg.CookieSecure():
 		r.Line(LevelOK, "cookies", "Secure + HttpOnly (__Host- prefix)")
-	} else if auto {
+	case auto:
 		r.Line(LevelOK, "cookies", "HttpOnly, not Secure: the console is served over plain http (auto; becomes Secure once "+
 			"KUBEN_SERVER__PUBLIC_URL is https)")
-	} else {
+	default:
 		r.Line(LevelWarn, "cookies", "Secure flag disabled — development only")
 	}
 }

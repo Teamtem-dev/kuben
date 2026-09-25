@@ -211,7 +211,7 @@ func podLogs(ctx context.Context, c registry.Cluster, namespace string, lines ui
 
 // hostLogs is the newest lines of the host's `kuben` service.
 func hostLogs(ctx context.Context, lines uint32) map[string]any {
-	cmd := exec.CommandContext(ctx, "journalctl", "-u", "kuben", "--no-pager", "-o", "short-iso", "-n",
+	cmd := exec.CommandContext(ctx, "journalctl", "-u", "kuben", "--no-pager", "-o", "short-iso", "-n", //nolint:gosec // system log inspection command
 		strconv.FormatUint(uint64(lines), 10))
 	var stderr strings.Builder
 	cmd.Stderr = &stderr

@@ -69,7 +69,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options, env Env) error {
 		"doctor": doctorSection(ctx, env.ConfigPath),
 	}
 	st, storeErr := store.ConnectUnmigrated(ctx, cfg.Database)
-	if storeErr == nil {
+	if storeErr == nil && st != nil {
 		defer st.Close()
 		sections["database"] = databaseSection(ctx, st)
 	} else {
@@ -102,7 +102,7 @@ func Run(ctx context.Context, cfg config.Config, opts Options, env Env) error {
 	if err != nil {
 		return err
 	}
-	if storeErr == nil {
+	if storeErr == nil && st != nil {
 		audit(ctx, cfg, st, sum, len(data), opts.Logs, env.Stderr)
 	}
 	suffix := ""
@@ -252,6 +252,9 @@ func databaseSection(ctx context.Context, st *store.Store) map[string]any {
 
 // audit records that a bundle was made.
 func audit(ctx context.Context, cfg config.Config, st *store.Store, sum string, size int, logs bool, stderr io.Writer) {
+	if st == nil {
+		return
+	}
 	org := opt.None[ids.OrgID]()
 	if id, ok, err := st.InstallationOrg(ctx, cfg.Bootstrap.OrgSlug); err == nil && ok {
 		org = opt.Some(id)

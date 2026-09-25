@@ -123,7 +123,7 @@ func (u UI) Banner(version string) {
 // Callers `defer step.Close()` so that a step left by an early return only
 // clears its spinner line.
 func (u UI) Step(label string) *Step {
-	return startStep(u, label, time.Now())
+	return startStep(u, label, time.Now()) //nolint:forbidigo // UI terminal spinner start timestamp
 }
 
 // Done is a step that is done, or that needed nothing because it already

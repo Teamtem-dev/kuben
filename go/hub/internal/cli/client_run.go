@@ -347,7 +347,7 @@ type pacer interface {
 
 type realPacer struct{}
 
-func (realPacer) now() time.Time { return time.Now() }
+func (realPacer) now() time.Time { return time.Now() } //nolint:forbidigo // production fallback when no mock clock is supplied
 
 func (realPacer) sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)

@@ -76,6 +76,7 @@ linters:
         - "*.DeepCopy"
         - "*.DeepCopyInto"
         - "*.DeepCopyObject"
+        - "*.MarshalJSON"
     gocyclo:
       # funlen bounds size; a handler's sequence of checks, each `if err !=
       # nil`, reaches 15 without real branching.

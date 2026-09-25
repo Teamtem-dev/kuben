@@ -250,37 +250,76 @@ func (m *machine) setup(ctx context.Context, opts Opts) error {
 	return nil
 }
 
-func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshState bool, book *journal.Book) error {
+type baseInstall struct {
+	owner         ids
+	kubeconfig    string
+	configured    opt.Val[string]
+	binaryChanged bool
+}
+
+func (m *machine) installBase(ctx context.Context, opts Opts, freshState bool, book *journal.Book) (baseInstall, error) {
 	if err := m.adoptEarlierInstall(book); err != nil {
-		return err
+		return baseInstall{}, err
 	}
 	book.Start("binary")
 	binaryChanged, err := m.installBinary(book)
 	if err != nil {
-		return err
+		return baseInstall{}, err
 	}
 	book.Start("user")
 	owner, err := m.ensureUser(ctx, freshState, book)
 	if err != nil {
-		return err
+		return baseInstall{}, err
 	}
 	book.SetGroup(owner.gid)
 	book.Start("cluster")
 	kubeconfig, err := m.ensureCluster(ctx, opts, owner, book)
 	if err != nil {
-		return err
+		return baseInstall{}, err
 	}
 	configured := readText(ConfigFile)
 	book.Start("database")
 	configReset, err := m.ensureDatabase(ctx, opts, configured, book)
 	if err != nil {
-		return err
+		return baseInstall{}, err
 	}
 	if configReset {
 		configured = opt.None[string]()
 	}
+	return baseInstall{
+		owner:         owner,
+		kubeconfig:    kubeconfig,
+		configured:    configured,
+		binaryChanged: binaryChanged,
+	}, nil
+}
+
+func (m *machine) installPostService(ctx context.Context, kubeconfig string, wanted Wanted, managed bool, console, hub opt.Val[string], port uint16, book *journal.Book) error {
+	if managed {
+		book.Start("kubenconfig")
+		if err := m.ensureKubenConfig(ctx, kubeconfig, wanted, book); err != nil {
+			return err
+		}
+	}
+	consoleHost, hasConsole := console.Get()
+	hubAddr, hasHub := hub.Get()
+	if hasConsole && hasHub {
+		book.Start("console")
+		if err := m.ensureConsole(ctx, kubeconfig, consoleHost, hubAddr, port, book); err != nil {
+			return err
+		}
+	}
+	book.Start("firewall")
+	return m.openFirewall(ctx, port, hub.IsSome(), book)
+}
+
+func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshState bool, book *journal.Book) error {
+	base, err := m.installBase(ctx, opts, freshState, book)
+	if err != nil {
+		return err
+	}
 	book.Start("config")
-	port, err := m.choosePort(ctx, opts.Port, configuredPort(configured), opts.Yes)
+	port, err := m.choosePort(ctx, opts.Port, configuredPort(base.configured), opts.Yes)
 	if err != nil {
 		return err
 	}
@@ -297,14 +336,14 @@ func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshS
 		console = opts.consoleHost()
 	}
 	wants := configWants{hub: hub, console: console, insecureSetup: m.allowHTTPSetup(opts)}
-	configChanged, err := m.writeConfig(ctx, opts, kubeconfig, configured, port, wants, book)
+	configChanged, err := m.writeConfig(ctx, opts, base.kubeconfig, base.configured, port, wants, book)
 	if err != nil {
 		return err
 	}
 	wanted := opts.wanted()
 	if managed {
 		book.Start("platform")
-		if err := m.ensurePlatform(ctx, kubeconfig, wanted, hub.IsSome(), book); err != nil {
+		if err := m.ensurePlatform(ctx, base.kubeconfig, wanted, hub.IsSome(), book); err != nil {
 			return err
 		}
 	}
@@ -314,25 +353,10 @@ func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshS
 	}
 	port = cfg.BindPort()
 	book.Start("service")
-	if err := m.startService(ctx, port, binaryChanged || configChanged, book); err != nil {
+	if err := m.startService(ctx, port, base.binaryChanged || configChanged, book); err != nil {
 		return err
 	}
-	if managed {
-		book.Start("kubenconfig")
-		if err := m.ensureKubenConfig(ctx, kubeconfig, wanted, book); err != nil {
-			return err
-		}
-	}
-	consoleHost, hasConsole := console.Get()
-	hubAddr, hasHub := hub.Get()
-	if hasConsole && hasHub {
-		book.Start("console")
-		if err := m.ensureConsole(ctx, kubeconfig, consoleHost, hubAddr, port, book); err != nil {
-			return err
-		}
-	}
-	book.Start("firewall")
-	if err := m.openFirewall(ctx, port, hub.IsSome(), book); err != nil {
+	if err := m.installPostService(ctx, base.kubeconfig, wanted, managed, console, hub, port, book); err != nil {
 		return err
 	}
 	m.warnWebPorts(ctx)
@@ -340,7 +364,7 @@ func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshS
 	if managed {
 		managedWanted = opt.Some(wanted)
 	}
-	return m.announce(ctx, cfg, owner, configured.IsNone(), host, managedWanted)
+	return m.announce(ctx, cfg, base.owner, base.configured.IsNone(), host, managedWanted)
 }
 
 // allowHTTPSetup is `--allow-http-setup`, or, without a domain and on every
@@ -472,8 +496,9 @@ func (m *machine) nextFreePort(after uint16) opt.Val[uint16] {
 	start := min(uint32(after)+1, 65535)
 	end := min(uint32(after)+100, 65535)
 	for port := start; port < end; port++ {
-		if m.portFree(uint16(port)) {
-			return opt.Some(uint16(port))
+		p := uint16(port) //nolint:gosec // port is bounded by min(..., 65535)
+		if m.portFree(p) {
+			return opt.Some(p)
 		}
 	}
 	return opt.None[uint16]()
@@ -600,7 +625,7 @@ func (m *machine) installBinary(book *journal.Book) (bool, error) {
 	}
 	st := m.ui.Step("Installing the kuben binary")
 	defer st.Close()
-	if err := os.MkdirAll(filepath.Dir(Bin), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(Bin), 0o755); err != nil { //nolint:gosec // system bin directory
 		return false, err //nolint:wrapcheck // names the path
 	}
 	// A running service keeps its old inode open; replace, do not overwrite.
@@ -676,7 +701,7 @@ func (m *machine) ensureUser(ctx context.Context, freshState bool, book *journal
 		if dir == StateDir {
 			created = freshState
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // system directory
 			return ids{}, err //nolint:wrapcheck // names the path
 		}
 		if _, err := book.Claim(journal.KindDirectory, dir, created); err != nil {

@@ -261,7 +261,11 @@ func Encode(sections map[string]any, limit int) ([]byte, error) {
 			delete(sections, "logs")
 			continue
 		}
-		lines, _ := logs[longest].([]any) // an array: found above
+		lines, ok := logs[longest].([]any)
+		if !ok {
+			delete(sections, "logs")
+			continue
+		}
 		logs[longest] = lines[(len(lines)+1)/2:]
 	}
 }
@@ -285,7 +289,7 @@ func writeBundle(dir string, data []byte, now time.Time) (string, string, error)
 	if err := os.MkdirAll(dir, 0o777); err != nil { //nolint:gosec // the umask applies; the directory is made 0700 below
 		return "", "", fmt.Errorf("creating %s: %w", dir, err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // directory permission 0700
 		return "", "", err //nolint:wrapcheck // names the path
 	}
 	path := joinPath(dir, Prefix+now.UTC().Format(stampLayout)+".json")
@@ -310,7 +314,7 @@ func Prune(dir string, keep uint32) (int, error) {
 	if err != nil {
 		return 0, err //nolint:wrapcheck // names the path
 	}
-	var bundles []string
+	bundles := []string{}
 	for _, e := range entries {
 		if filepath.Ext(e.Name()) == ".json" && strings.HasPrefix(e.Name(), Prefix) {
 			bundles = append(bundles, joinPath(dir, e.Name()))

@@ -206,7 +206,7 @@ func (m *machine) existingKubeconfig() opt.Val[string] {
 // ids is a user's uid and gid.
 type ids struct{ uid, gid uint32 }
 
-func (m *machine) userIDs(ctx context.Context, name string) opt.Val[ids] {
+func (m *machine) userIDs(ctx context.Context, name string) opt.Val[ids] { //nolint:unparam // kept for potential other users
 	out, err := m.runner.output(ctx, nil, "getent", "passwd", name)
 	if err != nil || !out.ok {
 		return opt.None[ids]()
@@ -323,7 +323,8 @@ func (m *machine) portOwnerOr(ctx context.Context, port uint16) string {
 
 // portFreeOn tries to listen on the port on every address.
 func portFreeOn(port uint16) bool {
-	l, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	var lc net.ListenConfig
+	l, err := lc.Listen(context.Background(), "tcp", fmt.Sprintf("0.0.0.0:%d", port)) //nolint:noctx // synchronous port availability probe
 	if err != nil {
 		return false
 	}
@@ -339,8 +340,12 @@ func httpGet(ctx context.Context, port uint16, path string) (int, string, error)
 	if err != nil {
 		return 0, "", err //nolint:wrapcheck // shown as is
 	}
-	defer conn.Close() //nolint:errcheck // read to the end already
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	defer conn.Close()                          //nolint:errcheck // read to the end already
+	deadline := time.Now().Add(5 * time.Second) //nolint:forbidigo // tcp socket deadline on setup port probe
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
 		return 0, "", err //nolint:wrapcheck // shown as is
 	}
 	if _, err := fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n", path); err != nil {
@@ -419,12 +424,18 @@ func exists(path string) bool {
 
 func isFile(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular()
+	if err != nil || info == nil {
+		return false
+	}
+	return info.Mode().IsRegular()
 }
 
 func isDir(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
+	if err != nil || info == nil {
+		return false
+	}
+	return info.IsDir()
 }
 
 // readText is the file's content, when it can be read.

@@ -51,8 +51,11 @@ func TestTheBuildNamespaceIsCreatedForRootlessBuildKit(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns, err = own.CoreV1().Namespaces().Get(ctx, "builds", metav1.GetOptions{})
-	if err != nil || len(ns.Labels) != 1 {
-		t.Errorf("the operator's namespace changed: %v %v", ns.Labels, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ns.Labels) != 1 {
+		t.Errorf("the operator's namespace changed: %v", ns.Labels)
 	}
 }
 
@@ -130,7 +133,11 @@ func TestBuildsRunOnlyOnAControllerWithAClusterAndGitSources(t *testing.T) {
 		if err != nil || len(done) != 0 {
 			t.Errorf("%s: %d started, %v", c.name, len(done), err)
 		}
-		if list, _ := r.Primary().Typed.CoreV1().Namespaces().List(t.Context(), metav1.ListOptions{}); len(list.Items) != 0 { //nolint:errcheck // an empty list says the same
+		list, listErr := r.Primary().Typed.CoreV1().Namespaces().List(t.Context(), metav1.ListOptions{})
+		if listErr != nil {
+			t.Fatal(listErr)
+		}
+		if len(list.Items) != 0 {
 			t.Errorf("%s: a namespace was created", c.name)
 		}
 	}
