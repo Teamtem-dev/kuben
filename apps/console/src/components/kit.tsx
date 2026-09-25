@@ -28,6 +28,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Empty, EmptyContent, EmptyDescription } from '@/components/ui/empty'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -345,3 +353,43 @@ export function CopyButton({ value, className }: { value: string; className?: st
     </Button>
   )
 }
+
+/** A form in a dialog, opened by `trigger`; the form closes it through `onOpenChange`. */
+export function FormDialog({
+  open,
+  onOpenChange,
+  trigger,
+  title,
+  description,
+  children,
+  className,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  trigger: ReactNode
+  title: ReactNode
+  description?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent showCloseButton={false} className={className}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description ? (
+            <DialogDescription>{description}</DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">{title}</DialogDescription>
+          )}
+        </DialogHeader>
+        {children}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** The look of a card that is one link (a project, an environment, an app). */
+export const linkCard =
+  'block h-full rounded-xl border bg-card p-4 text-card-foreground shadow-xs outline-none transition hover:border-foreground/20 hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50'

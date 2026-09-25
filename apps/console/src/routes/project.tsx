@@ -1,20 +1,25 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { PlusIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import {
-  Badge,
-  Button,
   ConfirmDelete,
-  Empty,
-  ErrorNote,
+  EmptyState,
+  ErrorAlert,
+  FormDialog,
+  linkCard,
   PageHeader,
-  Select,
-  Status,
-  TextField,
-} from '../components/ui'
-import { createEnvironment, deleteProject, type EnvType, environmentsQuery, projectQuery } from '../lib/api'
-import { fill } from '../lib/messages/pages'
-import { usePrefs } from '../lib/prefs'
+  Section,
+  SelectInput,
+  StatusBadge,
+  Tag,
+  TextInput,
+} from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { DialogClose, DialogFooter } from '@/components/ui/dialog'
+import { createEnvironment, deleteProject, type EnvType, environmentsQuery, projectQuery } from '@/lib/api'
+import { fill } from '@/lib/messages/pages'
+import { usePrefs } from '@/lib/prefs'
 import { PreviewsCard, StatusPageCard } from './ops/project-ops'
 
 const route = getRouteApi('/_authed/projects/$project')
@@ -36,50 +41,54 @@ export function ProjectPage() {
   })
 
   return (
-    <section className="space-y-6">
+    <div className="space-y-6">
       <PageHeader
-        crumbs={
-          <Link to="/" className="hover:text-fg">
-            {t('projects.title')}
-          </Link>
-        }
         title={<span dir="auto">{p.display_name}</span>}
-        subtitle={<span dir="auto">{p.description ?? p.name}</span>}
+        description={<span dir="auto">{p.description ?? p.name}</span>}
         actions={
-          <Button variant={creating ? 'secondary' : 'primary'} onClick={() => setCreating((v) => !v)}>
-            {creating ? t('ui.cancel') : t('project.newEnvironment')}
-          </Button>
+          <FormDialog
+            open={creating}
+            onOpenChange={setCreating}
+            title={t('project.newEnvironment')}
+            className="sm:max-w-2xl"
+            trigger={
+              <Button>
+                <PlusIcon aria-hidden="true" />
+                {t('project.newEnvironment')}
+              </Button>
+            }
+          >
+            <CreateEnvironmentForm project={project} onDone={() => setCreating(false)} />
+          </FormDialog>
         }
       />
 
-      {creating && <CreateEnvironmentForm project={project} onDone={() => setCreating(false)} />}
-
       {environments.length === 0 ? (
-        <Empty>{t('project.empty')}</Empty>
+        <EmptyState>{t('project.empty')}</EmptyState>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {environments.map((e) => (
             <li key={e.resource_name}>
               <Link
                 to="/projects/$project/$environment"
                 params={{ project, environment: e.name }}
-                className="block rounded-xl border border-line bg-surface p-4 transition hover:border-brand/40"
+                className={linkCard}
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate font-medium">{e.name}</span>
-                  <Status
+                  <StatusBadge
                     ready={e.ready}
                     label={e.deleting ? t('project.terminating') : (e.phase ?? undefined)}
                   />
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                  <Badge>{e.env_type}</Badge>
-                  <span dir="ltr" className="truncate font-mono text-subtle text-xs">
+                  <Tag>{e.env_type}</Tag>
+                  <span dir="ltr" className="truncate font-mono text-muted-foreground text-xs">
                     {e.namespace}
                   </span>
                 </div>
                 {e.message && (
-                  <p dir="auto" className="mt-2 text-warn/80 text-xs">
+                  <p dir="auto" className="mt-2 text-warning text-xs">
                     {e.message}
                   </p>
                 )}
@@ -93,20 +102,22 @@ export function ProjectPage() {
 
       <StatusPageCard project={project} />
 
-      <div className="border-line border-t pt-6">
-        {environments.length > 0 ? (
-          <p className="text-subtle text-sm">{t('project.deleteEnvironmentsFirst')}</p>
-        ) : (
+      <Section
+        tone="danger"
+        title={t('ui.dangerZone')}
+        description={environments.length > 0 ? t('project.deleteEnvironmentsFirst') : undefined}
+        actions={
           <ConfirmDelete
             name={project}
             what={t('project.what')}
             pending={remove.isPending}
             error={remove.error}
+            disabled={environments.length > 0}
             onConfirm={() => remove.mutate()}
           />
-        )}
-      </div>
-    </section>
+        }
+      />
+    </div>
   )
 }
 
@@ -135,47 +146,55 @@ function CreateEnvironmentForm({ project, onDone }: { project: string; onDone: (
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3"
-    >
-      <TextField
+    <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-3">
+      <TextInput
         label={t('projects.name')}
         name="name"
         required
+        dir="ltr"
         pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?"
         maxLength={20}
         placeholder="staging"
       />
-      <Select label={t('project.type')} name="env_type" defaultValue="standard" hint={t('project.typeHint')}>
+      <SelectInput
+        label={t('project.type')}
+        name="env_type"
+        defaultValue="standard"
+        hint={t('project.typeHint')}
+        className="sm:col-span-2"
+      >
         <option value="standard">{t('project.type.standard')}</option>
         <option value="production">{t('project.type.production')}</option>
         <option value="preview">{t('project.type.preview')}</option>
-      </Select>
-      <div />
-      <TextField
+      </SelectInput>
+      <TextInput
         label={t('project.cpuQuota')}
         name="cpu"
         placeholder={fill(t('ui.example'), { value: '4' })}
       />
-      <TextField
+      <TextInput
         label={t('project.memoryQuota')}
         name="memory"
         placeholder={fill(t('ui.example'), { value: '8Gi' })}
       />
-      <TextField
+      <TextInput
         label={t('project.maxPods')}
         name="pods"
         type="number"
         min={1}
         placeholder={fill(t('ui.example'), { value: '50' })}
       />
-      <div className="flex items-center gap-3 sm:col-span-3">
+      <ErrorAlert error={mutation.error} className="sm:col-span-3" />
+      <DialogFooter className="sm:col-span-3">
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            {t('ui.cancel')}
+          </Button>
+        </DialogClose>
         <Button type="submit" disabled={mutation.isPending}>
           {mutation.isPending ? t('ui.creating') : t('project.createEnvironment')}
         </Button>
-        <ErrorNote error={mutation.error} />
-      </div>
+      </DialogFooter>
     </form>
   )
 }
