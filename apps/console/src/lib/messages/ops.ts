@@ -191,6 +191,11 @@ export const opsEn = {
   'findings.layer.route': 'Route',
   'findings.layer.dns': 'DNS',
   'findings.layer.tls': 'TLS',
+  'evidence.title': 'Evidence path',
+  'evidence.lead': 'Each layer from the build to the visitor, upstream first, with what was observed.',
+  'evidence.dependsOn': 'Depends on:',
+  'evidence.observed': 'Observed',
+  'evidence.nothing': 'Nothing observed.',
 
   'doctor.check.claim': 'Domain claim',
   'doctor.check.delegation': 'DNS delegation',
@@ -390,6 +395,11 @@ export const opsFa: Record<keyof typeof opsEn, string> = {
   'findings.layer.route': 'مسیر',
   'findings.layer.dns': 'DNS',
   'findings.layer.tls': 'TLS',
+  'evidence.title': 'مسیر شواهد',
+  'evidence.lead': 'هر لایه از بیلد تا بازدیدکننده، از بالادست، با آنچه دیده شد.',
+  'evidence.dependsOn': 'وابسته به:',
+  'evidence.observed': 'دیده‌شده در',
+  'evidence.nothing': 'چیزی دیده نشد.',
 
   'doctor.check.claim': 'ادعای دامنه',
   'doctor.check.delegation': 'واگذاری DNS',

@@ -203,11 +203,11 @@ export function ToneBadge({
 }
 
 /** A line of muted text while something loads. */
-export function Loading({ className }: { className?: string }) {
+export function Loading({ children, className }: { children?: ReactNode; className?: string }) {
   const { t } = usePrefs()
   return (
     <p role="status" className={cn('text-muted-foreground text-sm', className)}>
-      {t('common.loading')}
+      {children ?? t('common.loading')}
     </p>
   )
 }
