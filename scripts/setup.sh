@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-# One-time setup: the Rust toolchain from rust-toolchain.toml, the JS
-# dependencies, and cargo-nextest (the Rust test runner behind `bun run test`).
+# One-time setup: checks for Go (the version in go/hub/go.mod) and Bun,
+# installs the JS dependencies and downloads the Go modules of the workspace.
 #
 #   bun run setup
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1 (install: $2)" >&2; exit 2; }; }
-need rustup https://rustup.rs
+need go https://go.dev/doc/install
 need bun https://bun.com/docs/installation
 
-rustup show active-toolchain
+go version
 bun install --frozen-lockfile
-if ! cargo nextest --version >/dev/null 2>&1; then
-  echo "installing cargo-nextest"
-  cargo install --locked cargo-nextest
-fi
+for m in go/*/; do (cd "$m" && go mod download); done
 echo "ready: bun run dev (API on :8080, UI on :5173) · bun run ci (everything CI checks)"

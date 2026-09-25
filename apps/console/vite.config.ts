@@ -13,7 +13,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
-    // Output is embedded into the binary (rust-embed): no inlined assets, so
+    // Output is embedded into the binary (go:embed): no inlined assets, so
     // the strict CSP (`img-src 'self' data:`) stays the only allowance.
     assetsInlineLimit: 0,
   },

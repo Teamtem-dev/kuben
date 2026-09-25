@@ -9,11 +9,11 @@
 # there before setup.
 # Needs root through sudo and changes the host: run it on a throwaway machine.
 #
-#   KUBEN_BIN=target/debug/kuben scripts/host-install-test.sh
+#   KUBEN_BIN=go/hub/bin/kuben scripts/host-install-test.sh   # after bun turbo run hub#build
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BIN=${KUBEN_BIN:-target/debug/kuben}
+BIN=${KUBEN_BIN:-go/hub/bin/kuben}
 KUBECONFIG_FILE=${KUBECONFIG:-$HOME/.kube/config}
 work=$(mktemp -d)
 
