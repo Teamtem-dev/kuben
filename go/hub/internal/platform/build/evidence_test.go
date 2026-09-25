@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"io"
 	"log/slog"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,5 +127,33 @@ func TestCollectReadsTheNewestScanPod(t *testing.T) {
 	notRun, _, err := build.Collect(t.Context(), running, "kuben.dev/rescan=x", discard())
 	if err != nil || notRun.Detail != opt.Some("the scan did not run") {
 		t.Errorf("not run: %+v, %v", notRun, err)
+	}
+}
+
+// The scan script reads the vulnerability database's date with sed's `\1`
+// (1.2.0 had a raw 0x01 byte there, so no report ever parsed): run its
+// database line through sh with a fake trivy and read the report field.
+func TestTheScanReportCarriesTheDatabaseDate(t *testing.T) {
+	if strings.ContainsRune(build.ScanScript, 0x01) {
+		t.Fatal("the scan script carries a control byte")
+	}
+	start := strings.Index(build.ScanScript, "db=$(")
+	end := strings.Index(build.ScanScript, "| head -n 1)\nsort")
+	if start < 0 || end < start {
+		t.Fatal("no database line in the scan script")
+	}
+	line := build.ScanScript[start : end+len("| head -n 1)")]
+	fake := `trivy() { printf '{"Version":"0.74.0","VulnerabilityDB":{"Version":2,"UpdatedAt":"2026-09-25T06:12:03Z","NextUpdate":"x"}}'; }` + "\n"
+	out, err := exec.CommandContext(t.Context(), "sh", "-c", fake+line+"\nprintf '%s' \"$db\"").Output()
+	if err != nil {
+		t.Fatalf("sh: %v", err)
+	}
+	if string(out) != "2026-09-25T06:12:03Z" {
+		t.Fatalf("db = %q", out)
+	}
+	r := build.ReportOf(opt.Some(`{"status":"ok","scanner":"trivy 0.74.0","db":"` + string(out) + `",` +
+		`"counts":{"critical":1,"high":0,"medium":0,"low":0,"unknown":0},"findings":["CRITICAL:CVE-2026-1"]}`))
+	if r.Status != scan.StatusOK || r.Counts.Critical != 1 {
+		t.Errorf("report %+v", r)
 	}
 }
