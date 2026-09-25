@@ -385,6 +385,25 @@ export const audit = {
   next_before: null,
 }
 
+export const owner = {
+  owner: 'shop-team',
+  contact: '#shop-oncall',
+  runbookUrl: 'https://runbooks.example.com/shop',
+}
+
+export const freezes = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000f9',
+    reason: 'end-of-quarter close',
+    app: null,
+    createdBy: user.email,
+    startsAt: iso(now - 3_600_000),
+    endsAt: iso(now + 86_400_000),
+    liftedAt: null,
+    active: true,
+  },
+]
+
 export const health = {
   ready: true,
   database: 'postgres',
@@ -559,6 +578,10 @@ export async function mockApi(page: Page, { signedIn = true, setupNeeded = false
     if (path === '/api/v1/domains') return json(route, claims)
     if (path === '/api/v1/audit') return json(route, audit)
     if (path === '/api/v1/healthz/details') return json(route, health)
+    if (path === '/api/v1/projects/shop/owner') return json(route, owner)
+    if (path === '/api/v1/projects/shop/applications/web/owner') return json(route, null)
+    if (path === '/api/v1/projects/shop/environments/prod/freezes') return json(route, freezes)
+    if (path === '/api/v1/projects/shop/environments/prod/silences') return json(route, [])
     if (path === '/api/v1/projects/shop/previews') return json(route, previews)
     if (path === '/api/v1/projects/shop/previews/policy') return json(route, previewPolicy)
     if (path === '/api/v1/projects/shop/status-page') return json(route, statusPage)

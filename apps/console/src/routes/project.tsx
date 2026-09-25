@@ -20,6 +20,7 @@ import { DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { createEnvironment, deleteProject, type EnvType, environmentsQuery, projectQuery } from '@/lib/api'
 import { fill } from '@/lib/messages/pages'
 import { usePrefs } from '@/lib/prefs'
+import { OwnerCard } from './ops/controls'
 import { PreviewsCard, StatusPageCard } from './ops/project-ops'
 
 const route = getRouteApi('/_authed/projects/$project')
@@ -101,6 +102,8 @@ export function ProjectPage() {
       <PreviewsCard project={project} />
 
       <StatusPageCard project={project} />
+
+      <OwnerCard project={project} />
 
       <Section
         tone="danger"

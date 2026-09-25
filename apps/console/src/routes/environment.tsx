@@ -37,6 +37,7 @@ import {
 import { parseEnvLines } from '@/lib/env'
 import { fill } from '@/lib/messages/pages'
 import { usePrefs } from '@/lib/prefs'
+import { WindowsCard } from './ops/controls'
 import { DetachedCard } from './ops/environment-ops'
 
 const route = getRouteApi('/_authed/projects/$project/$environment')
@@ -138,6 +139,16 @@ export function EnvironmentPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <Secrets project={project} environment={environment} />
         <RegistryLogins project={project} environment={environment} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <WindowsCard kind="freeze" project={project} environment={environment} />
+        <WindowsCard
+          kind="silence"
+          project={project}
+          environment={environment}
+          apps={apps.map((a) => a.name)}
+        />
       </div>
 
       <DetachedCard project={project} environment={environment} />

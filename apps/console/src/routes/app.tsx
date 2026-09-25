@@ -44,6 +44,7 @@ import { usePrefs } from '@/lib/prefs'
 import { DeploymentsCard } from './app-deployments'
 import { LiveLogs } from './app-logs'
 import { DetachCard, DnsCard, ImagePolicyCard, UsageCard } from './ops/app-ops'
+import { DeliveryCard, EmergencyRollbackCard, OwnerCard } from './ops/controls'
 
 const route = getRouteApi('/_authed/projects/$project/$environment/$app')
 
@@ -148,6 +149,14 @@ export function AppPage() {
         </p>
       )}
       <ErrorAlert error={run.error} />
+      {a.paused != null && (
+        <Notice tone="warning">
+          {t('delivery.pausedNotice')}{' '}
+          <span dir="auto" className="font-medium">
+            {a.paused}
+          </span>
+        </Notice>
+      )}
       {!a.ready && a.message && (
         <Notice tone="warning">
           <span dir="auto">{a.message}</span>
@@ -228,6 +237,7 @@ export function AppPage() {
         <TabsContent value="releases" className="space-y-6">
           <ReleasesCard project={project} environment={environment} app={app} />
           <PromoteCard project={project} environment={environment} app={app} />
+          <EmergencyRollbackCard project={project} environment={environment} app={app} />
         </TabsContent>
 
         <TabsContent value="logs">
@@ -259,6 +269,10 @@ export function AppPage() {
           <DnsCard project={project} environment={environment} app={app} domains={a.domains} />
 
           <ImagePolicyCard project={project} environment={environment} app={app} />
+
+          <DeliveryCard project={project} environment={environment} app={app} paused={a.paused} />
+
+          <OwnerCard project={project} app={app} />
 
           <DetachCard project={project} environment={environment} app={app} />
 
