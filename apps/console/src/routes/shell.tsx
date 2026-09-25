@@ -133,16 +133,28 @@ function AppSidebar() {
   )
 }
 
+/**
+ * Router links are "active" (and get aria-current="page") on every path below
+ * theirs; a crumb is an ancestor of the current page, never the page itself,
+ * so it is active only on an exact match — which the trail never renders as a
+ * link. The current page is the last crumb, a BreadcrumbPage.
+ */
+const crumbActive = { exact: true } as const
+
 /** A link to an earlier step of the trail. */
 function CrumbLink({ crumb }: { crumb: Crumb }) {
   const { t } = usePrefs()
   const link = (() => {
     switch (crumb.kind) {
       case 'page':
-        return <Link to="/">{t(crumb.label)}</Link>
+        return (
+          <Link to="/" activeOptions={crumbActive}>
+            {t(crumb.label)}
+          </Link>
+        )
       case 'project':
         return (
-          <Link to="/projects/$project" params={{ project: crumb.project }}>
+          <Link to="/projects/$project" params={{ project: crumb.project }} activeOptions={crumbActive}>
             {crumb.project}
           </Link>
         )
@@ -151,6 +163,7 @@ function CrumbLink({ crumb }: { crumb: Crumb }) {
           <Link
             to="/projects/$project/$environment"
             params={{ project: crumb.project, environment: crumb.environment }}
+            activeOptions={crumbActive}
           >
             {crumb.environment}
           </Link>
@@ -160,6 +173,7 @@ function CrumbLink({ crumb }: { crumb: Crumb }) {
           <Link
             to="/projects/$project/$environment/$app"
             params={{ project: crumb.project, environment: crumb.environment, app: crumb.app }}
+            activeOptions={crumbActive}
           >
             {crumb.app}
           </Link>
