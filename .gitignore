@@ -1,7 +1,5 @@
-# Rust
-/target
-**/*.rs.bk
-*.pdb
+# Go build output (go/hub/.gitignore covers the hub's bin/)
+/go/agent/bin/
 
 # JS / Bun / Turborepo
 node_modules
@@ -24,7 +22,6 @@ apps/site/.wrangler
 *.db-wal
 *.db-shm
 /.cache
-/.cargo-home
 
 # Editors / OS
 .DS_Store

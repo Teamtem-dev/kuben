@@ -4,8 +4,8 @@
 # it never blocks a merge ("CI success" stays the only required check).
 language: en-US
 tone_instructions: >-
-  Be concise and specific. Skip praise, and skip style points that rustfmt,
-  clippy or Biome already enforce.
+  Be concise and specific. Skip praise, and skip style points that gofumpt,
+  golangci-lint or Biome already enforce.
 early_access: false
 
 reviews:
@@ -21,23 +21,29 @@ reviews:
   # Generated and lock files are reviewed through their sources.
   path_filters:
     - "!bun.lock"
-    - "!Cargo.lock"
+    - "!go/*/go.sum"
+    - "!go.work.sum"
+    - "!go/hub/internal/api/gen/**"
     - "!packages/api-client/openapi.json"
     - "!packages/api-client/src/schema.d.ts"
     - "!charts/kuben/crds/**"
   path_instructions:
-    - path: "crates/**/*.rs"
+    - path: "go/**/*.go"
       instructions: >-
-        Check the invariants in CONTRIBUTING.md that the change touches, in
-        particular: mutations need an AuthzProof (I-1); errors returned to
-        clients carry no internal details; objects in another org answer 404,
-        not 403; channels and streams stay bounded; controllers use
-        server-side apply with the `kuben` field manager.
-    - path: "crates/kuben-store/**"
+        Check the invariants in CONTRIBUTING.md and go/CONVENTIONS.md that the
+        change touches, in particular: mutations need an authorization proof
+        (I-1); errors returned to clients carry no internal details; objects
+        in another org answer 404, not 403; channels and streams stay
+        bounded; controllers use server-side apply with the `kuben` field
+        manager. The API contract (packages/api-client/openapi.json) is
+        frozen: JSON member names, null versus omitted and error texts do not
+        change.
+    - path: "go/hub/internal/store/**"
       instructions: >-
         Migrations are PostgreSQL only (ADR-025), and an applied migration
-        file is never edited (sqlx checksums it). Tenant tables keep their
-        row-level security policies and tenant-aware foreign keys.
+        file is never edited (its checksum is recorded). The schema is frozen
+        until 2.1.0. Tenant tables keep their row-level security policies and
+        tenant-aware foreign keys.
     - path: ".github/**"
       instructions: >-
         Actions must be pinned to a full commit SHA. Untrusted input reaches

@@ -13,7 +13,7 @@
       "dependsOn": ["build"]
     },
     "dev": {
-      "with": ["kuben#dev"]
+      "with": ["hub#dev"]
     }
   }
 }
