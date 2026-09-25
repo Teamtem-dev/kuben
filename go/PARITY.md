@@ -228,7 +228,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/usage.rs` | 127 | 1 | store (usage.go) | ported | 1 → 1 |
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 | platform/agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (the hub module requires go/agent for it) |
-| kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | partial | 3 → 3 written, never run: they need a cluster with controllers (kind), as Rust's `#[ignore]`; skipped unless `KUBEN_TEST_KUBE=1` (a kind CI job is still to add) |
+| kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | ported | 3 → 3; run by the CI job `go-kind` against a kind cluster (KUBEN_TEST_KUBE=1), as Rust ran them with --ignored in its kind job |
 | kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 43 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies, m4 SSO (3), m5 domain claims and DNS records, m4 signed webhooks and incidents, m4 export and detach, m4 scan gate. Left: previews (S5) |
 | kuben-api | `tests/oci.rs` | 41 | 2 | api/oci (network_test.go) | ported | 2 → 2, run only with KUBEN_TEST_NETWORK=1 (Rust: --ignored) |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 | platform/agentlink (mtls_test.go) | ported | 6 → 6 |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 7, ported 206, todo 14.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 6, ported 207, todo 14.

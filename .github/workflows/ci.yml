@@ -191,6 +191,32 @@ jobs:
       - run: cd go/hub && go tool govulncheck ./...
       - run: scripts/rust-drift.sh
 
+  # The Go agent's runtime against a cluster with controllers (tests/runtime.rs:
+  # Deployments must roll out, which envtest cannot do); KUBEN_TEST_KUBE=1 turns
+  # them from skips into runs.
+  go-kind:
+    name: Go agent runtime (kind)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      KUBEN_TEST_KUBE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/agent/go.mod
+          cache-dependency-path: "go/*/go.sum"
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          cluster_name: kuben-go-agent
+          wait: 120s
+      - run: go test -race -count=1 -v ./runtime/
+        working-directory: go/agent
+
   oracle:
     name: Go matches Rust (oracle)
     needs: changes
@@ -654,7 +680,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, fmt, clippy, test, go, oracle, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
+    needs: [changes, fmt, clippy, test, go, go-kind, oracle, postgres, msrv, deny, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
