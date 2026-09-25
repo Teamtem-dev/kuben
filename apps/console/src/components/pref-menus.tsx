@@ -12,11 +12,22 @@ import { LOCALE_NAMES, LOCALES, type Locale, THEMES, type Theme, usePrefs } from
 
 const THEME_ICONS: Record<Theme, LucideIcon> = { system: MonitorIcon, light: SunIcon, dark: MoonIcon }
 
+/*
+ * The top-bar menus are non-modal (`modal={false}`). A modal Radix menu hides
+ * the rest of the page from assistive technology with aria-hidden while its
+ * elements stay focusable (the skip link, the sidebar) — axe's
+ * aria-hidden-focus — and a short menu of choices does not need the page
+ * made inert: the WAI-ARIA menu button pattern does not ask for it. The
+ * keyboard behaviour is unchanged: focus moves into the menu, arrows and
+ * typeahead move within it, Tab stays in it, Escape closes it and returns
+ * focus to the button; a click or focus outside closes it as well.
+ */
+
 /** The language picker of the top bar and the sign-in pages. */
 export function LanguageMenu() {
   const { locale, setLocale, t } = usePrefs()
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={t('prefs.language')} title={t('prefs.language')}>
           <LanguagesIcon aria-hidden="true" />
@@ -40,7 +51,7 @@ export function LanguageMenu() {
 export function ThemeMenu() {
   const { theme, setTheme, t } = usePrefs()
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={t('prefs.theme')} title={t('prefs.theme')}>
           <SunIcon className="dark:hidden" aria-hidden="true" />

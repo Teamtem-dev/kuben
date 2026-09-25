@@ -337,8 +337,9 @@ function UserMenu() {
     },
   })
 
+  // Non-modal like the other top-bar menus: see components/pref-menus.tsx.
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="gap-2 px-1.5" aria-label={t('shell.userMenu')}>
           <Avatar className="size-7">
