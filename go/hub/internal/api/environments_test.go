@@ -2,7 +2,11 @@ package api_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 )
 
 // The environment half of tests/http.rs environments_and_apps_read_from_sql
@@ -60,5 +64,47 @@ func TestEnvironmentsReadAndWriteSQL(t *testing.T) {
 	}
 	if status, env, _ := alice.do("GET", "/api/v1/projects/shop/environments/staging", nil); status != 200 || env["phase"] != "Terminating" || env["deleting"] != true {
 		t.Fatalf("deleting: %d %v", status, env)
+	}
+}
+
+// tests/http.rs m4_quotas_bound_what_apps_may_request.
+func TestM4QuotasBoundWhatAppsMayRequest(t *testing.T) {
+	f := newUsersFixture(t, func(cfg *config.Config) {
+		cfg.Quota.OrgApps = opt.Some[uint64](2)
+		cfg.Quota.OrgEnvironments = opt.Some[uint64](2)
+	})
+	alice := f.signIn("alice@example.com", seedPassword)
+	if status := alice.status("POST", "/api/v1/projects", map[string]any{"name": "shop", "display_name": "Shop"}); status != http.StatusCreated {
+		t.Fatalf("project: %d", status)
+	}
+	const environments = "/api/v1/projects/shop/environments"
+	for _, c := range []struct {
+		body map[string]any
+		want int
+	}{
+		{map[string]any{"name": "tiny", "quota": map[string]any{"cpu": "150m"}}, http.StatusCreated},
+		{map[string]any{"name": "big", "quota": map[string]any{"cpu": "1e3"}}, http.StatusUnprocessableEntity},
+		{map[string]any{"name": "big"}, http.StatusCreated},
+		{map[string]any{"name": "third"}, http.StatusConflict},
+	} {
+		if status := alice.status("POST", environments, c.body); status != c.want {
+			t.Fatalf("%v: %d, want %d", c.body, status, c.want)
+		}
+	}
+	web := func(name string) map[string]any {
+		return map[string]any{"name": name, "image": "nginx:1.27", "port": 80}
+	}
+	status, refused, _ := alice.do("POST", environments+"/tiny/apps", web("web"))
+	detail, _ := refused["detail"].(string)
+	if status != http.StatusConflict || !strings.Contains(detail, "200m CPU") {
+		t.Fatalf("one replica and its surge pod: %d %v", status, refused)
+	}
+	for _, c := range []struct {
+		name string
+		want int
+	}{{"web", http.StatusCreated}, {"api", http.StatusCreated}, {"third", http.StatusConflict}} {
+		if status := alice.status("POST", environments+"/big/apps", web(c.name)); status != c.want {
+			t.Fatalf("%s: %d, want %d", c.name, status, c.want)
+		}
 	}
 }

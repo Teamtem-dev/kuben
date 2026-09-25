@@ -43,7 +43,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `github.rs` | 750 | 6 |  | todo | |
 | kuben-api | `host.rs` | 73 | 2 |  | todo | |
 | kuben-api | `image_watch.rs` | 287 | 0 |  | todo | |
-| kuben-api | `lib.rs` | 105 | 0 |  | todo | |
+| kuben-api | `lib.rs` | 105 | 0 | api (server.go) | partial | router: session, CSRF, audit, timeout (followed logs exempt), body limit, gzip compression (SUBSTITUTIONS), `/api/docs` (api/apidocs), probes, console fallback. The GitHub webhook (S3) and CI exchange (S4) routes follow with their slices |
 | kuben-api | `notify.rs` | 593 | 6 |  | todo | |
 | kuben-api | `oci.rs` | 908 | 9 | api/oci | partial | Parse, Fixed (FixedImages), Registry (RegistryResolver, on go-containerregistry): 5 tests ported (tag_pages split into link and retry halves), 2 dropped (challenge parsing and query encoding are go-containerregistry's; covered by in-process registry tests), 2 left with RegistryVerifier (build slice, S3) |
 | kuben-api | `oidc.rs` | 465 | 5 |  | todo | |
@@ -54,7 +54,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `state.rs` | 151 | 0 |  | todo | |
 | kuben-api | `stream.rs` | 248 | 2 | api/stream, platform/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
 | kuben-api | `transport.rs` | 157 | 0 |  | todo | |
-| kuben-api | `web.rs` | 106 | 1 | api/web | ported |  |
+| kuben-api | `web.rs` | 106 | 1 | api/web | ported | 1 → 1; content types from a fixed table of mime_guess 2.0.5 (Go's mime package differs and reads /etc/mime.types) |
 | kuben-api | `bin/openapi.rs` | 23 | 0 |  | todo | |
 | kuben-api | `auth/mod.rs` | 462 | 1 | api (session_routes.go), api/httpx | ported | SSO routes: S4 |
 | kuben-api | `auth/password.rs` | 75 | 1 | api/auth | ported |  |
@@ -77,7 +77,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/projects.rs` | 189 | 0 | api (projects.go) | ported | list, get (readiness from the org's own projection), create, delete; tests/http.rs `projects_are_tenant_scoped` → `TestProjectsAreTenantScoped` (+ duplicate, delete twice, viewer) |
 | kuben-api | `routes/registries.rs` | 262 | 2 |  | todo | |
 | kuben-api | `routes/request.rs` | 64 | 1 | api (request.go, projects.go, access) | ported | 1 → 1 (`TestTimestampsAreRFC3339`); `actor` is `access.Access.Actor` |
-| kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | partial | project and environment scopes; app scope, sql_target, cluster, kube_error with the app routes |
+| kuben-api | `routes/scope.rs` | 301 | 1 | api (scope.go) | ported | 1 → 1 (`short_names` → `TestEnvironmentShortNames`); project, environment and app scopes, `deleting` (environment or project), cluster, kube_error |
 | kuben-api | `routes/secrets.rs` | 654 | 2 |  | todo | |
 | kuben-api | `routes/status.rs` | 322 | 0 | api (status_routes.go) | ported | 0 unit tests in Rust; tests/http.rs `m5_public_status_pages_show_only_public_facts` + TestStatusPageDto ported |
 | kuben-api | `routes/templates.rs` | 543 | 2 | api (templates.go) | ported | 2 → 2 unit tests + tests/http.rs `scenario8_template_catalogue` |
@@ -90,7 +90,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/apps/crud.rs` | 419 | 0 | api (apps_crud.go) | partial | list, create (image), get, update, delete, restart, handover; `TestAppsReadFromSQL`, `TestViewersCanReadAppsButNotWrite`. Git-sourced create answers 501 until builds (S3) |
 | kuben-api | `routes/apps/deployments.rs` | 510 | 2 | api (apps_deployments.go) | ported | 2 → 2; `a_deployment_is_accepted_once_and_can_be_polled`, `a_lost_answer_is_given_again_without_a_second_run`, `deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql` → Go (PostgreSQL); the input hash is the text Rust hashed, so an Idempotency-Key replay matches across the cutover; `Location` through httpx.SetHeader |
 | kuben-api | `routes/apps/doctor.rs` | 231 | 0 |  | todo | |
-| kuben-api | `routes/apps/domains.rs` | 90 | 0 | api (apps_domains.go) | ported | DNS hostname verification against Gateway addresses (ok, mismatch, unresolved, unknown); injectable DNSResolver |
+| kuben-api | `routes/apps/domains.rs` | 90 | 0 | api (apps_domains.go) + platform/doctor | ported | DNS checks of an app's hosts, concurrent with a 3 s timeout each, addresses ordered as IpAddr; resolver injectable |
 | kuben-api | `routes/apps/evidence.rs` | 296 | 2 |  | todo | |
 | kuben-api | `routes/apps/export.rs` | 544 | 2 |  | todo | |
 | kuben-api | `routes/apps/image_policy.rs` | 220 | 0 |  | todo | |
@@ -145,7 +145,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `activator.rs` | 22 | 0 |  | todo | |
 | kuben-platform | `agentlink.rs` | 580 | 3 |  | todo | |
 | kuben-platform | `discovery.rs` | 734 | 5 | platform/discovery | ported | 5 → 19 Go tests (+ probes over fake clientsets, the loop against its store, the Watch); tokio `watch` → `discovery.Watch` (SUBSTITUTIONS.md) |
-| kuben-platform | `doctor.rs` | 701 | 4 |  | todo | |
+| kuben-platform | `doctor.rs` | 701 | 4 | platform/doctor | partial | DNS verdict and check, the Gateway and platform readers (for routes/apps/domains.rs) with their tests; the checks of the doctor report follow in S2 |
 | kuben-platform | `duration.rs` | 57 | 2 | platform/controller (duration.go) | ported | 2 → 2 Go tests; unexported, returns whole seconds (u64) so huge grace periods saturate like Rust |
 | kuben-platform | `evidence.rs` | 391 | 5 |  | todo | |
 | kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
@@ -229,7 +229,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 |  | todo | |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 |  | todo | |
-| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | skeleton, scenarios 2/3/4, m4 project roles (adapted to ported routes) |
+| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 27 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages. Left with their slices: secrets, rotations, registry logins (S2); scan gate (S3); CI trust, SSO, controls, owners and silences, webhooks and incidents, export and detach (S4); previews, domain claims, image policies, metrics (S5) |
 | kuben-api | `tests/oci.rs` | 41 | 2 |  | todo | |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 |  | todo | |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 |  | todo | |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; ported 38.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 14, ported 125, todo 90.

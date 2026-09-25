@@ -1,11 +1,11 @@
-# Kuben Go rewrite — handoff (2026-09-23)
+# Kuben Go rewrite — handoff (2026-09-25)
 
 Repo: `/Users/fa/Desktop/kubex/kuben-monorepo` · remote `github.com/Teamtem-dev/kuben` · product version 1.2.0 (Rust, released)
 Plan (source of truth, Persian): `docs/KUBEN-GO-REWRITE-PLAN.md` (v2.1, approved by the owner on 2026-09-21). `docs/` is local and gitignored.
 
 ## 0. Rules from the owner (binding)
 
-- **Never `git push`** or touch a remote (no PRs, no tags). Commit locally only. The owner pushes.
+- Since 2026-09-25 the owner pushes `feat/go-rewrite` to GitHub and has the agent continue **on that branch** (commit and `git push origin feat/go-rewrite`). Still: no PRs, no tags, no other branches unless the owner asks.
 - Replies to the owner in **Persian**; code, comments, logs, commit messages in **English**.
 - Commits: Conventional Commits, body explains why, last line `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` (use the model attribution the system reminder gives).
 - No heavy local browser/Playwright runs (CI runs them).
@@ -41,6 +41,17 @@ Must-read docs in repo: `go/CONVENTIONS.md` (binding rules), `go/PARITY.md` (Rus
 - `git checkout -b X origin/main` silently fails here (tracking config) → use `git checkout --no-track -b X <sha>`.
 - Never run `go mod tidy`/`go get` while a background agent edits the same module (it once dropped pgx).
 
+### 2b. Cloud container (Claude Code on the web, from 2026-09-25)
+
+- Checkout `/home/user/kuben`; Go 1.27 downloads itself; modules come straight from proxy.golang.org (no mirror, no env.sh).
+- PostgreSQL 16 is installed: `service postgresql start`, password `kuben` for `postgres`. Every database test runs: `KUBEN_TEST_PG_URL=postgres://postgres:kuben@localhost:5432/postgres KUBEN_REQUIRE_PG=1 go test -race ./...`.
+- golangci-lint v2.13.2 builds here: `GOTOOLCHAIN=go1.27.0 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2`, then `~/go/bin/golangci-lint run --allow-parallel-runners --config ../../.golangci.yml ./...` from `go/hub`.
+- NilAway needs `-include-pkgs github.com/Teamtem-dev/kuben` (in scripts/go-check.sh): without it the analysis of client-go takes >13 GiB and is killed.
+- Bun: the repo pins bun 1.4.2 (`packageManager`); the preinstalled 1.3 refuses the lockfile. Fetch `https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip` and run `BUN_CONFIG_REGISTRY=https://registry.npmjs.org/ bun install --frozen-lockfile`, then `bun run build` in apps/console.
+- The oracle runs locally: download `kuben-x86_64-unknown-linux-musl.tar.gz` of release v1.2.0, build the Go binary with `scripts/go-build.sh`, start both with `KUBEN_DATABASE__URL`, `KUBEN_SERVER__BIND=127.0.0.1:300{1,2}`, `KUBEN_SERVER__STATE_DIR`, then `KUBEN_ORACLE_RUST=… KUBEN_ORACLE_GO=… go test -run TestSkeletonMatchesRust ./test/oracle/`.
+- `go.work.sum` changes whenever a tool is `go run`; restore it (`git checkout go.work.sum`) before committing.
+- CI's `go` and `oracle` jobs run only on pull requests (or workflow_dispatch); a push to the branch alone runs nothing.
+
 ## 3. Branches and worktrees (all local, nothing pushed)
 
 | Branch | Where | Base | State |
@@ -69,6 +80,15 @@ Must-read docs in repo: `go/CONVENTIONS.md` (binding rules), `go/PARITY.md` (Rus
 
 **F0 (console, branch feat/console-shadcn)**: 61 raw shadcn components in `src/components/ui/` (patches listed in `PATCHES.md`: RTL codemod, chart CSSOM, progress RTL, cn import), all tokens in `apps/console/src/styles/theme.css`, new shell (sidebar, breadcrumb, ⌘K, theme, language), zero CSP violations without `unsafe-inline` (style-singleton via adoptedStyleSheets + build-time CSS extraction plugin), lazy routes (initial JS 162/200 kB brotli).
 
+## 4b. Review and S1 closure (2026-09-25)
+
+- First run of the database tests against PostgreSQL: 13 failures. Real bugs fixed: the audit middleware recorded every request as `success` (it read the status through http.TimeoutHandler's writer), audit `status` was always null (json.Number read as float64), an invalid policy answered 500. The rest were test defects (fixed to follow tests/http.rs).
+- golangci-lint (never run before): 442 findings → 0 in go/hub and go/kubenapi. Tuned: govet shadow off, gocyclo 20, test exclusions, recvcheck skips DeepCopy.
+- The S1-E routes written after c9421b5 were reviewed line by line against Rust and fixed: logs (long lines, stable sort, fractional times, errgroup, clock, opt.Val, SSE bytes), promote/jobs/domains (project deleting, IpAddr order, DNS timeouts and concurrency, empty process, Artifact sum type, platform/doctor, platform/secrets.SecretID), approvals/policy (explicit nulls, store error, plan hash via policy.Unhex, error texts, saturating counts), templates/status (stable sort, store clock, orphan cleanup, catalogue as a function). testify is gone.
+- New: `/api/docs` (Scalar page over the frozen contract, api/apidocs), gzip compression as tower-http's CompressionLayer (httpx.Compressor, SUBSTITUTIONS row), axum's keep-alive bytes.
+- The oracle ran for the first time and found contract drift, fixed: `application/json` without charset, console types from mime_guess, CSRF by header presence. Its S1 scenario now covers apps, deployments, releases, logs without a cluster and members; it passes against the released 1.2.0.
+- tests/http.rs: 27 of 44 ported (the rest belong to S2–S5).
+
 ## 5. S1-D done (2026-09-23)
 
 Committed: platform/render, projection, discovery (NilAway fixed), serve wiring (informers → readiness, discovery, materializer worker on every controller replica, reconcilers + drift watch under the Lease), platform/controller (controller-runtime; 16 Rust tests → 34), platform/materializer (20 Rust tests → 17; the 3 secrets tests wait for the keyring), store reads (pause, delivery, observation, detach.rs), kubenapi `DecodeAppSpec` (serde-strict required members) and `protocol.Apply`. Full `go-check.sh` + `go test -race ./...` green.
@@ -95,6 +115,6 @@ Owner-side (outside the sandbox, needs Docker): `docker run -d --name kuben-pg -
 
 ## 8. Immediate next action
 
-S1-E so far (2026-09-23): projects create/delete, environments, apps (crud, restart, handover), deployments (start with Idempotency-Key, list, get), releases and rollback, api/oci (go-containerregistry). Git-sourced apps answer 501 until S3; registry logins wait for the keyring (S2); a registry 429 answers 503 as in Rust.
+S1 is closed (every S1 file ported, reviewed against Rust, tests green on PostgreSQL, lint clean, oracle green). The owner may tag `2.0.0-alpha.1` after CI is green on a pull request.
 
-Next: port the remaining S1 app routes from `crates/kuben-api/src/routes/apps/` — `promote.rs`, `jobs.rs`, `logs.rs` (needs the cluster; `environments_and_apps_read_from_sql` expects 503 for logs without one), `domains.rs`, `approvals.rs` (decide/list) — each with its tests, then templates, then extend `go/hub/test/oracle` scenarios. Report in Persian after each route group.
+Next: **S2** from `docs/GO-REWRITE-ROADMAP.md` §2, in order: 2.1 secret keyring (`kuben-platform/src/secrets.rs`, 10 tests) → 2.2 store secrets → 2.3 secrets and registries routes → 2.4 materializer secrets and resolve with logins → 2.6 domains/DNS → 2.8 doctor → 2.9–2.12 agent and AgentLink (`go/agent`) → 2.13 envtest tests → 2.14 oracle.

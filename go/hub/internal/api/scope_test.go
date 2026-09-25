@@ -59,17 +59,10 @@ func newFixture(t *testing.T) fixture {
 // newFixtureWith is newFixture on a configuration edit changed.
 func newFixtureWith(t *testing.T, edit func(*config.Config)) fixture {
 	t.Helper()
-	c, st, p := newServerWithProjections(t, edit)
+	f := newUsersFixture(t, edit)
 	ctx := t.Context()
-	org, err := st.CreateOrg(ctx, "acme", "ACME")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f := fixture{t: t, c: c, store: st, org: org.ID, projections: p}
-	// As in Rust's setup, alice and bob hold org roles without a membership row.
-	f.user("alice@example.com", opt.Some("Alice"), perm.Owner, false)
-	f.user("bob@example.com", opt.None[string](), perm.Viewer, false)
-	tenant, err := st.Tenant(ctx, org.ID)
+	st := f.store
+	tenant, err := st.Tenant(ctx, f.org)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +90,22 @@ func newFixtureWith(t *testing.T, edit func(*config.Config)) fixture {
 	if err := tenant.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
+	return f
+}
+
+// newUsersFixture is tests/http.rs setup_with: the organization and its
+// people (alice an owner, bob a viewer), nothing else.
+func newUsersFixture(t *testing.T, edit func(*config.Config)) fixture {
+	t.Helper()
+	c, st, p := newServerWithProjections(t, edit)
+	org, err := st.CreateOrg(t.Context(), "acme", "ACME")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := fixture{t: t, c: c, store: st, org: org.ID, projections: p}
+	// As in Rust's setup, alice and bob hold org roles without a membership row.
+	f.user("alice@example.com", opt.Some("Alice"), perm.Owner, false)
+	f.user("bob@example.com", opt.None[string](), perm.Viewer, false)
 	return f
 }
 
