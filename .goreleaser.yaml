@@ -1,4 +1,13 @@
-# goreleaser v2 — release builds of the Go hub (plan §5, §14).
+# goreleaser v2 — release builds of the Go hub and agent (plan §5, §14),
+# run by .github/workflows/release-go.yml for tags v2.*.
+#
+# The artifacts keep the names, layout and signatures of the Rust releases
+# (release.yml), because install.sh, the oracle job, the smoke test and
+# existing documentation download them by name:
+#   kuben-<rust target triple>.tar.gz (.zip on Windows) with kuben
+#   (+ kuben-agent on Linux), LICENSE and README.md; <archive>.sha256;
+#   checksums.txt over every archive, SBOM, install.sh and bundle.lock.json,
+#   signed keyless as checksums.txt.sigstore.json.
 # Pre-releases (2.0.0-alpha.N, -beta.N, -rc.N) are published as such and
 # never become `latest`; GA re-tags the last rc's commit.
 version: 2
@@ -6,9 +15,10 @@ project_name: kuben
 
 before:
   hooks:
-    - bun install --frozen-lockfile
-    - bun turbo run @kuben/console#build
-    # Embed the console once, before the parallel builds.
+    # The console is built by the workflow (job `web`) and unpacked into
+    # apps/console/dist before goreleaser runs; embed it once, before the
+    # parallel builds.
+    - bash -c 'test -f apps/console/dist/index.html'
     - bash -c 'find go/hub/internal/api/web/dist -mindepth 1 ! -name .gitkeep -delete && cp -R apps/console/dist/. go/hub/internal/api/web/dist/ && find go/hub/internal/api/web/dist -name "*.map" -delete'
 
 builds:
@@ -23,36 +33,75 @@ builds:
     ldflags:
       - -s -w -X github.com/Teamtem-dev/kuben/go/hub/internal/version.Version={{ .Version }}
     mod_timestamp: "{{ .CommitTimestamp }}"
+    # The five Rust targets: x86_64/aarch64 Linux (static), both macOS,
+    # x86_64 Windows.
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ignore:
       - goos: windows
         goarch: arm64
 
+  # The cluster agent (M2.8) runs inside Linux clusters only.
+  - id: kuben-agent
+    dir: go/agent
+    main: ./cmd/kuben-agent
+    binary: kuben-agent
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux]
+    goarch: [amd64, arm64]
+
 archives:
-  - formats: [tar.gz]
+  - id: kuben
+    ids: [kuben, kuben-agent]
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
-    name_template: "kuben-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    # Rust target triples, as release.yml named them.
+    name_template: >-
+      kuben-{{ if eq .Arch "amd64" }}x86_64{{ else }}aarch64{{ end }}-{{ if eq .Os "linux" }}unknown-linux-musl{{ else if eq .Os "darwin" }}apple-darwin{{ else }}pc-windows-msvc{{ end }}
+    wrap_in_directory: false
+    files:
+      - LICENSE
+      - README.md
 
 checksum:
-  name_template: SHA256SUMS
+  name_template: checksums.txt
   algorithm: sha256
+  split: false
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./bundle.lock.json
 
 sboms:
-  - artifacts: archive
+  - id: archives
+    artifacts: archive
+    documents:
+      - '{{ trimsuffix (trimsuffix .ArtifactName ".tar.gz") ".zip" }}.cdx.json'
+    args: ["$artifact", "--output", "cyclonedx-json=$document"]
 
+# Keyless (Sigstore): the certificate names the release workflow and tag.
+# Signing checksums.txt covers every file it lists; install.sh verifies the
+# bundle when cosign is installed.
 signs:
-  - cmd: cosign
-    signature: "${artifact}.sig"
-    certificate: "${artifact}.pem"
-    args: [sign-blob, "--output-signature=${signature}", "--output-certificate=${certificate}", "${artifact}", "--yes"]
+  - id: checksums
+    cmd: cosign
     artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: [sign-blob, "--yes", "--bundle=${signature}", "${artifact}"]
 
 release:
   prerelease: auto
   make_latest: "{{ if .Prerelease }}false{{ else }}true{{ end }}"
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./bundle.lock.json
 
 changelog:
   use: github

@@ -1,12 +1,13 @@
 name: Release
 
-# Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) that matches the version in
-# Cargo.toml. Produces static binaries for 5 targets, checksums, build
+# Push a tag `v1.X.Y` (or `v1.X.Y-rc.N`) that matches the version in
+# Cargo.toml: the Rust 1.x line. 2.x tags are the Go release train
+# (release-go.yml). Produces static binaries for 5 targets, checksums, build
 # provenance, a GitHub Release and a multi-arch image on GHCR.
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v1.*"]
   workflow_dispatch:
     inputs:
       tag:
