@@ -1,7 +1,8 @@
-// Package build is Git → isolated build (M3, ADR-028). It replaces
-// crates/kuben-platform/src/build/mod.rs; so far only that module's types
-// and interfaces are ported (the job, steps, observe, evidence, rescan and
-// worker submodules follow).
+// Package build is Git → isolated build (M3, ADR-028). It replaces the Rust
+// module crates/kuben-platform/src/build: mod.rs (this file), job.rs
+// (job.go, scripts.go), steps.rs, observe.rs, evidence.rs, rescan.rs and
+// worker.rs (worker.go, attempt.go, cluster.go); scenarios.rs is
+// scenarios_test.go.
 //
 // The worker claims `source.sync` and `build` operations. A sync reads the
 // branch head through a [SourceProvider]; a build runs as one rootless
@@ -9,7 +10,10 @@
 // service-account token, and succeeds only when an [OutputVerifier] finds
 // the reported digest in the registry. The interfaces are the failure
 // boundary to the outside world; their HTTP implementations live with the
-// API's transport (internal/api/github, internal/api/oci).
+// API's transport (internal/api/github, internal/api/oci). After the build,
+// the pod writes the image's SBOM and scans it (evidence.go, M4.6); the
+// scan is recorded before the attempt completes, so the scan gate judges
+// it.
 package build
 
 import (
