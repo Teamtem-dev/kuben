@@ -15,11 +15,15 @@ import (
 	"github.com/Teamtem-dev/kuben/go/kubenapi/protocol"
 )
 
-// Ported from crates/kuben-agent/src/protocol.rs. The byte fixtures are
+// Ported from crates/kuben-agent/src/protocol.rs. The byte fixtures were
 // written from the serde attributes of the Rust types (the tag first,
 // members in declaration order, `skip_serializing_if` members left out,
-// serde_json's escaping); the Rust registry was not available to generate
-// them, see TestEveryMessageEncodesAsSerdeDid.
+// serde_json's escaping) and then checked against serde_json::to_vec of the
+// real Rust types at commit 86ce940: every fixture of
+// TestEveryMessageEncodesAsSerdeDid, TestStringsEscapeAsSerdeJSON and
+// TestEnvelopesAndObservationsHaveAStableShape is byte-identical, and
+// serde refuses and accepts exactly the bodies TestDecodingIsAsStrictAsSerde
+// lists.
 
 func ptr(s string) *string { return &s }
 
