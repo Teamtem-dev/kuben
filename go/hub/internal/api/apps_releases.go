@@ -152,7 +152,7 @@ func (s *Server) RollbackApp(ctx context.Context, req *gen.Rollback, params gen.
 	if err := validateSpec(&spec); err != nil {
 		return nil, err
 	}
-	dto, err := s.deployChangeFor(ctx, a, app, &spec, deployArtifact{release: opt.Some(run.Release)}, store.ReasonRollback)
+	dto, err := s.deployChangeFor(ctx, a, app, &spec, releaseArtifact{id: run.Release}, store.ReasonRollback)
 	if err != nil {
 		return nil, err
 	}

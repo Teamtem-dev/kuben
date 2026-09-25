@@ -29,7 +29,6 @@ var (
 	SplitLine          = splitLine
 	Belongs            = belongs
 	NewLogStreams      = newLogStreams
-	DNSVerdict         = dnsVerdict
 	RefusalErr         = refusalErr
 	Eligible           = eligible
 	PolicyOf           = policyOf

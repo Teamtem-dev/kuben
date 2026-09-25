@@ -271,12 +271,27 @@ func (s *Server) resolve(ctx context.Context, image string) (oci.Resolved, error
 	return oci.Resolved{}, kerr.New(kerr.Validation, "%s", err.Error())
 }
 
-// deployArtifact is what a deployment runs: a newly resolved image, or an
-// existing release.
-type deployArtifact struct {
-	resolved opt.Val[oci.Resolved]
-	release  opt.Val[ids.ReleaseID]
+// deployArtifact is what a deployment runs (apps/mod.rs Artifact): a newly
+// resolved image, or an existing release.
+//
+//sumtype:decl
+type deployArtifact interface {
+	isDeployArtifact()
 }
+
+// resolvedArtifact is Artifact::Resolved: an image resolved for this
+// deployment, released anew.
+type resolvedArtifact struct {
+	image oci.Resolved
+}
+
+// releaseArtifact is Artifact::Release: an existing release.
+type releaseArtifact struct {
+	id ids.ReleaseID
+}
+
+func (resolvedArtifact) isDeployArtifact() {}
+func (releaseArtifact) isDeployArtifact()  {}
 
 // change is one change of an app, to record and deploy.
 type change struct {
@@ -358,11 +373,13 @@ func (s *Server) deploy(ctx context.Context, t *store.Tenant, a access.Access, c
 // releaseOf is the release c deploys: the one given, or a new release of
 // the resolved image.
 func (s *Server) releaseOf(ctx context.Context, t *store.Tenant, c change, actor string) (ids.ReleaseID, error) {
-	if id, ok := c.artifact.release.Get(); ok {
-		return id, nil
-	}
-	image, ok := c.artifact.resolved.Get()
-	if !ok {
+	var image oci.Resolved
+	switch a := c.artifact.(type) {
+	case releaseArtifact:
+		return a.id, nil
+	case resolvedArtifact:
+		image = a.image
+	case nil:
 		return ids.ReleaseID{}, kerr.Wrap(nil, "a change without an artifact")
 	}
 	id, _, err := t.CreateRelease(ctx, c.project, store.PortableRelease{
@@ -428,7 +445,7 @@ func (s *Server) createApp(ctx context.Context, a access.Access, e envScope, nam
 	if err := validateSpec(&spec); err != nil {
 		return gen.AppDto{}, err
 	}
-	if e.env.Deleting {
+	if e.deleting() {
 		return gen.AppDto{}, kerr.New(kerr.Conflict, "environment `%s` is being deleted", e.env.Slug)
 	}
 	namespace := e.namespace()
@@ -484,7 +501,7 @@ func (s *Server) newApp(
 	}
 	if err := s.deploy(ctx, t, a, change{
 		project: project, application: application, target: tgt, spec: spec,
-		artifact: deployArtifact{resolved: opt.Some(resolved)}, reason: store.ReasonDeploy,
+		artifact: resolvedArtifact{image: resolved}, reason: store.ReasonDeploy,
 		reference: e.project.project.Slug + "/" + e.env.Slug + "/" + name, chain: e.chain(),
 		environment: e.env.ID, quota: e.env.Quota,
 	}); err != nil {

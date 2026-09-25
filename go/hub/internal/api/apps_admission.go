@@ -25,6 +25,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/controller"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/doctor"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
@@ -61,12 +62,8 @@ func (s *Server) platform(ctx context.Context) (render.Platform, error) {
 	}
 	configs := make([]v1alpha1.KubenConfig, 0, len(list.Items))
 	for i := range list.Items {
-		data, err := list.Items[i].MarshalJSON()
+		c, err := doctor.DecodeKubenConfig(&list.Items[i])
 		if err != nil {
-			return render.Platform{}, kerr.Wrap(err, "reading a KubenConfig")
-		}
-		var c v1alpha1.KubenConfig
-		if err := json.Unmarshal(data, &c); err != nil {
 			return render.Platform{}, kerr.Wrap(err, "reading a KubenConfig")
 		}
 		configs = append(configs, c)

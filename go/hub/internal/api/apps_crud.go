@@ -184,15 +184,15 @@ func (s *Server) updateArtifact(ctx context.Context, app appScope, image string,
 	if given && (!hasImage || image != current) {
 		resolved, err := s.resolve(ctx, image)
 		if err != nil {
-			return deployArtifact{}, err
+			return nil, err
 		}
-		return deployArtifact{resolved: opt.Some(resolved)}, nil
+		return resolvedArtifact{image: resolved}, nil
 	}
 	release, ok := app.app.Release.Get()
 	if !ok {
-		return deployArtifact{}, kerr.New(kerr.Conflict, "app `%s` has no release yet", app.app.Slug)
+		return nil, kerr.New(kerr.Conflict, "app `%s` has no release yet", app.app.Slug)
 	}
-	return deployArtifact{release: opt.Some(release)}, nil
+	return releaseArtifact{id: release}, nil
 }
 
 // deployChangeFor records spec with artifact as app's next run for reason

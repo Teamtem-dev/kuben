@@ -116,6 +116,12 @@ func (e envScope) resourceName() string {
 	return EnvironmentResourceName(e.project.project.Slug, e.env.Slug)
 }
 
+// deleting reports whether the environment, or its project, is being
+// deleted (scope.rs EnvScope::deleting).
+func (e envScope) deleting() bool {
+	return e.env.Deleting || e.project.project.Deleting
+}
+
 func (e envScope) chain() authz.ScopeChain {
 	c := e.project.chain()
 	c.Environment = opt.Some(e.env.ID.UUID())
