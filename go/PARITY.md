@@ -1,5 +1,7 @@
 # Rust → Go parity ledger
 
+> **History (G7, 2026-09-25):** the Rust crates were removed from `feat/go-rewrite`; every file below is ported or deliberately dropped. The Rust sources stay readable at `86ce940` (origin/main) and in the v1.2.0 release, which the oracle job still runs as the referee. Units merged on 2026-09-25 were written without compiling (owner's instruction) and are verified by CI from here.
+
 Baseline: every Rust file as of `86ce940` (origin/main). A file is **done** only when its Go counterpart is reviewed line by line against it, every one of its tests has a Go counterpart, and lint (golangci-lint, NilAway) is clean. `scripts/rust-drift.sh` lists Rust files changed after the baseline.
 
 Status: `todo` · `partial` (the parts a slice needs; the note says what is left) · `ported` (written, tests green, not yet reviewed) · `reviewed` · `dropped` (deliberately not ported; reason given).

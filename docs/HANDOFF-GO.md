@@ -113,29 +113,30 @@ bun turbo run build --filter=hub   # builds go/hub/bin/kuben with the console em
 ```
 Owner-side (outside the sandbox, needs Docker): `docker run -d --name kuben-pg -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine`, then `cd go/hub && KUBEN_TEST_PG_URL=postgres://postgres:kuben@localhost:5432/postgres KUBEN_REQUIRE_PG=1 go test -race ./...`.
 
-## 8. Status (2026-09-25) and next action
+## 8. Status (2026-09-25, end of session) and next action
 
-Branch `feat/go-rewrite` (pushed). Ledger: go/PARITY.md — 231 Rust files: ported 172, partial 10, todo 47, dropped 2.
+Branch `feat/go-rewrite` (local commits, **not pushed**: the owner pushes and merges). Ledger: go/PARITY.md — 231 Rust files: ported 227, dropped 4, todo 0, partial 0. Rust is removed from the branch (G7).
+
+**Important:** at the owner's request ("don't build, just write the code") everything merged after commit `0c26460` was written **without compiling, vetting, linting or testing** (the agents' earlier parts had run green before the override). The first job of the next session is to make it compile and pass: see "Next action".
 
 ### Done
 - [x] S1 (all), review fixes, envtest infrastructure, oracle
-- [x] S2: keyring, store secrets, secrets/registries routes, materializer secrets, serve keyring; AgentLink (protocol, TLS, enroll, hub, link, local agent, repo/agents) + the `go/agent` binary; api/dns; platform/doctor; notify SealSecret/OpenSecret
-- [x] S3: store builds and scans; GitHub App client (api/github); build contracts (platform/build/build.go)
-- [x] S4: controls (owners, freezes, silences, pause, emergency rollback); installs, backups store; CI trust (store ci, api/oidc, routes/ci, exchange); SSO (store sso, api/sso, SSO routes, 3 http.rs scenarios)
-- [x] S5: usage/rollups/metrics; image policies (store, routes, image_watch in serve/background.go); platform/evidence
+- [x] S2: keyring, secrets, registries, AgentLink + `go/agent`, api/dns, platform/doctor; domains (repo/domains.rs, routes/domains.rs), doctor delegation/proxy/agent checks
+- [x] S3: store builds/scans, GitHub App; build pipeline (job, steps, observe, evidence, rescan, worker, 16 scenarios), oci Verifier, tests/oci.rs, serve builds; routes builds, scans, vulnerabilities, source, Git-sourced apps, routes/git.rs (installations + webhook)
+- [x] S4: controls, installs, backups, CI trust, SSO; notify (repo/notify.rs, notify.rs, notifier in serve), incidents + webhooks; export and detach
+- [x] S5: usage, image policies, platform/evidence; routes/apps/evidence.rs + doctor graph/findings; previews (store, lifecycle, janitor, routes; webhook → Previews.OnPull); client.rs, host.rs; state.rs, lib.rs, routes/mod.rs
+- [x] tests/http.rs: 44 of 44; tests/ops_store_pg.rs; agent tests/runtime.rs runs in the new `go-kind` CI job
+- [x] G5: the whole `kuben` CLI (cli.Root with every command, env fallbacks): serve, migrate, doctor, reset-admin, setup-token, agent-token, setup, status, login, apps, deploy, logs, rollback, uninstall, upgrade-check, backup, restore, support-bundle, dns01-issuer, version (+ --bundle), copy-self; bootstrap.rs, bundle.rs, telemetry.rs (Prometheus with Rust's six metric names, RUST_LOG); serve.rs complete (upgrade.Migrate with backup first, first admin, retention budgets, backup watch + incident, install journal, activator warning, metrics exporter)
+- [x] G6 (code side): `.goreleaser.yaml` (5 hub targets + Linux agent, Rust triple archive names, checksums.txt + cosign bundle as install.sh expects, SBOMs), `.github/workflows/release.yml` for v2.* tags (Go tests on PG + envtest, goreleaser, provenance, image, chart, install check, smoke); size budgets warn only
+- [x] G7: crates/ and all Rust tooling removed; CI Go-only (e2e, e2e-build, host-install, k3s-install, budgets build the Go binaries); security.yml uses govulncheck; Dockerfile is a Go build; scripts and docs updated; ADR-033 (Go runtime) on the site; openapi.json and the CRD manifest are frozen files now
 
-### Work in progress — saved as patches in docs/go-wip/ (apply with `git apply --3way docs/go-wip/<name>.patch`, then finish, test, commit)
-- [ ] `s2-domains.patch` — repo/domains.rs rest, routes/domains.rs, doctor delegation/proxy/agent checks (apps_doctor.go); http.rs `m5_domain_claims_and_dns_records` (conflicts only in api/server.go Deps: keep both fields)
-- [ ] `s4-notify.patch` — repo/notify.rs, notify.rs (planning, HMAC signing, delivery worker), routes/incidents.rs; http.rs `m4_signed_webhooks_and_incidents`; start the notifier inside serve/background.go startBackground
-- [ ] `s3-build.patch` — platform/build job/steps/worker/observe/evidence/rescan/scenarios, oci RegistryVerifier, tests/oci.rs; serve wiring (conflict in serve/serve.go: keep both)
-- [ ] `s3-routes.patch` (only apps_builds.go started) — routes apps/builds, apps/scans, vulnerabilities, apps/source (+ Git-sourced app creation in apps_crud.go), routes/git (installations + GitHub webhook); http.rs `m4_the_scan_gate_refuses_known_critical_findings`
-- [ ] `s4-export.patch` — routes/apps/export.rs (+ detach); http.rs `m4_export_detach_and_release`
-Each patch is unverified work in progress: read it against the Rust file, complete it, port every Rust test.
+### Next action (in order)
+1. **Make it compile and pass**, module by module, from go/hub, go/agent, go/kubenapi: `go build ./... && go vet ./... && test -z "$(go tool gofumpt -l .)"`, `go test -race ./...` with PostgreSQL and envtest, `bash ../../scripts/go-check.sh`, golangci-lint v2.13.2 with 0 issues (a local binary is at `.cache/go/golangci-lint`). Expect compile errors in the uncompiled units: cli/* (setup, client, backup, support, doctor, dns01, upgrade), bootstrap, platform/metrics wiring (health, supervise, controller, leader, projection source), api (previews, git, apps_evidence, apps_export, source, scans, vulnerabilities), serve (maintenance, background). Restore go.work.sum before committing.
+2. Then open the PR (CI's `go`, `go-kind`, `oracle` jobs only run on pull requests) and fix what CI finds (database tests, envtest, kind, e2e jobs on the Go binaries).
+3. Tidy: fold `serve.AdvertiseIP` and `api.WriteOwnerOnly` into `platform/host`; check the dns01 `--dry-run` YAML golden once against the v1.2.0 binary; `docs` configuration reference still documents Tokio `[runtime]` settings that 2.x ignores.
+4. Release train (G6, operational): `v2.0.0-alpha.1` once CI and the oracle are green; beta/rc gates and cutover rehearsal per plan §14.
+5. Local cleanup (owner): `target/` and `.cargo-home/` at the repository root are leftover Rust build output, no longer ignored by .gitignore — delete them to free disk.
 
-### Still to do after that
-- [ ] routes/apps/evidence.rs (+ wire the graph and findings into apps_doctor.go)
-- [ ] S5: previews.rs + routes/previews.rs + repo/previews.rs rest (http.rs `m5_previews_follow_pull_requests`); client.rs, host.rs; routes/mod.rs, state.rs, lib.rs rest; bin/openapi.rs
-- [ ] partials: serve.rs (builds, background), apps/crud.rs, oci.rs, tests/ops_store_pg.rs, agent tests/runtime.rs (needs a kind CI job with KUBEN_TEST_KUBE=1)
-- [ ] G5: kuben CLI (cli/*: setup, backup, support, doctor, client, ui, upgrade, dns01, admin, agent), bootstrap.rs, bundle.rs, telemetry.rs, main.rs rest
-- [ ] G6: release train (goreleaser, `-X main.version` for both binaries, release CI, images); G7: remove the Rust crates once the oracle and CI are green
-- [ ] Owner decisions: ghinstallation not used (keep hand-written token cache?); hub module depends on go/agent (or move the hub link into kubenapi); automemlimit for the agent; regenerate AgentLink byte fixtures with the Rust compat generator; contract int widths for CI trust (int64/int32 vs u64/u32)
+### Owner decisions pending
+- **Rust 1.2.0 bug (hotfix candidate):** `crates/kuben-platform/src/build/job.rs` SCAN_SCRIPT has a raw byte 0x01 where `\1` was meant in the sed that reads the Trivy DB date; whenever `trivy version` prints `UpdatedAt`, the report JSON contains a control byte, serde rejects it and every scan is recorded `unavailable` (the scan gate never sees findings). The Go port keeps the same bytes (pinned by TestScriptsAreRustsBytes). Fix both (literal `\1`) together.
+- ghinstallation not used (hand-written token cache kept?); hub depends on go/agent (or move the hub link into kubenapi); automemlimit for the agent; regenerate AgentLink byte fixtures with the (now removed) Rust generator from 86ce940; contract int widths for CI trust (int64/int32 vs u64/u32).
