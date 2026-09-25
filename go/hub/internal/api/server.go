@@ -19,6 +19,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/problem"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/web"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/authz"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
@@ -78,6 +79,9 @@ type Deps struct {
 	// Keyring seals and opens managed secret values (M4.4); without it
 	// secrets and registry logins cannot be set (503).
 	Keyring opt.Val[*secrets.Keyring]
+	// SSO is single sign-on with an OpenID Connect provider (M4.3), when
+	// it is enabled.
+	SSO opt.Val[*sso.Client]
 }
 
 // Server implements the generated handler interface. Operations not ported

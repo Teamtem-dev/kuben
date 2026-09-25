@@ -79,7 +79,15 @@ func (s *Server) Login(ctx context.Context, req *gen.LoginRequest) (gen.LoginRes
 	if found {
 		account = opt.Some(creds.User)
 	}
-	if !found || !ok || !creds.User.IsActive || creds.PasswordHash.IsNone() {
+	// With `sso.disable_password_for_linked`, an account linked to the
+	// identity provider signs in there only.
+	ssoOnly := false
+	if found && ok && s.deps.SSO.IsSome() && s.deps.Config.SSO.DisablePasswordForLinked {
+		if ssoOnly, err = s.deps.Store.HasIdentity(ctx, creds.User.ID); err != nil {
+			return nil, err //nolint:wrapcheck // a store error, answered as internal
+		}
+	}
+	if !found || !ok || ssoOnly || !creds.User.IsActive || creds.PasswordHash.IsNone() {
 		s.throttle.recordFailure(ctx, email, ip)
 		s.auditLogin(ctx, account, false, email, "failure")
 		return nil, kerr.ErrUnauthorized
@@ -218,14 +226,6 @@ func (s *Server) ChangePassword(ctx context.Context, req *gen.ChangePassword) (g
 	}
 	s.sessionCache.Purge()
 	return &gen.ChangePasswordNoContent{}, nil
-}
-
-// GetSsoInfo says whether single sign-on is offered (not yet ported: never).
-func (s *Server) GetSsoInfo(context.Context) (*gen.SsoInfo, error) {
-	var name, start gen.OptNilString
-	name.SetToNull()
-	start.SetToNull()
-	return &gen.SsoInfo{Enabled: false, DisplayName: name, StartUrl: start}, nil
 }
 
 // serveStream is the event stream, filtered to the caller's organizations.

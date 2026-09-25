@@ -89,6 +89,7 @@ func newServerWithProjections(t *testing.T, edit func(*config.Config)) (*client,
 		Projections: p,
 		Images:      privateImages{testImages(t)},
 		Keyring:     opt.Some(testKeyring()),
+		SSO:         testSSO(t, cfg),
 		Console:     web.NewFS(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>console")}}),
 	})
 	if err != nil {

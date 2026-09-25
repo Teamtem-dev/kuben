@@ -24,6 +24,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -112,7 +113,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			buffer, done := startUsage(ctx, r.Primary(), st, h, logger)
 			live, subsystems = opt.Some(buffer), append(subsystems, done)
 		}
+		single, err := ssoClient(cfg, logger)
+		if err != nil {
+			return err
+		}
 		server, err := api.New(api.Deps{
+			SSO:         single,
 			Usage:       live,
 			Config:      cfg,
 			Store:       st,
@@ -271,4 +277,18 @@ func AdvertiseIP(ctx context.Context) opt.Val[string] {
 		return opt.None[string]()
 	}
 	return opt.Some(addr.IP.String())
+}
+
+// ssoClient is single sign-on (M4.3), when enabled. A broken configuration
+// stops the server instead of silently offering password sign-in only.
+func ssoClient(cfg config.Config, logger *slog.Logger) (opt.Val[*sso.Client], error) {
+	if !cfg.SSO.Enabled {
+		return opt.None[*sso.Client](), nil
+	}
+	c, err := sso.FromConfig(cfg.SSO, cfg.Server.PublicURL, cfg.Bootstrap.OrgSlug)
+	if err != nil {
+		return opt.None[*sso.Client](), fmt.Errorf("single sign-on: %w", err)
+	}
+	logger.Info("single sign-on enabled", "issuer", c.Issuer(), "org", c.OrgSlug())
+	return opt.Some(c), nil
 }
