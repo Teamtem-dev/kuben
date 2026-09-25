@@ -34,6 +34,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/ops/upgrade"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/host"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/metrics"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
@@ -305,7 +306,7 @@ func firstAdmin(ctx context.Context, cfg config.Config, st *store.Store, cluster
 			return fmt.Errorf("count users: %w", err)
 		}
 		if n == 0 {
-			bootstrap.AnnounceSetup(cfg, stderr, AdvertiseIP(ctx), time.UnixMilli(clock.System{}.NowMs()), logger)
+			bootstrap.AnnounceSetup(cfg, stderr, host.AdvertiseIP(ctx), time.UnixMilli(clock.System{}.NowMs()), logger)
 		}
 		return nil
 	}
@@ -327,23 +328,6 @@ func stderrIsTerminal() bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
-}
-
-// AdvertiseIP is this machine's address as other machines reach it (the
-// source address of a route to the internet; nothing is sent), for links
-// in logs and the setup banner (host.rs advertise_ip).
-func AdvertiseIP(ctx context.Context) opt.Val[string] {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "udp", "1.1.1.1:53")
-	if err != nil {
-		return opt.None[string]()
-	}
-	defer conn.Close() //nolint:errcheck // nothing was sent
-	addr, ok := conn.LocalAddr().(*net.UDPAddr)
-	if !ok || addr.IP.IsLoopback() || addr.IP.IsUnspecified() {
-		return opt.None[string]()
-	}
-	return opt.Some(addr.IP.String())
 }
 
 // ssoClient is single sign-on (M4.3), when enabled. A broken configuration

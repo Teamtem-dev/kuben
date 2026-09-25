@@ -5,9 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"io/fs"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -22,6 +20,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/host"
 )
 
 // First run (setup.rs): GET /setup says whether the first admin still has
@@ -53,7 +52,7 @@ func IssueSetupToken(cfg config.Config) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", fmt.Errorf("setup token: %w", err)
 	}
-	if err := WriteOwnerOnly(path, token+"\n"); err != nil {
+	if err := host.WriteOwnerOnly(path, token+"\n"); err != nil {
 		return "", fmt.Errorf("setup token: %w", err)
 	}
 	return token, nil
@@ -66,23 +65,6 @@ func CurrentOrNewSetupToken(cfg config.Config, now time.Time) (string, error) {
 		return token, nil
 	}
 	return IssueSetupToken(cfg)
-}
-
-// WriteOwnerOnly replaces path with a new file readable by its owner only,
-// so a leftover never keeps a wider mode.
-func WriteOwnerOnly(path, content string) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("replace %s: %w", path, err)
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // the configured state directory
-	if err != nil {
-		return fmt.Errorf("create %s: %w", path, err)
-	}
-	if _, err := f.WriteString(content); err != nil {
-		_ = f.Close() //nolint:errcheck // the write error is the one to report
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return f.Close() //nolint:wrapcheck // the path is in the caller's message
 }
 
 func readSetupToken(cfg config.Config, now time.Time) (string, time.Duration, bool) {

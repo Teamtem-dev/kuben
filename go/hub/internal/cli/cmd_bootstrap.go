@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/serve"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/host"
 )
 
 func setupTokenCmd(g *globals) *cobra.Command {
@@ -32,8 +32,7 @@ func setupTokenCmd(g *globals) *cobra.Command {
 				}
 				token = opt.Some(t)
 			}
-			host := serve.AdvertiseIP(c.Context()).Or("localhost")
-			_, err = fmt.Fprintln(g.stdout, api.SetupURLAt(cfg.ConsoleURLWithHost(host), token))
+			_, err = fmt.Fprintln(g.stdout, api.SetupURLAt(host.ConsoleURL(c.Context(), cfg), token))
 			return err //nolint:wrapcheck // stdout
 		},
 	}

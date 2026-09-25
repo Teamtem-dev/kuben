@@ -24,6 +24,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/host"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
@@ -145,7 +146,7 @@ func handOverLocally(cfg config.Config, email, password string, stderr Stderr, l
 		return
 	}
 	file := passwordFile(cfg)
-	if err := api.WriteOwnerOnly(file, email+"\n"+password+"\n"); err != nil {
+	if err := host.WriteOwnerOnly(file, email+"\n"+password+"\n"); err != nil {
 		logger.Error("generated an initial admin password but could not write it; set a new one with `kuben reset-admin`",
 			"error", err, "email", email, "file", file)
 		return
