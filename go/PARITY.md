@@ -43,7 +43,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `github.rs` | 750 | 6 | api/github | ported | 6 → 21 (a fake GitHub on httptest: token requests, JWT checked against the public key, caching, error classes, body cap, revoke, installation, pull request state, commit status) |
 | kuben-api | `host.rs` | 73 | 2 |  | todo | |
 | kuben-api | `image_watch.rs` | 287 | 0 | api (image_watch.go), serve (background.go) | ported | 0 in Rust; covered by the tests/http.rs port below; runs on every replica as serve.rs spawn_background |
-| kuben-api | `lib.rs` | 105 | 0 | api (server.go) | partial | router: session, CSRF, audit, timeout (followed logs exempt), body limit, gzip compression (SUBSTITUTIONS), `/api/docs` (api/apidocs), probes, console fallback. The GitHub webhook (S3) and CI exchange (S4) routes follow with their slices |
+| kuben-api | `lib.rs` | 105 | 0 | api (server.go) | ported | router: session, CSRF, audit, timeout (followed logs exempt), body limit, gzip compression (SUBSTITUTIONS), request id, `/api/docs` (api/apidocs), probes, console fallback, the GitHub webhook and the CI exchange with body limits of their own (inside the gzip/request-id wrappers; Rust mounted them outside the tower layers) |
 | kuben-api | `notify.rs` | 593 | 6 | api/notify (plan.go, notifier.go, sealing.go) | ported | 6 → 8 (+ signatures vs testdata/compat, + the http crate's reason phrases); is_private is outbound.IsPrivate; the notifier runs on every replica (serve/background.go) with the GitHub App for commit statuses |
 | kuben-api | `oci.rs` | 908 | 9 | api/oci | ported | Parse, Fixed, Registry, Verifier (RegistryVerifier): 7 tests ported, 2 dropped (challenge parsing and query encoding belong to go-containerregistry), + 4 in-process registry tests for the verifier |
 | kuben-api | `oidc.rs` | 465 | 5 | api/oidc | ported | 5 → 6 (+ key fetch, cache, refresh and outage against an httptest issuer); the shared JWKS/RS256 parts serve SSO in S4 |
@@ -51,7 +51,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `previews.rs` | 464 | 0 |  | todo | |
 | kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | 2 → 2; setup_guide/setup_url are SetupGuide/SetupURL (the advertised address is passed in; host::console_url) |
 | kuben-api | `sso.rs` | 554 | 5 | api/sso | ported | 5 → 5; reuses api/oidc (JWKS, RS256) |
-| kuben-api | `state.rs` | 151 | 0 |  | todo | |
+| kuben-api | `state.rs` | 151 | 0 | api (server.go Deps) | ported | ApiState and its with_* builders are the fields of api.Deps (usage, DNS, images, keyring, SSO, GitHub OIDC, GitHub App); an unset field is the zero value or opt.None, as the builders defaulted |
 | kuben-api | `stream.rs` | 248 | 2 | api/stream, platform/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
 | kuben-api | `transport.rs` | 157 | 0 | api/outbound | ported | net/http with the same rules (https only unless allowed, proxy from env, header and body timeouts, body cap, no redirects); notify.rs is_private is outbound.IsPrivate |
 | kuben-api | `web.rs` | 106 | 1 | api/web | ported | 1 → 1; content types from a fixed table of mime_guess 2.0.5 (Go's mime package differs and reads /etc/mime.types) |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 8, ported 204, todo 15.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 4, partial 7, ported 206, todo 14.
