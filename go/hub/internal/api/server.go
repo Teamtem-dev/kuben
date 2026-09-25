@@ -14,6 +14,7 @@ import (
 	ht "github.com/ogen-go/ogen/http"
 	"github.com/ogen-go/ogen/ogenerrors"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/apidocs"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
@@ -30,6 +31,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
 )
 
 // DNSResolver resolves hostnames: net.DefaultResolver in production, mocked in tests.
@@ -85,6 +87,7 @@ type Server struct {
 	setupMu      sync.Mutex    // one first-run setup at a time
 	logStreams   *logStreams
 	routes       *gen.Server
+	docs         []byte // the /api/docs page
 }
 
 // statusCacheTTL is how long a public status answer is reused (routes/status.rs CACHE_TTL).
@@ -113,8 +116,13 @@ func New(deps Deps) (*Server, error) {
 	if deps.Resolver == nil {
 		deps.Resolver = systemResolver{}
 	}
+	docs, err := apidocs.HTML(version.Version)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // names the embedded contract
+	}
 	sec := deps.Config.Security
 	s := &Server{
+		docs:         docs,
 		deps:         deps,
 		policy:       authz.RolePolicy{},
 		throttle:     newLoginThrottle(sec, deps.Store, deps.Clock, deps.Logger),
@@ -195,6 +203,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", guarded)
+	mux.Handle(apidocs.Path, apidocs.Handler(s.docs))
 	mux.HandleFunc("GET /livez", s.livez)
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("/", s.deps.Console)

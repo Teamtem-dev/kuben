@@ -11,6 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/httpx"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
@@ -52,7 +53,13 @@ type fixture struct {
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	c, st, p := newServerWithProjections(t, nil)
+	return newFixtureWith(t, nil)
+}
+
+// newFixtureWith is newFixture on a configuration edit changed.
+func newFixtureWith(t *testing.T, edit func(*config.Config)) fixture {
+	t.Helper()
+	c, st, p := newServerWithProjections(t, edit)
 	ctx := t.Context()
 	org, err := st.CreateOrg(ctx, "acme", "ACME")
 	if err != nil {
