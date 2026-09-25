@@ -40,7 +40,8 @@ async function serveConsole(route: Route) {
   })
 }
 
-const now = Date.UTC(2026, 8, 16, 10, 0, 0)
+/** The mocked data's "now"; visual tests pin the page's clock to it. */
+export const now = Date.UTC(2026, 8, 16, 10, 0, 0)
 
 export const user = {
   id: '0190f3c6-0000-7000-8000-000000000001',
@@ -506,6 +507,14 @@ export const detached = [
 
 const sse = (events: [string, unknown][]) =>
   events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('')
+
+/** Preferences as the console keeps them, set before it loads. */
+export async function prefer(page: Page, locale: string, theme: string) {
+  await page.addInitScript(
+    (prefs) => window.localStorage.setItem('kuben.prefs', prefs),
+    JSON.stringify({ locale, theme }),
+  )
+}
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })

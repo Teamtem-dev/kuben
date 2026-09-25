@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { expectAccessible, prefer, watchCsp } from './checks'
-import { mockApi } from './fixtures'
+import { expectAccessible, watchCsp } from './checks'
+import { audit, mockApi, prefer } from './fixtures'
 
 const locales = [
   {
@@ -15,6 +15,7 @@ const locales = [
     previous: 'Previous container',
     doctor: 'Doctor',
     evidence: 'Evidence path',
+    home: 'Home',
   },
   {
     locale: 'fa',
@@ -28,6 +29,7 @@ const locales = [
     previous: 'container قبلی',
     doctor: 'Doctor',
     evidence: 'مسیر شواهد',
+    home: 'خانه',
   },
 ] as const
 
@@ -133,6 +135,22 @@ for (const l of locales) {
         expect(csp).toEqual([])
       })
 
+      test('home: summary, open incidents, recent deployments and health', async ({ page }) => {
+        const csp = await watchCsp(page)
+        await prefer(page, l.locale, theme)
+        await mockApi(page)
+        await page.goto('/')
+        await expect(page.getByRole('heading', { level: 1, name: l.home })).toBeVisible()
+        const main = page.getByRole('main')
+        await expect(main.getByText('web in shop/prod failed to deploy', { exact: true })).toBeVisible()
+        // The incident's place and the deployment's target both link to the app.
+        await expect(main.getByRole('link', { name: 'shop/prod/web' })).toHaveCount(2)
+        await expect(main.getByText('hooks.example.com: 502', { exact: true })).toBeVisible()
+        await expect(main.locator('[data-slot="skeleton"]')).toHaveCount(0)
+        await expectAccessible(page)
+        expect(csp).toEqual([])
+      })
+
       test('Doctor page', async ({ page }) => {
         const csp = await watchCsp(page)
         await prefer(page, l.locale, theme)
@@ -151,7 +169,16 @@ for (const l of locales) {
         expect(csp).toEqual([])
       })
 
-      for (const path of ['/incidents', '/webhooks', '/domains', '/team', '/audit', '/projects/shop']) {
+      for (const path of [
+        '/incidents',
+        '/webhooks',
+        '/domains',
+        '/team',
+        '/audit',
+        '/settings',
+        '/projects/shop',
+        '/projects/shop/prod',
+      ]) {
         test(`${path}: one heading, accessible, no CSP violation`, async ({ page }) => {
           const csp = await watchCsp(page)
           await prefer(page, l.locale, theme)
@@ -265,6 +292,117 @@ test('audit log: the events in a table', async ({ page }) => {
   const row = table.getByRole('row', { name: /app\.update/ })
   await expect(row.getByRole('cell', { name: 'app.update' })).toBeVisible()
   await expect(row.getByRole('cell', { name: 'shop/prod/web' })).toBeVisible()
+})
+
+test('data table: pages, a filter, and sorting from the keyboard', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  const [first] = audit.events
+  const events = Array.from({ length: 30 }, (_, i) => ({
+    ...first,
+    seq: 100 + i,
+    id: `0190f3c6-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    at: (first?.at ?? 0) - i * 60_000,
+    action: i % 3 === 0 ? 'deleteSecret' : 'app.update',
+  }))
+  await page.route('http://kuben.test/api/v1/audit**', (route) =>
+    route.fulfill({ json: { events, next_before: null } }),
+  )
+  await page.goto('/audit')
+  const table = page.getByRole('table', { name: 'Audit log' })
+  await expect(table.getByRole('row')).toHaveCount(26)
+  await expect(page.getByText('30 rows', { exact: true })).toBeVisible()
+  const pager = page.getByRole('navigation', { name: 'Audit log: pages' })
+  await expect(pager.getByText('Page 1 of 2')).toBeVisible()
+  await expect(pager.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+  await pager.getByRole('button', { name: 'Next page' }).click()
+  await expect(pager.getByText('Page 2 of 2')).toBeVisible()
+  await expect(table.getByRole('row')).toHaveCount(6)
+
+  await page.getByRole('searchbox', { name: 'Filter Audit log' }).fill('deletesecret')
+  await expect(page.getByText('10 of 30 rows', { exact: true })).toBeVisible()
+  await expect(table.getByRole('row')).toHaveCount(11)
+  await expect(pager).toBeHidden()
+
+  const when = table.getByRole('columnheader', { name: 'When' })
+  const action = table.getByRole('columnheader', { name: 'Action' })
+  await expect(when).toHaveAttribute('aria-sort', 'descending')
+  await action.getByRole('button').focus()
+  await page.keyboard.press('Enter')
+  await expect(action).toHaveAttribute('aria-sort', 'ascending')
+  await expect(when).not.toHaveAttribute('aria-sort')
+  await page.keyboard.press('Space')
+  await expect(action).toHaveAttribute('aria-sort', 'descending')
+  await page.keyboard.press('Enter')
+  await expect(action).not.toHaveAttribute('aria-sort')
+  await expectAccessible(page)
+  expect(csp).toEqual([])
+})
+
+test('controls: freezes and silences, delivery, owners, the emergency rollback', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/projects/shop/prod')
+  const card = (title: string) =>
+    page.locator('[data-slot="card"]', { has: page.getByRole('heading', { level: 2, name: title }) })
+  const freezes = card('Change freezes')
+  await expect(freezes.getByText('end-of-quarter close', { exact: true })).toBeVisible()
+  await expect(freezes.getByText('In force', { exact: true })).toBeVisible()
+  await expect(freezes.getByRole('button', { name: 'Lift' })).toBeVisible()
+  const silences = card('Alert silences')
+  await expect(silences.getByText('No silences in force.')).toBeVisible()
+  await silences.getByRole('button', { name: 'Add a silence' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add a silence' })
+  await expect(dialog.getByLabel('Applies to')).toHaveValue('')
+  await expect(dialog.getByLabel('Applies to').getByRole('option', { name: 'web' })).toHaveCount(1)
+  await expect(dialog.getByLabel('Ends')).not.toHaveValue('')
+  await expectAccessible(page)
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toBeHidden()
+
+  await page.goto('/projects/shop')
+  await expect(card('Owner').getByLabel('Team or person')).toHaveValue('shop-team')
+
+  await page.goto('/projects/shop/prod/web?tab=settings')
+  await expect(card('Owner').getByText('No owner named yet.')).toBeVisible()
+  await card('Delivery').getByRole('button', { name: 'Pause delivery' }).click()
+  const pause = page.getByRole('dialog', { name: 'Pause delivery' })
+  await expect(pause.getByLabel('Reason')).toBeFocused()
+  await expectAccessible(page)
+  await page.keyboard.press('Escape')
+  await expect(pause).toBeHidden()
+
+  await page.goto('/projects/shop/prod/web?tab=releases')
+  await page.getByRole('button', { name: 'Roll back now…' }).click()
+  const confirm = page.getByRole('alertdialog', { name: 'Emergency rollback' })
+  const submit = confirm.getByRole('button', { name: 'Roll back now' })
+  await expect(submit).toBeDisabled()
+  await confirm.getByLabel('Why this cannot wait').fill('checkout is down')
+  await expect(submit).toBeEnabled()
+  await expectAccessible(page)
+  expect(csp).toEqual([])
+})
+
+test('settings: single sign-on and CI trust policies', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/settings')
+  await expect(page.getByText('Acme SSO', { exact: true })).toBeVisible()
+  const table = page.getByRole('table', { name: 'CI trust policies' })
+  const row = table.getByRole('row', { name: /shop-deploy/ })
+  await expect(row.getByRole('cell', { name: 'shop', exact: true })).toBeVisible()
+  await expect(row.getByText('owner@example.com', { exact: true })).toBeVisible()
+  await expect(row.getByText('refs/heads/main', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Add a policy' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add a policy' })
+  await expect(dialog.getByLabel('Project')).toHaveValue('')
+  await dialog.getByLabel('Project').selectOption('shop')
+  await expectAccessible(page)
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toBeHidden()
+  await row.getByRole('button', { name: 'Revoke' }).click()
+  await expect(page.getByRole('alertdialog', { name: 'Revoke shop-deploy' })).toBeVisible()
+  expect(csp).toEqual([])
 })
 
 test('project page: previews, their policy and the status page settings', async ({ page }) => {
@@ -430,6 +568,7 @@ test.describe('content security policy', () => {
     '/webhooks',
     '/domains',
     '/audit',
+    '/settings',
     '/account',
     '/projects/shop',
     '/projects/shop/prod',
