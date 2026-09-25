@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useRouter } from '@tanstack/react-router'
-import { type FormEvent, useId } from 'react'
-import { AuthLayout, control } from '../components/ui'
-import { login, meQuery, ssoQuery } from '../lib/api'
-import { usePrefs } from '../lib/prefs'
-import { problemMessage } from '../lib/problem'
+import type { FormEvent } from 'react'
+import { AuthShell, ErrorAlert, TextInput } from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
+import { login, meQuery, ssoQuery } from '@/lib/api'
+import { usePrefs } from '@/lib/prefs'
 
 const route = getRouteApi('/login')
 
@@ -13,8 +15,6 @@ export function LoginPage() {
   const sso = useQuery(ssoQuery)
   const router = useRouter()
   const queryClient = useQueryClient()
-  const emailId = useId()
-  const passwordId = useId()
   const { t } = usePrefs()
 
   const mutation = useMutation({
@@ -32,76 +32,58 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout>
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-5 rounded-2xl border border-line bg-surface p-8 shadow-2xl shadow-black/40"
-      >
-        <header className="space-y-1">
-          <h1 className="font-semibold text-2xl tracking-tight">{t('login.title')}</h1>
-          <p className="text-muted-foreground text-sm">{t('login.lead')}</p>
-        </header>
+    <AuthShell>
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader>
+          <CardTitle>
+            <h1 className="text-2xl tracking-tight">{t('login.title')}</h1>
+          </CardTitle>
+          <CardDescription>{t('login.lead')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="grid gap-5">
+            <TextInput
+              label={t('login.email')}
+              name="email"
+              type="email"
+              autoComplete="username"
+              dir="ltr"
+              required
+            />
+            <TextInput
+              label={t('login.password')}
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              dir="ltr"
+              required
+            />
 
-        <div className="space-y-1.5">
-          <label htmlFor={emailId} className="font-medium text-sm">
-            {t('login.email')}
-          </label>
-          <input
-            id={emailId}
-            name="email"
-            type="email"
-            autoComplete="username"
-            required
-            className={control}
-          />
-        </div>
+            {error === 'sso' && !mutation.isError && <ErrorAlert error={new Error(t('login.ssoFailed'))} />}
+            <ErrorAlert error={mutation.error} />
 
-        <div className="space-y-1.5">
-          <label htmlFor={passwordId} className="font-medium text-sm">
-            {t('login.password')}
-          </label>
-          <input
-            id={passwordId}
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            className={control}
-          />
-        </div>
+            <Button type="submit" className="w-full" disabled={mutation.isPending}>
+              {mutation.isPending && <Spinner role="presentation" aria-hidden="true" />}
+              {mutation.isPending ? t('login.submitting') : t('login.submit')}
+            </Button>
 
-        {error === 'sso' && !mutation.isError && (
-          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-danger text-sm">
-            {t('login.ssoFailed')}
-          </p>
-        )}
-
-        {mutation.isError && (
-          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-danger text-sm">
-            {problemMessage(mutation.error)}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={mutation.isPending}
-          className="w-full rounded-lg bg-brand px-3 py-2 font-medium text-sm text-on-brand transition hover:bg-brand-hover disabled:opacity-60"
-        >
-          {mutation.isPending ? t('login.submitting') : t('login.submit')}
-        </button>
-
-        {sso.data?.enabled && sso.data.startUrl && (
-          <>
-            <p className="text-center text-muted-foreground text-xs">{t('login.or')}</p>
-            <a
-              href={`${sso.data.startUrl}?returnTo=${encodeURIComponent(redirect ?? '/')}`}
-              className="block w-full rounded-lg border border-line px-3 py-2 text-center font-medium text-sm transition hover:bg-hover"
-            >
-              {t('login.sso')} <span dir="auto">{sso.data.displayName}</span>
-            </a>
-          </>
-        )}
-      </form>
-    </AuthLayout>
+            {sso.data?.enabled && sso.data.startUrl && (
+              <>
+                <div className="flex items-center gap-3 text-muted-foreground text-xs">
+                  <span className="h-px flex-1 bg-border" />
+                  {t('login.or')}
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <Button variant="outline" className="w-full" asChild>
+                  <a href={`${sso.data.startUrl}?returnTo=${encodeURIComponent(redirect ?? '/')}`}>
+                    {t('login.sso')} <span dir="auto">{sso.data.displayName}</span>
+                  </a>
+                </Button>
+              </>
+            )}
+          </form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   )
 }

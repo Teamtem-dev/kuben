@@ -5,21 +5,18 @@ import {
   FolderKanbanIcon,
   GlobeIcon,
   KeyRoundIcon,
-  LanguagesIcon,
   LogOutIcon,
   type LucideIcon,
-  MonitorIcon,
-  MoonIcon,
   ScrollTextIcon,
   SearchIcon,
   SirenIcon,
-  SunIcon,
   UserRoundIcon,
   UsersIcon,
   WebhookIcon,
 } from 'lucide-react'
 import { Fragment, useEffect, useState } from 'react'
 import { Logo } from '@/components/brand'
+import { LanguageMenu, ThemeMenu } from '@/components/pref-menus'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Breadcrumb,
@@ -43,8 +40,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -68,7 +63,7 @@ import { logout, projectsQuery } from '@/lib/api'
 import { type Crumb, crumbsFor } from '@/lib/breadcrumbs'
 import { useLiveUpdates } from '@/lib/live'
 import type { MessageKey } from '@/lib/messages'
-import { LOCALE_NAMES, LOCALES, type Locale, THEMES, type Theme, usePrefs } from '@/lib/prefs'
+import { usePrefs } from '@/lib/prefs'
 
 const route = getRouteApi('/_authed')
 
@@ -81,8 +76,6 @@ const NAV = [
   { to: '/domains', label: 'nav.domains', icon: GlobeIcon, exact: false },
   { to: '/audit', label: 'nav.audit', icon: ScrollTextIcon, exact: false },
 ] as const satisfies readonly { to: string; label: MessageKey; icon: LucideIcon; exact: boolean }[]
-
-const THEME_ICONS: Record<Theme, LucideIcon> = { system: MonitorIcon, light: SunIcon, dark: MoonIcon }
 
 /** The sidebar remembers being collapsed (shadcn keeps it in a cookie). */
 const sidebarOpenAtStart = () => !document.cookie.split('; ').includes('sidebar_state=false')
@@ -311,57 +304,6 @@ function CommandPalette() {
         </CommandList>
       </CommandDialog>
     </>
-  )
-}
-
-function LanguageMenu() {
-  const { locale, setLocale, t } = usePrefs()
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t('prefs.language')} title={t('prefs.language')}>
-          <LanguagesIcon aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{t('prefs.language')}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={locale} onValueChange={(v) => setLocale(v as Locale)}>
-          {LOCALES.map((l) => (
-            <DropdownMenuRadioItem key={l} value={l} lang={l}>
-              {LOCALE_NAMES[l]}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function ThemeMenu() {
-  const { theme, setTheme, t } = usePrefs()
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t('prefs.theme')} title={t('prefs.theme')}>
-          <SunIcon className="dark:hidden" aria-hidden="true" />
-          <MoonIcon className="hidden dark:block" aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{t('prefs.theme')}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
-          {THEMES.map((th) => {
-            const Icon = THEME_ICONS[th]
-            return (
-              <DropdownMenuRadioItem key={th} value={th}>
-                <Icon aria-hidden="true" />
-                {t(`theme.${th}`)}
-              </DropdownMenuRadioItem>
-            )
-          })}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
