@@ -14,6 +14,7 @@ const PAGES: Record<string, MessageKey> = {
   webhooks: 'nav.webhooks',
   domains: 'nav.domains',
   audit: 'nav.audit',
+  settings: 'nav.settings',
   account: 'shell.account',
 }
 

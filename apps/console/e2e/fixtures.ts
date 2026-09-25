@@ -53,7 +53,7 @@ export const user = {
 export const projects = [
   {
     name: 'shop',
-    uid: null,
+    uid: '0190f3c6-0000-7000-8000-0000000000p1',
     display_name: 'Shop',
     description: null,
     org: null,
@@ -404,6 +404,26 @@ export const freezes = [
   },
 ]
 
+export const ciPolicies = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000c9',
+    name: 'shop-deploy',
+    project: '0190f3c6-0000-7000-8000-0000000000p1',
+    environment: null,
+    repository: 'acme/shop',
+    repositoryId: 123456,
+    repositoryOwnerId: 7890,
+    refs: ['refs/heads/main'],
+    environments: [],
+    events: [],
+    role: 'developer',
+    tokenTtlSecs: 900,
+    createdBy: user.id,
+    createdAt: now - 86_400_000,
+    revokedAt: null,
+  },
+]
+
 export const health = {
   ready: true,
   database: 'postgres',
@@ -578,6 +598,10 @@ export async function mockApi(page: Page, { signedIn = true, setupNeeded = false
     if (path === '/api/v1/domains') return json(route, claims)
     if (path === '/api/v1/audit') return json(route, audit)
     if (path === '/api/v1/healthz/details') return json(route, health)
+    if (path === '/api/v1/ci/trust-policies') return json(route, ciPolicies)
+    if (path === '/api/v1/auth/sso') {
+      return json(route, { enabled: true, displayName: 'Acme SSO', startUrl: '/api/v1/auth/sso/start' })
+    }
     if (path === '/api/v1/projects/shop/owner') return json(route, owner)
     if (path === '/api/v1/projects/shop/applications/web/owner') return json(route, null)
     if (path === '/api/v1/projects/shop/environments/prod/freezes') return json(route, freezes)

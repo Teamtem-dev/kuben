@@ -41,6 +41,7 @@ const page = {
   IncidentsPage: lazyRouteComponent(() => import('./routes/incidents'), 'IncidentsPage'),
   LoginPage: lazyRouteComponent(() => import('./routes/login'), 'LoginPage'),
   ProjectPage: lazyRouteComponent(() => import('./routes/project'), 'ProjectPage'),
+  SettingsPage: lazyRouteComponent(() => import('./routes/settings'), 'SettingsPage'),
   SetupPage: lazyRouteComponent(() => import('./routes/setup'), 'SetupPage'),
   StatusPage: lazyRouteComponent(() => import('./routes/status'), 'StatusPage'),
   TeamPage: lazyRouteComponent(() => import('./routes/team'), 'TeamPage'),
@@ -233,6 +234,13 @@ const domainsRoute = createRoute({
   component: page.DomainsPage,
 })
 
+/** Organization settings: single sign-on and CI trust policies. */
+const settingsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/settings',
+  component: page.SettingsPage,
+})
+
 const accountRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/account',
@@ -255,6 +263,7 @@ const routeTree = rootRoute.addChildren([
     incidentsRoute,
     webhooksRoute,
     domainsRoute,
+    settingsRoute,
     accountRoute,
   ]),
 ])

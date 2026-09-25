@@ -5,6 +5,7 @@ describe('crumbsFor', () => {
   test('top-level pages', () => {
     expect(crumbsFor('/')).toEqual([{ kind: 'page', label: 'nav.home' }])
     expect(crumbsFor('/team')).toEqual([{ kind: 'page', label: 'nav.team' }])
+    expect(crumbsFor('/settings')).toEqual([{ kind: 'page', label: 'nav.settings' }])
     expect(crumbsFor('/account')).toEqual([{ kind: 'page', label: 'shell.account' }])
     expect(crumbsFor('/nowhere')).toEqual([])
   })

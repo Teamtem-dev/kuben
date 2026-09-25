@@ -10,6 +10,7 @@ import {
   type LucideIcon,
   ScrollTextIcon,
   SearchIcon,
+  SettingsIcon,
   SirenIcon,
   UserRoundIcon,
   UsersIcon,
@@ -77,6 +78,7 @@ const NAV = [
   { to: '/webhooks', label: 'nav.webhooks', icon: WebhookIcon, exact: false },
   { to: '/domains', label: 'nav.domains', icon: GlobeIcon, exact: false },
   { to: '/audit', label: 'nav.audit', icon: ScrollTextIcon, exact: false },
+  { to: '/settings', label: 'nav.settings', icon: SettingsIcon, exact: false },
 ] as const satisfies readonly { to: string; label: MessageKey; icon: LucideIcon; exact: boolean }[]
 
 /** The sidebar remembers being collapsed (shadcn keeps it in a cookie). */
