@@ -6,7 +6,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 
 | Crate | File | Lines | Rust tests | Go package | Status | Notes |
 |---|---|---:|---:|---|---|---|
-| kuben | `bootstrap.rs` | 301 | 3 |  | todo | |
+| kuben | `bootstrap.rs` | 301 | 3 | bootstrap, serve (firstAdmin) | ported | 3 → 4 (+ random passwords); the Secret is server-side applied by client-go with the `kuben` field manager, force; serve creates the admin (or announces the setup wizard) as serve.rs did |
 | kuben | `bundle.rs` | 184 | 3 | bundle | ported | 3 → 5 (+ the embedded copy is byte-identical to the root `bundle.lock.json`, the summary lists every pin) |
 | kuben | `main.rs` | 85 | 0 | cmd/kuben, cli | partial | every command is declared (cli.Root); serve, setup-token, version, copy-self run; the others answer "not available in this build yet" until their G5 port. anyhow's `Error: …` on failure; RUST_LOG/telemetry: G5 |
 | kuben | `serve.rs` | 867 | 0 | serve | partial | api role; with a cluster: informers, readiness on first sync, discovery (controller role), leader election settings (the Lease is campaigned for once reconcilers exist, S1-D). Left: materializer, controllers, AgentLink, builds, background work (S1–S5) |
@@ -49,7 +49,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `oidc.rs` | 465 | 5 | api/oidc | ported | 5 → 6 (+ key fetch, cache, refresh and outage against an httptest issuer); the shared JWKS/RS256 parts serve SSO in S4 |
 | kuben-api | `openapi.rs` | 231 | 2 | api/gen (ogen) + api/genspec | dropped | spec first: the contract generates the server |
 | kuben-api | `previews.rs` | 464 | 0 |  | todo | |
-| kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | setup_guide/banner: G5 |
+| kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | 2 → 2; setup_guide/setup_url are SetupGuide/SetupURL (the advertised address is passed in; host::console_url) |
 | kuben-api | `sso.rs` | 554 | 5 | api/sso | ported | 5 → 5; reuses api/oidc (JWKS, RS256) |
 | kuben-api | `state.rs` | 151 | 0 |  | todo | |
 | kuben-api | `stream.rs` | 248 | 2 | api/stream, platform/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 192, todo 27.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 193, todo 26.

@@ -26,6 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/bootstrap"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
@@ -82,7 +83,9 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	inCluster := config.InCluster()
-	announceSetup(ctx, cfg, st, inCluster, logger)
+	if err := firstAdmin(ctx, cfg, st, cluster, inCluster, logger); err != nil {
+		return err
+	}
 	keyring, err := secretKeyring(ctx, cfg, st, logger)
 	if err != nil {
 		return err
@@ -248,28 +251,40 @@ func redactCredentials(raw string) string {
 	return strings.Replace(u.String(), "%2A%2A%2A", "***", 1)
 }
 
-// announceSetup tells the operator where to create the first admin.
-func announceSetup(ctx context.Context, cfg config.Config, st *store.Store, inCluster bool, logger *slog.Logger) {
-	if !cfg.SetupWizard(inCluster) {
-		logger.Warn("bootstrap.admin_password is not handled by this build yet; create the admin from a Rust 1.2 server or finish the setup wizard")
-		return
+// firstAdmin creates the first admin, or says how to (serve.rs): with the
+// setup wizard the account is created from the console and nothing is
+// seeded; otherwise the configured or a generated password is used, and a
+// generated one is handed over exactly once.
+func firstAdmin(ctx context.Context, cfg config.Config, st *store.Store, cluster opt.Val[*registry.Registry], inCluster bool, logger *slog.Logger) error {
+	stderr := bootstrap.Stderr{
+		Write:      func(s string) { fmt.Fprint(os.Stderr, s) }, //nolint:errcheck // the operator's terminal
+		IsTerminal: stderrIsTerminal(),
 	}
-	n, err := st.CountUsers(ctx)
-	if err != nil || n > 0 {
-		return
-	}
-	token := opt.None[string]()
-	if api.SetupTokenRequired(cfg) {
-		t, err := api.CurrentOrNewSetupToken(cfg, time.UnixMilli(clock.System{}.NowMs()))
+	if cfg.SetupWizard(inCluster) {
+		n, err := st.CountUsers(ctx)
 		if err != nil {
-			logger.Error("cannot write the setup token", "error", err, "file", api.SetupTokenPath(cfg))
-			return
+			return fmt.Errorf("count users: %w", err)
 		}
-		token = opt.Some(t)
+		if n == 0 {
+			bootstrap.AnnounceSetup(cfg, stderr, AdvertiseIP(ctx), time.UnixMilli(clock.System{}.NowMs()), logger)
+		}
+		return nil
 	}
-	host := AdvertiseIP(ctx).Or("localhost")
-	logger.Warn("no admin account yet: finish the setup in the browser",
-		"url", api.SetupURLAt(cfg.ConsoleURLWithHost(host), token))
+	password, err := bootstrap.EnsureAdmin(ctx, cfg, st, auth.HasherFromConfig(cfg.Security), logger)
+	if err != nil {
+		return fmt.Errorf("bootstrap the admin: %w", err)
+	}
+	if p, ok := password.Get(); ok {
+		bootstrap.HandOverPassword(ctx, cfg, cluster, p, stderr, logger)
+	}
+	return nil
+}
+
+// stderrIsTerminal says whether standard error is a character device (a
+// terminal), as Rust's IsTerminal did.
+func stderrIsTerminal() bool {
+	info, err := os.Stderr.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // AdvertiseIP is this machine's address as other machines reach it (the

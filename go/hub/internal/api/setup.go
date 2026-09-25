@@ -142,6 +142,37 @@ func InsecureTransportHint(cfg config.Config) string {
 		"trusted network, set security.insecure_setup = true", port)
 }
 
+// SetupURL is the setup link on this server's console address
+// (setup::setup_url): `server.public_url`, else the advertised address
+// (host::console_url; localhost when unknown).
+func SetupURL(cfg config.Config, token, advertise opt.Val[string]) string {
+	return SetupURLAt(cfg.ConsoleURLWithHost(advertise.Or("localhost")), token)
+}
+
+// SetupGuide is the link to open and the notes that go with it
+// (setup::setup_guide): the direct link on a loopback bind or with
+// `security.insecure_setup`; else, over plain http, an SSH tunnel so the
+// admin password never travels unencrypted, and over https the direct link
+// with the tunnel as the way in until DNS and the certificate are ready.
+func SetupGuide(cfg config.Config, token, advertise opt.Val[string]) (string, []string) {
+	port := cfg.BindPort()
+	direct := SetupURL(cfg, token, advertise)
+	if cfg.BindIsLoopback() || cfg.Security.InsecureSetup {
+		return direct, nil
+	}
+	server := advertise.Or("<this server>")
+	ssh := fmt.Sprintf("ssh -L %[1]d:127.0.0.1:%[1]d <you>@%[2]s", port, server)
+	tunnel := SetupURLAt(fmt.Sprintf("http://localhost:%d", port), token)
+	if strings.HasPrefix(direct, "https://") {
+		return direct, []string{fmt.Sprintf("Until DNS and the certificate are ready: run `%s` on your computer, then open %s", ssh, tunnel)}
+	}
+	return tunnel, []string{
+		fmt.Sprintf("Run `%s` on your computer first; the admin password never travels over plain HTTP.", ssh),
+		"For an HTTPS console: kuben setup --domain <domain> --acme-email <email>. On a network you " +
+			"trust: kuben setup --allow-http-setup.",
+	}
+}
+
 // SetupURLAt is the setup link on console, with the token in the fragment.
 func SetupURLAt(console string, token opt.Val[string]) string {
 	fragment := ""
