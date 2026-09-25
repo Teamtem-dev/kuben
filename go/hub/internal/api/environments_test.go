@@ -37,7 +37,7 @@ func TestEnvironmentsReadAndWriteSQL(t *testing.T) {
 		created["env_type"] != "standard" || created["ready"] != false {
 		t.Fatalf("create: %d %v", status, created)
 	}
-	if status, problem, _ := alice.do("POST", "/api/v1/projects/shop/environments", map[string]any{"name": "staging"}); status != http.StatusConflict || problem["detail"] != "environment `staging` already exists" {
+	if status, problem, _ := alice.do("POST", "/api/v1/projects/shop/environments", map[string]any{"name": "staging"}); status != http.StatusConflict || problem["detail"] != "conflict: environment `staging` already exists" {
 		t.Fatalf("a duplicate: %d %v", status, problem)
 	}
 
@@ -55,7 +55,7 @@ func TestEnvironmentsReadAndWriteSQL(t *testing.T) {
 	if status := alice.status("DELETE", "/api/v1/projects/shop/environments/staging", nil); status != http.StatusAccepted {
 		t.Fatalf("delete: %d", status)
 	}
-	if status, problem, _ := alice.do("DELETE", "/api/v1/projects/shop/environments/staging", nil); status != http.StatusConflict || problem["detail"] != "environment `staging` is being deleted" {
+	if status, problem, _ := alice.do("DELETE", "/api/v1/projects/shop/environments/staging", nil); status != http.StatusConflict || problem["detail"] != "conflict: environment `staging` is being deleted" {
 		t.Fatalf("twice: %d %v", status, problem)
 	}
 	if status, env, _ := alice.do("GET", "/api/v1/projects/shop/environments/staging", nil); status != 200 || env["phase"] != "Terminating" || env["deleting"] != true {

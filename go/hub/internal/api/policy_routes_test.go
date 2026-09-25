@@ -116,52 +116,49 @@ func TestEnvironmentsWithoutPolicyShowOpenOne(t *testing.T) {
 	assert.Equal(t, int64(7), at)
 }
 
+const policyURL = "/api/v1/projects/shop/environments/prod/policy"
+
+// policyJSON is tests/http.rs policy.
+func policyJSON(approvals int) map[string]any {
+	return map[string]any{"requiredApprovals": approvals, "deployRole": "developer", "approveRole": "admin"}
+}
+
+// protected is tests/http.rs protected: shop's production app with a
+// policy of one approval set by carol (an admin), and the clients of alice
+// (owner), bob (viewer) and carol.
+func protected(t *testing.T, f fixture) (alice, bob, carol *client) {
+	t.Helper()
+	f.sqlApp()
+	alice = f.signIn("alice@example.com", seedPassword)
+	bob = f.signIn("bob@example.com", seedPassword)
+	carol, _ = f.member("carol@example.com", perm.Admin)
+	status, open, _ := alice.do("GET", policyURL, nil)
+	require.Equal(t, 200, status)
+	require.Equal(t, float64(0), open["revision"])
+	require.Equal(t, 403, bob.status("PUT", policyURL, policyJSON(1)), "viewers cannot change protection")
+	status, set, _ := carol.do("PUT", policyURL, policyJSON(1))
+	require.Equal(t, 200, status, "%v", set)
+	require.Equal(t, float64(1), set["revision"])
+	return alice, bob, carol
+}
+
 func TestM4WeakeningProtectionTakesAnOwner(t *testing.T) {
 	f := newFixture(t)
-	f.sqlApp()
+	alice, _, carol := protected(t, f)
 
-	alice := f.signIn("alice@example.com", seedPassword)
-	bob, _ := f.member("bob@example.com", perm.Viewer)
-	carol, _ := f.member("carol@example.com", perm.Admin)
-
-	const policyURL = "/api/v1/projects/shop/environments/prod/policy"
-	policyJSON := func(approvals int) map[string]any {
-		return map[string]any{
-			"requiredApprovals": approvals,
-			"deployRole":        "developer",
-			"approveRole":       "admin",
-		}
-	}
-
-	// 1. Initial state: environment has open policy with revision 0
-	status, seen, _ := alice.do("GET", policyURL, nil)
-	assert.Equal(t, 200, status)
-	assert.Equal(t, float64(0), seen["revision"])
-	assert.Equal(t, float64(0), seen["requiredApprovals"])
-	assert.Equal(t, "developer", seen["deployRole"])
-
-	// 2. Viewers cannot change protection
-	assert.Equal(t, 403, bob.status("PUT", policyURL, policyJSON(1)), "viewers cannot change protection")
-
-	// 3. Invalid policy (too many approvals) returns 422 Unprocessable Entity
+	// Invalid policy (too many approvals) returns 422 Unprocessable Entity
 	assert.Equal(t, 422, carol.status("PUT", policyURL, policyJSON(9)), "approvals > 5 rejected")
 
-	// 4. Admin (carol) sets policy(1) -> 200 OK, revision 1
-	status, set1, _ := carol.do("PUT", policyURL, policyJSON(1))
-	assert.Equal(t, 200, status)
-	assert.Equal(t, float64(1), set1["revision"])
-	assert.Equal(t, float64(1), set1["requiredApprovals"])
-
-	// 5. Admin sets stricter policy(2) -> 200 OK, revision 2
+	// Admin sets stricter policy(2) -> 200 OK, revision 2
 	status, set2, _ := carol.do("PUT", policyURL, policyJSON(2))
 	assert.Equal(t, 200, status, "stricter is an admin's call")
 	assert.Equal(t, float64(2), set2["revision"])
 	assert.Equal(t, float64(2), set2["requiredApprovals"])
 
-	// 6. Admin attempts to weaken policy(0) -> 403 Forbidden
+	// Admin attempts to weaken policy(0) -> 403 Forbidden
 	assert.Equal(t, 403, carol.status("PUT", policyURL, policyJSON(0)), "weaker is an owner's")
 
-	// 7. Tokens cannot change policies even for an owner
+	// Tokens cannot change policies even for an owner
 	status, createdToken, _ := alice.do("POST", "/api/v1/tokens", map[string]any{"name": "admin-tok", "role": "admin"})
 	require.Equal(t, 201, status)
 	tok, _ := createdToken["token"].(string)
@@ -169,23 +166,19 @@ func TestM4WeakeningProtectionTakesAnOwner(t *testing.T) {
 	status, _ = f.bearer(tok, "PUT", policyURL, policyJSON(0))
 	assert.Equal(t, 403, status, "tokens cannot change policies")
 
-	// 8. Owner (alice) weakens policy to 0 -> 200 OK, revision 3
+	// Owner (alice) weakens policy to 0 -> 200 OK, revision 3
 	status, set3, _ := alice.do("PUT", policyURL, policyJSON(0))
 	assert.Equal(t, 200, status)
 	assert.Equal(t, float64(3), set3["revision"])
 	assert.Equal(t, float64(0), set3["requiredApprovals"])
 
-	// 9. Deploying in an open environment goes straight to planned (no approval wait)
-	const deployURL = "/api/v1/projects/shop/environments/prod/apps/api/deployments"
-	status, runMap, _ := alice.do("POST", deployURL, map[string]any{
-		"expectedGeneration": 0,
-		"image":              "docker.io/library/nginx@" + nginx127,
-	})
-	assert.Equal(t, 202, status)
+	// Deploying in an open environment goes straight to planned (no approval wait)
+	status, runMap, _ := alice.deploy(0, "")
+	require.Equal(t, 202, status, "%v", runMap)
 	assert.Equal(t, "planned", runMap["phase"])
 	assert.Equal(t, float64(0), runMap["approvals_required"])
 
-	// 10. PUT with scan gate
+	// PUT with scan gate
 	gateBody := map[string]any{
 		"requiredApprovals": 0,
 		"deployRole":        "developer",
@@ -203,7 +196,7 @@ func TestM4WeakeningProtectionTakesAnOwner(t *testing.T) {
 	assert.Equal(t, "block", scanMap["mode"])
 	assert.Equal(t, "critical", scanMap["severity"])
 
-	// 11. Idempotent PUT (same policy returns current revision without incrementing)
+	// Idempotent PUT (same policy returns current revision without incrementing)
 	status, same, _ := alice.do("PUT", policyURL, gateBody)
 	assert.Equal(t, 200, status)
 	assert.Equal(t, gated["revision"], same["revision"], "same policy does not create new revision")

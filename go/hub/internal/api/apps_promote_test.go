@@ -83,6 +83,9 @@ func TestPromoteApp(t *testing.T) {
 	f := newFixture(t)
 	f.seedApp()
 	alice := f.signIn("alice@example.com", seedPassword)
+	if status := alice.status("POST", "/api/v1/projects/shop/environments", map[string]any{"name": "staging"}); status != http.StatusCreated {
+		t.Fatalf("create staging: %d", status)
+	}
 
 	// 1. Dry run
 	status, body, _ := alice.do("POST", "/api/v1/projects/shop/environments/prod/apps/api/promote", map[string]any{

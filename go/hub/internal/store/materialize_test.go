@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -136,7 +137,7 @@ func TestARunReadsEverythingItIsRenderedFrom(t *testing.T) {
 	if m.ConfigRevision != f.revision || m.ConfigRevisionNumber != 1 {
 		t.Fatalf("revision: %+v", m)
 	}
-	if port := path(m.Config, "runtime", "processes", "web", "port"); port != float64(8080) {
+	if port := path(m.Config, "runtime", "processes", "web", "port"); port != json.Number("8080") {
 		t.Fatalf("config: %#v", m.Config)
 	}
 

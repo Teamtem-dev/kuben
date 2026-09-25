@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,13 @@ import (
 const (
 	initChecksum   = "8f31b61b91f7e6dde541110d2cac976d5ecb019d1a4a6a74102b1067bac0ef73098861abe4429361c37412b1f765df37"
 	rollupChecksum = "87b967d9a38751484d1cb4bfc469ed17ae06ffa615c23ff3b4f0ba5c9d6ab0b3a9692a2e838fa982356cde716c5c74d9"
+)
+
+// lockWait bounds waiting for other packages' migrations to let go of the
+// per-database migration lock; lockPoll is the retry interval.
+const (
+	lockWait = 30 * time.Second
+	lockPoll = 50 * time.Millisecond
 )
 
 func TestEmbeddedMigrationsResolveAsSqlxDoes(t *testing.T) {
@@ -235,16 +243,29 @@ func TestRunWritesSqlxsLedger(t *testing.T) {
 	if err := run(t, p, m); err != nil {
 		t.Fatalf("a second run is a no-op: %v", err)
 	}
-	// The run released its lock: another session can take it at once.
+	// The run released its lock: another session can take it. The lock is
+	// per database, so tests of other packages migrating their own schemas
+	// hold it for moments; a lock this run leaked would never come free,
+	// its connection idles in the pool.
 	c, err := p.Acquire(t.Context())
 	if err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 	defer c.Release()
-	var got bool
-	if err := c.QueryRow(t.Context(), "SELECT pg_try_advisory_lock($1)",
-		migrate.LockID(currentDatabase(t, p))).Scan(&got); err != nil || !got {
-		t.Fatalf("the migration lock is still held: %v %v", got, err)
+	lock := migrate.LockID(currentDatabase(t, p))
+	deadline := time.Now().Add(lockWait)
+	for {
+		var got bool
+		if err := c.QueryRow(t.Context(), "SELECT pg_try_advisory_lock($1)", lock).Scan(&got); err != nil {
+			t.Fatalf("try the migration lock: %v", err)
+		}
+		if got {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the migration lock is still held")
+		}
+		time.Sleep(lockPoll)
 	}
 	if _, err := c.Exec(t.Context(), "SELECT pg_advisory_unlock_all()"); err != nil {
 		t.Fatalf("unlock: %v", err)

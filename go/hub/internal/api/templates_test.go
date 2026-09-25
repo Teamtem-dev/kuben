@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
@@ -91,7 +90,7 @@ func TestScenario8TemplateCatalogue(t *testing.T) {
 	f.sqlApp()
 
 	alice := f.signIn("alice@example.com", seedPassword)
-	bob, _ := f.member("bob@example.com", perm.Viewer)
+	bob := f.signIn("bob@example.com", seedPassword)
 
 	// GET /api/v1/templates as bob (viewer)
 	status, list := bob.list("/api/v1/templates")

@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -185,7 +186,7 @@ func TestListsWhatTheAPIShows(t *testing.T) {
 		t.Fatalf("the image as given: %+v", a.Image)
 	}
 	config, _ := a.Config.Get()
-	if port := path(config, "runtime", "processes", "web", "port"); port != float64(80) {
+	if port := path(config, "runtime", "processes", "web", "port"); port != json.Number("80") {
 		t.Fatalf("config: %#v", config)
 	}
 

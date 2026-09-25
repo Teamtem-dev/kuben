@@ -35,10 +35,10 @@ type policyFixture struct {
 	lifecycleUID uuid.UUID
 }
 
-func newPolicyFixture(t *testing.T, s *store.Store, pol opt.Val[policy.EnvironmentPolicy]) policyFixture {
+func newPolicyFixture(t *testing.T, s *store.Store, slug string, pol opt.Val[policy.EnvironmentPolicy]) policyFixture {
 	t.Helper()
 	ctx := t.Context()
-	o := org(t, s, "a", "A")
+	o := org(t, s, slug, slug)
 	tn := tenant(t, s, o)
 	project := must[ids.ProjectID](t, "project")(tn.CreateProject(ctx, "shop", "Shop"))
 	env := must[ids.EnvironmentID](t, "environment")(tn.CreateEnvironment(ctx, project, "production", "Production", true))
@@ -48,7 +48,7 @@ func newPolicyFixture(t *testing.T, s *store.Store, pol opt.Val[policy.Environme
 		}
 	}
 	cluster := must[ids.ClusterID](t, "cluster")(tn.CreateCluster(ctx, "eu-1"))
-	placement := must[ids.PlacementID](t, "placement")(tn.CreatePlacement(ctx, project, env, cluster, "shop-production"))
+	placement := must[ids.PlacementID](t, "placement")(tn.CreatePlacement(ctx, project, env, cluster, slug+"-shop"))
 	application := must[ids.ApplicationID](t, "app")(tn.CreateApplication(ctx, project, "web", "Web"))
 	tgt := must[ids.TargetID](t, "target")(tn.CreateTarget(ctx, project, application, placement))
 	state, ok, err := tn.TargetState(ctx, tgt)
@@ -133,20 +133,16 @@ func isClaimable(t *testing.T, s *store.Store) bool {
 func TestPoliciesAreRevisionsSeenOnlyByTheirOrganization(t *testing.T) {
 	s := pgtest.Store(t)
 	ctx := t.Context()
-	f := newPolicyFixture(t, s, opt.None[policy.EnvironmentPolicy]())
+	f := newPolicyFixture(t, s, "a", opt.None[policy.EnvironmentPolicy]())
 
 	tn := tenant(t, s, f.org)
 	_, found, err := tn.EnvironmentPolicy(ctx, f.environment)
 	if err != nil || found {
 		t.Fatalf("expected none, got: %v, %v", found, err)
 	}
-	strict := policy.EnvironmentPolicy{
-		RequiredApprovals: 2,
-		DeployRole:        perm.Developer,
-		ApproveRole:       perm.Admin,
-		ApprovalTTLSecs:   policy.DefaultApprovalTTLSecs,
-	}
 	prod := policy.Production()
+	strict := prod
+	strict.RequiredApprovals = 2
 	for _, tc := range []struct {
 		p   policy.EnvironmentPolicy
 		rev uint64
@@ -191,7 +187,7 @@ func TestPoliciesAreRevisionsSeenOnlyByTheirOrganization(t *testing.T) {
 
 func TestAProtectedDeployWaitsForAnotherPerson(t *testing.T) {
 	s := pgtest.Store(t)
-	f := newPolicyFixture(t, s, opt.Some(policy.Production()))
+	f := newPolicyFixture(t, s, "a", opt.Some(policy.Production()))
 	runID, required := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
 	if required != 1 {
 		t.Fatalf("expected 1 required approval, got %d", required)
@@ -257,7 +253,7 @@ func TestOneRejectionCancelsAndTwoApprovalsNeedTwoPeople(t *testing.T) {
 	s := pgtest.Store(t)
 	two := policy.Production()
 	two.RequiredApprovals = 2
-	f := newPolicyFixture(t, s, opt.Some(two))
+	f := newPolicyFixture(t, s, "a", opt.Some(two))
 
 	first, _ := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
 	hash := runApprovalState(t, s, f, first).PlanHash
@@ -297,7 +293,7 @@ func TestOneRejectionCancelsAndTwoApprovalsNeedTwoPeople(t *testing.T) {
 
 func TestRestartsAndOpenEnvironmentsNeedNoApproval(t *testing.T) {
 	s := pgtest.Store(t)
-	open := newPolicyFixture(t, s, opt.Some(policy.Open()))
+	open := newPolicyFixture(t, s, "a", opt.Some(policy.Open()))
 	runID, required := startPolicyRun(t, s, open, 0, store.ReasonDeploy)
 	if required != 0 {
 		t.Fatalf("expected 0 required approvals, got %d", required)
@@ -307,13 +303,13 @@ func TestRestartsAndOpenEnvironmentsNeedNoApproval(t *testing.T) {
 		t.Fatalf("expected planned with no plan hash/expiry, got %#v", st)
 	}
 
-	unset := newPolicyFixture(t, s, opt.None[policy.EnvironmentPolicy]())
+	unset := newPolicyFixture(t, s, "b", opt.None[policy.EnvironmentPolicy]())
 	_, reqUnset := startPolicyRun(t, s, unset, 0, store.ReasonDeploy)
 	if reqUnset != 0 {
 		t.Fatalf("expected 0 for unset, got %d", reqUnset)
 	}
 
-	protected := newPolicyFixture(t, s, opt.Some(policy.Production()))
+	protected := newPolicyFixture(t, s, "c", opt.Some(policy.Production()))
 	restartRun, reqRestart := startPolicyRun(t, s, protected, 0, store.ReasonRestart)
 	if reqRestart != 0 {
 		t.Fatalf("restart needs no approvals, got %d", reqRestart)
@@ -325,7 +321,7 @@ func TestRestartsAndOpenEnvironmentsNeedNoApproval(t *testing.T) {
 
 func TestANewerRunSupersedesAWaitingOne(t *testing.T) {
 	s := pgtest.Store(t)
-	f := newPolicyFixture(t, s, opt.Some(policy.Production()))
+	f := newPolicyFixture(t, s, "a", opt.Some(policy.Production()))
 	older, _ := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
 	hash := runApprovalState(t, s, f, older).PlanHash
 
@@ -352,7 +348,7 @@ func TestANewerRunSupersedesAWaitingOne(t *testing.T) {
 
 func TestApprovalInputsAndDecisionsNeverChange(t *testing.T) {
 	s := pgtest.Store(t)
-	f := newPolicyFixture(t, s, opt.Some(policy.Production()))
+	f := newPolicyFixture(t, s, "a", opt.Some(policy.Production()))
 	runID, _ := startPolicyRun(t, s, f, 0, store.ReasonDeploy)
 	hash := runApprovalState(t, s, f, runID).PlanHash
 	voteRun(t, s, f, runID, bobUser, policy.Approve, hash)
@@ -367,14 +363,14 @@ func TestApprovalInputsAndDecisionsNeverChange(t *testing.T) {
 		if _, err := tn.TestExec(t.Context(), sqlStmt, runID); err == nil {
 			t.Fatalf("append-only trigger should prevent: %s", sqlStmt)
 		}
-		commit(t, tn)
+		rollback(t, tn)
 	}
 
 	tn := tenant(t, s, f.org)
 	if _, err := tn.TestExec(t.Context(), "UPDATE environment_policies SET required_approvals = 0"); err == nil {
 		t.Fatal("policy revisions are append-only")
 	}
-	commit(t, tn)
+	rollback(t, tn)
 }
 
 func createUser(t *testing.T, s *store.Store, email string) ids.UserID {
@@ -389,7 +385,7 @@ func createUser(t *testing.T, s *store.Store, email string) ids.UserID {
 func TestScopedRolesAreOnePerNodeAndOnlyForMembers(t *testing.T) {
 	s := pgtest.Store(t)
 	ctx := t.Context()
-	f := newPolicyFixture(t, s, opt.None[policy.EnvironmentPolicy]())
+	f := newPolicyFixture(t, s, "a", opt.None[policy.EnvironmentPolicy]())
 
 	member := createUser(t, s, "dev@example.com")
 	outsider := createUser(t, s, "out@example.com")
@@ -435,7 +431,7 @@ func TestScopedRolesAreOnePerNodeAndOnlyForMembers(t *testing.T) {
 func TestRemovingAMemberRevokesTheirTokensWithTheMembership(t *testing.T) {
 	s := pgtest.Store(t)
 	ctx := t.Context()
-	f := newPolicyFixture(t, s, opt.None[policy.EnvironmentPolicy]())
+	f := newPolicyFixture(t, s, "a", opt.None[policy.EnvironmentPolicy]())
 
 	member := createUser(t, s, "dev@example.com")
 	if err := s.AddMembership(ctx, f.org, member); err != nil {

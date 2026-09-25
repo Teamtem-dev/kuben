@@ -29,7 +29,7 @@ func TestProjectsAreTenantScoped(t *testing.T) {
 	if status != http.StatusCreated || created["name"] != "blog" || created["ready"] != false {
 		t.Fatalf("create: %d %v", status, created)
 	}
-	if status, problem, _ := alice.do("POST", "/api/v1/projects", map[string]any{"name": "blog", "display_name": "Again"}); status != http.StatusConflict || problem["detail"] != "project `blog` already exists" {
+	if status, problem, _ := alice.do("POST", "/api/v1/projects", map[string]any{"name": "blog", "display_name": "Again"}); status != http.StatusConflict || problem["detail"] != "conflict: project `blog` already exists" {
 		t.Fatalf("a duplicate: %d %v", status, problem)
 	}
 
@@ -40,7 +40,7 @@ func TestProjectsAreTenantScoped(t *testing.T) {
 	if status := alice.status("DELETE", "/api/v1/projects/blog", nil); status != http.StatusNoContent {
 		t.Fatalf("delete: %d", status)
 	}
-	if status, problem, _ := alice.do("DELETE", "/api/v1/projects/blog", nil); status != http.StatusConflict || problem["detail"] != "project `blog` is being deleted" {
+	if status, problem, _ := alice.do("DELETE", "/api/v1/projects/blog", nil); status != http.StatusConflict || problem["detail"] != "conflict: project `blog` is being deleted" {
 		t.Fatalf("twice: %d %v", status, problem)
 	}
 

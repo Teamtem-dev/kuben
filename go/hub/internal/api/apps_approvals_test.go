@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
@@ -14,7 +15,6 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/model"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/policy"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
@@ -100,40 +100,19 @@ func TestEligibleToDecide(t *testing.T) {
 	assert.True(t, api.Eligible(carolAccess, alreadyDecidedAppr, true), "carol can decide even if bob already did")
 }
 
+// tests/http.rs m4_protected_deploys_wait_for_another_approver.
 func TestM4ProtectedDeploysWaitForAnotherApprover(t *testing.T) {
-	f := newFixture(t)
-	f.sqlApp()
-
-	ctx := t.Context()
-	tn, err := f.store.Tenant(ctx, f.org)
-	assert.NoError(t, err)
-	project, _, err := tn.Project(ctx, "shop")
-	assert.NoError(t, err)
-	env, _, err := tn.Environment(ctx, project.ID, "prod")
-	assert.NoError(t, err)
-	_, ok, err := tn.SetEnvironmentPolicy(ctx, project.ID, env.ID, policy.Production(), "user:admin")
-	assert.NoError(t, err)
-	assert.True(t, ok)
-	assert.NoError(t, tn.Commit(ctx))
-
-	alice := f.signIn("alice@example.com", seedPassword)
-	bob, _ := f.member("bob@example.com", perm.Viewer)
-	carol, _ := f.member("carol@example.com", perm.Admin)
-
-	const deployURL = "/api/v1/projects/shop/environments/prod/apps/api/deployments"
-	status, runMap, _ := alice.do("POST", deployURL, map[string]any{
-		"expectedGeneration": 0,
-		"image":              "docker.io/library/nginx@" + nginx127,
-	})
-	assert.Equal(t, 202, status, "deployment accepted")
+	alice, bob, carol := protected(t, newFixture(t))
+	status, runMap, _ := alice.deploy(0, "")
+	require.Equal(t, 202, status, "%v", runMap)
 	assert.Equal(t, "awaitingApproval", runMap["phase"])
 	assert.Equal(t, float64(1), runMap["approvals_required"])
 	planHash, _ := runMap["plan_hash"].(string)
-	assert.NotEmpty(t, planHash)
+	require.NotEmpty(t, planHash)
 	runID, _ := runMap["run"].(string)
-	assert.NotEmpty(t, runID)
+	require.NotEmpty(t, runID)
 
-	base := "/api/v1/projects/shop/environments/prod/apps/api/deployments/" + runID
+	base := deployments + "/" + runID
 	approveURL := base + "/approve"
 	decide := func(h string) map[string]any {
 		return map[string]any{"planHash": h, "comment": "ship it"}
@@ -158,7 +137,7 @@ func TestM4ProtectedDeploysWaitForAnotherApprover(t *testing.T) {
 	assert.Equal(t, 200, status)
 	assert.Equal(t, "pendingDelivery", approved["phase"])
 	decisions, _ := approved["decisions"].([]any)
-	assert.Len(t, decisions, 1)
+	require.Len(t, decisions, 1)
 	firstDec, _ := decisions[0].(map[string]any)
 	assert.Equal(t, "carol@example.com", firstDec["approver"])
 

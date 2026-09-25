@@ -16,12 +16,18 @@ func TestManualJobNamesFitTheLimit(t *testing.T) {
 	}
 }
 
-// Without a Kubernetes cluster configured, runApp answers 503.
+// Without a Kubernetes cluster configured, runApp answers 503 once the
+// process is known (an app without a scheduled process is refused first,
+// as in Rust).
 func TestRunAppWithoutClusterAnswers503(t *testing.T) {
 	f := newFixture(t)
 	f.seedApp()
 	alice := f.signIn("alice@example.com", seedPassword)
 	status, body, _ := alice.do("POST", "/api/v1/projects/shop/environments/prod/apps/api/run", map[string]any{})
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 without a scheduled process, got %d: %v", status, body)
+	}
+	status, body, _ = alice.do("POST", "/api/v1/projects/shop/environments/prod/apps/api/run", map[string]any{"process": "web"})
 	if status != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 without cluster, got %d: %v", status, body)
 	}
