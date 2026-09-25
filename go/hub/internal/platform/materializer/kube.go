@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	utiljson "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/dynamic"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
@@ -99,10 +100,14 @@ func encode(obj any, kind string) (*unstructured.Unstructured, error) {
 	if err != nil {
 		return nil, fmt.Errorf("writing %s: %w", kind, err)
 	}
-	u := &unstructured.Unstructured{}
-	if err := u.UnmarshalJSON(data); err != nil {
+	// Not Unstructured.UnmarshalJSON: it refuses JSON without a kind, and
+	// the typed objects carry none. util/json keeps integers int64, as the
+	// unstructured helpers require.
+	var object map[string]any
+	if err := utiljson.Unmarshal(data, &object); err != nil {
 		return nil, fmt.Errorf("writing %s: %w", kind, err)
 	}
+	u := &unstructured.Unstructured{Object: object}
 	u.SetAPIVersion(v1alpha1.SchemeGroupVersion.String())
 	u.SetKind(kind)
 	if ts, found, err := unstructured.NestedFieldNoCopy(u.Object, "metadata", "creationTimestamp"); err == nil && found && ts == nil {
