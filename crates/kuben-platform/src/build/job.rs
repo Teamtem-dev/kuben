@@ -116,7 +116,7 @@ trivy image --quiet $insecure --format cyclonedx --output sbom.json "$KUBEN_REPO
 trivy sbom --quiet --scanners vuln --format template   --template '{{ range . }}{{ range .Vulnerabilities }}{{ .Severity }}:{{ .VulnerabilityID }}{{ "
 " }}{{ end }}{{ end }}'   --output found.txt sbom.json 2>scan.err || report "the vulnerability database is not available"
 db=$(trivy version --format json 2>/dev/null | tr ',' '
-' | sed -n 's/.*"UpdatedAt": *"\([^"]*\)".*//p' | head -n 1)
+' | sed -n 's/.*"UpdatedAt": *"\([^"]*\)".*/\1/p' | head -n 1)
 sort -u found.txt | tr -cd 'A-Za-z0-9:._
 -' >unique.txt
 n() { grep -c "^$1:" unique.txt || true; }
@@ -535,6 +535,15 @@ pub(crate) mod tests {
     use uuid::Uuid;
 
     use super::*;
+
+    #[test]
+    fn the_scan_report_carries_the_database_date() {
+        // 1.2.0 had a raw 0x01 byte where sed's `\1` belongs: every report
+        // held a control character, did not parse, and every scan counted as
+        // unavailable.
+        assert!(!SCAN_SCRIPT.contains('\u{1}'));
+        assert!(SCAN_SCRIPT.contains(r#"".*/\1/p' | head -n 1)"#));
+    }
 
     pub(crate) fn attempt(recipe: BuildRecipe) -> BuildAttempt {
         BuildAttempt {
