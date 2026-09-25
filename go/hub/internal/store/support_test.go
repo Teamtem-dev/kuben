@@ -12,8 +12,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store/pgtest"
 )
 
-// Ported from support.rs. As in retention_test.go, the incidents are
-// written by hand until repo/notify.rs is ported.
+// Ported from support.rs.
 
 func TestTheSummaryCountsAcrossOrganizations(t *testing.T) {
 	s := pgtest.Store(t)

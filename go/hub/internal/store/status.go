@@ -28,28 +28,7 @@ const (
 	publicIncidents  = "SELECT id, target_id, severity, opened_at, resolved_at FROM incidents " +
 		"WHERE org_id = $1 AND target_id = ANY($2) AND (resolved_at IS NULL OR resolved_at >= $3) " +
 		"ORDER BY opened_at DESC LIMIT 50"
-	openIncidentSQL = "INSERT INTO incidents " +
-		"(id, org_id, project_id, environment_id, target_id, kind, severity, dedupe_key, title, detail, " +
-		"opened_at, last_seen_at) " +
-		"VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11) " +
-		"ON CONFLICT (org_id, dedupe_key) WHERE resolved_at IS NULL DO UPDATE " +
-		"SET last_seen_at = EXCLUDED.last_seen_at, occurrences = incidents.occurrences + 1, " +
-		"detail = EXCLUDED.detail, severity = EXCLUDED.severity " +
-		"RETURNING id, (xmax = 0) AS opened"
 )
-
-// NewIncident is an incident to open (or to count again).
-type NewIncident struct {
-	Project     opt.Val[ids.ProjectID]
-	Environment opt.Val[ids.EnvironmentID]
-	Target      opt.Val[ids.TargetID]
-	Kind        string
-	// Severity: `critical`, `warning` or `info`.
-	Severity  string
-	DedupeKey string
-	Title     string
-	Detail    opt.Val[string]
-}
 
 // StatusPage is a project's status page.
 type StatusPage struct {
@@ -70,44 +49,6 @@ type PublicIncident struct {
 	Severity   string
 	OpenedAt   int64
 	ResolvedAt opt.Val[int64]
-}
-
-// OpenIncident opens an incident, or counts it again while one with its key is open.
-// It returns its id and whether it is new.
-func (t *Tenant) OpenIncident(ctx context.Context, i NewIncident) (uuid.UUID, bool, error) {
-	const op = "open an incident"
-	id := uuid.Must(uuid.NewV7())
-	now := t.store.now()
-	var (
-		projectID     *uuid.UUID
-		environmentID *uuid.UUID
-		targetID      *uuid.UUID
-	)
-	if p, ok := i.Project.Get(); ok {
-		u := p.UUID()
-		projectID = &u
-	}
-	if e, ok := i.Environment.Get(); ok {
-		u := e.UUID()
-		environmentID = &u
-	}
-	if tgt, ok := i.Target.Get(); ok {
-		u := tgt.UUID()
-		targetID = &u
-	}
-	var (
-		resID  uuid.UUID
-		opened bool
-	)
-	err := t.tx.QueryRow(ctx, openIncidentSQL,
-		id, t.org.String(), projectID, environmentID, targetID,
-		i.Kind, i.Severity, i.DedupeKey, i.Title, i.Detail.Ptr(),
-		now,
-	).Scan(&resID, &opened)
-	if err != nil {
-		return uuid.Nil, false, dbErr(op, err)
-	}
-	return resID, opened, nil
 }
 
 func scanStatusPage(op string) func(pgx.CollectableRow) (StatusPage, error) {
