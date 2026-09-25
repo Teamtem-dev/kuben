@@ -34,7 +34,7 @@ func addrs(t *testing.T, texts ...string) []netip.Addr {
 }
 
 // doctor.rs dns_ports_and_the_agent, its DNS part (the port and agent
-// checks arrive with the rest of doctor.rs).
+// checks are TestDNSPortsAndTheAgent).
 func TestDNSChecksAndVerdicts(t *testing.T) {
 	gw := addrs(t, "203.0.113.7")
 	other := addrs(t, "198.51.100.1")

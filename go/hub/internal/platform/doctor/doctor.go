@@ -1,13 +1,13 @@
 // Package doctor judges why an app is or is not reachable, as a list of
-// checks (M2.13). It replaces part of crates/kuben-platform/src/doctor.rs:
-// the checks, the DNS verdict and check, the lookup of a hostname, and the
-// reading of the KubenConfig and of Kuben's Gateway, which the app-domains
-// route uses. The rest of doctor.rs (the platform, exposure, port, claim,
-// delegation, proxy and agent checks and the report's overall verdict) is
-// ported with slice S2.
+// checks (M2.13). It replaces crates/kuben-platform/src/doctor.rs: the
+// platform (GatewayClass, Gateway, issuer), port, route and certificate,
+// DNS, agent, claim, delegation and proxy checks, the report's overall
+// verdict, the lookup of a hostname, the probe of a port, and the reading
+// of the KubenConfig and of Kuben's Gateway.
 //
 // The functions only judge what the caller observed, so the API and the CLI
-// give the same verdicts. A check that could not be made is `unknown`.
+// give the same verdicts. A check that could not be made is `unknown`, and
+// a report with an unknown check is never `ok`.
 package doctor
 
 import (
