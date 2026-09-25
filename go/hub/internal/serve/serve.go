@@ -80,13 +80,17 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	inCluster := config.InCluster()
 	announceSetup(ctx, cfg, st, inCluster, logger)
+	keyring, err := secretKeyring(ctx, cfg, st, logger)
+	if err != nil {
+		return err
+	}
 
 	projections := projection.New()
 	var subsystems []<-chan struct{}
 	if r, ok := cluster.Get(); ok {
 		subsystems = clusterWork{
 			cfg: cfg, registry: r, projections: projections, store: st, health: h, logger: logger,
-			election: elect, facts: &discovery.Watch{},
+			election: elect, facts: &discovery.Watch{}, keyring: keyring,
 		}.start(ctx)
 	} else {
 		// Nothing to sync without a cluster: serve setup and diagnostics now.
@@ -111,6 +115,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Projections: projections,
 			Logger:      logger,
 			InCluster:   inCluster,
+			Keyring:     opt.Some(keyring),
 		})
 		if err != nil {
 			return fmt.Errorf("api: %w", err)

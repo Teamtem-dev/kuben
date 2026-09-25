@@ -17,6 +17,7 @@ import (
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/materializer"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/supervise"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
@@ -47,6 +48,8 @@ type clusterWork struct {
 	election    opt.Val[leader.Election]
 	// facts is published by discovery on controller replicas.
 	facts *discovery.Watch
+	// keyring opens the secret revisions runs are bound to.
+	keyring *secrets.Keyring
 }
 
 // start starts the cluster subsystems (serve.rs spawn_cluster_tasks) and
@@ -73,7 +76,7 @@ func (c clusterWork) start(ctx context.Context) []<-chan struct{} {
 	// runs one.
 	worker := materializer.New(materializer.Deps{
 		Store: c.store, Cluster: primary, ID: leader.Identity(), Logger: c.logger, Clock: clock.System{},
-		Facts: opt.Some(c.facts),
+		Facts: opt.Some(c.facts), Keyring: opt.Some(c.keyring),
 	})
 	return append(done,
 		c.controllers(ctx, worker),
