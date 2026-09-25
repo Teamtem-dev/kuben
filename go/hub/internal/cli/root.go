@@ -8,7 +8,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,10 +24,6 @@ import (
 // clap's `#[arg(env = …)]` did: the flag wins, then the variable, then the
 // default.
 const envAnnotation = "kuben_env"
-
-// errNotPorted answers a command whose Rust implementation has not been
-// ported yet.
-var errNotPorted = errors.New("this command is not available in this build yet") //nolint:gochecknoglobals // sentinel
 
 // globals are the options every command shares.
 type globals struct {
@@ -160,6 +155,3 @@ func rustArch(goarch string) string {
 		return goarch
 	}
 }
-
-// notPorted is the RunE of a command whose port is still to come.
-func notPorted(*cobra.Command, []string) error { return errNotPorted }
