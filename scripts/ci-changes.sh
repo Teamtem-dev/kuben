@@ -6,13 +6,11 @@
 #   scripts/ci-changes.sh --all        # everything (push to main, merge queue, …)
 #
 # Groups and the jobs they gate:
-#   rust     Rust sources, manifests, toolchain   → fmt, clippy, tests, MSRV, e2e, budgets
-#   deps     dependency manifests                  → cargo-deny
 #   web      web app and TypeScript packages       → web, budgets
-#   codegen  generated files or their inputs       → drift (always with rust: Rust
-#            types produce the OpenAPI spec and the CRDs)
-#   scripts  shell scripts, installer, Helm chart  → scripts, e2e
-#   go       the Go rewrite (go/, go.work)          → go
+#   codegen  the frozen contracts and the TS client → drift, api-compat
+#   scripts  shell scripts, installer, Helm chart  → scripts, e2e jobs
+#   go       Go modules (go/, go.work), and the     → go, go-kind, oracle, e2e jobs,
+#            frozen contracts the Go tests pin        budgets
 #
 # Fail open: a change to CI itself (.github/) or to the task runner every job
 # goes through (turbo.json, the root package.json, bun.lock, bunfig.toml), or an
@@ -21,8 +19,8 @@
 #   git diff --name-only origin/main...HEAD | scripts/ci-changes.sh
 set -euo pipefail
 
-rust=false deps=false web=false codegen=false scripts=false go=false
-select_all() { rust=true deps=true web=true codegen=true scripts=true go=true; }
+web=false codegen=false scripts=false go=false
+select_all() { web=true codegen=true scripts=true go=true; }
 
 if [[ ${1:-} == --all ]]; then
   select_all
@@ -33,23 +31,26 @@ else
     count=$((count + 1))
     case "$path" in
     .github/* | turbo.json | package.json | bun.lock | bunfig.toml) select_all ;;
-    Cargo.toml | Cargo.lock | crates/*/Cargo.toml | deny.toml)
-      rust=true
-      deps=true
-      ;;
-    crates/* | rust-toolchain.toml | clippy.toml | rustfmt.toml | .cargo/* | .config/nextest.toml) rust=true ;;
     go/* | go.work | go.work.sum | .golangci.yml) go=true ;;
-    scripts/go-check.sh | scripts/rust-drift.sh)
+    scripts/go-check.sh | scripts/go-build.sh)
       go=true
       scripts=true
+      ;;
+    # The frozen OpenAPI spec: the Go server is generated from it.
+    packages/api-client/openapi.json)
+      web=true
+      codegen=true
+      go=true
       ;;
     packages/api-client/*)
       web=true
       codegen=true
       ;;
+    # The frozen CRD manifest: the Go tests pin the embedded copy to it.
     charts/kuben/crds/*)
       codegen=true
       scripts=true
+      go=true
       ;;
     apps/* | packages/* | biome.json | tsconfig.base.json) web=true ;;
     scripts/* | install.sh | charts/* | deploy/* | Dockerfile | .trivyignore.yaml) scripts=true ;;
@@ -59,6 +60,4 @@ else
   if ((count == 0)); then select_all; fi
 fi
 
-if [[ $rust == true ]]; then codegen=true; fi
-
-printf 'rust=%s\ndeps=%s\nweb=%s\ncodegen=%s\nscripts=%s\ngo=%s\n' "$rust" "$deps" "$web" "$codegen" "$scripts" "$go"
+printf 'web=%s\ncodegen=%s\nscripts=%s\ngo=%s\n' "$web" "$codegen" "$scripts" "$go"
