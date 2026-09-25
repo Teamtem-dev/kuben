@@ -1,0 +1,100 @@
+package cli
+
+import (
+	"bytes"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
+)
+
+// parseServe parses `kuben serve` arguments the way Execute does, without
+// running the server.
+func parseServe(t *testing.T, args ...string) serveOpts {
+	t.Helper()
+	cmd := serveCmd(&globals{})
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyEnv(cmd); err != nil {
+		t.Fatal(err)
+	}
+	roles, err := cmd.Flags().GetStringSlice("roles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, err := cmd.Flags().GetBool("dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return serveOpts{roles: roles, dev: dev}
+}
+
+func TestParsesServeRoles(t *testing.T) {
+	opts := parseServe(t, "--roles=api,controller", "--dev")
+	cfg, err := opts.apply(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []config.Role{config.RoleAPI, config.RoleController}; !slices.Equal(cfg.Server.Roles, want) {
+		t.Errorf("roles %v, want %v", cfg.Server.Roles, want)
+	}
+	if !opts.dev {
+		t.Error("--dev not read")
+	}
+}
+
+func TestDevFlagDisablesSecureCookie(t *testing.T) {
+	cfg, err := parseServe(t, "--dev").apply(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CookieSecure() {
+		t.Error("cookie still secure")
+	}
+	if cfg.Telemetry.LogFormat != "pretty" {
+		t.Errorf("log format %s", cfg.Telemetry.LogFormat)
+	}
+}
+
+func TestRolesFallBackToTheEnvironmentButTheFlagWins(t *testing.T) {
+	t.Setenv("KUBEN_ROLES", "controller")
+	if got := parseServe(t).roles; !slices.Equal(got, []string{"controller"}) {
+		t.Errorf("from env: %v", got)
+	}
+	if got := parseServe(t, "--roles=api").roles; !slices.Equal(got, []string{"api"}) {
+		t.Errorf("flag over env: %v", got)
+	}
+}
+
+func TestAnUnknownRoleIsRefused(t *testing.T) {
+	_, err := parseServe(t, "--roles=api,web").apply(config.Default())
+	if err == nil || !strings.Contains(err.Error(), "unknown variant `web`") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestVersionNamesTheSystemAsRustDid(t *testing.T) {
+	if got := rustOS("darwin") + " " + rustArch("amd64") + " " + rustArch("arm64"); got != "macos x86_64 aarch64" {
+		t.Errorf("got %s", got)
+	}
+	var out bytes.Buffer
+	if err := printVersion(&out, true, false); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out.String(), "\n")
+	if !strings.HasPrefix(lines[0], "kuben ") || lines[1] != "bundle lock (schema 1)" {
+		t.Errorf("output:\n%s", out.String())
+	}
+}
+
+func TestVersionJSONNeedsBundle(t *testing.T) {
+	root := Root()
+	root.SetArgs([]string{"version", "--json"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "requires '--bundle'") {
+		t.Fatalf("err = %v", err)
+	}
+}

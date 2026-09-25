@@ -7,8 +7,8 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | Crate | File | Lines | Rust tests | Go package | Status | Notes |
 |---|---|---:|---:|---|---|---|
 | kuben | `bootstrap.rs` | 301 | 3 |  | todo | |
-| kuben | `bundle.rs` | 184 | 3 |  | todo | |
-| kuben | `main.rs` | 85 | 0 | cmd/kuben | partial | serve, setup-token, version; the rest: G5 |
+| kuben | `bundle.rs` | 184 | 3 | bundle | ported | 3 → 5 (+ the embedded copy is byte-identical to the root `bundle.lock.json`, the summary lists every pin) |
+| kuben | `main.rs` | 85 | 0 | cmd/kuben, cli | partial | every command is declared (cli.Root); serve, setup-token, version, copy-self run; the others answer "not available in this build yet" until their G5 port. anyhow's `Error: …` on failure; RUST_LOG/telemetry: G5 |
 | kuben | `serve.rs` | 867 | 0 | serve | partial | api role; with a cluster: informers, readiness on first sync, discovery (controller role), leader election settings (the Lease is campaigned for once reconcilers exist, S1-D). Left: materializer, controllers, AgentLink, builds, background work (S1–S5) |
 | kuben | `telemetry.rs` | 36 | 0 |  | todo | |
 | kuben | `cli/admin.rs` | 38 | 0 |  | todo | |
@@ -17,7 +17,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben | `cli/client.rs` | 685 | 3 |  | todo | |
 | kuben | `cli/dns01.rs` | 168 | 2 |  | todo | |
 | kuben | `cli/doctor.rs` | 551 | 2 |  | todo | |
-| kuben | `cli/mod.rs` | 274 | 2 |  | todo | |
+| kuben | `cli/mod.rs` | 274 | 2 | cli (root.go, cmd_serve.go, cmd_version.go) | partial | 2 → 6; cobra: clap's `env =` fallbacks by an annotation applied before each command (flag, then variable, then default), `--roles` comma list, `--dev`, version string with Rust's OS/arch names (`macos`, `x86_64`, `aarch64`). Left: the option structs of the commands still to port |
 | kuben | `cli/support.rs` | 659 | 4 |  | todo | |
 | kuben | `cli/ui.rs` | 372 | 3 |  | todo | |
 | kuben | `cli/upgrade.rs` | 134 | 1 |  | todo | |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 10, ported 172, todo 47.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 11, ported 173, todo 45.
