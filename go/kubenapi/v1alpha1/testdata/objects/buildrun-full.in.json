@@ -1,0 +1,4 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"BuildRun","metadata":{"name":"api-abc123","namespace":"kuben-builds"},
+ "spec":{ "app": "kb-shop-prod/api", "repo": "https://github.com/acme/shop", "gitRef": "main", "path": "services/api", "strategy": "railpack", "image": "ghcr.io/acme/api:0123456" },
+ "status": { "phase": "Succeeded", "jobName": "build-api-abc123", "imageDigest": "ghcr.io/acme/api@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+   "startedAt": "2026-09-01T10:00:00Z", "finishedAt": "2026-09-01T10:03:00Z" }}

@@ -62,8 +62,8 @@ Every mutation, denial, throttled attempt and login is recorded with actor, acti
 ## The pod
 
 - Distroless image, non-root user (UID 65532), read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp.
-- Static musl binary with mimalloc; no shell, no package manager in the image.
-- The image is built from the very binaries that were checksummed and attested, and scanned for HIGH and CRITICAL vulnerabilities before it is pushed. Every binary embeds its dependency list (`cargo auditable`), so `trivy`, `grype` or `osv-scanner` can audit a deployed binary in place.
+- Static binary (Go with cgo disabled; 1.x: musl with mimalloc); no shell, no package manager in the image.
+- The image is built from the very binaries that were checksummed and attested, and scanned for HIGH and CRITICAL vulnerabilities before it is pushed. Every binary embeds its dependency list (Go's module list, `go version -m`; 1.x: `cargo auditable`), so `trivy`, `grype`, `osv-scanner` or `govulncheck -mode=binary` can audit a deployed binary in place.
 
 ## Supply chain
 
@@ -71,7 +71,7 @@ Every mutation, denial, throttled attempt and login is recorded with actor, acti
 - Releases are signed keyless with Sigstore (checksums, image, chart) and carry build provenance; the installer verifies the signature when cosign is present. See [Download, verify, then run](/docs/getting-started/binary/#download-verify-then-run).
 - What setup installs from others (k3s, Gateway API CRDs, cert-manager and its images, PostgreSQL) is pinned by digest in the release's bundle lock and checked before use.
 - Releases build without a cache, so a poisoned cache can never reach an artifact.
-- `cargo-deny` checks licenses, advisories, bans and sources on every change; RustSec advisories and the published image are re-checked daily.
+- govulncheck checks the Go modules on every change; the modules of `main` and the published image are re-checked daily.
 - Dependabot updates run with a 7-day cooldown against freshly published malicious packages.
 
 ## Limits

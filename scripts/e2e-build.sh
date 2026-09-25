@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN=${KUBEN_BIN:-$ROOT/target/debug/kuben}
+BIN=${KUBEN_BIN:-$ROOT/go/hub/bin/kuben}
 DATABASE_URL=${KUBEN_E2E_DATABASE_URL:?set KUBEN_E2E_DATABASE_URL to an empty PostgreSQL database}
 PORT=${KUBEN_E2E_PORT:-18080}
 BASE="http://127.0.0.1:${PORT}/api/v1"
@@ -29,7 +29,7 @@ BUILD_NS=kuben-builds
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
 for c in kubectl curl jq openssl python3 git; do need "$c"; done
-[[ -x $BIN ]] || { echo "build the binary first: cargo build -p kuben ($BIN)" >&2; exit 2; }
+[[ -x $BIN ]] || { echo "build the binary first: bun turbo run hub#build ($BIN)" >&2; exit 2; }
 
 work=$(mktemp -d)
 pid=""

@@ -11,14 +11,15 @@ updates:
       actions:
         patterns: ["*"]
 
-  - package-ecosystem: cargo
-    directory: /
+  - package-ecosystem: gomod
+    # The modules of the Go workspace (go.work).
+    directories: ["/go/hub", "/go/agent", "/go/kubenapi", "/go/tools"]
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     groups:
-      rust-minor:
+      go-minor:
         update-types: [minor, patch]
 
   - package-ecosystem: bun

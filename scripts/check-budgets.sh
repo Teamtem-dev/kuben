@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Size budgets are CI gates, not aspirations (blueprint §5.7).
+# Size budgets (blueprint §5.7). Since the Go rewrite they warn instead of
+# failing: correctness and standard libraries come before binary size
+# (plan v2.1, owner decision); an exceeded budget is annotated, not fatal.
 #
 #   scripts/check-budgets.sh binary <path> [max MiB]   default: $KUBEN_BUDGET_BINARY_MB or 45
 #   scripts/check-budgets.sh image  <ref>  [max MiB]   default: $KUBEN_BUDGET_IMAGE_MB  or 50
@@ -12,14 +14,13 @@ mib() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1048576 }'; }
 report() { # <label> <bytes> <limit MiB>
   local label=$1 bytes=$2 limit_mib=$3
   local verdict=ok
-  if ((bytes > limit_mib * 1048576)); then verdict=FAIL; fi
+  if ((bytes > limit_mib * 1048576)); then verdict=OVER; fi
   local line # declared separately: assigning a command substitution masks its exit status (SC2155)
   line="${label}: $(mib "$bytes") MiB (budget ${limit_mib} MiB) — ${verdict}"
   echo "$line"
   if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then echo "- ${line}" >>"$GITHUB_STEP_SUMMARY"; fi
-  if [[ $verdict == FAIL ]]; then
-    if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::error title=Size budget exceeded::${line}"; fi
-    exit 1
+  if [[ $verdict == OVER && -n ${GITHUB_ACTIONS:-} ]]; then
+    echo "::warning title=Size budget exceeded::${line}"
   fi
 }
 

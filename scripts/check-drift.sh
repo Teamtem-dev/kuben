@@ -3,11 +3,17 @@
 # and compares against the files as they were before, so no git is needed and
 # a fresh `bun run gen` in the working tree passes.
 #
+# Only the TS client types are generated now. The OpenAPI spec
+# (packages/api-client/openapi.json) and the CRD manifest
+# (charts/kuben/crds/kuben.dev_all.yaml) are frozen contracts: the Rust code
+# generated them up to 1.2, and the Go tests pin the server and the embedded
+# CRDs to the committed files.
+#
 #   bun run drift
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-files=(packages/api-client/openapi.json packages/api-client/src/schema.d.ts charts/kuben/crds/kuben.dev_all.yaml)
+files=(packages/api-client/src/schema.d.ts)
 # An explicit template: BSD mktemp ignores $TMPDIR without one.
 snap=$(mktemp -d "${TMPDIR:-/tmp}/kuben-drift.XXXXXX")
 trap 'rm -rf "$snap"' EXIT

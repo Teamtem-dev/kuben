@@ -1,0 +1,4 @@
+# The console build copied in before `go build` (turbo task hub#build).
+/internal/api/web/dist/*
+!/internal/api/web/dist/.gitkeep
+/bin/

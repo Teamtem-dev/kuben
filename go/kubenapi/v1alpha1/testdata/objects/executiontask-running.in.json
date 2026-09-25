@@ -1,0 +1,3 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"ExecutionTask","metadata":{"name":"m-1","namespace":"kb-shop-prod"},
+ "spec":{ "kind": "Migration", "operationId": "o", "attempt": 1, "input": "{}", "inputHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "deadline": "2026-09-15T12:00:00Z" },
+ "status": { "phase": "Running", "conditions": [] }}

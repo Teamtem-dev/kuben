@@ -1,0 +1,4 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"ApplicationRuntime","metadata":{"name":"web","namespace":"kb-shop-prod"},
+ "spec":{ "targetId": "0199a0c0-0000-7000-8000-000000000001", "lifecycleUid": "0199a0c0-0000-7000-8000-000000000002",
+   "controlEpoch": 0, "generation": 1, "inputHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "releaseId": "0199a0c0-0000-7000-8000-000000000003",
+   "plan": { "id": "0199a0c0-0000-7000-8000-000000000004", "rendererVersion": "kuben-renderer/1", "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "resources": "[]" } }}

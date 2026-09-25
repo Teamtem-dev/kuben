@@ -1,0 +1,42 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "KubenConfig",
+  "metadata": {
+    "name": "kuben"
+  },
+  "spec": {
+    "baseDomain": "apps.example.com",
+    "gateway": "kuben-system/kuben",
+    "clusterIssuer": "letsencrypt",
+    "sizes": [
+      {
+        "name": "nano",
+        "cpuRequest": "50m",
+        "cpuLimit": null,
+        "memoryRequest": "64Mi",
+        "memoryLimit": "128Mi"
+      },
+      {
+        "name": "small",
+        "cpuRequest": "100m",
+        "cpuLimit": null,
+        "memoryRequest": "128Mi",
+        "memoryLimit": "256Mi"
+      },
+      {
+        "name": "medium",
+        "cpuRequest": "250m",
+        "cpuLimit": null,
+        "memoryRequest": "512Mi",
+        "memoryLimit": "1Gi"
+      },
+      {
+        "name": "large",
+        "cpuRequest": "1",
+        "cpuLimit": null,
+        "memoryRequest": "2Gi",
+        "memoryLimit": "4Gi"
+      }
+    ]
+  }
+}

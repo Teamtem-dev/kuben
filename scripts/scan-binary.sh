@@ -3,10 +3,11 @@
 #
 #   scripts/scan-binary.sh <binary>
 #
-# 1. The binary must carry its dependency list (cargo-auditable). Without it a
-#    scanner sees an opaque file and silently reports nothing.
+# 1. The binary must carry its module list. Go embeds it in every binary
+#    (`go version -m <binary>` prints it); without it a scanner sees an opaque
+#    file and silently reports nothing.
 # 2. No HIGH or CRITICAL vulnerability with a fixed version may ship.
-#    cargo-deny gates RustSec advisories on the lockfile; this checks the artifact.
+#    govulncheck gates the source in CI; this checks the artifact.
 set -euo pipefail
 
 bin=${1:-}
@@ -24,10 +25,10 @@ dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 cp "$bin" "$dir/"
 
-crates=$(trivy rootfs --quiet --format cyclonedx "$dir" |
-  jq '[.components[]? | select((.purl // "") | startswith("pkg:cargo/"))] | length')
-((crates > 0)) || error "$(basename "$bin") carries no dependency list; build it with 'cargo auditable'"
-echo "dependency list: ${crates} crates"
+modules=$(trivy rootfs --quiet --format cyclonedx "$dir" |
+  jq '[.components[]? | select((.purl // "") | startswith("pkg:golang/"))] | length')
+((modules > 0)) || error "$(basename "$bin") carries no module list (see 'go version -m'); build it with 'go build', unpacked"
+echo "dependency list: ${modules} Go modules"
 
 trivy rootfs --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$dir"
 echo "no HIGH or CRITICAL vulnerabilities with a fix available"

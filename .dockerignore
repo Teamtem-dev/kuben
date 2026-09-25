@@ -1,10 +1,12 @@
-target
+go/hub/bin
+go/agent/bin
+go/hub/internal/api/web/dist/*
+!go/hub/internal/api/web/dist/.gitkeep
 **/node_modules
 **/.turbo
 apps/console/dist
 .dev
 .cache
-.cargo-home
 .git
 *.db
 *.db-*

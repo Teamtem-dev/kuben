@@ -8,10 +8,10 @@
   "files": {
     "includes": [
       "**",
-      "!**/target",
       "!**/dist",
       "!**/.claude",
       "!**/charts",
+      "!go",
       "!apps/site/public",
       "!packages/api-client/openapi.json",
       "!packages/api-client/src/schema.d.ts"

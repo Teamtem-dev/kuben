@@ -1,30 +1,8 @@
 name: Setup
 description: >-
-  Bun (version from package.json `packageManager`) and the JS dependencies,
-  plus an optional Rust toolchain and cache. Every turbo run reads the Cargo
-  workspace, so any job that calls turbo also needs Rust.
-
-inputs:
-  rust-toolchain:
-    description: Rust toolchain to install; empty skips Rust.
-    default: ""
-  rust-components:
-    description: Extra rustup components, comma-separated.
-    default: ""
-  rust-targets:
-    description: Extra rustup targets, comma-separated.
-    default: ""
-  rust-cache:
-    description: Restore the Rust cache (Swatinem/rust-cache).
-    default: "true"
-  rust-cache-key:
-    description: Extra key that separates this job's Rust cache.
-    default: ""
-  rust-cache-save:
-    description: >-
-      `main` saves only on refs/heads/main, so pull requests can never plant
-      a poisoned cache; `false` never saves.
-    default: main
+  Bun (version from package.json `packageManager`) and the JS dependencies.
+  Jobs that build or test Go install it first with actions/setup-go, pinned
+  to the version in go/hub/go.mod.
 
 runs:
   using: composite
@@ -35,23 +13,3 @@ runs:
     - name: Install JS dependencies
       shell: bash
       run: bun install --frozen-lockfile
-    # rustup ships with every GitHub-hosted runner: no third-party action on
-    # the toolchain path, and no branch pin (`@master`) that drifts.
-    - if: inputs.rust-toolchain != ''
-      name: Install Rust
-      shell: bash
-      env:
-        TOOLCHAIN: ${{ inputs.rust-toolchain }}
-        COMPONENTS: ${{ inputs.rust-components }}
-        TARGETS: ${{ inputs.rust-targets }}
-      run: |
-        args=(--profile minimal --no-self-update)
-        if [[ -n $COMPONENTS ]]; then args+=(--component "$COMPONENTS"); fi
-        if [[ -n $TARGETS ]]; then args+=(--target "$TARGETS"); fi
-        rustup toolchain install "$TOOLCHAIN" "${args[@]}"
-        rustup default "$TOOLCHAIN"
-    - if: inputs.rust-toolchain != '' && inputs.rust-cache == 'true'
-      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      with:
-        key: ${{ inputs.rust-cache-key }}
-        save-if: ${{ inputs.rust-cache-save == 'main' && github.ref == 'refs/heads/main' }}

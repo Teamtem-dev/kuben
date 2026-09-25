@@ -49,22 +49,24 @@ gh attestation verify oci://ghcr.io/teamtem-dev/kuben:<version> --repo Teamtem-d
 
 ## What is inside a binary
 
-Release binaries are built with
-[cargo-auditable](https://github.com/rust-secure-code/cargo-auditable): the
-exact list of crates they contain is embedded in the binary itself (about
-6 KiB). Your own scanner can audit what you run, without the source:
+Kuben 2.x is written in Go, and Go embeds the exact list of modules (with
+their versions and checksums) in every binary it builds. Your own scanner can
+audit what you run, without the source:
 
 ```bash
-cargo audit bin /usr/local/bin/kuben
+go version -m /usr/local/bin/kuben
+govulncheck -mode=binary /usr/local/bin/kuben
 trivy image ghcr.io/teamtem-dev/kuben:<version>
 ```
 
+The 1.x binaries (Rust) embed their crate list with cargo-auditable instead;
+`cargo audit bin` reads it.
+
 ## How the project checks itself
 
-- **Every pull request:** cargo-deny (licenses, advisories, bans, sources),
-  zizmor on the GitHub Actions workflows, Trivy on the Helm chart and on the
-  release binary.
+- **Every pull request:** govulncheck on the Go modules, zizmor on the GitHub
+  Actions workflows, Trivy on the Helm chart and on the release binary.
 - **Every release:** Trivy on the image before it is pushed; nothing is
   published while a HIGH or CRITICAL vulnerability with a fix remains.
-- **Every day:** RustSec advisories on `main` and Trivy on the published
+- **Every day:** govulncheck on `main` and Trivy on the published
   image. See [docs/ci-cd.md](docs/ci-cd.md#4-daily-security-checks).

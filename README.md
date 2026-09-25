@@ -50,7 +50,7 @@ The image `ghcr.io/teamtem-dev/kuben` (amd64 and arm64, distroless, non-root) an
 - **One-click templates:** PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more, with generated credentials.
 - **Teams and CI/CD:** four roles, invitations, scoped API tokens, and an audit log of every change.
 - **GitOps-friendly:** everything is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
-- **Small and auditable:** one Rust binary of at most 30 MiB with the console embedded; the pod requests 64 MiB of memory.
+- **Small and auditable:** one static binary with the console embedded; the pod requests 64 MiB of memory.
 
 ## Documentation
 
@@ -80,10 +80,10 @@ Our [Code of Conduct](CODE_OF_CONDUCT.md) applies to every Kuben community space
 
 Contributions are welcome. Before you open a pull request, read the [contribution guidelines](CONTRIBUTING.md): they cover the workflow and the invariants every change is reviewed against.
 
-You need Rust (stable; MSRV 1.94) and [Bun](https://bun.com) 1.4 or later. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph:
+You need [Go](https://go.dev) (the version in `go/hub/go.mod`) and [Bun](https://bun.com) 1.4 or later. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph:
 
 ```bash
-bun run setup   # toolchain, JS dependencies, cargo-nextest
+bun run setup   # checks Go and Bun, JS dependencies, Go modules
 bun run dev     # API on :8080, console on :5173
 bun run ci      # everything CI checks
 ```

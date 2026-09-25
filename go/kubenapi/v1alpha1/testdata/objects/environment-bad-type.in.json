@@ -1,0 +1,2 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"Environment","metadata":{"name":"x"},
+ "spec":{ "project": "shop", "type": "Production" }}

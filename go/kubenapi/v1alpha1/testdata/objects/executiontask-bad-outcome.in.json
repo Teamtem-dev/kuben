@@ -1,0 +1,3 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"ExecutionTask","metadata":{"name":"x"},
+ "spec":{ "kind": "Restore", "operationId": "o", "attempt": 1, "input": "{}", "inputHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "deadline": "d" },
+ "status": { "receipt": { "outcome": "Timeout", "finishedAt": "f" } }}

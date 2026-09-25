@@ -6,10 +6,12 @@ const dist = join(import.meta.dirname, '..', 'dist')
 
 /** The content security policy Kuben serves the console with, from its source. */
 function kubenCsp(): string {
-  const source = readFileSync(join(import.meta.dirname, '../../../crates/kuben-api/src/web.rs'), 'utf8')
-  const policy = /const CSP: &str = "([\s\S]*?)";/.exec(source)?.[1]
-  if (!policy) throw new Error('CSP not found in crates/kuben-api/src/web.rs')
-  return policy.replace(/\\\n\s*/g, '')
+  const file = '../../../go/hub/internal/api/web/web.go'
+  const source = readFileSync(join(import.meta.dirname, file), 'utf8')
+  // `const CSP = "…" +\n\t"…"`: the Go string literals, concatenated.
+  const decl = /const CSP = ((?:"[^"]*"\s*\+\s*)*"[^"]*")/.exec(source)?.[1]
+  if (!decl) throw new Error(`CSP not found in ${file}`)
+  return [...decl.matchAll(/"([^"]*)"/g)].map((m) => m[1]).join('')
 }
 
 const csp = kubenCsp()

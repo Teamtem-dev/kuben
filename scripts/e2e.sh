@@ -2,8 +2,8 @@
 # End-to-end test: a real cluster (kind), the real binary, the public API.
 #
 #   KUBEN_E2E_DATABASE_URL=postgres://postgres:kuben@localhost:5432/postgres scripts/e2e.sh
-#   KUBEN_BIN=target/release/kuben scripts/e2e.sh      # default: ./target/debug/kuben
-#   KUBEN_AGENT_BIN=...                                # default: ./target/debug/kuben-agent (built if missing)
+#   KUBEN_BIN=... scripts/e2e.sh     # default: go/hub/bin/kuben (bun turbo run hub#build)
+#   KUBEN_AGENT_BIN=...              # default: go/agent/bin/kuben-agent (built if missing)
 #
 # Uses the current kube context and KUBEN_E2E_DATABASE_URL, an empty
 # PostgreSQL database (ADR-025): the run creates the first admin, so a
@@ -34,10 +34,10 @@
 # a Secret of its own; KUBEN_E2E_HUB is the address pods reach Kuben at.
 set -euo pipefail
 
-# Runs from any directory (`turbo run e2e` starts it in crates/kuben).
+# Runs from any directory (`turbo run e2e` starts it in go/hub).
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BIN=${KUBEN_BIN:-$ROOT/target/debug/kuben}
-AGENT_BIN=${KUBEN_AGENT_BIN:-$ROOT/target/debug/kuben-agent}
+BIN=${KUBEN_BIN:-$ROOT/go/hub/bin/kuben}
+AGENT_BIN=${KUBEN_AGENT_BIN:-$ROOT/go/agent/bin/kuben-agent}
 DATABASE_URL=${KUBEN_E2E_DATABASE_URL:?set KUBEN_E2E_DATABASE_URL to an empty PostgreSQL database, e.g. postgres://postgres:kuben@localhost:5432/postgres}
 PORT=${KUBEN_E2E_PORT:-18080}
 BASE="http://127.0.0.1:${PORT}/api/v1"
@@ -61,7 +61,7 @@ AGENT_NS=kuben-system
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 2; }; }
 for c in kubectl curl jq; do need "$c"; done
-[[ -x $BIN ]] || { echo "build the binary first: cargo build -p kuben ($BIN)" >&2; exit 2; }
+[[ -x $BIN ]] || { echo "build the binary first: bun turbo run hub#build ($BIN)" >&2; exit 2; }
 
 work=$(mktemp -d)
 
@@ -561,7 +561,8 @@ if [[ -n $AGENT_IMAGE ]]; then
     fail "the new pod did not restore its identity"
 else
   if [[ ! -x $AGENT_BIN ]]; then
-    cargo build --package kuben-agent --locked --quiet --manifest-path "$ROOT/Cargo.toml"
+    mkdir -p "$(dirname "$AGENT_BIN")"
+    (cd "$ROOT/go/agent" && CGO_ENABLED=0 go build -trimpath -o "$AGENT_BIN" ./cmd/kuben-agent)
   fi
   [[ -x $AGENT_BIN ]] || fail "no agent binary at $AGENT_BIN"
   "$AGENT_BIN" --hub "127.0.0.1:${AGENT_PORT}" --hub-ca "$work/state/agentlink/ca.crt" --cluster "$cluster" \

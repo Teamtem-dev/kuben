@@ -66,4 +66,4 @@ Caching raw Kubernetes objects for a whole cluster costs hundreds of megabytes. 
 
 ## Generated contracts
 
-The OpenAPI document, the TypeScript client used by the console and the CRD manifests in the Helm chart are generated from the Rust code. CI regenerates them and fails on any difference, so what this site's [REST API reference](/docs/reference/api/) shows is what the binary serves.
+The OpenAPI document and the CRD manifests in the Helm chart are the contracts Kuben keeps: the server's routes and the TypeScript client used by the console are generated from the OpenAPI document, and the binary embeds the CRD manifests. CI fails on any difference, so what this site's [REST API reference](/docs/reference/api/) shows is what the binary serves.

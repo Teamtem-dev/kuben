@@ -1,0 +1,156 @@
+# golangci-lint v2. The linters below are what stands in for the guarantees
+# the Rust compiler gave (see go/CONVENTIONS.md); a finding fails the build.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Teamtem-dev/kuben
+
+linters:
+  default: none
+  enable:
+    # correctness
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - errorlint
+    - nilerr
+    - nilnil
+    - bodyclose
+    - noctx
+    - contextcheck
+    - rowserrcheck
+    - sqlclosecheck
+    - durationcheck
+    - makezero
+    - copyloopvar
+    - reassign
+    - recvcheck
+    - musttag
+    # closed sets: Rust's exhaustive match
+    - exhaustive
+    - gochecksumtype
+    # security
+    - gosec
+    # design and size
+    - funlen
+    - gocyclo
+    - gocritic
+    - revive
+    - unparam
+    - unconvert
+    - prealloc
+    - misspell
+    - depguard
+    - forbidigo
+  settings:
+    exhaustive:
+      check:
+        - switch
+        - map
+      default-signifies-exhaustive: false
+      # Kinds of other packages' enums we deliberately switch on partially;
+      # a ResourceList holds the resources it limits, never all of them.
+      ignore-enum-types: ^(reflect\.Kind|k8s\.io/api/core/v1\.ResourceName)$
+    gochecksumtype:
+      default-signifies-exhaustive: false
+    funlen:
+      lines: 100
+      statements: 60
+      ignore-comments: true
+    recvcheck:
+      # controller-gen's DeepCopy methods take pointers; the JSON methods
+      # of the same Kubernetes types take values.
+      exclusions:
+        - "*.DeepCopy"
+        - "*.DeepCopyInto"
+        - "*.DeepCopyObject"
+        - "*.MarshalJSON"
+    gocyclo:
+      # funlen bounds size; a handler's sequence of checks, each `if err !=
+      # nil`, reaches 15 without real branching.
+      min-complexity: 20
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        # `if err := f(); err != nil` inside a function that has an `err`
+        # already is the idiom Effective Go teaches; flagging it buries the
+        # findings that matter.
+        - shadow
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: context-as-argument
+        - name: error-return
+        - name: error-naming
+        - name: unexported-return
+        - name: defer
+        - name: early-return
+        - name: unused-parameter
+    depguard:
+      rules:
+        no-orm-no-legacy:
+          deny:
+            - pkg: gorm.io/gorm
+              desc: SQL is written by hand and typed by sqlc (RLS, multi-table transactions).
+            - pkg: entgo.io/ent
+              desc: SQL is written by hand and typed by sqlc.
+            - pkg: github.com/pkg/errors
+              desc: use fmt.Errorf with %w and the errors package.
+            - pkg: log$
+              desc: use log/slog.
+            - pkg: io/ioutil
+              desc: deprecated; use io and os.
+        core-is-pure:
+          files:
+            - "**/internal/core/**"
+          deny:
+            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/store
+              desc: core performs no IO.
+            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/platform
+              desc: core performs no IO.
+            - pkg: github.com/Teamtem-dev/kuben/go/hub/internal/api
+              desc: core performs no IO.
+            - pkg: net/http
+              desc: core performs no IO.
+            - pkg: database/sql$
+              desc: core performs no IO (database/sql/driver for Valuer is fine).
+            - pkg: os$
+              desc: core performs no IO; config loading is the one allowed exception.
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: write to a logger or an io.Writer you were given.
+        - pattern: ^time\.Now$
+          msg: take a clock.Clock so tests can set the time.
+        - pattern: ^panic$
+          msg: return an error; panics are for programmer errors in main and tests.
+  exclusions:
+    rules:
+      # Tests are one story each (tests/http.rs scenarios run to hundreds of
+      # lines), talk to httptest servers that end with the test, and build
+      # small slices.
+      - path: _test\.go
+        linters: [funlen, gocyclo, gosec, forbidigo, errcheck, unparam, noctx, prealloc]
+      - path: internal/core/clock/
+        linters: [forbidigo]
+      - path: internal/core/config/
+        linters: [depguard]
+      - path: cmd/
+        linters: [forbidigo]

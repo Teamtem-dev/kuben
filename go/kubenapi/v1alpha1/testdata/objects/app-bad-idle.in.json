@@ -1,0 +1,2 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"App","metadata":{"name":"x"},
+ "spec":{ "source": {}, "runtime": { "processes": { "w": { "idle": { "mode": "sleep" } } } } }}

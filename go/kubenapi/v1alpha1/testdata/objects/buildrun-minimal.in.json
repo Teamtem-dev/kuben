@@ -1,0 +1,2 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"BuildRun","metadata":{"name":"api-abc123","namespace":"kuben-builds"},
+ "spec":{ "app": "kb-shop-prod/api", "repo": "https://github.com/acme/shop", "gitRef": "0123456789abcdef0123456789abcdef01234567", "image": "ghcr.io/acme/api:0123456" }}

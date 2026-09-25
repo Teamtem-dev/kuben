@@ -112,7 +112,7 @@ export default defineConfig({
         starlightImageZoom(),
         starlightLlmsTxt({
           projectName: 'Kuben',
-          description: 'Kuben is a Kubernetes PaaS in a single binary, built in Rust by Teamtem.',
+          description: 'Kuben is a Kubernetes PaaS in a single binary, built by Teamtem.',
           exclude: ['blog/**'],
         }),
         starlightLinksValidator({
@@ -122,7 +122,7 @@ export default defineConfig({
         }),
       ],
     }),
-    icon({ include: { lucide: ['*'], 'simple-icons': ['github', 'kubernetes', 'rust', 'helm', 'react'] } }),
+    icon({ include: { lucide: ['*'], 'simple-icons': ['github', 'kubernetes', 'helm', 'react'] } }),
     sitemap(),
   ],
   vite: {

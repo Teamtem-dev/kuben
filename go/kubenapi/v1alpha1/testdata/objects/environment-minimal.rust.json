@@ -1,0 +1,12 @@
+{
+  "apiVersion": "kuben.dev/v1alpha1",
+  "kind": "Environment",
+  "metadata": {
+    "name": "shop-prod"
+  },
+  "spec": {
+    "project": "shop",
+    "type": "standard",
+    "deletionPolicy": "Retain"
+  }
+}

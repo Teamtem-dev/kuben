@@ -1,0 +1,5037 @@
+diff --git a/go/hub/internal/api/oci/export_test.go b/go/hub/internal/api/oci/export_test.go
+index d27ac7b..be40b9a 100644
+--- a/go/hub/internal/api/oci/export_test.go
++++ b/go/hub/internal/api/oci/export_test.go
+@@ -1,6 +1,11 @@
+ package oci
+ 
+-import "net/http"
++import (
++	"net/http"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++)
+ 
+ // NewRegistryWith is a Registry whose requests go through rt (a transport
+ // that trusts an in-process test registry).
+@@ -8,3 +13,20 @@ func NewRegistryWith(rt http.RoundTripper) Registry { return Registry{transport:
+ 
+ // RetryAfter exposes retryAfter to the tests.
+ func RetryAfter(h http.Header) uint64 { return retryAfter(h) }
++
++// VerifierWith is v with its requests going through rt.
++func VerifierWith(v Verifier, rt http.RoundTripper) Verifier {
++	v.transport = rt
++	return v
++}
++
++// VerifierScheme exposes the scheme of v.
++func VerifierScheme(v Verifier) string { return v.scheme() }
++
++// VerifierBasic exposes the Basic credentials of v.
++func VerifierBasic(v Verifier) opt.Val[string] { return v.basic }
++
++// Verdict exposes verdict to the tests.
++func Verdict(status int, answered string, digest artifact.Digest, image string) error {
++	return verdict(status, answered, digest, image)
++}
+diff --git a/go/hub/internal/api/oci/network_test.go b/go/hub/internal/api/oci/network_test.go
+new file mode 100644
+index 0000000..4d58384
+--- /dev/null
++++ b/go/hub/internal/api/oci/network_test.go
+@@ -0,0 +1,58 @@
++package oci_test
++
++import (
++	"errors"
++	"os"
++	"strings"
++	"testing"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++)
++
++// Image tags resolved against real registries (ADR-032, option A;
++// crates/kuben-api/tests/oci.rs). They need the network, so they run only
++// with KUBEN_TEST_NETWORK=1, as the Rust tests ran only with --ignored.
++
++func needsNetwork(t *testing.T) {
++	t.Helper()
++	if os.Getenv("KUBEN_TEST_NETWORK") != "1" {
++		t.Skipf("skipped %s: needs the network; set KUBEN_TEST_NETWORK=1 to run it", t.Name())
++	}
++}
++
++func TestDockerHubTagsResolveToDigests(t *testing.T) {
++	needsNetwork(t)
++	var registry oci.Registry
++	busybox, err := registry.ResolveAs(t.Context(), "busybox:1.36", opt.None[oci.Login]())
++	if err != nil {
++		t.Fatalf("busybox: %v", err)
++	}
++	if busybox.Repository != "docker.io/library/busybox" || !strings.HasPrefix(busybox.Digest.String(), "sha256:") ||
++		busybox.Given != "busybox:1.36" {
++		t.Errorf("busybox: %+v", busybox)
++	}
++	nginx, err := registry.ResolveAs(t.Context(), "nginxinc/nginx-unprivileged:1.27-alpine", opt.None[oci.Login]())
++	if err != nil {
++		t.Fatalf("nginx: %v", err)
++	}
++	if nginx.Repository != "docker.io/nginxinc/nginx-unprivileged" {
++		t.Errorf("nginx: %+v", nginx)
++	}
++	_, err = registry.ResolveAs(t.Context(), "busybox:no-such-tag-for-kuben", opt.None[oci.Login]())
++	var notFound oci.NotFound
++	if !errors.As(err, &notFound) {
++		t.Errorf("an unknown tag: %v", err)
++	}
++}
++
++func TestGhcrTagsResolveWithAnAnonymousToken(t *testing.T) {
++	needsNetwork(t)
++	podinfo, err := oci.Registry{}.ResolveAs(t.Context(), "ghcr.io/stefanprodan/podinfo:6.7.0", opt.None[oci.Login]())
++	if err != nil {
++		t.Fatalf("podinfo: %v", err)
++	}
++	if podinfo.Repository != "ghcr.io/stefanprodan/podinfo" || !strings.HasPrefix(podinfo.Digest.String(), "sha256:") {
++		t.Errorf("podinfo: %+v", podinfo)
++	}
++}
+diff --git a/go/hub/internal/api/oci/oci.go b/go/hub/internal/api/oci/oci.go
+index 9f2d68b..985cdad 100644
+--- a/go/hub/internal/api/oci/oci.go
++++ b/go/hub/internal/api/oci/oci.go
+@@ -1,7 +1,6 @@
+-// Package oci resolves image references to digests (plan §8.1, I03). It
+-// replaces the image-resolution part of the Rust module
+-// crates/kuben-api/src/oci.rs; the build-output verifier of that module
+-// (RegistryVerifier) belongs to the build slice and is not here.
++// Package oci resolves image references to digests (plan §8.1, I03) and
++// verifies build outputs in their registry ([Verifier]). It replaces the
++// Rust module crates/kuben-api/src/oci.rs.
+ //
+ // A release pins every image by digest. When the API is given a tag, it asks
+ // the image's registry once which digest the tag names now, and records both:
+diff --git a/go/hub/internal/api/oci/registry.go b/go/hub/internal/api/oci/registry.go
+index 65d9a3e..71e048e 100644
+--- a/go/hub/internal/api/oci/registry.go
++++ b/go/hub/internal/api/oci/registry.go
+@@ -138,20 +138,35 @@ type session struct {
+ }
+ 
+ func (r Registry) session(image string, ref ImageRef, login opt.Val[Login]) (*session, error) {
+-	registry, err := name.NewRegistry(ref.Registry)
++	basic := opt.None[string]()
++	if l, ok := login.Get(); ok {
++		basic = opt.Some(l.encoded())
++	}
++	return newSession(r.transport, image, ref, basic, false)
++}
++
++// newSession is a session through inner (go-containerregistry's default
++// transport when nil), authenticating with the base64 `user:password` of
++// basic when given. Only an insecure session may use plain HTTP, and never
++// for a token.
++func newSession(inner http.RoundTripper, image string, ref ImageRef, basic opt.Val[string], insecure bool) (*session, error) {
++	var options []name.Option
++	if insecure {
++		options = append(options, name.Insecure)
++	}
++	registry, err := name.NewRegistry(ref.Registry, options...)
+ 	if err != nil {
+ 		return nil, Unreachable{Image: image, Reason: err.Error()}
+ 	}
+-	inner := r.transport
+ 	if inner == nil {
+ 		inner = remote.DefaultTransport
+ 	}
+-	obs := &observer{inner: inner}
++	obs := &observer{inner: inner, plainHTTP: insecure}
+ 	auth := authn.Anonymous
+-	if l, ok := login.Get(); ok {
++	if b, ok := basic.Get(); ok {
+ 		// Exactly the Basic value of the login, as Rust sent it (ggcr would
+ 		// drop an empty username or password from Username/Password).
+-		auth = authn.FromConfig(authn.AuthConfig{Auth: l.encoded()})
++		auth = authn.FromConfig(authn.AuthConfig{Auth: b})
+ 	}
+ 	puller, err := remote.NewPuller(
+ 		remote.WithTransport(obs),
+@@ -277,6 +292,9 @@ func retryAfter(h http.Header) uint64 {
+ // (go-containerregistry's errors keep the status but not the headers).
+ type observer struct {
+ 	inner http.RoundTripper
++	// plainHTTP allows plain HTTP to the registry (never to a token
++	// service): build.insecure_registry.
++	plainHTTP bool
+ 
+ 	mu sync.Mutex // guards the fields below
+ 	// status is the last answer of the registry itself (not of a token
+@@ -284,6 +302,11 @@ type observer struct {
+ 	status int
+ 	// headOK: a HEAD was answered with 200.
+ 	headOK bool
++	// headDigest is the Docker-Content-Digest of the last HEAD answered
++	// with 200.
++	headDigest string
++	// tokenAsked: a token service was asked.
++	tokenAsked bool
+ 	// limited: a 429 was answered, asking for retry seconds.
+ 	limited bool
+ 	retry   uint64
+@@ -291,7 +314,8 @@ type observer struct {
+ 
+ // RoundTrip implements http.RoundTripper.
+ func (o *observer) RoundTrip(req *http.Request) (*http.Response, error) {
+-	if req.URL == nil || req.URL.Scheme != "https" {
++	plain := req.URL != nil && req.URL.Scheme == "http" && o.plainHTTP && !isTokenRequest(req)
++	if req.URL == nil || (req.URL.Scheme != "https" && !plain) {
+ 		host := ""
+ 		if req.URL != nil {
+ 			host = req.URL.Host
+@@ -310,10 +334,13 @@ func (o *observer) RoundTrip(req *http.Request) (*http.Response, error) {
+ 	if resp.StatusCode == http.StatusTooManyRequests {
+ 		o.limited, o.retry = true, retryAfter(resp.Header)
+ 	}
+-	if !isTokenRequest(req) {
++	if isTokenRequest(req) {
++		o.tokenAsked = true
++	} else {
+ 		o.status = resp.StatusCode
+ 		if req.Method == http.MethodHead && resp.StatusCode == http.StatusOK {
+ 			o.headOK = true
++			o.headDigest = strings.TrimSpace(resp.Header.Get("Docker-Content-Digest"))
+ 		}
+ 	}
+ 	if resp.Body != nil {
+diff --git a/go/hub/internal/api/oci/verifier.go b/go/hub/internal/api/oci/verifier.go
+new file mode 100644
+index 0000000..43e4c74
+--- /dev/null
++++ b/go/hub/internal/api/oci/verifier.go
+@@ -0,0 +1,118 @@
++package oci
++
++import (
++	"context"
++	"encoding/base64"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"strings"
++
++	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++)
++
++// Verifier checks build outputs in their registry (ADR-028; Rust
++// RegistryVerifier): the manifest a build reported must exist under
++// exactly that digest. Credentials, when given, are sent as HTTP Basic or
++// exchanged for a bearer token. Printing it never shows them.
++type Verifier struct {
++	// transport carries the requests; nil is go-containerregistry's
++	// default. Tests set it through export_test.go.
++	transport http.RoundTripper
++	insecure  bool
++	// basic is base64(`user:password`).
++	basic opt.Val[string]
++}
++
++var _ build.OutputVerifier = Verifier{}
++
++// NewVerifier is a verifier over HTTPS, or plain HTTP for an insecure
++// registry, with optional `user:password` credentials (the contents of
++// build.registry_auth_file; surrounding whitespace is ignored, and text
++// without a `:` is no credentials).
++func NewVerifier(insecure bool, credentials opt.Val[string]) Verifier {
++	v := Verifier{insecure: insecure}
++	if c, ok := credentials.Get(); ok {
++		if c = strings.TrimSpace(c); strings.Contains(c, ":") {
++			v.basic = opt.Some(base64.StdEncoding.EncodeToString([]byte(c)))
++		}
++	}
++	return v
++}
++
++// scheme is how the registry is reached.
++func (v Verifier) scheme() string {
++	if v.insecure {
++		return "http"
++	}
++	return "https"
++}
++
++// String shows the scheme and whether there are credentials, not them.
++func (v Verifier) String() string {
++	return fmt.Sprintf("Verifier{Scheme: %s, Credentials: %t}", v.scheme(), v.basic.IsSome())
++}
++
++// GoString is String: %#v must not print the credentials either.
++func (v Verifier) GoString() string { return v.String() }
++
++// Format prints String for every verb.
++func (v Verifier) Format(f fmt.State, _ rune) {
++	_, _ = io.WriteString(f, v.String()) //nolint:errcheck // fmt.Formatter cannot report a write error
++}
++
++// Verify is nil when repository@digest exists, else a build.VerifyError:
++// the registry's `HEAD …/manifests/<digest>` decides.
++func (v Verifier) Verify(ctx context.Context, repository string, digest artifact.Digest) error {
++	image := repository + "@" + digest.String()
++	ref, err := Parse(image)
++	if err != nil {
++		return build.ManifestMissing{What: err.Error()}
++	}
++	s, err := newSession(v.transport, image, ref, v.basic, v.insecure)
++	if err != nil {
++		return build.RegistryUnavailable{Reason: err.Error()}
++	}
++	bounded, cancel := context.WithTimeout(ctx, timeout)
++	defer cancel()
++	_, err = s.puller.Head(bounded, s.repo.Digest(digest.String()))
++	s.obs.mu.Lock()
++	headOK, answered, tokenAsked := s.obs.headOK, s.obs.headDigest, s.obs.tokenAsked
++	s.obs.mu.Unlock()
++	// A 200 decides, even when go-containerregistry refused the answer
++	// (no Content-Type, another digest): Rust read the digest header only.
++	if err == nil || headOK {
++		return verdict(http.StatusOK, answered, digest, image)
++	}
++	var status *transport.Error
++	if !errors.As(err, &status) || status == nil {
++		return build.RegistryUnavailable{Reason: s.fail(err).Error()}
++	}
++	switch {
++	case status.Request != nil && isTokenRequest(status.Request):
++		return build.RegistryUnavailable{Reason: Unauthorized{Image: image}.Error()}
++	case status.StatusCode == http.StatusUnauthorized && !tokenAsked:
++		return build.RegistryUnavailable{Reason: "the registry refused access to " + image}
++	}
++	return verdict(status.StatusCode, "", digest, image)
++}
++
++// verdict is what a registry's answer to `HEAD …/manifests/<digest>` with
++// the digest header answered (empty when absent) means.
++func verdict(status int, answered string, digest artifact.Digest, image string) error {
++	switch status {
++	case http.StatusOK:
++		if answered != "" && answered != digest.String() {
++			return build.ManifestMissing{What: image + ": the registry answered with " + answered}
++		}
++		return nil
++	case http.StatusNotFound:
++		return build.ManifestMissing{What: image}
++	}
++	return build.RegistryUnavailable{Reason: image + ": " + statusReason(status)}
++}
+diff --git a/go/hub/internal/api/oci/verifier_test.go b/go/hub/internal/api/oci/verifier_test.go
+new file mode 100644
+index 0000000..65f4c24
+--- /dev/null
++++ b/go/hub/internal/api/oci/verifier_test.go
+@@ -0,0 +1,160 @@
++package oci_test
++
++import (
++	"errors"
++	"fmt"
++	"net/http"
++	"strings"
++	"testing"
++
++	"github.com/google/go-containerregistry/pkg/authn"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++)
++
++const (
++	verifiedDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
++	otherDigest    = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
++)
++
++func isMissing(err error) bool {
++	var m build.ManifestMissing
++	return errors.As(err, &m)
++}
++
++func isUnavailable(err error) bool {
++	var u build.RegistryUnavailable
++	return errors.As(err, &u)
++}
++
++// Rust: registry_answers_decide_the_output.
++func TestRegistryAnswersDecideTheOutput(t *testing.T) {
++	digest := mustDigest(t, verifiedDigest)
++	if err := oci.Verdict(http.StatusOK, "", digest, "i"); err != nil {
++		t.Errorf("200 without a digest header: %v", err)
++	}
++	if err := oci.Verdict(http.StatusOK, verifiedDigest, digest, "i"); err != nil {
++		t.Errorf("200 with the digest: %v", err)
++	}
++	err := oci.Verdict(http.StatusOK, otherDigest, digest, "i")
++	if !isMissing(err) || err.Error() != "the registry has no manifest i: the registry answered with "+otherDigest {
++		t.Errorf("200 with another digest: %v", err)
++	}
++	if err := oci.Verdict(http.StatusNotFound, "", digest, "i"); !errors.Is(err, build.ManifestMissing{What: "i"}) {
++		t.Errorf("404: %v", err)
++	}
++	err = oci.Verdict(http.StatusServiceUnavailable, "", digest, "i")
++	if !errors.Is(err, build.RegistryUnavailable{Reason: "i: HTTP 503 Service Unavailable"}) {
++		t.Errorf("503: %v", err)
++	}
++}
++
++// Rust: verifier_credentials_are_basic_auth.
++func TestVerifierCredentialsAreBasicAuth(t *testing.T) {
++	v := oci.NewVerifier(true, opt.Some("builder:s3cret\n"))
++	if got := oci.VerifierScheme(v); got != "http" {
++		t.Errorf("scheme %q", got)
++	}
++	if got := oci.VerifierBasic(v); got != opt.Some("YnVpbGRlcjpzM2NyZXQ=") {
++		t.Errorf("basic %v", got)
++	}
++	for _, shown := range []string{fmt.Sprint(v), fmt.Sprintf("%#v", v), fmt.Sprintf("%+v", v), fmt.Sprintf("%x", v)} {
++		if strings.Contains(shown, "s3cret") || strings.Contains(shown, "YnVpbGRlcjpzM2NyZXQ") {
++			t.Errorf("credentials shown: %s", shown)
++		}
++	}
++	if oci.VerifierBasic(oci.NewVerifier(false, opt.Some("no-colon"))).IsSome() {
++		t.Error("text without a colon is no credentials")
++	}
++	if got := oci.VerifierScheme(oci.NewVerifier(false, opt.None[string]())); got != "https" {
++		t.Errorf("scheme %q", got)
++	}
++}
++
++func TestPushedOutputsAreVerified(t *testing.T) {
++	tr := serve(t, newRegistry())
++	pushed := push(t, tr, host+"/acme/web:v1", authn.Anonymous)
++	v := oci.VerifierWith(oci.NewVerifier(false, opt.None[string]()), tr)
++	if err := v.Verify(t.Context(), host+"/acme/web", pushed); err != nil {
++		t.Errorf("the pushed digest: %v", err)
++	}
++	err := v.Verify(t.Context(), host+"/acme/web", mustDigest(t, otherDigest))
++	if !errors.Is(err, build.ManifestMissing{What: host + "/acme/web@" + otherDigest}) {
++		t.Errorf("a digest never pushed: %v", err)
++	}
++	if err := v.Verify(t.Context(), "Not A Repository", pushed); !isMissing(err) {
++		t.Errorf("an invalid repository: %v", err)
++	}
++}
++
++func TestVerifiersAuthenticateWithTheirCredentials(t *testing.T) {
++	login := opt.Some(bot.Username + ":" + bot.Password)
++	cases := []struct {
++		name    string
++		handler func(http.Handler) http.Handler
++		refused string
++	}{
++		{"basic", func(h http.Handler) http.Handler { return basicAuth(h, bot) }, "the registry refused access to "},
++		{"bearer", func(h http.Handler) http.Handler { return bearerAuth(h, bot) }, "refuses the pull"},
++	}
++	for _, c := range cases {
++		tr := serve(t, c.handler(newRegistry()))
++		pushed := push(t, tr, host+"/acme/private:v1", &authn.Basic{Username: bot.Username, Password: bot.Password})
++		err := oci.VerifierWith(oci.NewVerifier(false, login), tr).Verify(t.Context(), host+"/acme/private", pushed)
++		if err != nil {
++			t.Errorf("%s: %v", c.name, err)
++		}
++		err = oci.VerifierWith(oci.NewVerifier(false, opt.None[string]()), tr).Verify(t.Context(), host+"/acme/private", pushed)
++		if !isUnavailable(err) || !strings.Contains(err.Error(), c.refused) {
++			t.Errorf("%s without credentials: %v", c.name, err)
++		}
++	}
++}
++
++func TestFailingRegistriesLeaveTheOutputUnverified(t *testing.T) {
++	tr := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path == "/v2/" {
++			return
++		}
++		w.WriteHeader(http.StatusServiceUnavailable)
++	}))
++	digest := mustDigest(t, verifiedDigest)
++	err := oci.VerifierWith(oci.NewVerifier(false, opt.None[string]()), tr).Verify(t.Context(), host+"/acme/web", digest)
++	want := build.RegistryUnavailable{Reason: host + "/acme/web@" + verifiedDigest + ": HTTP 503 Service Unavailable"}
++	if !errors.Is(err, want) {
++		t.Errorf("got %v", err)
++	}
++}
++
++// plainOnly is a registry reached over plain HTTP only: it refuses TLS and
++// carries plain requests to the test server.
++type plainOnly struct{ inner http.RoundTripper }
++
++func (p plainOnly) RoundTrip(r *http.Request) (*http.Response, error) {
++	if r.URL.Scheme == "https" {
++		return nil, errors.New("tls: first record does not look like a TLS handshake")
++	}
++	tunneled := r.Clone(r.Context())
++	tunneled.URL.Scheme = "https"
++	resp, err := p.inner.RoundTrip(tunneled)
++	if resp != nil {
++		// As a plain HTTP server answers: to the request as sent.
++		resp.Request = r
++	}
++	return resp, err
++}
++
++func TestInsecureRegistriesAreVerifiedOverPlainHTTP(t *testing.T) {
++	tr := serve(t, newRegistry())
++	pushed := push(t, tr, host+"/acme/web:v1", authn.Anonymous)
++	insecure := oci.VerifierWith(oci.NewVerifier(true, opt.None[string]()), plainOnly{tr})
++	if err := insecure.Verify(t.Context(), host+"/acme/web", pushed); err != nil {
++		t.Errorf("insecure: %v", err)
++	}
++	secure := oci.VerifierWith(oci.NewVerifier(false, opt.None[string]()), plainOnly{tr})
++	if err := secure.Verify(t.Context(), host+"/acme/web", pushed); !isUnavailable(err) {
++		t.Errorf("secure over plain HTTP: %v", err)
++	}
++}
+diff --git a/go/hub/internal/platform/build/attempt.go b/go/hub/internal/platform/build/attempt.go
+new file mode 100644
+index 0000000..a8a655b
+--- /dev/null
++++ b/go/hub/internal/platform/build/attempt.go
+@@ -0,0 +1,381 @@
++package build
++
++// The build half of the worker (worker.rs, `// ---- builds ----`): one
++// claim of a `build` operation carries its attempt as far as it goes now.
++
++import (
++	"context"
++	"errors"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++)
++
++func (w *Worker) build(ctx context.Context, claim store.Claim) result {
++	attempt, ok, err := w.attemptOf(ctx, claim)
++	if err != nil {
++		return storeRetry(err)
++	}
++	if !ok {
++		return failedWith("BuildMissing")
++	}
++	var r result
++	switch NextFor(attempt.Phase, attempt.CancelRequested) {
++	case NextSettle:
++		r = w.settleFinal(ctx, attempt)
++	case NextCancelQueued:
++		r = w.cancelQueued(ctx, claim, attempt)
++	case NextAdmit:
++		r = w.admit(ctx, claim, attempt)
++	case NextObserve:
++		r = w.observe(ctx, claim, attempt)
++	}
++	if again, ok := r.(retry); ok && w.overdue(attempt) {
++		w.d.Logger.Warn("giving up on the build", "build", attempt.ID.String(), "code", again.Code, "detail", again.Detail)
++		return w.fail(ctx, claim, attempt, nil, "RetriesExhausted", again.Detail)
++	}
++	return r
++}
++
++func (w *Worker) attemptOf(ctx context.Context, claim store.Claim) (store.BuildAttempt, bool, error) {
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return store.BuildAttempt{}, false, err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx)                    //nolint:errcheck // read only
++	return t.BuildOfOperation(ctx, claim.ID) //nolint:wrapcheck // a store error naming its operation
++}
++
++// overdue: the attempt is older than its deadline and an hour.
++func (w *Worker) overdue(attempt store.BuildAttempt) bool {
++	limitMs := clock.SaturatingAdd(clock.Seconds(w.d.Settings.DeadlineSecs).Milliseconds(), giveUpAfter.Milliseconds())
++	age := clock.SaturatingSub(w.d.Clock.NowMs(), attempt.CreatedAt)
++	return age > limitMs
++}
++
++// settleFinal: a final attempt: revoke, delete, then settle its operation.
++func (w *Worker) settleFinal(ctx context.Context, attempt store.BuildAttempt) result {
++	code := attempt.Failure
++	if code.IsNone() {
++		code = attempt.DeployDecision
++	}
++	return w.finish(ctx, attempt, attempt.Phase, code, attempt.Digest)
++}
++
++// record records events in order, with progress on each; the phase they
++// led to, or the result when they could not be recorded.
++func (w *Worker) record(
++	ctx context.Context, claim store.Claim, attempt store.BuildAttempt, events []opbuild.Event, progress store.BuildProgress,
++) (opbuild.Phase, result) {
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return "", storeRetry(err)
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	phase, r := apply(ctx, t, claim, attempt, events, progress)
++	if r != nil {
++		return "", r
++	}
++	if err := t.Commit(ctx); err != nil {
++		return "", storeRetry(err)
++	}
++	return phase, nil
++}
++
++// apply applies events to attempt in t, in order.
++func apply(
++	ctx context.Context, t *store.Tenant, claim store.Claim, attempt store.BuildAttempt, events []opbuild.Event,
++	progress store.BuildProgress,
++) (opbuild.Phase, result) {
++	phase := attempt.Phase
++	for _, event := range events {
++		advanced, err := t.AdvanceBuild(ctx, claim, attempt.ID, event, progress)
++		if err != nil {
++			return "", storeRetry(err)
++		}
++		switch a := advanced.(type) {
++		case store.BuildMoved:
++			phase = a.Phase
++		case store.BuildFenced:
++			return "", fenced{}
++		case store.BuildIllegal:
++			return "", retry{Code: "IllegalTransition", Detail: a.Err.Error()}
++		}
++	}
++	return phase, nil
++}
++
++func (w *Worker) cancelQueued(ctx context.Context, claim store.Claim, attempt store.BuildAttempt) result {
++	if _, r := w.record(ctx, claim, attempt, []opbuild.Event{opbuild.EventCancelRequested}, store.BuildProgress{}); r != nil {
++		return r
++	}
++	return w.finish(ctx, attempt, opbuild.Cancelled, opt.None[string](), opt.None[artifact.Digest]())
++}
++
++func (w *Worker) admit(ctx context.Context, claim store.Claim, attempt store.BuildAttempt) result {
++	granted, live, err := w.claimSlot(ctx, claim, attempt)
++	switch {
++	case err != nil:
++		return storeRetry(err)
++	case !live:
++		return fenced{}
++	case !granted:
++		if attempt.Phase != opbuild.Blocked {
++			blocked := store.BuildProgress{BlockedReason: opt.Some("NoBuildCapacity")}
++			if _, r := w.record(ctx, claim, attempt, []opbuild.Event{opbuild.EventBlocked}, blocked); r != nil {
++				return r
++			}
++		}
++		return wait{After: blockedWait, Code: "NoBuildCapacity"}
++	}
++	name, cerr := w.createObjects(ctx, attempt)
++	if cerr != nil {
++		return w.notCreated(ctx, claim, attempt, cerr)
++	}
++	events := []opbuild.Event{}
++	if attempt.Phase == opbuild.Blocked {
++		events = append(events, opbuild.EventUnblocked)
++	}
++	events = append(events, opbuild.EventStarted)
++	phase, r := w.record(ctx, claim, attempt, events, store.BuildProgress{JobName: opt.Some(name)})
++	if r != nil {
++		return r
++	}
++	w.mirror(ctx, attempt, phase, opt.None[string]())
++	return wait{After: poll, Code: "Preparing"}
++}
++
++func (w *Worker) claimSlot(ctx context.Context, claim store.Claim, attempt store.BuildAttempt) (granted, live bool, err error) {
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return false, false, err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	granted, live, err = t.ClaimBuildSlot(ctx, claim, attempt.ID, w.d.Limits)
++	if err != nil {
++		return false, false, err //nolint:wrapcheck // a store error naming its operation
++	}
++	return granted, live, t.Commit(ctx) //nolint:wrapcheck // a store error naming its operation
++}
++
++// notCreated is the result of objects that could not be created.
++func (w *Worker) notCreated(ctx context.Context, claim store.Claim, attempt store.BuildAttempt, cerr createError) result {
++	switch e := cerr.(type) {
++	case providerFailed:
++		switch p := e.err.(type) {
++		case Unavailable:
++			return retry{Code: "ProviderUnavailable", Detail: p.Reason}
++		case Refused:
++			return w.fail(ctx, claim, attempt, nil, string(outcome.CredentialsRefused), p.Reason)
++		case NotFound:
++			return w.fail(ctx, claim, attempt, nil, string(outcome.SourceUnavailable), p.What)
++		}
++	case kubeFailed:
++		if isInvalid(e.err) {
++			return w.fail(ctx, claim, attempt, nil, string(outcome.InvalidBudget), e.err.Error())
++		}
++		return kubeRetry(e.err)
++	case renderFailed:
++		return w.fail(ctx, claim, attempt, nil, string(outcome.InvalidBudget), e.reason)
++	}
++	return kubeRetry(cerr)
++}
++
++func (w *Worker) observe(ctx context.Context, claim store.Claim, attempt store.BuildAttempt) result {
++	seen, err := w.observeJob(ctx, attempt)
++	if err != nil {
++		return kubeRetry(err)
++	}
++	plan := PlanFor(attempt.Phase, attempt.CancelRequested, outcome.Classify(seen), attempt.ReportedDigest)
++	switch p := plan.(type) {
++	case PlanWait:
++		phase, r := w.record(ctx, claim, attempt, p.Events, store.BuildProgress{})
++		if r != nil {
++			return r
++		}
++		if len(p.Events) > 0 {
++			w.mirror(ctx, attempt, phase, opt.None[string]())
++		}
++		return wait{After: poll, Code: "Building"}
++	case PlanVerify:
++		reported := store.BuildProgress{ReportedDigest: opt.Some(p.Digest)}
++		if _, r := w.record(ctx, claim, attempt, p.Events, reported); r != nil {
++			return r
++		}
++		return w.verify(ctx, claim, attempt, p.Digest)
++	case PlanFail:
++		return w.fail(ctx, claim, attempt, p.Events, string(p.Failure), p.Detail)
++	case PlanStop:
++		if err := w.deleteJob(ctx, Name(attempt)); err != nil {
++			return kubeRetry(err)
++		}
++		if _, r := w.record(ctx, claim, attempt, p.Events, store.BuildProgress{}); r != nil {
++			return r
++		}
++		return wait{After: poll, Code: "Stopping"}
++	case PlanCancelled:
++		if _, r := w.record(ctx, claim, attempt, p.Events, store.BuildProgress{}); r != nil {
++			return r
++		}
++		return w.finish(ctx, attempt, opbuild.Cancelled, opt.None[string](), opt.None[artifact.Digest]())
++	}
++	return wait{After: poll, Code: "Building"}
++}
++
++// verify checks digest in the registry and completes the attempt.
++func (w *Worker) verify(ctx context.Context, claim store.Claim, attempt store.BuildAttempt, digest artifact.Digest) result {
++	if err := w.d.Verifier.Verify(ctx, attempt.ImageRepository, digest); err != nil {
++		var missing ManifestMissing
++		if errors.As(err, &missing) {
++			return w.fail(ctx, claim, attempt, nil, string(outcome.OutputRejected), missing.What)
++		}
++		var down RegistryUnavailable
++		if errors.As(err, &down) {
++			return retry{Code: "RegistryUnavailable", Detail: down.Reason}
++		}
++		return retry{Code: "RegistryUnavailable", Detail: err.Error()}
++	}
++	if r := w.recordScan(ctx, claim, attempt, digest); r != nil {
++		return r
++	}
++	completed, err := w.complete(ctx, claim, attempt, digest)
++	if err != nil {
++		return storeRetry(err)
++	}
++	switch c := completed.(type) {
++	case store.CompletedFenced:
++		return fenced{}
++	case store.CompletedIllegal:
++		w.d.Logger.Warn("the build cannot complete from its phase", "build", attempt.ID.String(), "illegal", c.Err.Error())
++		return retry{Code: "IllegalTransition", Detail: c.Err.Error()}
++	case store.CompletedDeployed:
++		w.d.Logger.Info("build deployed", "build", attempt.ID.String(), "release", c.Release.String(),
++			"run", c.Run.String(), "generation", uint64(c.Generation), "digest", digest.String())
++		return w.finish(ctx, attempt, opbuild.Succeeded, opt.None[string](), opt.Some(digest))
++	case store.CompletedKept:
++		w.d.Logger.Info("build kept without a deploy", "build", attempt.ID.String(), "release", c.Release.String(),
++			"decision", c.Decision, "digest", digest.String())
++		return w.finish(ctx, attempt, opbuild.Succeeded, opt.Some(c.Decision), opt.Some(digest))
++	}
++	return fenced{}
++}
++
++func (w *Worker) complete(
++	ctx context.Context, claim store.Claim, attempt store.BuildAttempt, digest artifact.Digest,
++) (store.Completed, error) {
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	completed, err := t.CompleteBuild(ctx, claim, attempt, digest)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error naming its operation
++	}
++	switch completed.(type) {
++	case store.CompletedDeployed, store.CompletedKept:
++		if err := t.Commit(ctx); err != nil {
++			return nil, err //nolint:wrapcheck // a store error naming its operation
++		}
++	case store.CompletedIllegal, store.CompletedFenced:
++	}
++	return completed, nil
++}
++
++// recordScan keeps the scan and SBOM the pod left for digest (M4.6), before
++// the attempt completes and the scan gate judges its release. A scan that
++// did not run is recorded as unavailable.
++func (w *Worker) recordScan(ctx context.Context, claim store.Claim, attempt store.BuildAttempt, digest artifact.Digest) result {
++	report, sbom := scan.Unavailable("scanning is not configured (build.scanner_image)"), opt.None[[]byte]()
++	if w.d.Settings.ScannerImage.IsSome() {
++		var err error
++		pods := w.d.Client.CoreV1().Pods(w.d.Settings.Namespace)
++		report, sbom, err = Collect(ctx, pods, AttemptLabel+"="+attempt.ID.String(), w.d.Logger)
++		if err != nil {
++			return kubeRetry(err)
++		}
++	}
++	scanned := store.NewScan{
++		Repository:   attempt.ImageRepository,
++		Digest:       digest.String(),
++		Summary:      SummaryOf(report, w.d.Clock.NowMs()),
++		Detail:       detailOf(report),
++		BuildAttempt: opt.Some(attempt.ID),
++	}
++	if err := keepScan(ctx, w.d.Store, claim.Org, scanned, sbom); err != nil {
++		return storeRetry(err)
++	}
++	w.d.Logger.Info("image scanned", "build", attempt.ID.String(), "digest", digest.String(),
++		"status", string(scanned.Summary.Status), "critical", scanned.Summary.Counts.Critical,
++		"high", scanned.Summary.Counts.High, "sbom", sbom.IsSome())
++	return nil
++}
++
++// fail fails the attempt with code, queues a retry for a lost worker, and
++// cleans up.
++func (w *Worker) fail(
++	ctx context.Context, claim store.Claim, attempt store.BuildAttempt, events []opbuild.Event, code, detail string,
++) result {
++	failed := store.BuildProgress{Failure: opt.Some(store.BuildFailureReport{Code: code, Detail: detail})}
++	all := append(append([]opbuild.Event{}, events...), opbuild.EventFailed)
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return storeRetry(err)
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	if _, r := apply(ctx, t, claim, attempt, all, failed); r != nil {
++		return r
++	}
++	if code == string(outcome.LostWorker) {
++		next, retried, err := t.RetryBuild(ctx, attempt)
++		if err != nil {
++			return storeRetry(err)
++		}
++		if retried {
++			w.d.Logger.Info("a lost build is retried", "build", attempt.ID.String(), "next", next.String())
++		}
++	}
++	if err := t.Commit(ctx); err != nil {
++		return storeRetry(err)
++	}
++	w.d.Logger.Info("build failed", "build", attempt.ID.String(), "code", code, "detail", detail)
++	return w.finish(ctx, attempt, opbuild.Failed, opt.Some(code), opt.None[artifact.Digest]())
++}
++
++// finish cleans up a final attempt and settles its operation.
++func (w *Worker) finish(
++	ctx context.Context, attempt store.BuildAttempt, phase opbuild.Phase, code opt.Val[string],
++	digest opt.Val[artifact.Digest],
++) result {
++	shown := attempt
++	if c, ok := code.Get(); ok && phase == opbuild.Failed {
++		shown.Failure = opt.Some(c)
++	}
++	text := opt.None[string]()
++	if d, ok := digest.Get(); ok {
++		text = opt.Some(d.String())
++	}
++	if err := w.cleanup(ctx, shown, phase, text); err != nil {
++		// The attempt is final; the next claim repeats the cleanup.
++		return kubeRetry(err)
++	}
++	return done{Phase: operationPhase(phase), Code: code}
++}
++
++// operationPhase is the operation phase of a final attempt.
++func operationPhase(phase opbuild.Phase) string {
++	switch phase {
++	case opbuild.Succeeded:
++		return settledSuccess
++	case opbuild.Cancelled:
++		return "cancelled"
++	case opbuild.Queued, opbuild.Blocked, opbuild.Preparing, opbuild.Running, opbuild.Publishing,
++		opbuild.VerifyingOutput, opbuild.CancelRequested, opbuild.Cancelling, opbuild.Failed:
++	}
++	return settledFailed
++}
+diff --git a/go/hub/internal/platform/build/build.go b/go/hub/internal/platform/build/build.go
+index 7eb3753..415a012 100644
+--- a/go/hub/internal/platform/build/build.go
++++ b/go/hub/internal/platform/build/build.go
+@@ -1,7 +1,8 @@
+-// Package build is Git → isolated build (M3, ADR-028). It replaces
+-// crates/kuben-platform/src/build/mod.rs; so far only that module's types
+-// and interfaces are ported (the job, steps, observe, evidence, rescan and
+-// worker submodules follow).
++// Package build is Git → isolated build (M3, ADR-028). It replaces the Rust
++// module crates/kuben-platform/src/build: mod.rs (this file), job.rs
++// (job.go, scripts.go), steps.rs, observe.rs, evidence.rs, rescan.rs and
++// worker.rs (worker.go, attempt.go, cluster.go); scenarios.rs is
++// scenarios_test.go.
+ //
+ // The worker claims `source.sync` and `build` operations. A sync reads the
+ // branch head through a [SourceProvider]; a build runs as one rootless
+@@ -9,7 +10,10 @@
+ // service-account token, and succeeds only when an [OutputVerifier] finds
+ // the reported digest in the registry. The interfaces are the failure
+ // boundary to the outside world; their HTTP implementations live with the
+-// API's transport (internal/api/github, internal/api/oci).
++// API's transport (internal/api/github, internal/api/oci). After the build,
++// the pod writes the image's SBOM and scans it (evidence.go, M4.6); the
++// scan is recorded before the attempt completes, so the scan gate judges
++// it.
+ package build
+ 
+ import (
+diff --git a/go/hub/internal/platform/build/cluster.go b/go/hub/internal/platform/build/cluster.go
+new file mode 100644
+index 0000000..6f78598
+--- /dev/null
++++ b/go/hub/internal/platform/build/cluster.go
+@@ -0,0 +1,375 @@
++package build
++
++// The worker's objects in the cluster (worker.rs, `// ---- cluster ----`):
++// the BuildRun (dynamic client, the kubenapi type), and the Job, Secret and
++// Pods (typed client-go).
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"net/http"
++	"time"
++	"unicode/utf8"
++
++	batchv1 "k8s.io/api/batch/v1"
++	corev1 "k8s.io/api/core/v1"
++	apierrors "k8s.io/apimachinery/pkg/api/errors"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
++	"k8s.io/apimachinery/pkg/types"
++	utiljson "k8s.io/apimachinery/pkg/util/json"
++	"k8s.io/client-go/dynamic"
++
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++// buildRunsGVR is the BuildRun resource.
++var buildRunsGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.BuildRunResource) //nolint:gochecknoglobals // a constant
++
++// isStatus reports an API error with one of codes.
++func isStatus(err error, codes ...int32) bool {
++	var status apierrors.APIStatus
++	if !errors.As(err, &status) {
++		return false
++	}
++	code := status.Status().Code
++	for _, c := range codes {
++		if code == c {
++			return true
++		}
++	}
++	return false
++}
++
++func isNotFound(err error) bool { return isStatus(err, http.StatusNotFound) }
++
++func isConflict(err error) bool { return isStatus(err, http.StatusConflict) }
++
++func isInvalid(err error) bool {
++	return isStatus(err, http.StatusUnprocessableEntity, http.StatusBadRequest)
++}
++
++// createError is why the build's objects were not created.
++//
++//sumtype:decl
++type createError interface {
++	error
++	createError()
++}
++
++type (
++	// providerFailed: the provider handed out no fetch token.
++	providerFailed struct{ err ProviderError }
++	// kubeFailed: the API server refused a write or a read.
++	kubeFailed struct{ err error }
++	// renderFailed: the Job could not be rendered.
++	renderFailed struct{ reason string }
++)
++
++func (e providerFailed) Error() string { return e.err.Error() }
++func (e kubeFailed) Error() string     { return e.err.Error() }
++func (e renderFailed) Error() string   { return e.reason }
++
++func (providerFailed) createError() {}
++func (kubeFailed) createError()     {}
++func (renderFailed) createError()   {}
++
++// deleteNamed deletes name through del in the background; a missing object
++// is deleted already.
++func deleteNamed(ctx context.Context, del func(context.Context, string, metav1.DeleteOptions) error, name string) error {
++	background := metav1.DeletePropagationBackground
++	if err := del(ctx, name, metav1.DeleteOptions{PropagationPolicy: &background}); err != nil && !isNotFound(err) {
++		return fmt.Errorf("deleting %s: %w", name, err)
++	}
++	return nil
++}
++
++func (w *Worker) deleteJob(ctx context.Context, name string) error {
++	return deleteNamed(ctx, w.d.Client.BatchV1().Jobs(w.d.Settings.Namespace).Delete, name)
++}
++
++func (w *Worker) buildRuns() dynamic.ResourceInterface {
++	return w.d.Dynamic.Resource(buildRunsGVR).Namespace(w.d.Settings.Namespace)
++}
++
++// decodeRun is u as a BuildRun.
++func decodeRun(u *unstructured.Unstructured) (v1alpha1.BuildRun, error) {
++	var run v1alpha1.BuildRun
++	data, err := u.MarshalJSON()
++	if err == nil {
++		err = json.Unmarshal(data, &run)
++	}
++	if err != nil {
++		return run, fmt.Errorf("reading BuildRun %s: %w", u.GetName(), err)
++	}
++	return run, nil
++}
++
++// encodeRun is run as an unstructured object, without the
++// `creationTimestamp: null` Go writes and Rust did not.
++func encodeRun(run v1alpha1.BuildRun) (*unstructured.Unstructured, error) {
++	data, err := json.Marshal(run)
++	if err != nil {
++		return nil, fmt.Errorf("writing BuildRun %s: %w", run.Name, err)
++	}
++	var object map[string]any
++	if err := utiljson.Unmarshal(data, &object); err != nil {
++		return nil, fmt.Errorf("writing BuildRun %s: %w", run.Name, err)
++	}
++	u := &unstructured.Unstructured{Object: object}
++	unstructured.RemoveNestedField(u.Object, "metadata", "creationTimestamp")
++	return u, nil
++}
++
++// buildRun is attempt's BuildRun as the API server has it, created when
++// missing.
++func (w *Worker) buildRun(ctx context.Context, attempt store.BuildAttempt) (v1alpha1.BuildRun, error) {
++	runs := w.buildRuns()
++	name := Name(attempt)
++	live, err := runs.Get(ctx, name, metav1.GetOptions{})
++	if err == nil {
++		return decodeRun(live)
++	}
++	if !isNotFound(err) {
++		return v1alpha1.BuildRun{}, err //nolint:wrapcheck // a Kubernetes API error, classified by the caller
++	}
++	u, err := encodeRun(BuildRun(attempt, w.d.Settings))
++	if err != nil {
++		return v1alpha1.BuildRun{}, err
++	}
++	created, err := runs.Create(ctx, u, metav1.CreateOptions{})
++	if isConflict(err) {
++		created, err = runs.Get(ctx, name, metav1.GetOptions{})
++	}
++	if err != nil {
++		return v1alpha1.BuildRun{}, err //nolint:wrapcheck // a Kubernetes API error, classified by the caller
++	}
++	return decodeRun(created)
++}
++
++// createObjects creates attempt's BuildRun, fetch-token Secret and Job,
++// whichever are missing, and returns the Job's name.
++func (w *Worker) createObjects(ctx context.Context, attempt store.BuildAttempt) (string, createError) {
++	name := Name(attempt)
++	run, err := w.buildRun(ctx, attempt)
++	if err != nil {
++		return "", kubeFailed{err}
++	}
++	jobs := w.d.Client.BatchV1().Jobs(w.d.Settings.Namespace)
++	if _, err := jobs.Get(ctx, name, metav1.GetOptions{}); err == nil {
++		return name, nil
++	} else if !isNotFound(err) {
++		return "", kubeFailed{err}
++	}
++	token, err := w.d.Provider.FetchToken(ctx, attempt.InstallationID, attempt.Repository)
++	if err != nil {
++		var pe ProviderError
++		if !errors.As(err, &pe) {
++			pe = Unavailable{Reason: err.Error()}
++		}
++		return "", providerFailed{pe}
++	}
++	secrets := w.d.Client.CoreV1().Secrets(w.d.Settings.Namespace)
++	secretName := SecretName(attempt)
++	if _, err := secrets.Get(ctx, secretName, metav1.GetOptions{}); err == nil {
++		// Left by an interrupted attempt to create the Job: replace it.
++		w.revoke(ctx, attempt)
++		if err := deleteNamed(ctx, secrets.Delete, secretName); err != nil {
++			return "", kubeFailed{err}
++		}
++	} else if !isNotFound(err) {
++		return "", kubeFailed{err}
++	}
++	if _, err := secrets.Create(ctx, SourceSecret(attempt, w.d.Settings, &run, token.Token), metav1.CreateOptions{}); err != nil {
++		w.revokeToken(ctx, token)
++		return "", kubeFailed{err}
++	}
++	job, err := Job(attempt, w.d.Settings, &run, w.d.Provider.CloneURL(attempt.Repository))
++	if err != nil {
++		return "", renderFailed{err.Error()}
++	}
++	if _, err := jobs.Create(ctx, job, metav1.CreateOptions{}); err != nil && !isConflict(err) {
++		return "", kubeFailed{err}
++	}
++	w.d.Logger.Info("build job created", "build", attempt.ID.String(), "job", name, "commit", attempt.Commit.String())
++	return name, nil
++}
++
++// observeJob is what attempt's Job and its newest pod show now.
++func (w *Worker) observeJob(ctx context.Context, attempt store.BuildAttempt) (outcome.JobObservation, error) {
++	found := opt.None[*batchv1.Job]()
++	job, err := w.d.Client.BatchV1().Jobs(w.d.Settings.Namespace).Get(ctx, Name(attempt), metav1.GetOptions{})
++	switch {
++	case err == nil:
++		found = opt.Some(job)
++	case !isNotFound(err):
++		return outcome.JobObservation{}, fmt.Errorf("reading the build Job: %w", err)
++	}
++	var pods []corev1.Pod
++	if found.IsSome() {
++		listed, err := w.d.Client.CoreV1().Pods(w.d.Settings.Namespace).List(ctx, metav1.ListOptions{
++			LabelSelector: AttemptLabel + "=" + attempt.ID.String(),
++		})
++		if err != nil {
++			return outcome.JobObservation{}, fmt.Errorf("listing the build pods: %w", err)
++		}
++		pods = listed.Items
++	}
++	return ObserveJob(found, pods, w.d.Clock.NowMs()), nil
++}
++
++// cleanup revokes the fetch token, deletes the Job and the Secret, and
++// leaves the final status on the BuildRun, which [Worker.Sweep] removes
++// after [Retention].
++func (w *Worker) cleanup(ctx context.Context, attempt store.BuildAttempt, phase opbuild.Phase, digest opt.Val[string]) error {
++	w.revoke(ctx, attempt)
++	if err := w.deleteJob(ctx, Name(attempt)); err != nil {
++		return err
++	}
++	if err := deleteNamed(ctx, w.d.Client.CoreV1().Secrets(w.d.Settings.Namespace).Delete, SecretName(attempt)); err != nil {
++		return err
++	}
++	w.mirror(ctx, attempt, phase, digest)
++	return nil
++}
++
++// Sweep deletes the BuildRuns that finished more than [Retention] ago and
++// says how many.
++func (w *Worker) Sweep(ctx context.Context) (int, error) {
++	runs := w.buildRuns()
++	list, err := runs.List(ctx, metav1.ListOptions{
++		LabelSelector: v1alpha1.LabelManagedBy + "=" + v1alpha1.LabelManagerValue,
++	})
++	if err != nil {
++		return 0, fmt.Errorf("listing the BuildRuns: %w", err)
++	}
++	now := w.d.Clock.NowMs()
++	removed := 0
++	for i := range list.Items {
++		run, err := decodeRun(&list.Items[i])
++		if err != nil || !expired(run, now) {
++			continue
++		}
++		del := func(ctx context.Context, name string, o metav1.DeleteOptions) error { return runs.Delete(ctx, name, o) }
++		if err := deleteNamed(ctx, del, run.Name); err != nil {
++			return removed, err
++		}
++		removed++
++	}
++	return removed, nil
++}
++
++// revoke revokes the fetch token in attempt's Secret, if it is there.
++func (w *Worker) revoke(ctx context.Context, attempt store.BuildAttempt) {
++	secret, err := w.d.Client.CoreV1().Secrets(w.d.Settings.Namespace).Get(ctx, SecretName(attempt), metav1.GetOptions{})
++	if isNotFound(err) {
++		return
++	}
++	if err != nil {
++		w.d.Logger.Warn("cannot read the fetch token to revoke it", "build", attempt.ID.String(), "error", err)
++		return
++	}
++	if token, ok := secret.Data[TokenKey]; ok && utf8.Valid(token) {
++		w.revokeToken(ctx, FetchToken{Token: string(token), ExpiresAt: w.d.Clock.NowMs()})
++	}
++}
++
++func (w *Worker) revokeToken(ctx context.Context, token FetchToken) {
++	// An unrevoked token still expires within the hour.
++	if err := w.d.Provider.Revoke(ctx, token); err != nil {
++		w.d.Logger.Warn("a fetch token could not be revoked; it expires on its own", "error", err)
++	}
++}
++
++// mirror shows the attempt's progress on its BuildRun; best effort.
++func (w *Worker) mirror(ctx context.Context, attempt store.BuildAttempt, phase opbuild.Phase, digest opt.Val[string]) {
++	data, err := json.Marshal(statusPatch(attempt, phase, digest, w.d.Clock.NowMs()))
++	if err == nil {
++		_, err = w.buildRuns().Patch(ctx, Name(attempt), types.MergePatchType, data,
++			metav1.PatchOptions{FieldManager: fieldManager}, "status")
++	}
++	if err != nil && !isNotFound(err) {
++		w.d.Logger.Debug("BuildRun status not updated", "build", attempt.ID.String(), "error", err)
++	}
++}
++
++// crdPhase is the phase BuildRun.status.phase shows.
++func crdPhase(phase opbuild.Phase) string {
++	switch phase {
++	case opbuild.Queued, opbuild.Blocked:
++		return "Queued"
++	case opbuild.Succeeded:
++		return "Succeeded"
++	case opbuild.Failed:
++		return "Failed"
++	case opbuild.Cancelled:
++		return "Cancelled"
++	case opbuild.Preparing, opbuild.Running, opbuild.Publishing, opbuild.VerifyingOutput, opbuild.CancelRequested,
++		opbuild.Cancelling:
++	}
++	return "Running"
++}
++
++// rfc3339 is nowMs as jiff printed a Timestamp: UTC, fractions only when
++// there are any.
++func rfc3339(nowMs int64) string { return time.UnixMilli(nowMs).UTC().Format(time.RFC3339Nano) }
++
++// statusPatch is the BuildRun status for attempt in phase at nowMs: the
++// phase, the verified digest and, once final, when it finished and why.
++func statusPatch(attempt store.BuildAttempt, phase opbuild.Phase, digest opt.Val[string], nowMs int64) map[string]any {
++	now := rfc3339(nowMs)
++	kind, reason, ok := "Progressing", string(phase), true
++	switch phase {
++	case opbuild.Succeeded:
++		kind, reason = "Succeeded", "Verified"
++	case opbuild.Failed:
++		kind, reason, ok = "Succeeded", attempt.Failure.Or("Failed"), false
++	case opbuild.Cancelled:
++		kind, reason, ok = "Succeeded", "Cancelled", false
++	case opbuild.Queued, opbuild.Blocked, opbuild.Preparing, opbuild.Running, opbuild.Publishing,
++		opbuild.VerifyingOutput, opbuild.CancelRequested, opbuild.Cancelling:
++	}
++	conditionStatus := "False"
++	if ok {
++		conditionStatus = "True"
++	}
++	var message any
++	if m, ok := attempt.FailureDetail.Get(); ok {
++		message = m
++	}
++	status := map[string]any{
++		"phase":   crdPhase(phase),
++		"jobName": Name(attempt),
++		"conditions": []any{map[string]any{
++			"type": kind, "status": conditionStatus, "reason": reason, "message": message, "lastTransitionTime": now,
++		}},
++	}
++	if d, ok := digest.Get(); ok {
++		status["imageDigest"] = d
++	}
++	if phase == opbuild.Preparing {
++		status["startedAt"] = now
++	}
++	if phase.IsTerminal() {
++		status["finishedAt"] = now
++	}
++	return map[string]any{"status": status}
++}
++
++// expired reports whether run finished more than [Retention] before nowMs.
++func expired(run v1alpha1.BuildRun, nowMs int64) bool {
++	if run.Status == nil || run.Status.FinishedAt == nil {
++		return false
++	}
++	finished, err := time.Parse(time.RFC3339Nano, *run.Status.FinishedAt)
++	if err != nil {
++		return false
++	}
++	return nowMs/1000-finished.Unix() > retentionSecs
++}
+diff --git a/go/hub/internal/platform/build/cluster_test.go b/go/hub/internal/platform/build/cluster_test.go
+new file mode 100644
+index 0000000..a53cd8f
+--- /dev/null
++++ b/go/hub/internal/platform/build/cluster_test.go
+@@ -0,0 +1,70 @@
++package build_test
++
++// The build objects against a real API server (envtest): the server
++// validates the Job, the Secret, the BuildRun and its status as it would
++// in a cluster, which Rust checked only by deserializing into k8s-openapi
++// types.
++
++import (
++	"os"
++	"testing"
++
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/kubetest"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++var apiserver kubetest.Server
++
++func TestMain(m *testing.M) { os.Exit(kubetest.Main(m, &apiserver)) }
++
++func TestTheAPIServerAcceptsTheBuildObjects(t *testing.T) {
++	c := apiserver.Connect(t)
++	ctx := t.Context()
++	s := settings()
++	s.Namespace = kubetest.Namespace(t, c, "kuben-builds")
++	p := &provider{}
++	w := build.NewWorker(build.Deps{
++		Client: c.Typed, Dynamic: c.Dynamic, ID: "w", Provider: p, Verifier: registry{},
++		Settings: s, Clock: clock.System{}, Logger: discard(),
++	})
++	a := attempt(t, source.BuildRecipe{Strategy: source.Dockerfile})
++	name := check(build.CreateObjects(ctx, w, a)).must(t)
++	job := check(c.Typed.BatchV1().Jobs(s.Namespace).Get(ctx, name, metav1.GetOptions{})).must(t)
++	if len(job.OwnerReferences) != 1 || job.OwnerReferences[0].Kind != v1alpha1.BuildRunKind || job.OwnerReferences[0].UID == "" {
++		t.Errorf("owner %+v", job.OwnerReferences)
++	}
++	secret := check(c.Typed.CoreV1().Secrets(s.Namespace).Get(ctx, build.SecretName(a), metav1.GetOptions{})).must(t)
++	if string(secret.Data[build.TokenKey]) != "ghs_x" || secret.OwnerReferences[0].UID != job.OwnerReferences[0].UID {
++		t.Errorf("secret %+v", secret.ObjectMeta)
++	}
++	// A second admission of the same attempt changes nothing.
++	if again := check(build.CreateObjects(ctx, w, a)).must(t); again != name {
++		t.Errorf("name %s", again)
++	}
++
++	runs := c.Dynamic.Resource(v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.BuildRunResource)).Namespace(s.Namespace)
++	build.Mirror(ctx, w, a, opbuild.Preparing, opt.None[string]())
++	build.Mirror(ctx, w, a, opbuild.Succeeded, opt.Some(stepDigest))
++	run := check(runs.Get(ctx, name, metav1.GetOptions{})).must(t)
++	for field, want := range map[string]string{"phase": "Succeeded", "imageDigest": stepDigest, "jobName": name} {
++		if got, _, _ := unstructured.NestedString(run.Object, "status", field); got != want {
++			t.Errorf("status.%s %q, want %q", field, got, want)
++		}
++	}
++	for _, field := range []string{"startedAt", "finishedAt"} {
++		if got, _, _ := unstructured.NestedString(run.Object, "status", field); got == "" {
++			t.Errorf("no status.%s", field)
++		}
++	}
++
++	rescan := check(build.RescanJob(s, "registry.local/acme/shop", stepDigest)).must(t)
++	check(c.Typed.BatchV1().Jobs(s.Namespace).Create(ctx, rescan, metav1.CreateOptions{})).must(t)
++}
+diff --git a/go/hub/internal/platform/build/evidence.go b/go/hub/internal/platform/build/evidence.go
+new file mode 100644
+index 0000000..d537cc4
+--- /dev/null
++++ b/go/hub/internal/platform/build/evidence.go
+@@ -0,0 +1,159 @@
++package build
++
++// What a scan container left behind (M4.6; evidence.rs): its report in the
++// termination log and the image's SBOM in its log, between markers. Both
++// are read once the pod is done and kept in SQL; the pod is deleted
++// afterwards.
++
++import (
++	"bytes"
++	"context"
++	"encoding/base64"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"log/slog"
++	"strings"
++	"time"
++	"unicode/utf8"
++
++	corev1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
++)
++
++const (
++	// MaxSbomBytes is the largest SBOM kept (gzip).
++	MaxSbomBytes = 8 << 20
++	// maxLogBytes is the most log read from a scan container.
++	maxLogBytes = 12 << 20
++	sbomBegin   = "kuben-sbom-begin\n"
++	sbomEnd     = "\nkuben-sbom-end"
++	// maxScanner is the longest scanner name kept, in characters.
++	maxScanner = 128
++	// maxDetail is the longest scan detail kept, in characters.
++	maxDetail = 2048
++)
++
++// SbomOf is the gzip SBOM between the markers of log, if it is well formed.
++func SbomOf(log string) opt.Val[[]byte] {
++	none := opt.None[[]byte]()
++	_, rest, found := strings.Cut(log, sbomBegin)
++	if !found {
++		return none
++	}
++	encoded, _, found := strings.Cut(rest, sbomEnd)
++	if !found {
++		return none
++	}
++	encoded = strings.TrimSpace(encoded)
++	// The base64 crate refused line breaks inside; Go's decoder skips them.
++	if strings.ContainsAny(encoded, "\r\n") {
++		return none
++	}
++	data, err := base64.StdEncoding.Strict().DecodeString(encoded)
++	if err != nil || len(data) > MaxSbomBytes || !bytes.HasPrefix(data, []byte{0x1f, 0x8b}) {
++		return none
++	}
++	return opt.Some(data)
++}
++
++// ReportOf is the report in message, or an unavailable one saying why not.
++func ReportOf(message opt.Val[string]) scan.Report {
++	m := strings.TrimSpace(message.Or(""))
++	if m == "" {
++		return scan.Unavailable("the scan left no report")
++	}
++	var report scan.Report
++	if err := json.Unmarshal([]byte(m), &report); err != nil {
++		return scan.Unavailable("the scan report does not parse")
++	}
++	return report
++}
++
++// SummaryOf is the summary of report, scanned at nowMs.
++func SummaryOf(report scan.Report, nowMs int64) scan.Summary {
++	updated := opt.None[int64]()
++	if db, ok := report.DB.Get(); ok {
++		if t, err := time.Parse(time.RFC3339Nano, db); err == nil {
++			updated = opt.Some(t.UnixMilli())
++		}
++	}
++	summary := scan.Summary{
++		Status:      report.Status,
++		Scanner:     firstChars(report.Scanner, maxScanner),
++		DBUpdatedAt: updated,
++		Findings:    []scan.Finding{},
++		ScannedAt:   nowMs,
++	}
++	if report.Status == scan.StatusOK {
++		summary.Counts = report.Counts
++		summary.Findings = report.Listed()
++	}
++	return summary
++}
++
++// firstChars is the first n characters (Unicode scalar values) of s.
++func firstChars(s string, n int) string {
++	count := 0
++	for i := range s {
++		if count == n {
++			return s[:i]
++		}
++		count++
++	}
++	return s
++}
++
++// detailOf is the stored detail of report: its first 2048 characters.
++func detailOf(report scan.Report) opt.Val[string] {
++	if d, ok := report.Detail.Get(); ok {
++		return opt.Some(firstChars(d, maxDetail))
++	}
++	return opt.None[string]()
++}
++
++// Collect is the report and SBOM of the newest pod selector matches in pods.
++func Collect(
++	ctx context.Context, pods typedcorev1.PodInterface, selector string, logger *slog.Logger,
++) (scan.Report, opt.Val[[]byte], error) {
++	none := opt.None[[]byte]()
++	listed, err := pods.List(ctx, metav1.ListOptions{LabelSelector: selector})
++	if err != nil {
++		return scan.Report{}, none, fmt.Errorf("listing the scan pods: %w", err)
++	}
++	pod, ok := newestPod(listed.Items).Get()
++	if !ok {
++		return scan.Unavailable("the scan pod is gone"), none, nil
++	}
++	var terminated *corev1.ContainerStateTerminated
++	for _, c := range pod.Status.ContainerStatuses {
++		if c.Name == outcome.ScanContainer {
++			terminated = c.State.Terminated
++			break
++		}
++	}
++	if terminated == nil {
++		return scan.Unavailable("the scan did not run"), none, nil
++	}
++	report := ReportOf(nonEmpty(terminated.Message))
++	if report.Status != scan.StatusOK {
++		return report, none, nil
++	}
++	limit := int64(maxLogBytes)
++	log, err := pods.GetLogs(pod.Name, &corev1.PodLogOptions{
++		Container: outcome.ScanContainer, LimitBytes: &limit,
++	}).DoRaw(ctx)
++	if err == nil && !utf8.Valid(log) {
++		err = errors.New("the log is not UTF-8")
++	}
++	if err != nil {
++		logger.Warn("the SBOM of a scan could not be read", "pod", pod.Name, "error", err)
++		return report, none, nil
++	}
++	return report, SbomOf(string(log)), nil
++}
+diff --git a/go/hub/internal/platform/build/evidence_test.go b/go/hub/internal/platform/build/evidence_test.go
+new file mode 100644
+index 0000000..964df44
+--- /dev/null
++++ b/go/hub/internal/platform/build/evidence_test.go
+@@ -0,0 +1,129 @@
++package build_test
++
++import (
++	"bytes"
++	"encoding/base64"
++	"io"
++	"log/slog"
++	"testing"
++	"time"
++
++	"github.com/google/go-cmp/cmp"
++	corev1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/client-go/kubernetes/fake"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++)
++
++// Ported from evidence.rs.
++
++const (
++	begin = "kuben-sbom-begin\n"
++	end   = "\nkuben-sbom-end"
++)
++
++func TestSbomsAreTakenFromBetweenTheMarkers(t *testing.T) {
++	gz := []byte{0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 1, 2, 3}
++	encoded := base64.StdEncoding.EncodeToString(gz)
++	log := "Downloading DB...\n" + begin + encoded + "\n" + end[1:] + "\nafter"
++	if got, ok := build.SbomOf(log).Get(); !ok || !bytes.Equal(got, gz) {
++		t.Errorf("sbom %v", got)
++	}
++	cases := map[string]string{
++		"no markers":  "no markers",
++		"not gzip":    begin + base64.StdEncoding.EncodeToString([]byte("plain json")) + end,
++		"broken":      begin + "!!!" + end,
++		"truncated":   begin + encoded,
++		"line breaks": begin + encoded[:4] + "\n" + encoded[4:] + end,
++	}
++	for name, log := range cases {
++		if got := build.SbomOf(log); got.IsSome() {
++			t.Errorf("%s: %v", name, got)
++		}
++	}
++}
++
++func TestReportsBecomeSummaries(t *testing.T) {
++	ok := build.ReportOf(opt.Some(`{"status":"ok","scanner":"trivy 0.74.0","db":"2026-09-17T06:00:00Z",
++		"counts":{"critical":1,"high":0,"medium":3,"low":0,"unknown":0},
++		"findings":["CRITICAL:CVE-2026-1"]}`))
++	s := build.SummaryOf(ok, 42)
++	if s.Status != scan.StatusOK || s.DBUpdatedAt != opt.Some[int64](1_789_624_800_000) {
++		t.Errorf("summary %+v", s)
++	}
++	if diff := cmp.Diff([]scan.Finding{{Severity: scan.SeverityCritical, ID: "CVE-2026-1"}}, s.Findings); diff != "" {
++		t.Errorf("findings (-want +got):\n%s", diff)
++	}
++	if s.Counts.Critical != 1 || s.Counts.Medium != 3 || s.ScannedAt != 42 {
++		t.Errorf("counts %+v at %d", s.Counts, s.ScannedAt)
++	}
++	for _, message := range []opt.Val[string]{opt.None[string](), opt.Some(""), opt.Some("not json")} {
++		r := build.ReportOf(message)
++		if r.Status != scan.StatusUnavailable || build.SummaryOf(r, 1).Counts.Critical != 0 {
++			t.Errorf("%v: %+v", message, r)
++		}
++	}
++	unavailable := build.ReportOf(opt.Some(`{"status":"unavailable","scanner":"trivy","detail":"no feed"}`))
++	if unavailable.Detail != opt.Some("no feed") {
++		t.Errorf("detail %v", unavailable.Detail)
++	}
++}
++
++// The report the Rust scan script writes: its sed turns the database date
++// into the byte 0x01, which no JSON reader accepts, so such a report reads
++// as unavailable in Rust and in Go alike.
++func TestAReportWithAControlByteDoesNotParse(t *testing.T) {
++	r := build.ReportOf(opt.Some("{\"status\":\"ok\",\"scanner\":\"trivy 0.74.0\",\"db\":\"\x01\"," +
++		"\"counts\":{\"critical\":0,\"high\":0,\"medium\":0,\"low\":0,\"unknown\":0},\"findings\":[]}"))
++	if r.Status != scan.StatusUnavailable || r.Detail != opt.Some("the scan report does not parse") {
++		t.Errorf("report %+v", r)
++	}
++}
++
++func discard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
++
++func scanPod(t *testing.T, name, created string, terminated *corev1.ContainerStateTerminated) *corev1.Pod {
++	t.Helper()
++	ts := metav1.NewTime(time.UnixMilli(ms(t, created)))
++	return &corev1.Pod{
++		ObjectMeta: metav1.ObjectMeta{
++			Name: name, Namespace: "kuben-builds", CreationTimestamp: ts,
++			Labels: map[string]string{"kuben.dev/rescan": "x"},
++		},
++		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
++			Name: "scan", State: corev1.ContainerState{Terminated: terminated},
++		}}},
++	}
++}
++
++func TestCollectReadsTheNewestScanPod(t *testing.T) {
++	report := `{"status":"ok","scanner":"trivy","counts":{"critical":2,"high":0,"medium":0,"low":0,"unknown":0},"findings":[]}`
++	client := fake.NewClientset(
++		scanPod(t, "old", "2026-09-17T10:00:00Z", &corev1.ContainerStateTerminated{Message: `{"status":"unavailable","scanner":"x"}`}),
++		scanPod(t, "new", "2026-09-17T10:05:00Z", &corev1.ContainerStateTerminated{Message: report}),
++	)
++	pods := client.CoreV1().Pods("kuben-builds")
++	got, sbom, err := build.Collect(t.Context(), pods, "kuben.dev/rescan=x", discard())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Status != scan.StatusOK || got.Counts.Critical != 2 {
++		t.Errorf("report %+v", got)
++	}
++	// The fake client's log is "fake logs": no SBOM in it.
++	if sbom.IsSome() {
++		t.Errorf("sbom %v", sbom)
++	}
++	missing, _, err := build.Collect(t.Context(), pods, "kuben.dev/rescan=none", discard())
++	if err != nil || missing.Detail != opt.Some("the scan pod is gone") {
++		t.Errorf("no pod: %+v, %v", missing, err)
++	}
++	running := fake.NewClientset(scanPod(t, "p", "2026-09-17T10:00:00Z", nil)).CoreV1().Pods("kuben-builds")
++	notRun, _, err := build.Collect(t.Context(), running, "kuben.dev/rescan=x", discard())
++	if err != nil || notRun.Detail != opt.Some("the scan did not run") {
++		t.Errorf("not run: %+v, %v", notRun, err)
++	}
++}
+diff --git a/go/hub/internal/platform/build/export_test.go b/go/hub/internal/platform/build/export_test.go
+new file mode 100644
+index 0000000..74cd216
+--- /dev/null
++++ b/go/hub/internal/platform/build/export_test.go
+@@ -0,0 +1,47 @@
++package build
++
++import (
++	"context"
++
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++// CreateObjects exposes createObjects to the tests.
++func CreateObjects(ctx context.Context, w *Worker, attempt store.BuildAttempt) (string, error) {
++	name, err := w.createObjects(ctx, attempt)
++	if err != nil {
++		return name, err
++	}
++	return name, nil
++}
++
++// Mirror exposes mirror to the tests.
++func Mirror(ctx context.Context, w *Worker, attempt store.BuildAttempt, phase opbuild.Phase, digest opt.Val[string]) {
++	w.mirror(ctx, attempt, phase, digest)
++}
++
++// CrdPhase exposes crdPhase to the tests.
++func CrdPhase(phase opbuild.Phase) string { return crdPhase(phase) }
++
++// StatusPatch exposes statusPatch to the tests.
++func StatusPatch(attempt store.BuildAttempt, phase opbuild.Phase, digest opt.Val[string], nowMs int64) map[string]any {
++	return statusPatch(attempt, phase, digest, nowMs)
++}
++
++// Expired exposes expired to the tests.
++func Expired(run v1alpha1.BuildRun, nowMs int64) bool { return expired(run, nowMs) }
++
++// OperationPhase exposes operationPhase to the tests.
++func OperationPhase(phase opbuild.Phase) string { return operationPhase(phase) }
++
++// IsNotFound exposes isNotFound to the tests.
++func IsNotFound(err error) bool { return isNotFound(err) }
++
++// IsConflict exposes isConflict to the tests.
++func IsConflict(err error) bool { return isConflict(err) }
++
++// IsInvalid exposes isInvalid to the tests.
++func IsInvalid(err error) bool { return isInvalid(err) }
+diff --git a/go/hub/internal/platform/build/flow_test.go b/go/hub/internal/platform/build/flow_test.go
+new file mode 100644
+index 0000000..31b6496
+--- /dev/null
++++ b/go/hub/internal/platform/build/flow_test.go
+@@ -0,0 +1,286 @@
++package build_test
++
++// The worker end to end on PostgreSQL, with client-go's fake clients for
++// the cluster and fakes of the provider and the registry: a sync queues a
++// build, the build gets its objects, a finished Job is verified, scanned
++// and completed, and the objects are cleaned up. Rust had no such test.
++
++import (
++	"context"
++	"slices"
++	"sync"
++	"testing"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	batchv1 "k8s.io/api/batch/v1"
++	corev1 "k8s.io/api/core/v1"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
++	"k8s.io/apimachinery/pkg/runtime"
++	"k8s.io/apimachinery/pkg/runtime/schema"
++	dynamicfake "k8s.io/client-go/dynamic/fake"
++	"k8s.io/client-go/kubernetes/fake"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store/pgtest"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++const head = "0123456789abcdef0123456789abcdef01234567"
++
++// provider is a Git provider whose head is always head.
++type provider struct {
++	mu      sync.Mutex
++	revoked []string
++}
++
++func (p *provider) Head(context.Context, uint64, source.RepoName, source.BranchName) (build.Head, error) {
++	sha, err := source.ParseCommitSha(head)
++	return build.Head{Commit: sha, RepositoryID: 42}, err
++}
++
++func (p *provider) PullHead(context.Context, uint64, source.RepoName, uint64) (build.Head, error) {
++	return build.Head{}, build.NotFound{What: "no pulls"}
++}
++
++func (p *provider) FetchToken(context.Context, uint64, source.RepoName) (build.FetchToken, error) {
++	return build.FetchToken{Token: "ghs_x", ExpiresAt: 1}, nil
++}
++
++func (p *provider) Revoke(_ context.Context, token build.FetchToken) error {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	p.revoked = append(p.revoked, token.Token)
++	return nil
++}
++
++func (p *provider) CloneURL(repository source.RepoName) string {
++	return "https://github.com/" + repository.String() + ".git"
++}
++
++// registry holds the digests in it.
++type registry map[string]bool
++
++func (r registry) Verify(_ context.Context, repository string, digest artifact.Digest) error {
++	if !r[digest.String()] {
++		return build.ManifestMissing{What: repository + "@" + digest.String()}
++	}
++	return nil
++}
++
++type flow struct {
++	store    *store.Store
++	raw      *pgxpool.Pool
++	org      ids.OrgID
++	target   ids.TargetID
++	provider *provider
++	client   *fake.Clientset
++	dynamic  *dynamicfake.FakeDynamicClient
++	worker   *build.Worker
++	settings build.Settings
++	held     registry
++}
++
++func newFlow(t *testing.T, held registry) *flow {
++	t.Helper()
++	ctx := t.Context()
++	pc := pgtest.Schema(t)
++	st := check(store.ConnectConfig(ctx, pc.Copy(), 4)).must(t)
++	t.Cleanup(st.Close)
++	raw := check(pgxpool.NewWithConfig(ctx, pc.Copy())).must(t)
++	t.Cleanup(raw.Close)
++	f := &flow{store: st, raw: raw, provider: &provider{}, settings: settings(), held: held}
++	f.org, f.target = seed(t, st)
++	f.client = fake.NewClientset()
++	f.dynamic = dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
++		map[schema.GroupVersionResource]string{v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.BuildRunResource): "BuildRunList"})
++	f.worker = f.newWorker(clock.System{})
++	return f
++}
++
++func (f *flow) newWorker(c clock.Clock) *build.Worker {
++	return build.NewWorker(build.Deps{
++		Store: f.store, Client: f.client, Dynamic: f.dynamic, ID: "w", Provider: f.provider,
++		Verifier: f.held, Settings: f.settings, Limits: store.SlotLimits{Total: 4, PerOrg: 2},
++		Clock: c, Logger: discard(),
++	})
++}
++
++// seed is an organization with a target bound to acme/shop@main, and a
++// sync of it requested.
++func seed(t *testing.T, st *store.Store) (ids.OrgID, ids.TargetID) {
++	t.Helper()
++	ctx := t.Context()
++	o := check(st.CreateOrg(ctx, "acme", "Acme")).must(t).ID
++	tn := check(st.Tenant(ctx, o)).must(t)
++	defer tn.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	project := check(tn.CreateProject(ctx, "shop", "Shop")).must(t)
++	env := check(tn.CreateEnvironment(ctx, project, "production", "Production", true)).must(t)
++	cluster := check(tn.CreateCluster(ctx, "eu-1")).must(t)
++	placement := check(tn.CreatePlacement(ctx, project, env, cluster, "acme-shop")).must(t)
++	app := check(tn.CreateApplication(ctx, project, "web", "Web")).must(t)
++	tgt := check(tn.CreateTarget(ctx, project, app, placement)).must(t)
++	if _, ok, err := tn.CreateConfigRevision(ctx, project, tgt, map[string]any{"replicas": 1}, "user:alice"); err != nil || !ok {
++		t.Fatalf("revision: %v, %v", ok, err)
++	}
++	if !check(tn.LinkInstallation(ctx, 7, "acme")).must(t) {
++		t.Fatal("link refused")
++	}
++	a := attempt(t, source.BuildRecipe{Strategy: source.Auto})
++	bound := check(tn.BindSource(ctx, project, tgt, store.NewBinding{
++		InstallationID: 7, Repository: a.Repository, Branch: a.Branch, Recipe: a.Recipe, ImageRepository: a.ImageRepository,
++	})).must(t)
++	if _, ok := bound.(store.BoundCreated); !ok {
++		t.Fatalf("not bound: %#v", bound)
++	}
++	binding, ok, err := tn.BindingOfTarget(ctx, tgt)
++	if err != nil || !ok {
++		t.Fatalf("binding: %v, %v", ok, err)
++	}
++	check(tn.RequestSync(ctx, binding, "test", store.NewAudit{})).must(t)
++	if err := tn.Commit(ctx); err != nil {
++		t.Fatal(err)
++	}
++	return o, tgt
++}
++
++// work runs one claim, which must find an operation.
++func (f *flow) work(t *testing.T) {
++	t.Helper()
++	if check(f.worker.WorkOnce(t.Context())).must(t).IsNone() {
++		t.Fatal("nothing was due")
++	}
++}
++
++// due makes every waiting operation due now.
++func (f *flow) due(t *testing.T) {
++	t.Helper()
++	if _, err := f.raw.Exec(t.Context(), "UPDATE operations SET next_attempt_at = 0 WHERE NOT done"); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func (f *flow) attempt(t *testing.T) store.BuildAttempt {
++	t.Helper()
++	tn := check(f.store.Tenant(t.Context(), f.org)).must(t)
++	defer tn.Rollback(t.Context()) //nolint:errcheck // read only
++	builds := check(tn.BuildsOfTarget(t.Context(), f.target, 10)).must(t)
++	if len(builds) != 1 {
++		t.Fatalf("%d builds", len(builds))
++	}
++	return builds[0]
++}
++
++// finish makes the attempt's Job complete with a pod that reported digest
++// and a clean scan.
++func (f *flow) finish(t *testing.T, a store.BuildAttempt, digest string) {
++	t.Helper()
++	ctx := t.Context()
++	jobs := f.client.BatchV1().Jobs(f.settings.Namespace)
++	job := check(jobs.Get(ctx, build.Name(a), metav1.GetOptions{})).must(t)
++	job.Status.Conditions = []batchv1.JobCondition{{Type: batchv1.JobComplete, Status: corev1.ConditionTrue}}
++	check(jobs.UpdateStatus(ctx, job, metav1.UpdateOptions{})).must(t)
++	pod := &corev1.Pod{
++		ObjectMeta: metav1.ObjectMeta{
++			Name: build.Name(a) + "-x", Namespace: f.settings.Namespace,
++			Labels: map[string]string{build.AttemptLabel: a.ID.String()},
++		},
++		Status: corev1.PodStatus{
++			Phase: corev1.PodSucceeded,
++			InitContainerStatuses: []corev1.ContainerStatus{{Name: "build", State: corev1.ContainerState{
++				Terminated: &corev1.ContainerStateTerminated{
++					Reason: "Completed", Message: `{"digest":"` + digest + `","strategy":"dockerfile"}`,
++				},
++			}}},
++			ContainerStatuses: []corev1.ContainerStatus{{Name: "scan", State: corev1.ContainerState{
++				Terminated: &corev1.ContainerStateTerminated{
++					Reason: "Completed", Message: `{"status":"ok","scanner":"trivy 0.74.0","counts":{"critical":0,"high":1,"medium":0,"low":0,"unknown":0},"findings":["HIGH:CVE-2026-2"]}`,
++				},
++			}}},
++		},
++	}
++	check(f.client.CoreV1().Pods(f.settings.Namespace).Create(ctx, pod, metav1.CreateOptions{})).must(t)
++}
++
++func TestASyncedHeadIsBuiltVerifiedAndCleanedUp(t *testing.T) {
++	f := newFlow(t, registry{good: true})
++	ctx := t.Context()
++	f.work(t) // the sync queues a build
++	f.work(t) // the build is admitted
++	a := f.attempt(t)
++	if a.Phase != opbuild.Preparing || a.Commit.String() != head {
++		t.Fatalf("attempt %s at %s", a.Phase, a.Commit)
++	}
++	ns := f.settings.Namespace
++	secret := check(f.client.CoreV1().Secrets(ns).Get(ctx, build.SecretName(a), metav1.GetOptions{})).must(t)
++	if string(secret.Data[build.TokenKey]) != "ghs_x" {
++		t.Errorf("token %q", secret.Data[build.TokenKey])
++	}
++	check(f.client.BatchV1().Jobs(ns).Get(ctx, build.Name(a), metav1.GetOptions{})).must(t)
++	runs := f.dynamic.Resource(v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.BuildRunResource)).Namespace(ns)
++	run := check(runs.Get(ctx, build.Name(a), metav1.GetOptions{})).must(t)
++	if phase, _, _ := unstructured.NestedString(run.Object, "status", "phase"); phase != "Running" {
++		t.Errorf("BuildRun phase %q", phase)
++	}
++
++	f.finish(t, a, good)
++	f.due(t)
++	f.work(t) // observed, verified, scanned and completed
++	a = f.attempt(t)
++	if a.Phase != opbuild.Succeeded || a.Digest.IsNone() {
++		t.Fatalf("attempt %s, digest %v, failure %v %v", a.Phase, a.Digest, a.Failure, a.FailureDetail)
++	}
++	if _, err := f.client.BatchV1().Jobs(ns).Get(ctx, build.Name(a), metav1.GetOptions{}); !build.IsNotFound(err) {
++		t.Errorf("the Job is left: %v", err)
++	}
++	if _, err := f.client.CoreV1().Secrets(ns).Get(ctx, build.SecretName(a), metav1.GetOptions{}); !build.IsNotFound(err) {
++		t.Errorf("the Secret is left: %v", err)
++	}
++	if !slices.Contains(f.provider.revoked, "ghs_x") {
++		t.Errorf("revoked %v", f.provider.revoked)
++	}
++	tn := check(f.store.Tenant(ctx, f.org)).must(t)
++	defer tn.Rollback(ctx) //nolint:errcheck // read only
++	scans := check(tn.LatestScans(ctx, []string{good})).must(t)
++	if s, ok := scans[good]; !ok || s.Status != scan.StatusOK || s.Counts.High != 1 {
++		t.Errorf("scans %+v", scans)
++	}
++	run = check(runs.Get(ctx, build.Name(a), metav1.GetOptions{})).must(t)
++	if digest, _, _ := unstructured.NestedString(run.Object, "status", "imageDigest"); digest != good {
++		t.Errorf("BuildRun digest %q", digest)
++	}
++
++	// A day later the finished BuildRun is swept.
++	later := f.newWorker(clock.Fixed(clock.System{}.NowMs() + 25*3600*1000))
++	if n := check(later.Sweep(ctx)).must(t); n != 1 {
++		t.Errorf("swept %d", n)
++	}
++	if n := check(f.worker.Sweep(ctx)).must(t); n != 0 {
++		t.Errorf("swept %d again", n)
++	}
++}
++
++func TestADigestTheRegistryLacksFailsTheBuild(t *testing.T) {
++	f := newFlow(t, registry{})
++	f.work(t)
++	f.work(t)
++	a := f.attempt(t)
++	f.finish(t, a, forged)
++	f.due(t)
++	f.work(t)
++	a = f.attempt(t)
++	if a.Phase != opbuild.Failed || a.Failure != opt.Some("OutputRejected") {
++		t.Errorf("attempt %s, failure %v", a.Phase, a.Failure)
++	}
++	if _, err := f.client.BatchV1().Jobs(f.settings.Namespace).Get(t.Context(), build.Name(a), metav1.GetOptions{}); !build.IsNotFound(err) {
++		t.Errorf("the Job is left: %v", err)
++	}
++}
+diff --git a/go/hub/internal/platform/build/job.go b/go/hub/internal/platform/build/job.go
+new file mode 100644
+index 0000000..38eff20
+--- /dev/null
++++ b/go/hub/internal/platform/build/job.go
+@@ -0,0 +1,482 @@
++package build
++
++// The objects of one build attempt (ADR-028; job.rs), rendered as pure data.
++//
++//	BuildRun kbuild-<attempt>            the attempt in the cluster; owns the rest
++//	├── Secret kbuild-<attempt>-source   the repository-scoped fetch token
++//	└── Job kbuild-<attempt>             one pod, never retried by Kubernetes
++//	    ├── init fetch   git fetch of exactly one commit (the only mount of the token)
++//	    ├── init plan    Dockerfile or Railpack; the Railpack plan
++//	    └── build        rootless BuildKit: build, push, report the digest
++//
++// The pod gets no service-account token, runs as an unprivileged user with
++// mandatory budgets and a deadline, and receives untrusted values (paths,
++// commit, image) only as environment variables of fixed scripts. A context
++// or Dockerfile directory that resolves outside the checkout (a symlink) is
++// refused before BuildKit reads it, and the fetch token is mounted in the
++// fetch container alone.
++
++import (
++	"fmt"
++	"math"
++	"strings"
++
++	batchv1 "k8s.io/api/batch/v1"
++	corev1 "k8s.io/api/core/v1"
++	"k8s.io/apimachinery/pkg/api/resource"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++const (
++	// AttemptLabel names the attempt on every object of a build.
++	AttemptLabel = "kuben.dev/build-attempt"
++	// PlanContainer is the init container that picks the strategy and writes
++	// the Railpack plan.
++	PlanContainer = "plan"
++	// TokenKey is the key of the fetch token in its Secret.
++	TokenKey = "token"
++
++	targetLabel = "kuben.dev/target"
++	tokenDir    = "/var/run/kuben/source"
++	dockerDir   = "/docker"
++	user        = 1000
++	// tokenMode lets owner and group read the token (the pod's fsGroup).
++	tokenMode    = 0o440
++	helperCPU    = "100m"
++	helperMemory = "256Mi"
++	// minDeadlineSecs is the shortest deadline a build gets.
++	minDeadlineSecs = 60
++)
++
++// NodePool is the node label of the required build pool.
++type NodePool struct {
++	Key   string
++	Value string
++}
++
++// Settings are where and with what a build runs.
++type Settings struct {
++	Namespace     string
++	BuildkitImage string
++	FetchImage    string
++	// RailpackImage is set only when the Railpack frontend is too.
++	RailpackImage    opt.Val[string]
++	RailpackFrontend opt.Val[string]
++	CPURequest       string
++	CPULimit         string
++	Memory           string
++	EphemeralStorage string
++	// DeadlineSecs is the hard deadline of one attempt, at least 60.
++	DeadlineSecs     uint64
++	PushSecret       opt.Val[string]
++	InsecureRegistry bool
++	// NodePool is the required build pool.
++	NodePool opt.Val[NodePool]
++	// ScannerImage is the Trivy image; none builds without a scan.
++	ScannerImage  opt.Val[string]
++	ScannerMemory string
++}
++
++// SettingsFromConfig are the settings of cfg, in namespace.
++func SettingsFromConfig(cfg config.BuildCfg, namespace string) Settings {
++	nonEmpty := func(v opt.Val[string]) opt.Val[string] {
++		if s, ok := v.Get(); ok && s != "" {
++			return v
++		}
++		return opt.None[string]()
++	}
++	s := Settings{
++		Namespace:        namespace,
++		BuildkitImage:    cfg.BuildkitImage,
++		FetchImage:       cfg.FetchImage,
++		RailpackFrontend: nonEmpty(cfg.RailpackFrontend),
++		CPURequest:       cfg.CPURequest,
++		CPULimit:         cfg.CPULimit,
++		Memory:           cfg.Memory,
++		EphemeralStorage: cfg.EphemeralStorage,
++		DeadlineSecs:     max(cfg.DeadlineSecs, minDeadlineSecs),
++		PushSecret:       nonEmpty(cfg.PushSecret),
++		InsecureRegistry: cfg.InsecureRegistry,
++		ScannerImage:     nonEmpty(opt.Some(cfg.ScannerImage)),
++		ScannerMemory:    cfg.ScannerMemory,
++	}
++	// Railpack needs both images; with either missing the plan step
++	// explains that only Dockerfile builds run.
++	if s.RailpackFrontend.IsSome() {
++		s.RailpackImage = nonEmpty(cfg.RailpackImage)
++	}
++	if pool, ok := cfg.NodePool.Get(); ok {
++		if key, value, found := strings.Cut(pool, "="); found {
++			s.NodePool = opt.Some(NodePool{Key: strings.TrimSpace(key), Value: strings.TrimSpace(value)})
++		}
++	}
++	return s
++}
++
++// Name is the deterministic name of attempt's objects.
++func Name(attempt store.BuildAttempt) string {
++	return "kbuild-" + strings.ReplaceAll(attempt.ID.String(), "-", "")
++}
++
++// SecretName is the name of the fetch-token Secret.
++func SecretName(attempt store.BuildAttempt) string { return Name(attempt) + "-source" }
++
++func labels(attempt store.BuildAttempt) map[string]string {
++	return map[string]string{
++		AttemptLabel:            attempt.ID.String(),
++		v1alpha1.LabelManagedBy: v1alpha1.LabelManagerValue,
++		targetLabel:             attempt.Target.String(),
++	}
++}
++
++func crdStrategy(s source.BuildStrategy) v1alpha1.BuildStrategy {
++	switch s.OrAuto() {
++	case source.Auto:
++		return v1alpha1.BuildStrategyAuto
++	case source.Dockerfile:
++		return v1alpha1.BuildStrategyDockerfile
++	case source.Railpack:
++		return v1alpha1.BuildStrategyRailpack
++	}
++	return v1alpha1.BuildStrategyAuto
++}
++
++// BuildRun is the attempt's BuildRun, the owner of its Job and Secret.
++func BuildRun(attempt store.BuildAttempt, s Settings) v1alpha1.BuildRun {
++	return v1alpha1.BuildRun{
++		TypeMeta: metav1.TypeMeta{APIVersion: v1alpha1.SchemeGroupVersion.String(), Kind: v1alpha1.BuildRunKind},
++		ObjectMeta: metav1.ObjectMeta{
++			Name: Name(attempt), Namespace: s.Namespace, Labels: labels(attempt),
++		},
++		Spec: v1alpha1.BuildRunSpec{
++			App:      attempt.Target.String(),
++			Repo:     attempt.Repository.String(),
++			GitRef:   attempt.Commit.String(),
++			Path:     attempt.Recipe.Context.String(),
++			Strategy: crdStrategy(attempt.Recipe.Strategy),
++			Image:    attempt.PushReference(),
++		},
++	}
++}
++
++// ownerReferences is owner as the controller of an object, as kube-rs's
++// controller_owner_ref wrote it; none while owner has no UID.
++func ownerReferences(owner *v1alpha1.BuildRun) []metav1.OwnerReference {
++	if owner.UID == "" {
++		return nil
++	}
++	return []metav1.OwnerReference{{
++		APIVersion: v1alpha1.SchemeGroupVersion.String(),
++		Kind:       v1alpha1.BuildRunKind,
++		Name:       owner.Name,
++		UID:        owner.UID,
++		Controller: new(true),
++	}}
++}
++
++// SourceSecret is the Secret with the fetch token, owned by owner.
++func SourceSecret(attempt store.BuildAttempt, s Settings, owner *v1alpha1.BuildRun, token string) *corev1.Secret {
++	return &corev1.Secret{
++		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"},
++		ObjectMeta: metav1.ObjectMeta{
++			Name:            SecretName(attempt),
++			Namespace:       s.Namespace,
++			Labels:          labels(attempt),
++			OwnerReferences: ownerReferences(owner),
++		},
++		Type:      corev1.SecretTypeOpaque,
++		Immutable: new(true),
++		Data:      map[string][]byte{TokenKey: []byte(token)},
++	}
++}
++
++// quantities parses the budget texts of a build; a text that is not a
++// quantity makes the Job unrenderable (InvalidBudget).
++type quantities struct{ err error }
++
++func (q *quantities) parse(text string) resource.Quantity {
++	v, err := resource.ParseQuantity(text)
++	if err != nil && q.err == nil {
++		q.err = fmt.Errorf("quantities: %q: %w", text, err)
++	}
++	return v
++}
++
++func env(pairs ...[2]string) []corev1.EnvVar {
++	vars := make([]corev1.EnvVar, 0, len(pairs))
++	for _, p := range pairs {
++		vars = append(vars, corev1.EnvVar{Name: p[0], Value: p[1]})
++	}
++	return vars
++}
++
++func helperResources(q *quantities, ephemeral string) corev1.ResourceRequirements {
++	return corev1.ResourceRequirements{
++		Requests: corev1.ResourceList{
++			corev1.ResourceCPU:              q.parse(helperCPU),
++			corev1.ResourceMemory:           q.parse(helperMemory),
++			corev1.ResourceEphemeralStorage: q.parse("64Mi"),
++		},
++		Limits: corev1.ResourceList{
++			corev1.ResourceMemory:           q.parse(helperMemory),
++			corev1.ResourceEphemeralStorage: q.parse(ephemeral),
++		},
++	}
++}
++
++func restricted() *corev1.SecurityContext {
++	return &corev1.SecurityContext{
++		RunAsNonRoot:             new(true),
++		RunAsUser:                new(int64(user)),
++		RunAsGroup:               new(int64(user)),
++		AllowPrivilegeEscalation: new(false),
++		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
++		SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
++	}
++}
++
++func podSecurity() *corev1.PodSecurityContext {
++	return &corev1.PodSecurityContext{
++		RunAsNonRoot: new(true), RunAsUser: new(int64(user)), RunAsGroup: new(int64(user)), FSGroup: new(int64(user)),
++	}
++}
++
++func insecureText(s Settings) string {
++	if s.InsecureRegistry {
++		return "true"
++	}
++	return "false"
++}
++
++func workspaceMount() corev1.VolumeMount {
++	return corev1.VolumeMount{Name: "workspace", MountPath: "/workspace"}
++}
++
++// workspaceVolumes are the workspace and, with a push secret, its Docker
++// configuration.
++func workspaceVolumes(q *quantities, s Settings) []corev1.Volume {
++	size := q.parse(s.EphemeralStorage)
++	volumes := []corev1.Volume{{
++		Name: "workspace", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: &size}},
++	}}
++	if secret, ok := s.PushSecret.Get(); ok {
++		volumes = append(volumes, corev1.Volume{Name: "push", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
++			SecretName:  secret,
++			DefaultMode: new(int32(tokenMode)),
++			Items:       []corev1.KeyToPath{{Key: ".dockerconfigjson", Path: "config.json"}},
++		}}})
++	}
++	return volumes
++}
++
++// Job is the attempt's Job, owned by owner. It fails when a budget of s is
++// not a quantity.
++func Job(attempt store.BuildAttempt, s Settings, owner *v1alpha1.BuildRun, cloneURL string) (*batchv1.Job, error) {
++	q := &quantities{}
++	build := buildContainer(q, attempt, s)
++	volumes := append(workspaceVolumes(q, s), corev1.Volume{Name: "source", VolumeSource: corev1.VolumeSource{
++		Secret: &corev1.SecretVolumeSource{SecretName: SecretName(attempt), DefaultMode: new(int32(tokenMode))},
++	}})
++	var affinity *corev1.Affinity
++	var tolerations []corev1.Toleration
++	if pool, ok := s.NodePool.Get(); ok {
++		affinity = &corev1.Affinity{NodeAffinity: &corev1.NodeAffinity{
++			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{{
++				MatchExpressions: []corev1.NodeSelectorRequirement{{
++					Key: pool.Key, Operator: corev1.NodeSelectorOpIn, Values: []string{pool.Value},
++				}},
++			}}},
++		}}
++		tolerations = []corev1.Toleration{{
++			Key: pool.Key, Operator: corev1.TolerationOpEqual, Value: pool.Value, Effect: corev1.TaintEffectNoSchedule,
++		}}
++	}
++	inits := initContainers(q, attempt, s, cloneURL)
++	// With a scanner the build runs to its end first; the scan follows.
++	main := []corev1.Container{build}
++	if scan, ok := scanContainer(q, s, attempt.ImageRepository, opt.None[string]()).Get(); ok {
++		inits = append(inits, build)
++		main = []corev1.Container{scan}
++	}
++	job := &batchv1.Job{
++		TypeMeta: metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
++		ObjectMeta: metav1.ObjectMeta{
++			Name: Name(attempt), Namespace: s.Namespace, Labels: labels(attempt), OwnerReferences: ownerReferences(owner),
++		},
++		Spec: batchv1.JobSpec{
++			BackoffLimit:          new(int32(0)),
++			ActiveDeadlineSeconds: new(int64(min(s.DeadlineSecs, math.MaxInt64))),
++			PodFailurePolicy: &batchv1.PodFailurePolicy{Rules: []batchv1.PodFailurePolicyRule{{
++				Action: batchv1.PodFailurePolicyActionFailJob,
++				OnPodConditions: []batchv1.PodFailurePolicyOnPodConditionsPattern{{
++					Type: corev1.DisruptionTarget, Status: corev1.ConditionTrue,
++				}},
++			}}},
++			Template: corev1.PodTemplateSpec{
++				ObjectMeta: metav1.ObjectMeta{Labels: labels(attempt)},
++				Spec: corev1.PodSpec{
++					RestartPolicy:                corev1.RestartPolicyNever,
++					AutomountServiceAccountToken: new(false),
++					EnableServiceLinks:           new(false),
++					SecurityContext:              podSecurity(),
++					Affinity:                     affinity,
++					Tolerations:                  tolerations,
++					InitContainers:               inits,
++					Containers:                   main,
++					Volumes:                      volumes,
++				},
++			},
++		},
++	}
++	if q.err != nil {
++		return nil, q.err
++	}
++	return job, nil
++}
++
++// ScanContainer is the container that writes the SBOM of
++// repository@digest and scans it; the digest the build wrote when digest is
++// none. None without a scanner. It fails when a budget of s is not a
++// quantity.
++func ScanContainer(s Settings, repository string, digest opt.Val[string]) (opt.Val[corev1.Container], error) {
++	q := &quantities{}
++	c := scanContainer(q, s, repository, digest)
++	if q.err != nil {
++		return opt.None[corev1.Container](), q.err
++	}
++	return c, nil
++}
++
++func scanContainer(q *quantities, s Settings, repository string, digest opt.Val[string]) opt.Val[corev1.Container] {
++	image, ok := s.ScannerImage.Get()
++	if !ok {
++		return opt.None[corev1.Container]()
++	}
++	vars := [][2]string{
++		{"KUBEN_REPOSITORY", repository},
++		{"KUBEN_INSECURE_REGISTRY", insecureText(s)},
++		{"HOME", "/workspace/home"},
++	}
++	if d, ok := digest.Get(); ok {
++		vars = append(vars, [2]string{"KUBEN_DIGEST", d})
++	}
++	mounts := []corev1.VolumeMount{workspaceMount()}
++	if s.PushSecret.IsSome() {
++		vars = append(vars, [2]string{"DOCKER_CONFIG", dockerDir})
++		mounts = append(mounts, corev1.VolumeMount{Name: "push", MountPath: dockerDir, ReadOnly: true})
++	}
++	return opt.Some(corev1.Container{
++		Name:            outcome.ScanContainer,
++		Image:           image,
++		Command:         []string{"sh", "-c", ScanScript},
++		Env:             env(vars...),
++		SecurityContext: restricted(),
++		Resources: corev1.ResourceRequirements{
++			Requests: corev1.ResourceList{
++				corev1.ResourceCPU:              q.parse(helperCPU),
++				corev1.ResourceMemory:           q.parse(s.ScannerMemory),
++				corev1.ResourceEphemeralStorage: q.parse("256Mi"),
++			},
++			Limits: corev1.ResourceList{
++				corev1.ResourceMemory:           q.parse(s.ScannerMemory),
++				corev1.ResourceEphemeralStorage: q.parse(s.EphemeralStorage),
++			},
++		},
++		// The log carries the SBOM; only the file is the report.
++		TerminationMessagePolicy: corev1.TerminationMessageReadFile,
++		VolumeMounts:             mounts,
++	})
++}
++
++// initContainers are the fetch and plan containers.
++func initContainers(q *quantities, attempt store.BuildAttempt, s Settings, cloneURL string) []corev1.Container {
++	return []corev1.Container{
++		{
++			Name:    outcome.FetchContainer,
++			Image:   s.FetchImage,
++			Command: []string{"sh", "-c", fetchScript},
++			Env: env(
++				[2]string{"KUBEN_CLONE_URL", cloneURL},
++				[2]string{"KUBEN_COMMIT", attempt.Commit.String()},
++			),
++			SecurityContext:          restricted(),
++			Resources:                helperResources(q, s.EphemeralStorage),
++			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
++			VolumeMounts: []corev1.VolumeMount{
++				workspaceMount(),
++				{Name: "source", MountPath: tokenDir, ReadOnly: true},
++			},
++		},
++		{
++			Name:    PlanContainer,
++			Image:   s.RailpackImage.Or(s.FetchImage),
++			Command: []string{"sh", "-c", planScript},
++			Env: env(
++				[2]string{"KUBEN_CONTEXT", attempt.Recipe.Context.String()},
++				[2]string{"KUBEN_DOCKERFILE", attempt.Recipe.DockerfilePath().String()},
++				[2]string{"KUBEN_STRATEGY", string(attempt.Recipe.Strategy.OrAuto())},
++				[2]string{"HOME", "/workspace/home"},
++			),
++			SecurityContext:          restricted(),
++			Resources:                helperResources(q, s.EphemeralStorage),
++			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
++			VolumeMounts:             []corev1.VolumeMount{workspaceMount()},
++		},
++	}
++}
++
++// buildContainer is the BuildKit container.
++func buildContainer(q *quantities, attempt store.BuildAttempt, s Settings) corev1.Container {
++	vars := [][2]string{
++		{"KUBEN_CONTEXT", attempt.Recipe.Context.String()},
++		{"KUBEN_DOCKERFILE", attempt.Recipe.DockerfilePath().String()},
++		{"KUBEN_IMAGE", attempt.PushReference()},
++		{"KUBEN_RAILPACK_FRONTEND", s.RailpackFrontend.Or("")},
++		{"KUBEN_INSECURE_REGISTRY", insecureText(s)},
++		{"BUILDKITD_FLAGS", "--oci-worker-no-process-sandbox"},
++	}
++	mounts := []corev1.VolumeMount{
++		workspaceMount(),
++		{Name: "workspace", MountPath: "/home/user/.local/share/buildkit", SubPath: "buildkit"},
++	}
++	if s.PushSecret.IsSome() {
++		vars = append(vars, [2]string{"DOCKER_CONFIG", dockerDir})
++		mounts = append(mounts, corev1.VolumeMount{Name: "push", MountPath: dockerDir, ReadOnly: true})
++	}
++	return corev1.Container{
++		Name:    outcome.BuildContainer,
++		Image:   s.BuildkitImage,
++		Command: []string{"sh", "-c", buildScript},
++		Env:     env(vars...),
++		// Rootless BuildKit needs its own user namespaces: unconfined for
++		// this container only, never host-wide.
++		SecurityContext: &corev1.SecurityContext{
++			RunAsNonRoot:    new(true),
++			RunAsUser:       new(int64(user)),
++			RunAsGroup:      new(int64(user)),
++			SeccompProfile:  &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
++			AppArmorProfile: &corev1.AppArmorProfile{Type: corev1.AppArmorProfileTypeUnconfined},
++		},
++		Resources: corev1.ResourceRequirements{
++			Requests: corev1.ResourceList{
++				corev1.ResourceCPU:              q.parse(s.CPURequest),
++				corev1.ResourceMemory:           q.parse(s.Memory),
++				corev1.ResourceEphemeralStorage: q.parse(s.EphemeralStorage),
++			},
++			Limits: corev1.ResourceList{
++				corev1.ResourceCPU:              q.parse(s.CPULimit),
++				corev1.ResourceMemory:           q.parse(s.Memory),
++				corev1.ResourceEphemeralStorage: q.parse(s.EphemeralStorage),
++			},
++		},
++		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
++		VolumeMounts:             mounts,
++	}
++}
+diff --git a/go/hub/internal/platform/build/job_test.go b/go/hub/internal/platform/build/job_test.go
+new file mode 100644
+index 0000000..753e0bd
+--- /dev/null
++++ b/go/hub/internal/platform/build/job_test.go
+@@ -0,0 +1,343 @@
++package build_test
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"os"
++	"regexp"
++	"slices"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++	corev1 "k8s.io/api/core/v1"
++	"k8s.io/apimachinery/pkg/types"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/target"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++)
++
++// Ported from job.rs.
++
++// checked is a value and the error that came with it.
++type checked[T any] struct {
++	v   T
++	err error
++}
++
++func check[T any](v T, err error) checked[T] { return checked[T]{v, err} }
++
++// must is the value; the test fails on the error.
++func (c checked[T]) must(t *testing.T) T {
++	t.Helper()
++	if c.err != nil {
++		t.Fatal(c.err)
++	}
++	return c.v
++}
++
++func id[K ids.Kind](n byte) ids.ID[K] {
++	var u uuid.UUID
++	u[15] = n
++	return ids.From[K](u)
++}
++
++// attempt is the Rust job::tests::attempt.
++func attempt(t *testing.T, recipe source.BuildRecipe) store.BuildAttempt {
++	t.Helper()
++	return store.BuildAttempt{
++		ID:              ids.From[ids.BuildAttempt](uuid.MustParse("0192f3a1-0000-7000-8000-000000000001")),
++		Org:             id[ids.Org](1),
++		Project:         id[ids.Project](2),
++		Application:     id[ids.Application](3),
++		Target:          id[ids.Target](4),
++		Binding:         id[ids.SourceBinding](5),
++		AttemptNo:       2,
++		Commit:          check(source.ParseCommitSha("0123456789abcdef0123456789abcdef01234567")).must(t),
++		SourceEpoch:     target.SourceEpoch(3),
++		LifecycleUID:    uuid.UUID{15: 6},
++		Repository:      check(source.ParseRepoName("acme/shop")).must(t),
++		Recipe:          recipe,
++		ImageRepository: "registry.local/acme/shop",
++		InstallationID:  7,
++		Branch:          check(source.ParseBranchName("main")).must(t),
++		Phase:           opbuild.Queued,
++		Operation:       id[ids.Operation](8),
++	}
++}
++
++// settings is the Rust job::tests::settings.
++func settings() build.Settings {
++	cfg := config.DefaultBuildCfg()
++	cfg.PushSecret = opt.Some("push")
++	cfg.NodePool = opt.Some("kuben.dev/pool = build")
++	cfg.DeadlineSecs = 900
++	cfg.RailpackImage = opt.Some("")
++	return build.SettingsFromConfig(cfg, "kuben-builds")
++}
++
++func rendered(t *testing.T, recipe source.BuildRecipe, s build.Settings) corev1.PodSpec {
++	t.Helper()
++	a := attempt(t, recipe)
++	owner := build.BuildRun(a, s)
++	owner.UID = types.UID("uid-1")
++	job := check(build.Job(a, s, &owner, "https://github.com/acme/shop.git")).must(t)
++	return job.Spec.Template.Spec
++}
++
++func container(t *testing.T, list []corev1.Container, name string) corev1.Container {
++	t.Helper()
++	i := slices.IndexFunc(list, func(c corev1.Container) bool { return c.Name == name })
++	if i < 0 {
++		t.Fatalf("no container %s", name)
++	}
++	return list[i]
++}
++
++func hasEnv(c corev1.Container, name, value string) bool {
++	return slices.ContainsFunc(c.Env, func(e corev1.EnvVar) bool {
++		return e.Name == name && (value == "" || e.Value == value)
++	})
++}
++
++func TestNamesAreDeterministicAndShort(t *testing.T) {
++	a := attempt(t, source.BuildRecipe{})
++	if got := build.Name(a); got != "kbuild-0192f3a1000070008000000000000001" {
++		t.Errorf("name %s", got)
++	}
++	if len(build.SecretName(a)) > 63 {
++		t.Errorf("secret name %s", build.SecretName(a))
++	}
++	if got := a.PushReference(); got != "registry.local/acme/shop:0123456789ab-2" {
++		t.Errorf("push reference %s", got)
++	}
++}
++
++func TestBuildPodsGetNoServiceAccountToken(t *testing.T) {
++	a := attempt(t, source.BuildRecipe{})
++	s := settings()
++	owner := build.BuildRun(a, s)
++	job := check(build.Job(a, s, &owner, "u")).must(t)
++	pod := job.Spec.Template.Spec
++	if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
++		t.Error("the service-account token is mounted")
++	}
++	if pod.EnableServiceLinks == nil || *pod.EnableServiceLinks || pod.ServiceAccountName != "" {
++		t.Error("service links or a service account")
++	}
++	if pod.SecurityContext == nil || pod.SecurityContext.RunAsNonRoot == nil || !*pod.SecurityContext.RunAsNonRoot {
++		t.Error("the pod may run as root")
++	}
++	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 {
++		t.Error("a retry is a new attempt, never the Job's")
++	}
++	if d := job.Spec.ActiveDeadlineSeconds; d == nil || *d != 900 {
++		t.Errorf("deadline %v", d)
++	}
++}
++
++func mountsSource(c corev1.Container) bool {
++	return slices.ContainsFunc(c.VolumeMounts, func(m corev1.VolumeMount) bool { return m.Name == "source" })
++}
++
++func TestOnlyTheFetchContainerSeesTheToken(t *testing.T) {
++	pod := rendered(t, source.BuildRecipe{}, settings())
++	fetch := container(t, pod.InitContainers, outcome.FetchContainer)
++	if !mountsSource(fetch) {
++		t.Error("fetch has no token")
++	}
++	for _, name := range []string{build.PlanContainer, outcome.BuildContainer} {
++		if mountsSource(container(t, pod.InitContainers, name)) {
++			t.Errorf("%s sees the token", name)
++		}
++	}
++	sc := fetch.SecurityContext
++	if sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation || sc.Capabilities.Drop[0] != "ALL" {
++		t.Errorf("fetch is not restricted: %+v", sc)
++	}
++}
++
++func TestBudgetsAreMandatoryAndMemoryIsGuaranteed(t *testing.T) {
++	pod := rendered(t, source.BuildRecipe{}, settings())
++	res := container(t, pod.InitContainers, outcome.BuildContainer).Resources
++	if !res.Requests.Memory().Equal(*res.Limits.Memory()) {
++		t.Error("memory request and limit differ")
++	}
++	for _, key := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory, corev1.ResourceEphemeralStorage} {
++		if _, ok := res.Limits[key]; !ok {
++			t.Errorf("no limit %s", key)
++		}
++		if _, ok := res.Requests[key]; !ok {
++			t.Errorf("no request %s", key)
++		}
++	}
++	if got := pod.Volumes[0].EmptyDir.SizeLimit.String(); got != "10Gi" {
++		t.Errorf("workspace size %s", got)
++	}
++	for _, init := range pod.InitContainers {
++		if _, ok := init.Resources.Limits[corev1.ResourceMemory]; !ok {
++			t.Errorf("%s has no memory limit", init.Name)
++		}
++	}
++}
++
++func TestUntrustedValuesTravelAsEnvironmentOnly(t *testing.T) {
++	recipe := source.BuildRecipe{Context: check(source.ParseRepoPath("apps/$(rm -rf ~)")).must(t)}
++	pod := rendered(t, recipe, settings())
++	all := append(slices.Clone(pod.InitContainers), pod.Containers...)
++	for _, name := range []string{outcome.FetchContainer, build.PlanContainer, outcome.BuildContainer, outcome.ScanContainer} {
++		script := container(t, all, name).Command[2]
++		if strings.Contains(script, "rm -rf ~") || strings.Contains(script, "acme") {
++			t.Errorf("%s embeds an input", name)
++		}
++	}
++	if !hasEnv(container(t, pod.InitContainers, build.PlanContainer), "KUBEN_CONTEXT", "apps/$(rm -rf ~)") {
++		t.Error("the context is not in the plan's environment")
++	}
++	if !hasEnv(container(t, pod.Containers, outcome.ScanContainer), "KUBEN_REPOSITORY", "registry.local/acme/shop") {
++		t.Error("the repository is not in the scan's environment")
++	}
++	script := container(t, pod.InitContainers, outcome.BuildContainer).Command[2]
++	if !strings.Contains(script, `inside "$ctx"`) || !strings.Contains(script, `inside "$dir"`) {
++		t.Error("symlinked contexts and Dockerfiles are not refused")
++	}
++}
++
++func TestTheScanFollowsTheBuildAndNeverFailsIt(t *testing.T) {
++	pod := rendered(t, source.BuildRecipe{}, settings())
++	var inits []string
++	for _, c := range pod.InitContainers {
++		inits = append(inits, c.Name)
++	}
++	if !slices.Equal(inits, []string{outcome.FetchContainer, build.PlanContainer, outcome.BuildContainer}) {
++		t.Errorf("init containers %v", inits)
++	}
++	scan := container(t, pod.Containers, outcome.ScanContainer)
++	if scan.Image != "aquasec/trivy:0.74.0" || scan.TerminationMessagePolicy != corev1.TerminationMessageReadFile {
++		t.Errorf("scan %s %s: the log carries the SBOM", scan.Image, scan.TerminationMessagePolicy)
++	}
++	if !scan.Resources.Requests.Memory().Equal(*scan.Resources.Limits.Memory()) {
++		t.Error("scan memory is not guaranteed")
++	}
++	if p := scan.SecurityContext.AllowPrivilegeEscalation; p == nil || *p || mountsSource(scan) {
++		t.Error("the scan is not restricted or sees the token")
++	}
++	for line := range strings.SplitSeq(build.ScanScript, "\n") {
++		if strings.HasPrefix(strings.TrimLeft(line, " \t"), "exit 1") {
++			t.Errorf("the scan fails: %s", line)
++		}
++	}
++	if !strings.Contains(build.ScanScript, `"status":"unavailable"`) {
++		t.Error("an unavailable scan says so")
++	}
++	pinned := check(build.ScanContainer(settings(), "registry.local/acme/shop", opt.Some("sha256:abc"))).must(t)
++	if c, ok := pinned.Get(); !ok || !hasEnv(c, "KUBEN_DIGEST", "") {
++		t.Error("a pinned scan has no digest")
++	}
++
++	unscanned := settings()
++	unscanned.ScannerImage = opt.None[string]()
++	pod = rendered(t, source.BuildRecipe{}, unscanned)
++	if container(t, pod.Containers, outcome.BuildContainer).Name != outcome.BuildContainer || len(pod.InitContainers) != 2 {
++		t.Errorf("without a scanner the build is the main container: %d inits", len(pod.InitContainers))
++	}
++}
++
++func TestProductionPoolsAreRequiredNotPreferred(t *testing.T) {
++	pod := rendered(t, source.BuildRecipe{}, settings())
++	term := pod.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0]
++	if e := term.MatchExpressions[0]; e.Key != "kuben.dev/pool" || e.Values[0] != "build" {
++		t.Errorf("pool %+v", e)
++	}
++	if pod.Tolerations[0].Effect != corev1.TaintEffectNoSchedule {
++		t.Errorf("toleration %+v", pod.Tolerations[0])
++	}
++	unpinned := settings()
++	unpinned.NodePool = opt.None[build.NodePool]()
++	if pod := rendered(t, source.BuildRecipe{}, unpinned); pod.Affinity != nil {
++		t.Error("an affinity without a pool")
++	}
++}
++
++func TestPushCredentialsAndRailpackAreOptional(t *testing.T) {
++	pod := rendered(t, source.BuildRecipe{}, settings())
++	if !hasEnv(container(t, pod.InitContainers, outcome.BuildContainer), "DOCKER_CONFIG", "") {
++		t.Error("no push credentials")
++	}
++	if got := container(t, pod.InitContainers, build.PlanContainer).Image; got != "alpine/git:2.49.1" {
++		t.Errorf("plan image %s: an empty Railpack image is no Railpack", got)
++	}
++	bare := settings()
++	bare.PushSecret = opt.None[string]()
++	bare.RailpackImage = opt.Some("railpack:1")
++	pod = rendered(t, source.BuildRecipe{}, bare)
++	if len(pod.Volumes) != 2 {
++		t.Errorf("%d volumes", len(pod.Volumes))
++	}
++	if got := container(t, pod.InitContainers, build.PlanContainer).Image; got != "railpack:1" {
++		t.Errorf("plan image %s", got)
++	}
++}
++
++func TestEverythingIsOwnedByTheBuildRun(t *testing.T) {
++	a := attempt(t, source.BuildRecipe{})
++	s := settings()
++	owner := build.BuildRun(a, s)
++	owner.UID = types.UID("uid-1")
++	job := check(build.Job(a, s, &owner, "u")).must(t)
++	ref := job.OwnerReferences[0]
++	if ref.Kind != "BuildRun" || ref.Controller == nil || !*ref.Controller {
++		t.Errorf("owner %+v", ref)
++	}
++	secret := build.SourceSecret(a, s, &owner, "ghs_x")
++	if secret.Immutable == nil || !*secret.Immutable || secret.OwnerReferences[0].UID != "uid-1" {
++		t.Errorf("secret %+v", secret.ObjectMeta)
++	}
++	if secret.Labels[build.AttemptLabel] != a.ID.String() {
++		t.Errorf("labels %v", secret.Labels)
++	}
++	run := build.BuildRun(a, s)
++	if run.Spec.GitRef != a.Commit.String() || run.Namespace != "kuben-builds" {
++		t.Errorf("run %+v", run)
++	}
++}
++
++// The scripts are Rust's bytes, 0x01 included; while the Rust tree exists
++// they are also compared with it.
++func TestScriptsAreRustsBytes(t *testing.T) {
++	want := map[string]string{
++		"FETCH_SCRIPT": "0a7c532321f25903f7b7d79e3931aec4595291187d975771484ecee09695059c",
++		"PLAN_SCRIPT":  "999e1e5057fe636fbac9deb7fee06c4f52987a0b2c1dd1205bb47ace634b7185",
++		"BUILD_SCRIPT": "a23464ba28932a1417f16ff3293c703b59649af441408d6ac4e11f304f5fc23d",
++		"SCAN_SCRIPT":  "c39d1e6745e506d38923cd6ef83a8a559aff26ddbf95f238df6fe89bcecc9338",
++	}
++	pod := rendered(t, source.BuildRecipe{}, settings())
++	all := append(slices.Clone(pod.InitContainers), pod.Containers...)
++	got := map[string]string{
++		"FETCH_SCRIPT": container(t, all, outcome.FetchContainer).Command[2],
++		"PLAN_SCRIPT":  container(t, all, build.PlanContainer).Command[2],
++		"BUILD_SCRIPT": container(t, all, outcome.BuildContainer).Command[2],
++		"SCAN_SCRIPT":  build.ScanScript,
++	}
++	rust, err := os.ReadFile("../../../../../crates/kuben-platform/src/build/job.rs")
++	for name, script := range got {
++		sum := sha256.Sum256([]byte(script))
++		if hex.EncodeToString(sum[:]) != want[name] {
++			t.Errorf("%s changed", name)
++		}
++		if err != nil {
++			continue
++		}
++		m := regexp.MustCompile(`(?s)const ` + name + `: &str = r#"(.*?)"#;`).FindSubmatch(rust)
++		if m == nil || string(m[1]) != script {
++			t.Errorf("%s differs from the Rust constant", name)
++		}
++	}
++}
+diff --git a/go/hub/internal/platform/build/observe.go b/go/hub/internal/platform/build/observe.go
+new file mode 100644
+index 0000000..9de12c8
+--- /dev/null
++++ b/go/hub/internal/platform/build/observe.go
+@@ -0,0 +1,115 @@
++package build
++
++// Kubernetes Job and Pod status → outcome.JobObservation, without I/O
++// (observe.rs).
++
++import (
++	batchv1 "k8s.io/api/batch/v1"
++	corev1 "k8s.io/api/core/v1"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++)
++
++func exits(statuses []corev1.ContainerStatus) ([]outcome.ContainerExit, []string) {
++	ended := []outcome.ContainerExit{}
++	running := []string{}
++	for _, status := range statuses {
++		if t := status.State.Terminated; t != nil {
++			ended = append(ended, outcome.ContainerExit{
++				Name:     status.Name,
++				ExitCode: t.ExitCode,
++				Reason:   nonEmpty(t.Reason),
++				Message:  nonEmpty(t.Message),
++			})
++		} else if status.State.Running != nil {
++			running = append(running, status.Name)
++		}
++	}
++	return ended, running
++}
++
++// nonEmpty is a status text: Go's API types leave an absent one empty,
++// where Rust's had None.
++func nonEmpty(s string) opt.Val[string] {
++	if s == "" {
++		return opt.None[string]()
++	}
++	return opt.Some(s)
++}
++
++// ObservePod is what pod shows at nowMs (unix milliseconds).
++func ObservePod(pod *corev1.Pod, nowMs int64) outcome.PodObservation {
++	status := pod.Status
++	all, running := exits(status.InitContainerStatuses)
++	mainExits, mainRunning := exits(status.ContainerStatuses)
++	all = append(all, mainExits...)
++	running = append(running, mainRunning...)
++	unschedulable := opt.None[uint64]()
++	for _, c := range status.Conditions {
++		if c.Type != corev1.PodScheduled || c.Status != corev1.ConditionFalse || c.Reason != corev1.PodReasonUnschedulable {
++			continue
++		}
++		secs := uint64(0)
++		if !c.LastTransitionTime.IsZero() {
++			if d := nowMs/1000 - c.LastTransitionTime.Unix(); d > 0 {
++				secs = uint64(d)
++			}
++		}
++		unschedulable = opt.Some(secs)
++		break
++	}
++	return outcome.PodObservation{
++		Phase:             string(status.Phase),
++		Reason:            nonEmpty(status.Reason),
++		Message:           nonEmpty(status.Message),
++		Exits:             all,
++		Running:           running,
++		UnschedulableSecs: unschedulable,
++	}
++}
++
++// ObserveJob is what job and its newest pod show at nowMs; a Job that does
++// not exist when job is none.
++func ObserveJob(job opt.Val[*batchv1.Job], pods []corev1.Pod, nowMs int64) outcome.JobObservation {
++	j, ok := job.Get()
++	if !ok || j == nil {
++		return outcome.JobObservation{}
++	}
++	condition := func(kind batchv1.JobConditionType) (batchv1.JobCondition, bool) {
++		for _, c := range j.Status.Conditions {
++			if c.Type == kind && c.Status == corev1.ConditionTrue {
++				return c, true
++			}
++		}
++		return batchv1.JobCondition{}, false
++	}
++	failed, isFailed := condition(batchv1.JobFailed)
++	_, complete := condition(batchv1.JobComplete)
++	seen := outcome.JobObservation{
++		Exists:    true,
++		Succeeded: complete || j.Status.Succeeded > 0,
++		Failed:    isFailed,
++	}
++	if isFailed {
++		seen.FailedReason = nonEmpty(failed.Reason)
++	}
++	if newest, ok := newestPod(pods).Get(); ok {
++		seen.Pod = opt.Some(ObservePod(newest, nowMs))
++	}
++	return seen
++}
++
++// newestPod is the pod created last; of equals the last one, as Rust's
++// max_by_key chose (a pod without a creation time is the oldest).
++func newestPod(pods []corev1.Pod) opt.Val[*corev1.Pod] {
++	newest := opt.None[*corev1.Pod]()
++	for i := range pods {
++		p := &pods[i]
++		if n, ok := newest.Get(); ok && p.CreationTimestamp.Before(&n.CreationTimestamp) {
++			continue
++		}
++		newest = opt.Some(p)
++	}
++	return newest
++}
+diff --git a/go/hub/internal/platform/build/observe_test.go b/go/hub/internal/platform/build/observe_test.go
+new file mode 100644
+index 0000000..ade5033
+--- /dev/null
++++ b/go/hub/internal/platform/build/observe_test.go
+@@ -0,0 +1,96 @@
++package build_test
++
++import (
++	"encoding/json"
++	"testing"
++	"time"
++
++	"github.com/google/go-cmp/cmp"
++	batchv1 "k8s.io/api/batch/v1"
++	corev1 "k8s.io/api/core/v1"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++)
++
++// Ported from observe.rs.
++
++func parse[T any](t *testing.T, text string) T {
++	t.Helper()
++	var v T
++	if err := json.Unmarshal([]byte(text), &v); err != nil {
++		t.Fatal(err)
++	}
++	return v
++}
++
++func ms(t *testing.T, text string) int64 {
++	t.Helper()
++	return check(time.Parse(time.RFC3339, text)).must(t).UnixMilli()
++}
++
++func TestAMissingJobDoesNotExist(t *testing.T) {
++	if build.ObserveJob(opt.None[*batchv1.Job](), nil, 0).Exists {
++		t.Error("a missing Job exists")
++	}
++}
++
++func TestStatusesBecomeObservations(t *testing.T) {
++	j := parse[batchv1.Job](t, `{
++		"metadata": {"name": "kbuild-1"},
++		"status": {"conditions": [{"type": "Failed", "status": "True", "reason": "DeadlineExceeded"}]}}`)
++	old := parse[corev1.Pod](t, `{
++		"metadata": {"name": "old", "creationTimestamp": "2026-09-17T10:00:00Z"},
++		"status": {"phase": "Failed"}}`)
++	newer := parse[corev1.Pod](t, `{
++		"metadata": {"name": "new", "creationTimestamp": "2026-09-17T10:05:00Z"},
++		"status": {
++			"phase": "Running",
++			"initContainerStatuses": [{"name": "fetch", "image": "i", "imageID": "", "ready": false, "restartCount": 0,
++				"state": {"terminated": {"exitCode": 0, "reason": "Completed"}}}],
++			"containerStatuses": [{"name": "build", "image": "i", "imageID": "", "ready": true, "restartCount": 0,
++				"state": {"running": {}}}]}}`)
++	seen := build.ObserveJob(opt.Some(&j), []corev1.Pod{old, newer}, time.Now().UnixMilli())
++	if !seen.Exists || !seen.Failed || seen.Succeeded {
++		t.Errorf("seen %+v", seen)
++	}
++	if seen.FailedReason != opt.Some("DeadlineExceeded") {
++		t.Errorf("reason %v", seen.FailedReason)
++	}
++	pod, ok := seen.Pod.Get()
++	if !ok || pod.Phase != "Running" {
++		t.Fatalf("the newest pod: %+v", pod)
++	}
++	if len(pod.Exits) != 1 || pod.Exits[0].Name != "fetch" {
++		t.Errorf("exits %+v", pod.Exits)
++	}
++	if diff := cmp.Diff([]string{"build"}, pod.Running); diff != "" {
++		t.Errorf("running (-want +got):\n%s", diff)
++	}
++}
++
++func TestUnschedulableTimeIsMeasured(t *testing.T) {
++	p := parse[corev1.Pod](t, `{
++		"metadata": {"name": "p"},
++		"status": {"phase": "Pending", "conditions": [{"type": "PodScheduled", "status": "False",
++			"reason": "Unschedulable", "lastTransitionTime": "2026-09-17T10:00:00Z", "message": "0/1 nodes are available"}]}}`)
++	now := ms(t, "2026-09-17T10:07:00Z")
++	if got := build.ObservePod(&p, now).UnschedulableSecs; got != opt.Some[uint64](420) {
++		t.Errorf("unschedulable %v", got)
++	}
++	scheduled := parse[corev1.Pod](t, `{"metadata": {"name": "p"}, "status": {"phase": "Pending"}}`)
++	if got := build.ObservePod(&scheduled, now).UnschedulableSecs; got.IsSome() {
++		t.Errorf("scheduled %v", got)
++	}
++}
++
++func TestOomKillsKeepTheirReason(t *testing.T) {
++	p := parse[corev1.Pod](t, `{
++		"metadata": {"name": "p"},
++		"status": {"phase": "Failed", "containerStatuses": [{"name": "build", "image": "i", "imageID": "",
++			"ready": false, "restartCount": 0, "state": {"terminated": {"exitCode": 137, "reason": "OOMKilled"}}}]}}`)
++	seen := build.ObservePod(&p, time.Now().UnixMilli())
++	if seen.Exits[0].Reason != opt.Some("OOMKilled") || seen.Exits[0].ExitCode != 137 {
++		t.Errorf("exit %+v", seen.Exits[0])
++	}
++}
+diff --git a/go/hub/internal/platform/build/rescan.go b/go/hub/internal/platform/build/rescan.go
+new file mode 100644
+index 0000000..6e43408
+--- /dev/null
++++ b/go/hub/internal/platform/build/rescan.go
+@@ -0,0 +1,247 @@
++package build
++
++// Rescans of the images apps run (M4.6; plan §18.1; rescan.rs): an image
++// scanned yesterday may have a new finding today. Every image a live target
++// runs whose newest scan is older than the interval is scanned again with a
++// fresh feed, by a scan-only Job in the build namespace with the same
++// budgets and isolation as a build (no service-account token, no source).
++// A rescan that cannot run is recorded as unavailable, which also waits for
++// the next interval. New findings gate future deployments; running apps
++// are never stopped by them.
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"log/slog"
++	"time"
++
++	batchv1 "k8s.io/api/batch/v1"
++	corev1 "k8s.io/api/core/v1"
++	apierrors "k8s.io/apimachinery/pkg/api/errors"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/client-go/kubernetes"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/scan"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++const (
++	// RescanSubsystem is the health entry of the rescan loop.
++	RescanSubsystem = "rescans"
++	// RescanLabel labels a rescan Job and its pod.
++	RescanLabel = "kuben.dev/rescan"
++	// rescanBatch is the images rescanned per organization per pass.
++	rescanBatch = 10
++	// passEvery is the pause between passes.
++	passEvery = 30 * time.Minute
++	// rescanPoll is the pause between reads of a rescan Job.
++	rescanPoll = 5 * time.Second
++	// rescanDeadline is the longest one rescan may take.
++	rescanDeadline = 15 * time.Minute
++	// rescanTTL is how long Kubernetes keeps a finished rescan Job.
++	rescanTTL = 3600
++)
++
++// ErrScanningOff says that no scanner image is configured.
++var ErrScanningOff = errors.New("scanning is not configured")
++
++// Rescanner rescans the running images of every organization.
++type Rescanner struct {
++	Store    *store.Store
++	Client   kubernetes.Interface
++	Settings Settings
++	// Interval is how old the newest scan of an image may be.
++	Interval time.Duration
++	Clock    clock.Clock
++	Logger   *slog.Logger
++}
++
++// RescanJobName is the deterministic Job name of a rescan of digest.
++func RescanJobName(digest string) string {
++	sum := sha256.Sum256([]byte(digest))
++	return "kscan-" + hex.EncodeToString(sum[:8])
++}
++
++// RescanJob is the Job that scans repository@digest; [ErrScanningOff]
++// without a scanner.
++func RescanJob(s Settings, repository, digest string) (*batchv1.Job, error) {
++	q := &quantities{}
++	scanner, ok := scanContainer(q, s, repository, opt.Some(digest)).Get()
++	if !ok {
++		return nil, ErrScanningOff
++	}
++	name := RescanJobName(digest)
++	jobLabels := map[string]string{RescanLabel: name, v1alpha1.LabelManagedBy: v1alpha1.LabelManagerValue}
++	job := &batchv1.Job{
++		TypeMeta:   metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
++		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: s.Namespace, Labels: jobLabels},
++		Spec: batchv1.JobSpec{
++			BackoffLimit:            new(int32(0)),
++			ActiveDeadlineSeconds:   new(int64(rescanDeadline / time.Second)),
++			TTLSecondsAfterFinished: new(int32(rescanTTL)),
++			Template: corev1.PodTemplateSpec{
++				ObjectMeta: metav1.ObjectMeta{Labels: jobLabels},
++				Spec: corev1.PodSpec{
++					RestartPolicy:                corev1.RestartPolicyNever,
++					AutomountServiceAccountToken: new(false),
++					EnableServiceLinks:           new(false),
++					SecurityContext:              podSecurity(),
++					Containers:                   []corev1.Container{scanner},
++					Volumes:                      workspaceVolumes(q, s),
++				},
++			},
++		},
++	}
++	if q.err != nil {
++		return nil, q.err
++	}
++	return job, nil
++}
++
++// RunRescans runs r until ctx ends.
++func RunRescans(ctx context.Context, r *Rescanner, h *health.Health) error {
++	h.OK(RescanSubsystem)
++	for ctx.Err() == nil {
++		if _, err := r.Pass(ctx); err != nil {
++			r.Logger.Warn("a rescan pass failed", "error", err)
++			h.Degrade(RescanSubsystem, err.Error())
++		} else {
++			h.OK(RescanSubsystem)
++		}
++		if !sleep(ctx, passEvery) {
++			return nil
++		}
++	}
++	return nil
++}
++
++// Pass rescans what is due in every organization, one image at a time,
++// and says how many images it rescanned.
++func (r *Rescanner) Pass(ctx context.Context) (int, error) {
++	before := clock.SaturatingSub(r.Clock.NowMs(), r.Interval.Milliseconds())
++	orgs, err := r.Store.OrgIDs(ctx)
++	if err != nil {
++		return 0, err //nolint:wrapcheck // a store error naming its operation
++	}
++	done := 0
++	for _, org := range orgs {
++		due, err := r.due(ctx, org, before)
++		if err != nil {
++			return done, err
++		}
++		for _, image := range due {
++			if ctx.Err() != nil {
++				return done, nil
++			}
++			if err := r.rescan(ctx, org, image); err != nil {
++				return done, err
++			}
++			done++
++		}
++	}
++	if done > 0 {
++		r.Logger.Info("running images rescanned", "images", done)
++	}
++	return done, nil
++}
++
++func (r *Rescanner) due(ctx context.Context, org ids.OrgID, before int64) ([]store.ImageRef, error) {
++	t, err := r.Store.Tenant(ctx, org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx)                        //nolint:errcheck // read only
++	return t.RescanDue(ctx, before, rescanBatch) //nolint:wrapcheck // a store error naming its operation
++}
++
++// rescan scans one image and records the scan.
++func (r *Rescanner) rescan(ctx context.Context, org ids.OrgID, image store.ImageRef) error {
++	jobs := r.Client.BatchV1().Jobs(r.Settings.Namespace)
++	name := RescanJobName(image.Digest)
++	job, err := RescanJob(r.Settings, image.Repository, image.Digest)
++	if err != nil {
++		return err
++	}
++	// A 409: another replica or a previous pass started it; follow it.
++	if _, err := jobs.Create(ctx, job, metav1.CreateOptions{}); err != nil && !isConflict(err) {
++		return fmt.Errorf("creating the rescan Job %s: %w", name, err)
++	}
++	report, sbom, finished, err := r.follow(ctx, name)
++	if err != nil || !finished {
++		return err
++	}
++	summary := SummaryOf(report, r.Clock.NowMs())
++	scanned := store.NewScan{
++		Repository: image.Repository, Digest: image.Digest, Summary: summary, Detail: detailOf(report),
++	}
++	if err := keepScan(ctx, r.Store, org, scanned, sbom); err != nil {
++		return err
++	}
++	if err := deleteNamed(ctx, jobs.Delete, name); err != nil {
++		return err
++	}
++	r.Logger.Info("image rescanned", "org", org.String(), "digest", image.Digest, "status", string(summary.Status),
++		"critical", summary.Counts.Critical, "high", summary.Counts.High)
++	return nil
++}
++
++// follow waits until the rescan Job name finished (or is gone) and
++// collects what it left; false when ctx ended first.
++func (r *Rescanner) follow(ctx context.Context, name string) (scan.Report, opt.Val[[]byte], bool, error) {
++	none := opt.None[[]byte]()
++	jobs := r.Client.BatchV1().Jobs(r.Settings.Namespace)
++	started := r.Clock.NowMs()
++	for {
++		live, err := jobs.Get(ctx, name, metav1.GetOptions{})
++		if err != nil && !apierrors.IsNotFound(err) {
++			return scan.Report{}, none, false, fmt.Errorf("reading the rescan Job %s: %w", name, err)
++		}
++		if err != nil || jobEnded(live) {
++			pods := r.Client.CoreV1().Pods(r.Settings.Namespace)
++			report, sbom, err := Collect(ctx, pods, RescanLabel+"="+name, r.Logger)
++			return report, sbom, err == nil, err
++		}
++		if time.Duration(r.Clock.NowMs()-started)*time.Millisecond > rescanDeadline+rescanPoll {
++			return scan.Unavailable("the rescan did not finish"), none, true, nil
++		}
++		if !sleep(ctx, rescanPoll) {
++			return scan.Report{}, none, false, nil
++		}
++	}
++}
++
++// jobEnded reports a Complete or Failed condition.
++func jobEnded(job *batchv1.Job) bool {
++	for _, c := range job.Status.Conditions {
++		if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed) && c.Status == corev1.ConditionTrue {
++			return true
++		}
++	}
++	return false
++}
++
++// keepScan records scanned and its SBOM in org.
++func keepScan(ctx context.Context, st *store.Store, org ids.OrgID, scanned store.NewScan, sbom opt.Val[[]byte]) error {
++	t, err := st.Tenant(ctx, org)
++	if err != nil {
++		return err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	if _, err := t.RecordScan(ctx, scanned); err != nil {
++		return err //nolint:wrapcheck // a store error naming its operation
++	}
++	if content, ok := sbom.Get(); ok {
++		if _, err := t.PutSbom(ctx, scanned.Digest, content); err != nil {
++			return err //nolint:wrapcheck // a store error naming its operation
++		}
++	}
++	return t.Commit(ctx) //nolint:wrapcheck // a store error naming its operation
++}
+diff --git a/go/hub/internal/platform/build/rescan_test.go b/go/hub/internal/platform/build/rescan_test.go
+new file mode 100644
+index 0000000..bf657bc
+--- /dev/null
++++ b/go/hub/internal/platform/build/rescan_test.go
+@@ -0,0 +1,49 @@
++package build_test
++
++import (
++	"errors"
++	"slices"
++	"testing"
++
++	corev1 "k8s.io/api/core/v1"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++)
++
++// Ported from rescan.rs.
++
++func TestRescanJobsScanOneDigestInIsolation(t *testing.T) {
++	if build.RescanJobName(stepDigest) != build.RescanJobName(stepDigest) {
++		t.Error("not deterministic")
++	}
++	if build.RescanJobName(stepDigest) == build.RescanJobName("sha256:1") || len(build.RescanJobName(stepDigest)) > 63 {
++		t.Errorf("name %s", build.RescanJobName(stepDigest))
++	}
++	// The first 8 bytes of the digest's SHA-256, as Rust wrote them.
++	if got := build.RescanJobName("sha256:1"); got != "kscan-51ae7fa00c92525c" {
++		t.Errorf("name %s", got)
++	}
++	job := check(build.RescanJob(settings(), "registry.local/acme/shop", stepDigest)).must(t)
++	pod := job.Spec.Template.Spec
++	if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
++		t.Error("the service-account token is mounted")
++	}
++	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 {
++		t.Error("the Job retries")
++	}
++	if len(pod.Containers) != 1 || !hasEnv(pod.Containers[0], "KUBEN_DIGEST", stepDigest) {
++		t.Errorf("containers %+v", pod.Containers)
++	}
++	if !slices.ContainsFunc(pod.Volumes, func(v corev1.Volume) bool { return v.Name == "push" }) {
++		t.Error("no push credentials")
++	}
++	if len(pod.InitContainers) != 0 {
++		t.Error("no source, no build")
++	}
++	off := settings()
++	off.ScannerImage = opt.None[string]()
++	if _, err := build.RescanJob(off, "r", stepDigest); !errors.Is(err, build.ErrScanningOff) {
++		t.Errorf("without a scanner: %v", err)
++	}
++}
+diff --git a/go/hub/internal/platform/build/scenarios_test.go b/go/hub/internal/platform/build/scenarios_test.go
+new file mode 100644
+index 0000000..dc7fd32
+--- /dev/null
++++ b/go/hub/internal/platform/build/scenarios_test.go
+@@ -0,0 +1,478 @@
++package build_test
++
++// Failure injection for builds (M3 exit criteria; scenarios.rs): the
++// worker's decisions (outcome.Classify, build.NextFor, build.PlanFor)
++// driven through scripted cluster and registry behaviour, without a
++// cluster.
++//
++// sim acts like the worker: it creates the Job on admission, deletes it on
++// a stop (later reads see it gone), verifies reported digests against a
++// fake registry, and queues a new attempt after a lost worker, up to
++// store.MaxBuildAttempts. Every event it records must be legal for the
++// phase it is in, as the database would enforce.
++
++import (
++	"math/rand"
++	"reflect"
++	"slices"
++	"testing"
++	"testing/quick"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++)
++
++const (
++	good   = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
++	forged = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
++)
++
++// step is one scripted thing that happens between two worker claims.
++//
++//sumtype:decl
++type step interface{ step() }
++
++type (
++	// cluster: the Job shows this (while it exists).
++	cluster struct{ seen outcome.JobObservation }
++	// cancel: someone asks the build to stop.
++	cancel struct{}
++	// registryUp: the registry becomes (un)reachable.
++	registryUp struct{ up bool }
++)
++
++func (cluster) step()    {}
++func (cancel) step()     {}
++func (registryUp) step() {}
++
++type sim struct {
++	t          *testing.T
++	phase      opbuild.Phase
++	cancel     bool
++	attempt    uint32
++	jobCreated bool
++	jobDeleted bool
++	reported   opt.Val[artifact.Digest]
++	verified   opt.Val[artifact.Digest]
++	failure    opt.Val[outcome.BuildFailure]
++	registry   map[string]bool
++	registryUp bool
++	// trail is every phase the attempts went through, for assertions.
++	trail []opbuild.Phase
++	// illegal is the first illegal event, which fails the property.
++	illegal error
++}
++
++func newSim(t *testing.T) *sim {
++	return &sim{
++		t: t, phase: opbuild.Queued, attempt: 1, registry: map[string]bool{good: true}, registryUp: true,
++		trail: []opbuild.Phase{opbuild.Queued},
++	}
++}
++
++func (s *sim) apply(events []opbuild.Event) {
++	for _, e := range events {
++		next, err := s.phase.Apply(e)
++		if err != nil {
++			if s.illegal == nil {
++				s.illegal = err
++			}
++			return
++		}
++		s.phase = next
++		s.trail = append(s.trail, next)
++	}
++}
++
++// claim is one claim of the build operation; true when it settled for good.
++func (s *sim) claim(seen outcome.JobObservation) bool {
++	switch build.NextFor(s.phase, s.cancel) {
++	case build.NextSettle:
++		return true
++	case build.NextCancelQueued:
++		s.apply([]opbuild.Event{opbuild.EventCancelRequested})
++		return true
++	case build.NextAdmit:
++		s.jobCreated = true
++		s.apply([]opbuild.Event{opbuild.EventStarted})
++		return false
++	case build.NextObserve:
++		if s.jobDeleted || !s.jobCreated {
++			seen = outcome.JobObservation{}
++		}
++		return s.carry(build.PlanFor(s.phase, s.cancel, outcome.Classify(seen), s.reported))
++	}
++	return true
++}
++
++func (s *sim) carry(plan build.Plan) bool {
++	switch p := plan.(type) {
++	case build.PlanWait:
++		s.apply(p.Events)
++		return false
++	case build.PlanStop:
++		s.jobDeleted = true
++		s.apply(p.Events)
++		return false
++	case build.PlanCancelled:
++		s.apply(p.Events)
++		return true
++	case build.PlanVerify:
++		s.apply(p.Events)
++		if s.reported.IsNone() {
++			s.reported = opt.Some(p.Digest)
++		}
++		if !s.registryUp {
++			return false
++		}
++		if s.registry[p.Digest.String()] {
++			s.apply([]opbuild.Event{opbuild.EventVerified})
++			s.verified = opt.Some(p.Digest)
++			return true
++		}
++		return s.fail(nil, outcome.OutputRejected)
++	case build.PlanFail:
++		return s.fail(p.Events, p.Failure)
++	}
++	return true
++}
++
++func (s *sim) fail(events []opbuild.Event, failure outcome.BuildFailure) bool {
++	s.apply(events)
++	s.apply([]opbuild.Event{opbuild.EventFailed})
++	s.failure = opt.Some(failure)
++	if failure.Retryable() && s.attempt < store.MaxBuildAttempts {
++		// The worker queues the next attempt with the same inputs.
++		next := newSim(s.t)
++		next.attempt, next.registry, next.registryUp = s.attempt+1, s.registry, s.registryUp
++		next.trail, next.cancel, next.illegal = append(s.trail, opbuild.Queued), s.cancel, s.illegal
++		*s = *next
++		return false
++	}
++	return true
++}
++
++// run runs script; the last cluster state repeats until the build settles
++// or 200 claims pass.
++func (s *sim) run(script ...step) *sim {
++	seen := pending()
++	for i := range 200 {
++		if i < len(script) {
++			switch st := script[i].(type) {
++			case cluster:
++				seen = st.seen
++			case cancel:
++				s.cancel = true
++			case registryUp:
++				s.registryUp = st.up
++			}
++		}
++		if s.claim(seen) {
++			break
++		}
++	}
++	if s.illegal != nil {
++		s.t.Errorf("attempt %d: %v", s.attempt, s.illegal)
++	}
++	return s
++}
++
++func job(pod outcome.PodObservation) outcome.JobObservation {
++	return outcome.JobObservation{Exists: true, Pod: opt.Some(pod)}
++}
++
++func exit(name string, code int32, reason string, message opt.Val[string]) outcome.ContainerExit {
++	return outcome.ContainerExit{Name: name, ExitCode: code, Reason: opt.Some(reason), Message: message}
++}
++
++func pending() outcome.JobObservation { return job(outcome.PodObservation{Phase: "Pending"}) }
++
++func fetching() outcome.JobObservation {
++	return job(outcome.PodObservation{Phase: "Pending", Running: []string{"fetch"}})
++}
++
++func building() outcome.JobObservation {
++	return job(outcome.PodObservation{
++		Phase: "Running",
++		Exits: []outcome.ContainerExit{
++			exit("fetch", 0, "Completed", opt.None[string]()), exit("plan", 0, "Completed", opt.None[string]()),
++		},
++		Running: []string{"build"},
++	})
++}
++
++func finished(digest string) outcome.JobObservation {
++	report := `{"digest":"` + digest + `","strategy":"dockerfile"}`
++	j := job(outcome.PodObservation{
++		Phase: "Succeeded",
++		Exits: []outcome.ContainerExit{
++			exit("fetch", 0, "Completed", opt.None[string]()), exit("build", 0, "Completed", opt.Some(report)),
++		},
++	})
++	j.Succeeded = true
++	return j
++}
++
++func failedPod(pod outcome.PodObservation) outcome.JobObservation {
++	j := job(pod)
++	j.Failed, j.FailedReason = true, opt.Some("BackoffLimitExceeded")
++	return j
++}
++
++func oom() outcome.JobObservation {
++	return failedPod(outcome.PodObservation{
++		Phase: "Failed", Exits: []outcome.ContainerExit{exit("build", 137, "OOMKilled", opt.None[string]())},
++	})
++}
++
++func deadline() outcome.JobObservation {
++	return outcome.JobObservation{Exists: true, Failed: true, FailedReason: opt.Some("DeadlineExceeded")}
++}
++
++func diskEviction() outcome.JobObservation {
++	return failedPod(outcome.PodObservation{
++		Phase: "Failed", Reason: opt.Some("Evicted"),
++		Message: opt.Some("Pod ephemeral local storage usage exceeds the total limit of containers 10Gi."),
++	})
++}
++
++func enospc() outcome.JobObservation {
++	return failedPod(outcome.PodObservation{
++		Phase: "Failed",
++		Exits: []outcome.ContainerExit{exit("build", 1, "Error",
++			opt.Some("error: failed to copy: write /home/user/.local/share/buildkit/x: no space left on device"))},
++	})
++}
++
++func nodeLost() outcome.JobObservation {
++	return job(outcome.PodObservation{Phase: "Unknown", Reason: opt.Some("NodeLost")})
++}
++
++func unschedulable() outcome.JobObservation {
++	return job(outcome.PodObservation{
++		Phase: "Pending", UnschedulableSecs: opt.Some(outcome.UnschedulableLimitSecs + 1),
++		Message: opt.Some("0/1 nodes are available: 1 Insufficient memory."),
++	})
++}
++
++func sourceMissing() outcome.JobObservation {
++	return failedPod(outcome.PodObservation{
++		Phase: "Failed",
++		Exits: []outcome.ContainerExit{exit("fetch", 128, "Error", opt.Some("fatal: remote error: upload-pack: not our ref"))},
++	})
++}
++
++func (s *sim) failed(t *testing.T, want outcome.BuildFailure) {
++	t.Helper()
++	if s.phase != opbuild.Failed || s.failure != opt.Some(want) {
++		t.Errorf("%s %v, want failed %s", s.phase, s.failure, want)
++	}
++}
++
++func TestABuildGoesFromQueuedToAVerifiedImage(t *testing.T) {
++	s := newSim(t).run(cluster{pending()}, cluster{fetching()}, cluster{building()}, cluster{finished(good)})
++	if s.phase != opbuild.Succeeded || s.verified.IsNone() || s.verified.Or(artifact.Digest{}).String() != good {
++		t.Errorf("%s %v", s.phase, s.verified)
++	}
++	for _, phase := range []opbuild.Phase{opbuild.Preparing, opbuild.Running, opbuild.Publishing, opbuild.VerifyingOutput} {
++		if !slices.Contains(s.trail, phase) {
++			t.Errorf("%s not in %v", phase, s.trail)
++		}
++	}
++}
++
++func TestOutOfMemoryFailsTheBuildWithoutARetry(t *testing.T) {
++	s := newSim(t).run(cluster{building()}, cluster{oom()})
++	s.failed(t, outcome.OutOfMemory)
++	if s.attempt != 1 {
++		t.Errorf("attempt %d", s.attempt)
++	}
++}
++
++func TestTheDeadlineFailsTheBuild(t *testing.T) {
++	newSim(t).run(cluster{building()}, cluster{deadline()}).failed(t, outcome.DeadlineExceeded)
++}
++
++func TestAFullDiskFailsTheBuildByEvictionOrEnospc(t *testing.T) {
++	for _, full := range []outcome.JobObservation{diskEviction(), enospc()} {
++		newSim(t).run(cluster{building()}, cluster{full}).failed(t, outcome.DiskFull)
++	}
++}
++
++func TestAnUnreadableCommitFailsAtFetch(t *testing.T) {
++	newSim(t).run(cluster{fetching()}, cluster{sourceMissing()}).failed(t, outcome.SourceUnavailable)
++}
++
++func TestABuildNoNodeCanTakeFailsAsUnschedulable(t *testing.T) {
++	newSim(t).run(cluster{pending()}, cluster{unschedulable()}).failed(t, outcome.Unschedulable)
++}
++
++func TestCancellingAQueuedBuildNeedsNoJob(t *testing.T) {
++	s := newSim(t).run(cancel{})
++	if s.phase != opbuild.Cancelled || s.jobCreated {
++		t.Errorf("%s, job created %t: nothing ran", s.phase, s.jobCreated)
++	}
++}
++
++func TestCancellingARunningBuildDeletesItsJobFirst(t *testing.T) {
++	s := newSim(t).run(cluster{building()}, cluster{building()}, cancel{}, cluster{building()})
++	if s.phase != opbuild.Cancelled || !s.jobDeleted || !slices.Contains(s.trail, opbuild.Cancelling) {
++		t.Errorf("%s, deleted %t, trail %v", s.phase, s.jobDeleted, s.trail)
++	}
++	if s.failure.IsSome() {
++		t.Error("a stop is not a failure")
++	}
++}
++
++func TestAJobThatDiesWhileBeingStoppedIsCancelled(t *testing.T) {
++	// The kill of the stop shows up as an OOM-looking exit before the Job is gone.
++	s := newSim(t).run(cluster{building()}, cluster{building()})
++	s.cancel = true
++	if !s.carry(build.PlanFor(s.phase, true, outcome.Classify(oom()), opt.None[artifact.Digest]())) {
++		t.Error("not settled")
++	}
++	if s.phase != opbuild.Cancelled || s.failure.IsSome() {
++		t.Errorf("%s %v", s.phase, s.failure)
++	}
++}
++
++func TestOutputPushedBeforeTheStopIsKept(t *testing.T) {
++	s := newSim(t).run(cluster{building()}, cluster{building()}, cluster{finished(good)}, cancel{})
++	// The worker saw the finished Job on the same claim the stop arrived.
++	if s.phase != opbuild.Succeeded && s.phase != opbuild.Cancelled {
++		t.Errorf("%s", s.phase)
++	}
++	racing := newSim(t).run(cluster{building()}, cluster{building()})
++	racing.cancel = true
++	if !racing.carry(build.PlanFor(racing.phase, true, outcome.Classify(finished(good)), opt.None[artifact.Digest]())) {
++		t.Error("not settled")
++	}
++	if racing.phase != opbuild.Succeeded {
++		t.Errorf("%s: the artifact exists; the epoch decides the deploy", racing.phase)
++	}
++}
++
++func TestALostNodeIsRetriedAsANewAttempt(t *testing.T) {
++	s := newSim(t).run(cluster{building()}, cluster{nodeLost()}, cluster{pending()}, cluster{building()},
++		cluster{finished(good)})
++	if s.phase != opbuild.Succeeded || s.attempt != 2 || !slices.Contains(s.trail, opbuild.Failed) {
++		t.Errorf("%s, attempt %d, trail %v", s.phase, s.attempt, s.trail)
++	}
++}
++
++func TestLostWorkersAreRetriedABoundedNumberOfTimes(t *testing.T) {
++	s := newSim(t).run(cluster{nodeLost()})
++	s.failed(t, outcome.LostWorker)
++	if s.attempt != store.MaxBuildAttempts {
++		t.Errorf("attempt %d", s.attempt)
++	}
++}
++
++func TestAJobThatVanishesMidBuildIsALostWorker(t *testing.T) {
++	s := newSim(t).run(cluster{building()}, cluster{building()})
++	s.jobDeleted = true // someone deleted it by hand
++	if s.carry(build.PlanFor(s.phase, false, outcome.Classify(outcome.JobObservation{}), opt.None[artifact.Digest]())) {
++		t.Error("no retry was queued")
++	}
++	if s.phase != opbuild.Queued || s.attempt != 2 {
++		t.Errorf("%s, attempt %d", s.phase, s.attempt)
++	}
++}
++
++func TestADigestTheRegistryDoesNotHoldIsRejected(t *testing.T) {
++	s := newSim(t).run(cluster{building()}, cluster{finished(forged)})
++	s.failed(t, outcome.OutputRejected)
++	if s.verified.IsSome() {
++		t.Errorf("verified %v", s.verified)
++	}
++}
++
++func TestAnUnreachableRegistryDelaysVerificationOnly(t *testing.T) {
++	s := newSim(t).run(
++		registryUp{false},
++		cluster{building()},
++		cluster{finished(good)},
++		cluster{outcome.JobObservation{}}, // the Job was cleaned up meanwhile
++		cluster{outcome.JobObservation{}},
++		registryUp{true},
++	)
++	if s.phase != opbuild.Succeeded {
++		t.Errorf("%s: %v", s.phase, s.trail)
++	}
++	if d, ok := s.reported.Get(); !ok || d.String() != good {
++		t.Errorf("reported %v", s.reported)
++	}
++}
++
++// script is a random script with the weights of the Rust proptest
++// strategy, 1 to 59 steps.
++type script []step
++
++// Generate implements quick.Generator.
++func (script) Generate(r *rand.Rand, _ int) reflect.Value {
++	weighted := []struct {
++		weight int
++		step   step
++	}{
++		{4, cluster{pending()}},
++		{4, cluster{fetching()}},
++		{6, cluster{building()}},
++		{3, cluster{finished(good)}},
++		{2, cluster{finished(forged)}},
++		{1, cluster{oom()}},
++		{1, cluster{deadline()}},
++		{1, cluster{diskEviction()}},
++		{1, cluster{nodeLost()}},
++		{1, cluster{outcome.JobObservation{}}},
++		{1, cancel{}},
++		{1, registryUp{false}},
++		{2, registryUp{true}},
++	}
++	total := 0
++	for _, w := range weighted {
++		total += w.weight
++	}
++	out := make(script, 1+r.Intn(59))
++	for i := range out {
++		n := r.Intn(total)
++		for _, w := range weighted {
++			if n < w.weight {
++				out[i] = w.step
++				break
++			}
++			n -= w.weight
++		}
++	}
++	return reflect.ValueOf(out)
++}
++
++// Whatever the cluster and registry do, every recorded event is legal, a
++// build succeeds only with a digest the registry holds, is cancelled only
++// when asked, and retries stay bounded.
++func TestBuildsStayConsistentUnderAnyFailure(t *testing.T) {
++	property := func(sc script) bool {
++		asked := slices.ContainsFunc(sc, func(s step) bool { _, ok := s.(cancel); return ok })
++		s := newSim(t).run(sc...)
++		ok := s.illegal == nil && s.attempt <= store.MaxBuildAttempts
++		if s.phase == opbuild.Succeeded {
++			d, verified := s.verified.Get()
++			ok = ok && verified && d.String() == good
++		} else {
++			ok = ok && s.verified.IsNone()
++		}
++		if s.phase == opbuild.Cancelled {
++			ok = ok && asked
++		}
++		if s.phase == opbuild.Failed {
++			ok = ok && s.failure.IsSome()
++		}
++		return ok
++	}
++	if err := quick.Check(property, &quick.Config{MaxCount: 512}); err != nil {
++		t.Error(err)
++	}
++}
+diff --git a/go/hub/internal/platform/build/scripts.go b/go/hub/internal/platform/build/scripts.go
+new file mode 100644
+index 0000000..7e329cd
+--- /dev/null
++++ b/go/hub/internal/platform/build/scripts.go
+@@ -0,0 +1,99 @@
++package build
++
++// The fixed scripts of a build pod, byte for byte the Rust constants of
++// crates/kuben-platform/src/build/job.rs (TestScriptsAreRustsBytes pins
++// them). Untrusted values reach them only as environment variables.
++
++const (
++	// fetchScript fetches exactly one commit with the fetch token, whose only mount
++	// is in the fetch container.
++	fetchScript = `set -eu
++export HOME=/workspace/home
++mkdir -p "$HOME" /workspace/src
++cd /workspace/src
++git init -q .
++auth=$(printf 'x-access-token:%s' "$(cat /var/run/kuben/source/token)" | base64 | tr -d '\n')
++git -c "http.extraHeader=Authorization: Basic $auth" fetch -q --depth 1 --no-tags "$KUBEN_CLONE_URL" "$KUBEN_COMMIT"
++git checkout -q --detach FETCH_HEAD
++test "$(git rev-parse HEAD)" = "$KUBEN_COMMIT"
++rm -rf .git
++`
++	// planScript picks the strategy and writes the Railpack plan; a context
++	// that leaves the checkout (a symlink) is refused.
++	planScript = `set -eu
++fail() { printf '%s' "$1" >/dev/termination-log; exit 2; }
++inside() { case "$1" in /workspace/src|/workspace/src/*) ;; *) fail "$2 leaves the repository";; esac; }
++[ -d "/workspace/src/$KUBEN_CONTEXT" ] || fail "the build context '$KUBEN_CONTEXT' does not exist"
++ctx=$(cd "/workspace/src/$KUBEN_CONTEXT" && pwd -P)
++inside "$ctx" "the build context"
++strategy=$KUBEN_STRATEGY
++if [ "$strategy" = auto ]; then
++  if [ -f "$ctx/$KUBEN_DOCKERFILE" ]; then strategy=dockerfile; else strategy=railpack; fi
++fi
++if [ "$strategy" = dockerfile ]; then
++  [ -f "$ctx/$KUBEN_DOCKERFILE" ] || fail "there is no '$KUBEN_DOCKERFILE' in the build context"
++else
++  command -v railpack >/dev/null 2>&1 || fail "the repository has no Dockerfile and Railpack is not configured on this server (build.railpack_image and build.railpack_frontend)"
++  mkdir -p /workspace/plan
++  railpack prepare "$ctx" --plan-out /workspace/plan/railpack-plan.json
++fi
++printf '%s' "$strategy" >/workspace/strategy
++`
++	// buildScript builds and pushes with rootless BuildKit and reports the
++	// digest; a context or Dockerfile directory outside the checkout is
++	// refused before BuildKit reads it.
++	buildScript = `set -eu
++fail() { printf '%s' "$1" >/dev/termination-log; exit 2; }
++inside() { case "$1" in /workspace/src|/workspace/src/*) ;; *) fail "$2 leaves the repository";; esac; }
++strategy=$(cat /workspace/strategy)
++ctx=$(cd "/workspace/src/$KUBEN_CONTEXT" && pwd -P)
++inside "$ctx" "the build context"
++if [ "$strategy" = dockerfile ]; then
++  dir=$(cd "$(dirname "$ctx/$KUBEN_DOCKERFILE")" && pwd -P)
++  inside "$dir" "the Dockerfile"
++  set -- --frontend dockerfile.v0 --local "dockerfile=$dir" --opt "filename=$(basename "$KUBEN_DOCKERFILE")"
++else
++  set -- --frontend gateway.v0 --opt "source=$KUBEN_RAILPACK_FRONTEND" --local dockerfile=/workspace/plan
++fi
++output="type=image,name=$KUBEN_IMAGE,push=true"
++if [ "$KUBEN_INSECURE_REGISTRY" = true ]; then output="$output,registry.insecure=true"; fi
++buildctl-daemonless.sh build "$@" --local "context=$ctx" --output "$output" --metadata-file /workspace/metadata.json
++digest=$(tr ',' '\n' </workspace/metadata.json | sed -n 's/.*"containerimage\.digest": *"\(sha256:[0-9a-f]\{64\}\)".*/\1/p' | head -n 1)
++[ -n "$digest" ] || fail "the build wrote no image digest"
++printf '%s' "$digest" >/workspace/digest
++printf '{"digest":"%s","strategy":"%s"}' "$digest" "$strategy" >/dev/termination-log
++`
++	// ScanScript writes the SBOM of the pushed image and scans it. It always
++	// exits 0: a scan that cannot run reports `unavailable`, never a clean
++	// image. The SBOM goes to the log (gzip, base64, between markers); the
++	// summary to the termination log, which holds 4 KiB.
++	//
++	// The byte 0x01 is in the Rust constant (the `\1` of the sed expression
++	// that reads the database date is U+0001 in the Rust source) and is kept,
++	// so the pods run the same script.
++	ScanScript = `set -u
++report() { printf '{"status":"unavailable","scanner":"%s","detail":"%s"}' "${scanner:-}" "$1" >/dev/termination-log; exit 0; }
++cd /workspace
++export TRIVY_CACHE_DIR=/workspace/trivy TRIVY_NO_PROGRESS=true TRIVY_DISABLE_VEX_NOTICE=true
++scanner="trivy $(trivy --version 2>/dev/null | sed -n 's/^Version: *//p' | head -n 1)"
++digest=${KUBEN_DIGEST:-$(cat /workspace/digest 2>/dev/null)}
++case "$digest" in sha256:*) ;; *) report "no image digest to scan";; esac
++insecure=""
++if [ "$KUBEN_INSECURE_REGISTRY" = true ]; then insecure="--insecure"; fi
++trivy image --quiet $insecure --format cyclonedx --output sbom.json "$KUBEN_REPOSITORY@$digest" 2>scan.err || report "the SBOM could not be written"
++trivy sbom --quiet --scanners vuln --format template   --template '{{ range . }}{{ range .Vulnerabilities }}{{ .Severity }}:{{ .VulnerabilityID }}{{ "
++" }}{{ end }}{{ end }}'   --output found.txt sbom.json 2>scan.err || report "the vulnerability database is not available"
++db=$(trivy version --format json 2>/dev/null | tr ',' '
++' | sed -n 's/.*"UpdatedAt": *"\([^"]*\)".*/` + "\x01" + `/p' | head -n 1)
++sort -u found.txt | tr -cd 'A-Za-z0-9:._
++-' >unique.txt
++n() { grep -c "^$1:" unique.txt || true; }
++findings=$( (grep '^CRITICAL:' unique.txt; grep '^HIGH:' unique.txt) | head -n 40 | sed 's/.*/"&"/' | paste -sd, -)
++printf '{"status":"ok","scanner":"%s","db":"%s","counts":{"critical":%s,"high":%s,"medium":%s,"low":%s,"unknown":%s},"findings":[%s]}'   "$scanner" "$db" "$(n CRITICAL)" "$(n HIGH)" "$(n MEDIUM)" "$(n LOW)" "$(n UNKNOWN)" "$findings" >/dev/termination-log
++echo kuben-sbom-begin
++gzip -c sbom.json | base64 | tr -d '
++'
++echo
++echo kuben-sbom-end
++`
++)
+diff --git a/go/hub/internal/platform/build/steps.go b/go/hub/internal/platform/build/steps.go
+new file mode 100644
+index 0000000..9cc1ec6
+--- /dev/null
++++ b/go/hub/internal/platform/build/steps.go
+@@ -0,0 +1,196 @@
++package build
++
++// What the build worker does next, decided without I/O (steps.rs).
++//
++// [NextFor] picks the kind of work for an attempt's phase; [PlanFor] turns
++// what the Job shows into the events to record, in order, and what follows
++// them. The events are the ones Phase.Apply accepts on the way, so a worker
++// that crashes between two of them resumes from the recorded phase.
++
++import (
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++)
++
++// Next is the kind of work an attempt needs.
++type Next string
++
++// The kinds of work.
++const (
++	// NextSettle: the attempt is final: settle its operation and clean up.
++	NextSettle Next = "settle"
++	// NextCancelQueued: nothing runs yet and a stop was asked: cancel
++	// without a Job.
++	NextCancelQueued Next = "cancelQueued"
++	// NextAdmit: take a build slot and create the Job.
++	NextAdmit Next = "admit"
++	// NextObserve: read the Job.
++	NextObserve Next = "observe"
++)
++
++// ParseNext reads a kind of work by its name.
++func ParseNext(s string) (Next, error) {
++	switch n := Next(s); n {
++	case NextSettle, NextCancelQueued, NextAdmit, NextObserve:
++		return n, nil
++	}
++	return "", kerr.New(kerr.Validation, "unknown kind of build work `%s`", s)
++}
++
++// NextFor is the work for an attempt in phase.
++func NextFor(phase opbuild.Phase, cancelRequested bool) Next {
++	switch phase {
++	case opbuild.Succeeded, opbuild.Failed, opbuild.Cancelled:
++		return NextSettle
++	case opbuild.Queued, opbuild.Blocked:
++		if cancelRequested {
++			return NextCancelQueued
++		}
++		return NextAdmit
++	case opbuild.Preparing, opbuild.Running, opbuild.Publishing, opbuild.VerifyingOutput,
++		opbuild.CancelRequested, opbuild.Cancelling:
++		return NextObserve
++	}
++	return NextObserve
++}
++
++// Plan is what follows the events it records.
++//
++//sumtype:decl
++type Plan interface{ plan() }
++
++type (
++	// PlanWait records the events and looks again later.
++	PlanWait struct{ Events []opbuild.Event }
++	// PlanVerify records the events, then checks Digest in the registry.
++	PlanVerify struct {
++		Events []opbuild.Event
++		Digest artifact.Digest
++	}
++	// PlanFail records the events, then fails with Failure.
++	PlanFail struct {
++		Events  []opbuild.Event
++		Failure outcome.BuildFailure
++		Detail  string
++	}
++	// PlanStop records the events, deletes the build's objects and looks
++	// again later.
++	PlanStop struct{ Events []opbuild.Event }
++	// PlanCancelled records the events: the attempt is cancelled.
++	PlanCancelled struct{ Events []opbuild.Event }
++)
++
++func (PlanWait) plan()      {}
++func (PlanVerify) plan()    {}
++func (PlanFail) plan()      {}
++func (PlanStop) plan()      {}
++func (PlanCancelled) plan() {}
++
++// EventsOf are the events plan records first.
++func EventsOf(plan Plan) []opbuild.Event {
++	switch p := plan.(type) {
++	case PlanWait:
++		return p.Events
++	case PlanVerify:
++		return p.Events
++	case PlanFail:
++		return p.Events
++	case PlanStop:
++		return p.Events
++	case PlanCancelled:
++		return p.Events
++	}
++	return nil
++}
++
++// toCancelling are the events that move a running attempt to Cancelling.
++func toCancelling(phase opbuild.Phase) []opbuild.Event {
++	switch phase {
++	case opbuild.Preparing, opbuild.Running, opbuild.Publishing, opbuild.VerifyingOutput:
++		return []opbuild.Event{opbuild.EventCancelRequested, opbuild.EventStopping}
++	case opbuild.CancelRequested:
++		return []opbuild.Event{opbuild.EventStopping}
++	case opbuild.Queued, opbuild.Blocked, opbuild.Cancelling, opbuild.Succeeded, opbuild.Failed, opbuild.Cancelled:
++	}
++	return []opbuild.Event{}
++}
++
++// toVerifying are the events that bring phase up to VerifyingOutput.
++func toVerifying(phase opbuild.Phase) []opbuild.Event {
++	switch phase {
++	case opbuild.Preparing:
++		return []opbuild.Event{opbuild.EventBuilding, opbuild.EventPublishing, opbuild.EventPublished}
++	case opbuild.Running:
++		return []opbuild.Event{opbuild.EventPublishing, opbuild.EventPublished}
++	case opbuild.Publishing:
++		return []opbuild.Event{opbuild.EventPublished}
++	case opbuild.Queued, opbuild.Blocked, opbuild.VerifyingOutput, opbuild.CancelRequested, opbuild.Cancelling,
++		opbuild.Succeeded, opbuild.Failed, opbuild.Cancelled:
++	}
++	return []opbuild.Event{}
++}
++
++// PlanFor is the plan for an attempt in the observing phase, given what
++// its Job shows and the digest it reported earlier.
++func PlanFor(
++	phase opbuild.Phase, cancelRequested bool, verdict outcome.JobVerdict, reported opt.Val[artifact.Digest],
++) Plan {
++	none := []opbuild.Event{}
++	if phase == opbuild.VerifyingOutput && !cancelRequested {
++		if digest, ok := reported.Get(); ok {
++			return PlanVerify{Events: none, Digest: digest}
++		}
++		return PlanFail{
++			Events: none, Failure: outcome.OutputRejected, Detail: "no digest was reported before verification",
++		}
++	}
++	if cancelRequested || phase == opbuild.CancelRequested || phase == opbuild.Cancelling {
++		return planStop(phase, verdict, reported)
++	}
++	switch v := verdict.(type) {
++	case outcome.Building:
++		if phase == opbuild.Preparing {
++			return PlanWait{Events: []opbuild.Event{opbuild.EventBuilding}}
++		}
++		return PlanWait{Events: none}
++	case outcome.Pending, outcome.Fetching:
++		return PlanWait{Events: none}
++	case outcome.Finished:
++		return PlanVerify{Events: toVerifying(phase), Digest: v.Report.Digest}
++	case outcome.Failed:
++		return PlanFail{Events: none, Failure: v.Failure, Detail: v.Detail}
++	case outcome.Gone:
++		return PlanFail{Events: none, Failure: outcome.LostWorker, Detail: "the build Job disappeared"}
++	}
++	return PlanWait{Events: none}
++}
++
++// planStop: a stop was asked while the attempt may hold a Job. An output
++// that was already finished is still verified: the artifact exists
++// (ADR-028).
++func planStop(phase opbuild.Phase, verdict outcome.JobVerdict, reported opt.Val[artifact.Digest]) Plan {
++	finished := opt.None[artifact.Digest]()
++	if f, ok := verdict.(outcome.Finished); ok {
++		finished = opt.Some(f.Report.Digest)
++	} else if phase == opbuild.VerifyingOutput {
++		finished = reported
++	}
++	if digest, ok := finished.Get(); ok {
++		events := []opbuild.Event{opbuild.EventCancelRequested}
++		if phase == opbuild.CancelRequested || phase == opbuild.Cancelling {
++			events = []opbuild.Event{}
++		}
++		return PlanVerify{Events: events, Digest: digest}
++	}
++	events := toCancelling(phase)
++	switch verdict.(type) {
++	// The Job is gone, or ended on its own while being stopped.
++	case outcome.Gone, outcome.Failed:
++		return PlanCancelled{Events: append(events, opbuild.EventStopped)}
++	case outcome.Pending, outcome.Fetching, outcome.Building, outcome.Finished:
++	}
++	return PlanStop{Events: events}
++}
+diff --git a/go/hub/internal/platform/build/steps_test.go b/go/hub/internal/platform/build/steps_test.go
+new file mode 100644
+index 0000000..8826216
+--- /dev/null
++++ b/go/hub/internal/platform/build/steps_test.go
+@@ -0,0 +1,242 @@
++package build_test
++
++import (
++	"testing"
++
++	"github.com/google/go-cmp/cmp"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/artifact"
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++)
++
++// Ported from steps.rs.
++
++const stepDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
++
++func digest(t *testing.T, text string) artifact.Digest {
++	t.Helper()
++	return check(artifact.ParseDigest(text)).must(t)
++}
++
++func finishedVerdict(t *testing.T) outcome.JobVerdict {
++	t.Helper()
++	return outcome.Finished{Report: outcome.BuildReport{Digest: digest(t, stepDigest), Strategy: "dockerfile"}}
++}
++
++func failedVerdict(failure outcome.BuildFailure) outcome.JobVerdict {
++	return outcome.Failed{Failure: failure, Detail: failure.Explain()}
++}
++
++// replay applies events from phase; every event must be legal.
++func replay(t *testing.T, phase opbuild.Phase, events []opbuild.Event) opbuild.Phase {
++	t.Helper()
++	for _, e := range events {
++		next, err := phase.Apply(e)
++		if err != nil {
++			t.Fatalf("%s + %s: %v", phase, e, err)
++		}
++		phase = next
++	}
++	return phase
++}
++
++func observed() []opbuild.Phase {
++	return []opbuild.Phase{
++		opbuild.Preparing, opbuild.Running, opbuild.Publishing, opbuild.VerifyingOutput,
++		opbuild.CancelRequested, opbuild.Cancelling,
++	}
++}
++
++var (
++	noDigest = opt.None[artifact.Digest]()
++	none     = []opbuild.Event{}
++)
++
++func TestWorkFollowsThePhase(t *testing.T) {
++	cases := []struct {
++		phase  opbuild.Phase
++		cancel bool
++		want   build.Next
++	}{
++		{opbuild.Queued, false, build.NextAdmit},
++		{opbuild.Blocked, false, build.NextAdmit},
++		{opbuild.Blocked, true, build.NextCancelQueued},
++		{opbuild.Running, true, build.NextObserve},
++		{opbuild.Succeeded, true, build.NextSettle},
++		{opbuild.Failed, true, build.NextSettle},
++		{opbuild.Cancelled, true, build.NextSettle},
++	}
++	for _, c := range cases {
++		if got := build.NextFor(c.phase, c.cancel); got != c.want {
++			t.Errorf("%s, cancel %t: %s, want %s", c.phase, c.cancel, got, c.want)
++		}
++	}
++	for _, n := range []build.Next{build.NextSettle, build.NextCancelQueued, build.NextAdmit, build.NextObserve} {
++		if got, err := build.ParseNext(string(n)); err != nil || got != n {
++			t.Errorf("%s: %s, %v", n, got, err)
++		}
++	}
++	if _, err := build.ParseNext("sleep"); err == nil {
++		t.Error("an unknown kind of work")
++	}
++}
++
++func TestAFinishedJobIsVerifiedFromAnyRunningPhase(t *testing.T) {
++	for _, phase := range []opbuild.Phase{opbuild.Preparing, opbuild.Running, opbuild.Publishing} {
++		v, ok := build.PlanFor(phase, false, finishedVerdict(t), noDigest).(build.PlanVerify)
++		if !ok {
++			t.Fatalf("%s: not verified", phase)
++		}
++		if got := replay(t, phase, v.Events); got != opbuild.VerifyingOutput {
++			t.Errorf("%s: %s", phase, got)
++		}
++		if v.Digest != digest(t, stepDigest) {
++			t.Errorf("%s: digest %s", phase, v.Digest)
++		}
++		if got := replay(t, opbuild.VerifyingOutput, []opbuild.Event{opbuild.EventVerified}); got != opbuild.Succeeded {
++			t.Errorf("verified: %s", got)
++		}
++	}
++}
++
++func TestVerificationResumesFromTheRecordedDigest(t *testing.T) {
++	gone := build.PlanFor(opbuild.VerifyingOutput, false, outcome.Gone{}, opt.Some(digest(t, stepDigest)))
++	if diff := cmp.Diff(build.Plan(build.PlanVerify{Events: none, Digest: digest(t, stepDigest)}), gone,
++		cmp.Comparer(func(a, b artifact.Digest) bool { return a == b })); diff != "" {
++		t.Errorf("the Job may be gone after the report (-want +got):\n%s", diff)
++	}
++	f, ok := build.PlanFor(opbuild.VerifyingOutput, false, outcome.Gone{}, noDigest).(build.PlanFail)
++	if !ok || f.Failure != outcome.OutputRejected {
++		t.Errorf("no digest: %#v", f)
++	}
++}
++
++func TestProgressOnlyMovesForward(t *testing.T) {
++	cases := []struct {
++		phase   opbuild.Phase
++		verdict outcome.JobVerdict
++		want    []opbuild.Event
++	}{
++		{opbuild.Preparing, outcome.Pending{}, none},
++		{opbuild.Preparing, outcome.Fetching{}, none},
++		{opbuild.Preparing, outcome.Building{}, []opbuild.Event{opbuild.EventBuilding}},
++		{opbuild.Running, outcome.Building{}, none},
++	}
++	for _, c := range cases {
++		got := build.PlanFor(c.phase, false, c.verdict, noDigest)
++		if diff := cmp.Diff(build.Plan(build.PlanWait{Events: c.want}), got); diff != "" {
++			t.Errorf("%s %T (-want +got):\n%s", c.phase, c.verdict, diff)
++		}
++	}
++}
++
++func TestFailuresKeepTheirClass(t *testing.T) {
++	failures := []outcome.BuildFailure{
++		outcome.OutOfMemory, outcome.DiskFull, outcome.DeadlineExceeded, outcome.BuildError,
++		outcome.SourceUnavailable, outcome.Unschedulable,
++	}
++	for _, failure := range failures {
++		for _, phase := range []opbuild.Phase{opbuild.Preparing, opbuild.Running, opbuild.Publishing} {
++			f, ok := build.PlanFor(phase, false, failedVerdict(failure), noDigest).(build.PlanFail)
++			if !ok || f.Failure != failure {
++				t.Fatalf("%s in %s: %#v", failure, phase, f)
++			}
++			if got := replay(t, replay(t, phase, f.Events), []opbuild.Event{opbuild.EventFailed}); got != opbuild.Failed {
++				t.Errorf("%s in %s: %s", failure, phase, got)
++			}
++		}
++	}
++	lost, ok := build.PlanFor(opbuild.Running, false, outcome.Gone{}, noDigest).(build.PlanFail)
++	if !ok || lost.Failure != outcome.LostWorker {
++		t.Errorf("a vanished Job: %#v", lost)
++	}
++}
++
++func TestAStopDeletesTheJobThenWaitsForItToGo(t *testing.T) {
++	for _, phase := range []opbuild.Phase{opbuild.Preparing, opbuild.Running, opbuild.Publishing, opbuild.CancelRequested} {
++		stop, ok := build.PlanFor(phase, true, outcome.Building{}, noDigest).(build.PlanStop)
++		if !ok {
++			t.Fatalf("%s: not stopped", phase)
++		}
++		if got := replay(t, phase, stop.Events); got != opbuild.Cancelling {
++			t.Errorf("%s: %s", phase, got)
++		}
++	}
++	if diff := cmp.Diff(build.Plan(build.PlanStop{Events: none}), build.PlanFor(opbuild.Cancelling, true, outcome.Building{}, noDigest)); diff != "" {
++		t.Errorf("cancelling (-want +got):\n%s", diff)
++	}
++	for _, phase := range observed() {
++		if phase == opbuild.VerifyingOutput {
++			continue
++		}
++		c, ok := build.PlanFor(phase, true, outcome.Gone{}, noDigest).(build.PlanCancelled)
++		if !ok {
++			t.Fatalf("%s: not cancelled", phase)
++		}
++		if got := replay(t, phase, c.Events); got != opbuild.Cancelled {
++			t.Errorf("%s: %s", phase, got)
++		}
++	}
++}
++
++func TestAJobKilledByTheStopIsCancelledNotFailed(t *testing.T) {
++	cases := []struct {
++		phase   opbuild.Phase
++		verdict outcome.JobVerdict
++	}{
++		{opbuild.Cancelling, failedVerdict(outcome.LostWorker)},
++		{opbuild.Running, failedVerdict(outcome.OutOfMemory)},
++	}
++	for _, c := range cases {
++		cancelled, ok := build.PlanFor(c.phase, true, c.verdict, noDigest).(build.PlanCancelled)
++		if !ok {
++			t.Fatalf("%s: not cancelled", c.phase)
++		}
++		if got := replay(t, c.phase, cancelled.Events); got != opbuild.Cancelled {
++			t.Errorf("%s: %s", c.phase, got)
++		}
++	}
++}
++
++func TestOutputFinishedBeforeTheStopStillSucceeds(t *testing.T) {
++	verified := []opbuild.Event{opbuild.EventVerified}
++	for _, phase := range []opbuild.Phase{opbuild.Running, opbuild.Publishing, opbuild.CancelRequested, opbuild.Cancelling} {
++		v, ok := build.PlanFor(phase, true, finishedVerdict(t), noDigest).(build.PlanVerify)
++		if !ok {
++			t.Fatalf("%s: not verified", phase)
++		}
++		if got := replay(t, replay(t, phase, v.Events), verified); got != opbuild.Succeeded {
++			t.Errorf("%s: %s", phase, got)
++		}
++	}
++	v, ok := build.PlanFor(opbuild.VerifyingOutput, true, outcome.Gone{}, opt.Some(digest(t, stepDigest))).(build.PlanVerify)
++	if !ok {
++		t.Fatal("verifying: not verified")
++	}
++	if got := replay(t, replay(t, opbuild.VerifyingOutput, v.Events), verified); got != opbuild.Succeeded {
++		t.Errorf("verifying: %s", got)
++	}
++}
++
++func TestEveryPlanIsLegalFromEveryObservedPhase(t *testing.T) {
++	verdicts := []outcome.JobVerdict{
++		outcome.Pending{},
++		outcome.Fetching{},
++		outcome.Building{},
++		finishedVerdict(t),
++		failedVerdict(outcome.OutOfMemory),
++		outcome.Gone{},
++	}
++	for _, phase := range observed() {
++		for _, cancel := range []bool{false, true} {
++			for _, verdict := range verdicts {
++				for _, reported := range []opt.Val[artifact.Digest]{noDigest, opt.Some(digest(t, stepDigest))} {
++					replay(t, phase, build.EventsOf(build.PlanFor(phase, cancel, verdict, reported)))
++				}
++			}
++		}
++	}
++}
+diff --git a/go/hub/internal/platform/build/worker.go b/go/hub/internal/platform/build/worker.go
+new file mode 100644
+index 0000000..a546daa
+--- /dev/null
++++ b/go/hub/internal/platform/build/worker.go
+@@ -0,0 +1,304 @@
++package build
++
++// The build worker (ADR-028; worker.rs): claims `source.sync` and `build`
++// operations.
++//
++//   - A sync reads the branch head from the provider and records it
++//     (store.Tenant.ObserveHead); a new head queues a build.
++//   - A build takes a slot, creates its BuildRun, fetch-token Secret and Job
++//     (job.go), follows the Job (steps.go) and, when the pod reports a
++//     digest that the registry confirms, completes the attempt: release
++//     and, if the target still wants it, a deployment run.
++//   - A stop deletes the Job and waits until it is gone. Every final attempt
++//     revokes its fetch token and deletes its objects before its operation
++//     is settled, so a crash in between only repeats the cleanup.
++//
++// Claims are fenced in SQL, so any number of replicas may run workers.
++
++import (
++	"context"
++	"errors"
++	"log/slog"
++	"time"
++
++	"k8s.io/client-go/dynamic"
++	"k8s.io/client-go/kubernetes"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/outcome"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/controller"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++)
++
++// Subsystem is the health entry of the worker loop.
++const Subsystem = "builds"
++
++// Timing of the worker (the Rust constants).
++const (
++	// Lease is how long a claim is held.
++	Lease = 2 * time.Minute
++	idle  = 2 * time.Second
++	// poll is the pause between reads of a running build.
++	poll = 5 * time.Second
++	// blockedWait is the pause before a blocked build asks for a slot again.
++	blockedWait = 15 * time.Second
++	// maxSyncAttempts is the claims of one sync before it gives up on the
++	// provider.
++	maxSyncAttempts = 10
++	// giveUpAfter is how long past its deadline a build may keep failing on
++	// infrastructure.
++	giveUpAfter = time.Hour
++	// fieldManager writes the BuildRun status.
++	fieldManager = "kuben-builds"
++	// Retention is how long a finished BuildRun shows its result.
++	Retention      = 24 * time.Hour
++	retentionSecs  = 24 * 3600
++	sweepEvery     = 10 * time.Minute
++	settledFailed  = "failed"
++	settledSuccess = "succeeded"
++)
++
++// kinds are the operations a worker claims.
++func kinds() []string { return []string{store.SourceSyncKind, store.BuildKind} }
++
++// result is how the work on a claim ended.
++//
++//sumtype:decl
++type result interface{ result() }
++
++type (
++	// done settles the operation in Phase.
++	done struct {
++		Phase string
++		Code  opt.Val[string]
++	}
++	// wait looks again after After; waiting is not a failure.
++	wait struct {
++		After time.Duration
++		Code  string
++	}
++	// retry: something outside failed; try again with backoff.
++	retry struct {
++		Code   string
++		Detail string
++	}
++	// fenced: another worker holds the claim now.
++	fenced struct{}
++)
++
++func (done) result()   {}
++func (wait) result()   {}
++func (retry) result()  {}
++func (fenced) result() {}
++
++func storeRetry(err error) result { return retry{Code: "StoreError", Detail: err.Error()} }
++
++func kubeRetry(err error) result { return retry{Code: "KubernetesError", Detail: err.Error()} }
++
++func failedWith(code string) result { return done{Phase: settledFailed, Code: opt.Some(code)} }
++
++// Deps is what a worker works with.
++type Deps struct {
++	Store *store.Store
++	// Client reads and writes the Jobs, Secrets and Pods of builds.
++	Client kubernetes.Interface
++	// Dynamic reads and writes the BuildRuns.
++	Dynamic dynamic.Interface
++	// ID is unique per process.
++	ID       string
++	Provider SourceProvider
++	Verifier OutputVerifier
++	Settings Settings
++	Limits   store.SlotLimits
++	Clock    clock.Clock
++	Logger   *slog.Logger
++}
++
++// Worker is the build worker of one process.
++type Worker struct {
++	d Deps
++}
++
++// NewWorker is a worker on d.
++func NewWorker(d Deps) *Worker {
++	if d.Logger == nil {
++		d.Logger = slog.Default()
++	}
++	if d.Clock == nil {
++		d.Clock = clock.System{}
++	}
++	return &Worker{d: d}
++}
++
++// Run runs w until ctx ends. A database outage returns an error, for the
++// supervisor to restart the loop with backoff.
++func Run(ctx context.Context, w *Worker, h *health.Health) error {
++	h.OK(Subsystem)
++	nextSweep := w.d.Clock.NowMs()
++	for ctx.Err() == nil {
++		if w.d.Clock.NowMs() >= nextSweep {
++			nextSweep += sweepEvery.Milliseconds()
++			switch n, err := w.Sweep(ctx); {
++			case err != nil:
++				w.d.Logger.Warn("finished BuildRuns were not swept", "error", err)
++			case n > 0:
++				w.d.Logger.Info("finished BuildRuns swept", "removed", n)
++			}
++		}
++		worked, err := w.WorkOnce(ctx)
++		if err != nil {
++			return err
++		}
++		if worked.IsNone() && !sleep(ctx, idle) {
++			return nil
++		}
++	}
++	return nil
++}
++
++// sleep waits d, and false when ctx ended first.
++func sleep(ctx context.Context, d time.Duration) bool {
++	timer := time.NewTimer(d)
++	defer timer.Stop()
++	select {
++	case <-ctx.Done():
++		return false
++	case <-timer.C:
++		return true
++	}
++}
++
++// WorkOnce claims one due operation and carries it as far as it goes now;
++// none when nothing was due.
++func (w *Worker) WorkOnce(ctx context.Context) (opt.Val[ids.OperationID], error) {
++	claim, ok, err := w.d.Store.ClaimOperation(ctx, w.d.ID, kinds(), Lease)
++	if err != nil || !ok {
++		return opt.None[ids.OperationID](), err //nolint:wrapcheck // a store error naming its operation
++	}
++	var r result
++	if claim.Kind == store.SourceSyncKind {
++		r = w.sync(ctx, claim)
++	} else {
++		r = w.build(ctx, claim)
++	}
++	if err := w.settle(ctx, claim, r); err != nil {
++		return opt.None[ids.OperationID](), err
++	}
++	return opt.Some(claim.ID), nil
++}
++
++func (w *Worker) settle(ctx context.Context, claim store.Claim, r result) error {
++	var err error
++	switch r := r.(type) {
++	case done:
++		w.d.Logger.Info("build operation settled", "operation", claim.ID.String(), "kind", claim.Kind,
++			"phase", r.Phase, "code", r.Code.Or(""))
++		_, err = w.d.Store.FinishOperation(ctx, claim, r.Phase, r.Code)
++	case wait:
++		_, err = w.d.Store.RetryOperation(ctx, claim, r.After, r.Code)
++	case retry:
++		failures := uint32(1<<32 - 1)
++		if claim.Attempt >= 0 {
++			failures = uint32(claim.Attempt)
++		}
++		delay := controller.Backoff(failures)
++		w.d.Logger.Warn("build operation will be retried", "operation", claim.ID.String(), "kind", claim.Kind,
++			"code", r.Code, "detail", r.Detail, "retry_in_s", int64(delay/time.Second))
++		_, err = w.d.Store.RetryOperation(ctx, claim, delay, r.Code)
++	case fenced:
++	}
++	return err //nolint:wrapcheck // a store error naming its operation
++}
++
++// ---- source sync ----
++
++func (w *Worker) sync(ctx context.Context, claim store.Claim) result {
++	binding, ok, err := w.syncBinding(ctx, claim)
++	if err != nil {
++		return storeRetry(err)
++	}
++	if !ok {
++		return failedWith("BindingMissing")
++	}
++	if link, found, err := w.d.Store.GitInstallationOrg(ctx, binding.InstallationID); err == nil && found && link.Suspended {
++		return failedWith(string(outcome.CredentialsRefused))
++	}
++	var head Head
++	if number, ok := binding.PullRequest.Get(); ok {
++		head, err = w.d.Provider.PullHead(ctx, binding.InstallationID, binding.Repository, number)
++	} else {
++		head, err = w.d.Provider.Head(ctx, binding.InstallationID, binding.Repository, binding.Branch)
++	}
++	if err != nil {
++		return w.syncFailed(claim, binding, err)
++	}
++	observed, err := w.observeHead(ctx, claim, binding, head)
++	if err != nil {
++		return storeRetry(err)
++	}
++	switch o := observed.(type) {
++	case store.HeadUnchanged:
++		return done{Phase: settledSuccess, Code: opt.Some("Unchanged")}
++	case store.HeadQueued:
++		w.d.Logger.Info("build queued", "binding", binding.ID.String(), "attempt", o.Attempt.String(),
++			"commit", head.Commit.String(), "epoch", uint64(o.Epoch))
++		return done{Phase: settledSuccess}
++	case store.HeadRepositoryChanged:
++		return failedWith("RepositoryChanged")
++	case store.HeadGone:
++		return failedWith("TargetGone")
++	case store.HeadFenced:
++		return fenced{}
++	}
++	return fenced{}
++}
++
++// syncFailed is the result of a provider that did not answer a sync.
++func (w *Worker) syncFailed(claim store.Claim, binding store.SourceBinding, err error) result {
++	var pe ProviderError
++	if !errors.As(err, &pe) {
++		pe = Unavailable{Reason: err.Error()}
++	}
++	switch e := pe.(type) {
++	case NotFound:
++		w.d.Logger.Warn("the source is gone", "binding", binding.ID.String(), "what", e.What)
++		return failedWith("SourceNotFound")
++	case Refused:
++		w.d.Logger.Warn("the provider refused the sync", "binding", binding.ID.String(), "why", e.Reason)
++		return failedWith(string(outcome.CredentialsRefused))
++	case Unavailable:
++		if claim.Attempt >= maxSyncAttempts {
++			w.d.Logger.Warn("giving up on the provider", "binding", binding.ID.String(), "why", e.Reason)
++			return failedWith("ProviderUnavailable")
++		}
++		return retry{Code: "ProviderUnavailable", Detail: e.Reason}
++	}
++	return retry{Code: "ProviderUnavailable", Detail: err.Error()}
++}
++
++func (w *Worker) syncBinding(ctx context.Context, claim store.Claim) (store.SourceBinding, bool, error) {
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return store.SourceBinding{}, false, err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx)            //nolint:errcheck // read only
++	return t.SyncBinding(ctx, claim) //nolint:wrapcheck // a store error naming its operation
++}
++
++func (w *Worker) observeHead(
++	ctx context.Context, claim store.Claim, binding store.SourceBinding, head Head,
++) (store.HeadObserved, error) {
++	t, err := w.d.Store.Tenant(ctx, claim.Org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error naming its operation
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	observed, err := t.ObserveHead(ctx, claim, binding, head.Commit, head.RepositoryID)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error naming its operation
++	}
++	return observed, t.Commit(ctx) //nolint:wrapcheck // a store error naming its operation
++}
+diff --git a/go/hub/internal/platform/build/worker_test.go b/go/hub/internal/platform/build/worker_test.go
+new file mode 100644
+index 0000000..69ba011
+--- /dev/null
++++ b/go/hub/internal/platform/build/worker_test.go
+@@ -0,0 +1,124 @@
++package build_test
++
++import (
++	"encoding/json"
++	"net/http"
++	"testing"
++
++	apierrors "k8s.io/apimachinery/pkg/api/errors"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++
++	opbuild "github.com/Teamtem-dev/kuben/go/hub/internal/core/ops/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/source"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++// Ported from worker.rs.
++
++
++func TestTheBuildRunShowsCoarsePhases(t *testing.T) {
++	cases := map[opbuild.Phase]string{
++		opbuild.Blocked:    "Queued",
++		opbuild.Publishing: "Running",
++		opbuild.Cancelling: "Running",
++		opbuild.Cancelled:  "Cancelled",
++	}
++	for phase, want := range cases {
++		if got := build.CrdPhase(phase); got != want {
++			t.Errorf("%s: %s, want %s", phase, got, want)
++		}
++	}
++}
++
++// at is the member path of a JSON document.
++func at(doc map[string]any, path ...any) any {
++	var v any = doc
++	for _, p := range path {
++		switch k := p.(type) {
++		case string:
++			m, _ := v.(map[string]any) //nolint:errcheck // a missing member reads as nil
++			v = m[k]
++		case int:
++			l, _ := v.([]any) //nolint:errcheck // as above
++			if k >= len(l) {
++				return nil
++			}
++			v = l[k]
++		}
++	}
++	return v
++}
++
++func TestFinalStatusCarriesTheDigestAndTheReason(t *testing.T) {
++	now := ms(t, "2026-09-17T12:00:00Z")
++	a := attempt(t, source.BuildRecipe{})
++	done := build.StatusPatch(a, opbuild.Succeeded, opt.Some(stepDigest), now)
++	for path, want := range map[string]any{
++		"phase": "Succeeded", "imageDigest": stepDigest, "finishedAt": "2026-09-17T12:00:00Z",
++	} {
++		if got := at(done, "status", path); got != want {
++			t.Errorf("%s: %v, want %v", path, got, want)
++		}
++	}
++	if got := at(done, "status", "conditions", 0, "status"); got != "True" {
++		t.Errorf("condition %v", got)
++	}
++	data := check(json.Marshal(done["status"])).must(t)
++	status := parse[v1alpha1.BuildRunStatus](t, string(data))
++	if status.ImageDigest == nil || *status.ImageDigest != stepDigest {
++		t.Errorf("not a valid BuildRunStatus: %+v", status)
++	}
++
++	oom := attempt(t, source.BuildRecipe{})
++	oom.Failure = opt.Some("OutOfMemory")
++	failed := build.StatusPatch(oom, opbuild.Failed, opt.None[string](), now)
++	if at(failed, "status", "conditions", 0, "reason") != "OutOfMemory" || at(failed, "status", "conditions", 0, "status") != "False" {
++		t.Errorf("failed %v", failed)
++	}
++	if _, ok := at(failed, "status").(map[string]any)["imageDigest"]; ok {
++		t.Error("a failed build has a digest")
++	}
++
++	started := build.StatusPatch(a, opbuild.Preparing, opt.None[string](), now)
++	if at(started, "status", "phase") != "Running" || at(started, "status", "startedAt") != "2026-09-17T12:00:00Z" {
++		t.Errorf("started %v", started)
++	}
++	if _, ok := at(started, "status").(map[string]any)["finishedAt"]; ok {
++		t.Error("a running build finished")
++	}
++}
++
++func TestFinishedBuildRunsExpireAfterADay(t *testing.T) {
++	run := build.BuildRun(attempt(t, source.BuildRecipe{}), settings())
++	now := ms(t, "2026-09-18T12:00:01Z")
++	if build.Expired(run, now) {
++		t.Error("a running build never expires")
++	}
++	run.Status = &v1alpha1.BuildRunStatus{FinishedAt: new("2026-09-17T12:00:00Z")}
++	if !build.Expired(run, now) {
++		t.Error("a day and a second")
++	}
++	if build.Expired(run, ms(t, "2026-09-18T11:59:59Z")) {
++		t.Error("less than a day")
++	}
++	if build.OperationPhase(opbuild.Cancelled) != "cancelled" || build.OperationPhase(opbuild.Failed) != "failed" {
++		t.Error("operation phases")
++	}
++}
++
++func TestAPIErrorsAreToldApart(t *testing.T) {
++	api := func(code int32) error {
++		return &apierrors.StatusError{ErrStatus: metav1.Status{Code: code}}
++	}
++	if !build.IsNotFound(api(http.StatusNotFound)) || !build.IsConflict(api(http.StatusConflict)) {
++		t.Error("404 or 409")
++	}
++	if !build.IsInvalid(api(http.StatusUnprocessableEntity)) || !build.IsInvalid(api(http.StatusBadRequest)) {
++		t.Error("422 or 400")
++	}
++	if build.IsInvalid(api(http.StatusInternalServerError)) {
++		t.Error("500 is not invalid")
++	}
++}
+diff --git a/go/hub/internal/serve/builds.go b/go/hub/internal/serve/builds.go
+new file mode 100644
+index 0000000..3d1919a
+--- /dev/null
++++ b/go/hub/internal/serve/builds.go
+@@ -0,0 +1,130 @@
++package serve
++
++// Git sources and builds in `kuben serve` (serve.rs github_app,
++// spawn_builds and ensure_build_namespace).
++
++import (
++	"context"
++	"fmt"
++	"log/slog"
++	"os"
++
++	corev1 "k8s.io/api/core/v1"
++	apierrors "k8s.io/apimachinery/pkg/api/errors"
++	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
++	"k8s.io/client-go/kubernetes"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api/github"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api/oci"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/build"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/leader"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/supervise"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
++)
++
++// buildNamespace is the namespace of build Jobs unless build.namespace
++// names one: never Kuben's own, whose Secrets build pods must not share.
++const buildNamespace = "kuben-builds"
++
++// githubApp is the GitHub App for Git sources; none when neither its id
++// nor its key file is configured, and an error that stops the server when
++// it is configured but unusable.
++func githubApp(cfg config.Config, logger *slog.Logger) (opt.Val[*github.App], error) {
++	git := cfg.Git
++	if git.GithubAppID.IsNone() && git.GithubPrivateKeyFile.IsNone() {
++		return opt.None[*github.App](), nil
++	}
++	app, err := github.New(git, clock.System{})
++	if err != nil {
++		return opt.None[*github.App](), fmt.Errorf("Git sources: %w", err) //nolint:staticcheck // Rust's text
++	}
++	logger.Info("GitHub App ready for Git sources", "api", git.GithubAPIURL)
++	return opt.Some(app), nil
++}
++
++// startBuilds starts the build worker (M3, ADR-028) and the rescans, when
++// builds are enabled on a controller replica with a cluster and the GitHub
++// App is configured. The build namespace is created when missing; rootless
++// BuildKit needs the `privileged` Pod Security level there (for its own
++// seccomp and AppArmor profile, never a privileged container).
++func startBuilds(ctx context.Context, cfg config.Config, st *store.Store, cluster opt.Val[*registry.Registry],
++	app opt.Val[*github.App], h *health.Health, logger *slog.Logger,
++) ([]<-chan struct{}, error) {
++	b := cfg.Build
++	r, inCluster := cluster.Get()
++	if !b.Enabled || !cfg.HasRole(config.RoleController) || !inCluster {
++		return nil, nil
++	}
++	provider, ok := app.Get()
++	if !ok {
++		logger.Warn("build.enabled is set, but Git sources are not configured (git.github_app_id): no builds run")
++		return nil, nil
++	}
++	for _, image := range b.UnpinnedImages() {
++		logger.Warn("a build image is not pinned by digest; pin it as image@sha256:… in production", "image", image)
++	}
++	namespace := b.Namespace.Or("")
++	if namespace == "" {
++		namespace = buildNamespace
++	}
++	primary := r.Primary()
++	if err := ensureBuildNamespace(ctx, primary.Typed, namespace); err != nil {
++		return nil, fmt.Errorf("preparing the build namespace %s: %w", namespace, err)
++	}
++	credentials := opt.None[string]()
++	if file := b.RegistryAuthFile.Or(""); file != "" {
++		text, err := os.ReadFile(file) //nolint:gosec // the operator configures the file
++		if err != nil {
++			return nil, fmt.Errorf("reading build.registry_auth_file %s: %w", file, err)
++		}
++		credentials = opt.Some(string(text))
++	}
++	settings := build.SettingsFromConfig(b, namespace)
++	var done []<-chan struct{}
++	if settings.ScannerImage.IsSome() {
++		rescanner := &build.Rescanner{
++			Store: st, Client: primary.Typed, Settings: settings,
++			Interval: clock.Seconds(uint64(max(b.RescanHours, 1)) * 3600), Clock: clock.System{}, Logger: logger,
++		}
++		done = append(done, supervise.Go(ctx, build.RescanSubsystem, h, logger, func(ctx context.Context) error {
++			return build.RunRescans(ctx, rescanner, h)
++		}))
++	} else {
++		logger.Warn("build.scanner_image is empty: images are not scanned and scans are unavailable")
++	}
++	worker := build.NewWorker(build.Deps{
++		Store: st, Client: primary.Typed, Dynamic: primary.Dynamic, ID: leader.Identity(), Provider: provider,
++		Verifier: oci.NewVerifier(b.InsecureRegistry, credentials), Settings: settings,
++		Limits: store.SlotLimits{Total: b.MaxConcurrent, PerOrg: b.MaxConcurrentPerOrg}, Clock: clock.System{}, Logger: logger,
++	})
++	logger.Info("build worker ready", "namespace", namespace, "max_concurrent", b.MaxConcurrent)
++	return append(done, supervise.Go(ctx, build.Subsystem, h, logger, func(ctx context.Context) error {
++		return build.Run(ctx, worker, h)
++	})), nil
++}
++
++// ensureBuildNamespace creates the namespace name when it is missing.
++func ensureBuildNamespace(ctx context.Context, client kubernetes.Interface, name string) error {
++	namespaces := client.CoreV1().Namespaces()
++	if _, err := namespaces.Get(ctx, name, metav1.GetOptions{}); err == nil {
++		return nil
++	} else if !apierrors.IsNotFound(err) {
++		return fmt.Errorf("reading the namespace: %w", err)
++	}
++	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{
++		v1alpha1.LabelManagedBy:              v1alpha1.LabelManagerValue,
++		"pod-security.kubernetes.io/enforce": "privileged",
++		"pod-security.kubernetes.io/warn":    "baseline",
++	}}}
++	_, err := namespaces.Create(ctx, ns, metav1.CreateOptions{})
++	if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
++		return fmt.Errorf("creating the namespace: %w", err)
++	}
++	return nil
++}
+diff --git a/go/hub/internal/serve/serve.go b/go/hub/internal/serve/serve.go
+index 81dcf7a..3acba51 100644
+--- a/go/hub/internal/serve/serve.go
++++ b/go/hub/internal/serve/serve.go
+@@ -4,7 +4,8 @@
+ // and with a cluster the informers, the readiness gate, capability
+ // discovery, the materializer and, behind the controller Lease, the
+ // reconcilers and the drift watch; on controller replicas AgentLink, the
+-// endpoint cluster agents dial.
++// endpoint cluster agents dial, and with builds enabled the build worker
++// and the rescans.
+ package serve
+ 
+ import (
+@@ -89,6 +90,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	app, err := githubApp(cfg, logger)
++	if err != nil {
++		return err
++	}
+ 
+ 	projections := projection.New()
+ 	var subsystems []<-chan struct{}
+@@ -103,6 +108,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+ 		h.SetReady(true)
+ 	}
+ 	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
++	builds, err := startBuilds(ctx, cfg, st, cluster, app, h, logger)
++	if err != nil {
++		return err
++	}
++	subsystems = append(subsystems, builds...)
+ 
+ 	var serveErr error
+ 	if cfg.HasRole(config.RoleAPI) {

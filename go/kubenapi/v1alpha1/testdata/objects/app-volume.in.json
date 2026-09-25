@@ -1,0 +1,6 @@
+{"apiVersion":"kuben.dev/v1alpha1","kind":"App","metadata":{"name":"api","namespace":"kb-shop-prod"},
+ "spec":{
+  "source": { "image": "nginx@sha256:3333333333333333333333333333333333333333333333333333333333333333" },
+  "runtime": { "processes": { "web": { "port": 8080, "size": "small" } } },
+  "volumes": [{ "name": "data", "mountPath": "/data", "size": "5Gi" }]
+ }}
