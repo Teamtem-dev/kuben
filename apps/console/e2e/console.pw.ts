@@ -1,5 +1,5 @@
-import AxeBuilder from '@axe-core/playwright'
-import { expect, type Page, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { expectAccessible, prefer, watchCsp } from './checks'
 import { mockApi } from './fixtures'
 
 const locales = [
@@ -22,37 +22,6 @@ const locales = [
 ] as const
 
 const themes = ['dark', 'light'] as const
-
-/** Preferences as the console keeps them, set before it loads. */
-async function prefer(page: Page, locale: string, theme: string) {
-  await page.addInitScript(
-    (prefs) => window.localStorage.setItem('kuben.prefs', prefs),
-    JSON.stringify({ locale, theme }),
-  )
-}
-
-/** Every violation of the content security policy the page reports. */
-async function watchCsp(page: Page): Promise<string[]> {
-  const violations: string[] = []
-  await page.exposeFunction('reportCspViolation', (v: string) => violations.push(v))
-  await page.addInitScript(() => {
-    document.addEventListener('securitypolicyviolation', (e) => {
-      ;(window as unknown as { reportCspViolation: (v: string) => void }).reportCspViolation(
-        `${e.violatedDirective} ${e.blockedURI}`,
-      )
-    })
-  })
-  return violations
-}
-
-async function expectAccessible(page: Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze()
-  expect(
-    results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
-  ).toEqual([])
-}
 
 for (const l of locales) {
   for (const theme of themes) {
