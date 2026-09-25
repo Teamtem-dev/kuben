@@ -3,7 +3,8 @@
 // shutdown. Wired so far: the database, health, the API and the console,
 // and with a cluster the informers, the readiness gate, capability
 // discovery, the materializer and, behind the controller Lease, the
-// reconcilers and the drift watch.
+// reconcilers and the drift watch; on controller replicas AgentLink, the
+// endpoint cluster agents dial.
 package serve
 
 import (
@@ -84,19 +85,24 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	link, err := agentLink(ctx, cfg, st, cluster, logger)
+	if err != nil {
+		return err
+	}
 
 	projections := projection.New()
 	var subsystems []<-chan struct{}
 	if r, ok := cluster.Get(); ok {
 		subsystems = clusterWork{
 			cfg: cfg, registry: r, projections: projections, store: st, health: h, logger: logger,
-			election: elect, facts: &discovery.Watch{}, keyring: keyring,
+			election: elect, facts: &discovery.Watch{}, keyring: keyring, agents: agentDispatch(link),
 		}.start(ctx)
 	} else {
 		// Nothing to sync without a cluster: serve setup and diagnostics now.
 		h.Degrade("cluster", "no kubernetes cluster configured")
 		h.SetReady(true)
 	}
+	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
 
 	var serveErr error
 	if cfg.HasRole(config.RoleAPI) {

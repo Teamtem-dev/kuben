@@ -50,6 +50,8 @@ type clusterWork struct {
 	facts *discovery.Watch
 	// keyring opens the secret revisions runs are bound to.
 	keyring *secrets.Keyring
+	// agents is AgentLink's hub, when it listens.
+	agents opt.Val[materializer.AgentDispatch]
 }
 
 // start starts the cluster subsystems (serve.rs spawn_cluster_tasks) and
@@ -76,7 +78,7 @@ func (c clusterWork) start(ctx context.Context) []<-chan struct{} {
 	// runs one.
 	worker := materializer.New(materializer.Deps{
 		Store: c.store, Cluster: primary, ID: leader.Identity(), Logger: c.logger, Clock: clock.System{},
-		Facts: opt.Some(c.facts), Keyring: opt.Some(c.keyring),
+		Facts: opt.Some(c.facts), Keyring: opt.Some(c.keyring), Agents: c.agents,
 	})
 	return append(done,
 		c.controllers(ctx, worker),
