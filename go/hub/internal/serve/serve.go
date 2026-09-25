@@ -132,6 +132,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		}
 		server, err := api.New(api.Deps{
 			SSO:         single,
+			GitHub:      app,
 			Usage:       live,
 			Config:      cfg,
 			Store:       st,
