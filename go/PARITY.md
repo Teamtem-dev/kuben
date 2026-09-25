@@ -64,7 +64,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/access.rs` | 322 | 2 | api (access_routes.go) | ported |  |
 | kuben-api | `routes/audit.rs` | 123 | 0 | api (audit_routes.go) | ported |  |
 | kuben-api | `routes/ci.rs` | 443 | 3 |  | todo | |
-| kuben-api | `routes/controls.rs` | 731 | 2 |  | todo | |
+| kuben-api | `routes/controls.rs` | 731 | 2 | api (controls.go) | ported | 2 → 2 unit tests + tests/http.rs `m4_freezes_pauses_and_emergency_rollbacks`, `m4_owners_and_silences_are_kept`; OwnerDto answers without Rust's `updatedBy`/`updatedAt`, which the frozen contract does not have (the console never read them) |
 | kuben-api | `routes/domains.rs` | 703 | 0 |  | todo | |
 | kuben-api | `routes/environments.rs` | 326 | 0 | api (environments.go) | ported | list, get, create (placement on `primary`, initial policy, org environment quota), delete (closes a preview, `env-delete-protected` for production); `TestEnvironmentsReadAndWriteSQL` (the environment half of `environments_and_apps_read_from_sql` and `viewers_can_read_but_not_write`) |
 | kuben-api | `routes/git.rs` | 298 | 0 |  | todo | |
@@ -147,7 +147,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-platform | `discovery.rs` | 734 | 5 | platform/discovery | ported | 5 → 19 Go tests (+ probes over fake clientsets, the loop against its store, the Watch); tokio `watch` → `discovery.Watch` (SUBSTITUTIONS.md) |
 | kuben-platform | `doctor.rs` | 701 | 4 | platform/doctor | ported | 4 → 9: every check, the overall verdict, the port probe (injectable dialer), the lookup, the KubenConfig and Gateway readers |
 | kuben-platform | `duration.rs` | 57 | 2 | platform/controller (duration.go) | ported | 2 → 2 Go tests; unexported, returns whole seconds (u64) so huge grace periods saturate like Rust |
-| kuben-platform | `evidence.rs` | 391 | 5 |  | todo | |
+| kuben-platform | `evidence.rs` | 391 | 5 | platform/evidence | ported | 5 → 6 |
 | kuben-platform | `health.rs` | 159 | 1 | platform/health | ported |  |
 | kuben-platform | `leader.rs` | 313 | 2 | platform/leader | ported | client-go leaderelection (SUBSTITUTIONS.md); `decisions` tested the hand-written protocol and `timing_is_consistent` the constants, which client-go itself refuses when inconsistent → 1 Go test: two replicas over a fake clientset, one leader, hand-over on release |
 | kuben-platform | `lib.rs` | 39 | 0 |  | todo | |
@@ -192,17 +192,17 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/acceptance.rs` | 451 | 3 | store (acceptance_test.go) | ported | 3 → 3; the panicking handler is a recovered panic with the deferred rollback a Go server runs |
 | kuben-store | `repo/agents.rs` | 875 | 7 | store (agents.go, partial) | partial | `Delivery`, `record_runtime_observation`, `target_delivery`, `runtime_observation`, `hand_over_to_agent` (for the catalog and the materializer); enrollment, links, tokens, handover and the 7 tests follow with the agent work |
 | kuben-store | `repo/audit.rs` | 130 | 0 | store (audit.go) | ported | covered by the tests/matrix.rs port |
-| kuben-store | `repo/backups.rs` | 357 | 2 |  | todo | |
+| kuben-store | `repo/backups.rs` | 357 | 2 | store (backups.go) | ported | 2 → 2 |
 | kuben-store | `repo/builds.rs` | 1794 | 11 |  | todo | |
 | kuben-store | `repo/capabilities.rs` | 198 | 1 | store (capabilities.go) | ported | 1 → 1 |
 | kuben-store | `repo/catalog.rs` | 711 | 2 | store (catalog.go) | ported | 2 → 2 |
 | kuben-store | `repo/ci.rs` | 471 | 3 |  | todo | |
-| kuben-store | `repo/controls.rs` | 707 | 2 | store (controls.go, partial) | partial | `active_freeze` (a deployment checks it), `target_paused` (the materializer holds runs); freezes, silences, owners and the 2 tests follow with the control routes |
+| kuben-store | `repo/controls.rs` | 707 | 2 | store (controls.go) | ported | 2 → 2 |
 | kuben-store | `repo/deployments.rs` | 1290 | 4 | store (deployments.go) | ported | 4 → 7 Go tests (+ run reasons, emergency guard, serde content texts); INSERT_RUN casts $1, $5, $6, $7, $9, $10, $15 (SUBSTITUTIONS.md) |
 | kuben-store | `repo/detach.rs` | 285 | 0 | store (detach.go) | ported | covered by the detach scenarios of tests/http.rs (S4) and tests/materializer.rs |
 | kuben-store | `repo/domains.rs` | 503 | 2 | store (domains.go, partial) | partial | `domain_owner` (app creation checks it); claims, DNS providers and the 2 tests follow with the domain work (S2) |
 | kuben-store | `repo/image_policies.rs` | 357 | 1 |  | todo | |
-| kuben-store | `repo/installs.rs` | 84 | 1 |  | todo | |
+| kuben-store | `repo/installs.rs` | 84 | 1 | store (installs.go) | ported | 1 → 1 |
 | kuben-store | `repo/lifecycle.rs` | 375 | 2 | store (lifecycle.go) | ported | 2 → 3 Go tests (+ the subject's wire form) |
 | kuben-store | `repo/materialize.rs` | 927 | 6 | store (materialize.go) | ported | 6 → 6 |
 | kuben-store | `repo/mod.rs` | 88 | 0 |  | todo | |
@@ -229,7 +229,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 |  | todo | |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 |  | todo | |
-| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 27 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages. Left with their slices: secrets, rotations, registry logins (S2); scan gate (S3); CI trust, SSO, controls, owners and silences, webhooks and incidents, export and detach (S4); previews, domain claims, image policies, metrics (S5) |
+| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 29 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2). Left with their slices: secrets, rotations, registry logins (S2); scan gate (S3); CI trust, SSO, webhooks and incidents, export and detach (S4); previews, domain claims, image policies, metrics (S5) |
 | kuben-api | `tests/oci.rs` | 41 | 2 |  | todo | |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 |  | todo | |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 | platform/controller (execution_crds_test.go) + platform/kubetest | ported | 2 → 2 against envtest's API server |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 14, ported 131, todo 84.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 13, ported 136, todo 80.
