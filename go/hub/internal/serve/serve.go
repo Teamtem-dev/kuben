@@ -25,7 +25,6 @@ import (
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/github"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/sso"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
@@ -109,7 +108,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		h.Degrade("cluster", "no kubernetes cluster configured")
 		h.SetReady(true)
 	}
-	subsystems = append(subsystems, startBackground(ctx, cfg, st, keyring, opt.None[*github.App](), h, logger)...)
+	subsystems = append(subsystems, startBackground(ctx, cfg, st, keyring, app, h, logger)...)
 	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
 	builds, err := startBuilds(ctx, cfg, st, cluster, app, h, logger)
 	if err != nil {
