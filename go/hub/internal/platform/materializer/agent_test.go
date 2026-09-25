@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	agentruntime "github.com/Teamtem-dev/kuben/go/agent/runtime"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/materializer"
@@ -13,10 +14,9 @@ import (
 	"github.com/Teamtem-dev/kuben/go/kubenapi/v1alpha1"
 )
 
-// The Rust test ran the agent's own check (kuben_agent::runtime::check);
-// until the agent is ported, the same checks are made here: the spec
-// decodes, the resources hash to the digest, every resource is named and in
-// the envelope's namespace.
+// The Rust test ran the agent's own check (kuben_agent::runtime::check):
+// the spec decodes, the resources hash to the digest, every resource is
+// named and in the envelope's namespace.
 func TestTheEnvelopePassesTheAgentsChecks(t *testing.T) {
 	m := sample(t)
 	m.Namespace, m.Delivery = "kb-shop-prod", store.DeliveryAgent
@@ -52,6 +52,10 @@ func TestTheEnvelopePassesTheAgentsChecks(t *testing.T) {
 	}
 	if spec.Plan.Resources != `[{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web-web","namespace":"kb-shop-prod"}}]` {
 		t.Fatalf("canonical: %s", spec.Plan.Resources)
+	}
+	// And the agent's own check, as the Rust test ran it.
+	if _, err := agentruntime.Check(apply); err != nil {
+		t.Fatal(err)
 	}
 }
 

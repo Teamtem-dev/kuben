@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/Teamtem-dev/kuben/go/agent v0.0.0
 	github.com/Teamtem-dev/kuben/go/kubenapi v0.0.0
 	github.com/alexedwards/argon2id v1.0.0
 	github.com/go-faster/errors v0.8.0
@@ -116,5 +117,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/Teamtem-dev/kuben/go/agent => ../agent
 
 replace github.com/Teamtem-dev/kuben/go/kubenapi => ../kubenapi
