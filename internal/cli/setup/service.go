@@ -15,7 +15,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/cli/ui"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	"github.com/Teamtem-dev/kuben/internal/httpapi"
+	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/install/journal"
 )
 
@@ -372,17 +372,17 @@ func (m *machine) announce(ctx context.Context, cfg config.Config, owner ids, fr
 	if needed {
 		// `serve` wrote the token as the service user; issue one if it did not.
 		token := opt.None[string]()
-		if httpapi.SetupTokenRequired(cfg) {
-			t, err := httpapi.CurrentOrNewSetupToken(cfg, time.UnixMilli(m.clock.NowMs()))
+		if firstrun.SetupTokenRequired(cfg) {
+			t, err := firstrun.CurrentOrNewSetupToken(cfg, time.UnixMilli(m.clock.NowMs()))
 			if err != nil {
 				return err //nolint:wrapcheck // names the file
 			}
-			if err := chown(httpapi.SetupTokenPath(cfg), owner); err != nil {
+			if err := chown(firstrun.SetupTokenPath(cfg), owner); err != nil {
 				return err
 			}
 			token = opt.Some(t)
 		}
-		link, notes := httpapi.SetupGuide(cfg, token, m.advertise(ctx))
+		link, notes := firstrun.SetupGuide(cfg, token, m.advertise(ctx))
 		url = link
 		m.ui.Heading("Kuben is running. Finish the setup in your browser:")
 		m.eprintln("\n    " + url + "\n")

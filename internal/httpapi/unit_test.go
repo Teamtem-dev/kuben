@@ -69,10 +69,6 @@ func TestThePasswordTravelsOnlyOverASecurePath(t *testing.T) {
 	if hint := httpapi.InsecureTransportHint(cfg); !contains(hint, "ssh -L 3000:127.0.0.1:3000") {
 		t.Fatal(hint)
 	}
-	if httpapi.SetupURLAt("http://localhost:3000/", opt.None[string]()) != "http://localhost:3000/setup" ||
-		httpapi.SetupURLAt("https://k.example", opt.Some("t0k")) != "https://k.example/setup#token=t0k" {
-		t.Fatal("setup links")
-	}
 }
 
 func contains(s, sub string) bool {

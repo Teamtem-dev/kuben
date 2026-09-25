@@ -2,13 +2,9 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/base64"
 	"fmt"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -18,7 +14,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
-	"github.com/Teamtem-dev/kuben/internal/host"
+	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 )
@@ -26,72 +22,9 @@ import (
 // First run (setup.rs): GET /setup says whether the first admin still has
 // to be created; POST /setup creates it and signs in. On an address other
 // than loopback the request must carry the setup token — 128 random bits
-// the server writes to SetupTokenFile in the state directory (owner-only)
+// the server writes to firstrun.SetupTokenFile in the state directory (owner-only)
 // and the installer prints in the setup link's fragment. The admin's
 // password never travels over plain HTTP from another machine (ADR-031).
-
-// SetupTokenFile holds the current setup token, in the state directory.
-const SetupTokenFile = "setup-token"
-
-// SetupTokenTTL is how long a setup token stays valid.
-const SetupTokenTTL = 30 * time.Minute
-
-// SetupTokenPath is where cfg keeps the setup token.
-func SetupTokenPath(cfg config.Config) string { return filepath.Join(cfg.StateDir(), SetupTokenFile) }
-
-// SetupTokenRequired reports whether first-run setup needs the installer
-// token: always, unless the console listens on loopback only.
-func SetupTokenRequired(cfg config.Config) bool { return !cfg.BindIsLoopback() }
-
-// IssueSetupToken writes a fresh token and returns it.
-func IssueSetupToken(cfg config.Config) (string, error) {
-	var b [16]byte
-	_, _ = rand.Read(b[:]) //nolint:errcheck // crypto/rand.Read never fails (Go ≥ 1.24)
-	token := base64.RawURLEncoding.EncodeToString(b[:])
-	path := SetupTokenPath(cfg)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", fmt.Errorf("setup token: %w", err)
-	}
-	if err := host.WriteOwnerOnly(path, token+"\n"); err != nil {
-		return "", fmt.Errorf("setup token: %w", err)
-	}
-	return token, nil
-}
-
-// CurrentOrNewSetupToken is the current token while it is valid, else a
-// fresh one.
-func CurrentOrNewSetupToken(cfg config.Config, now time.Time) (string, error) {
-	if token, age, ok := readSetupToken(cfg, now); ok && age <= SetupTokenTTL {
-		return token, nil
-	}
-	return IssueSetupToken(cfg)
-}
-
-func readSetupToken(cfg config.Config, now time.Time) (string, time.Duration, bool) {
-	path := SetupTokenPath(cfg)
-	data, err := os.ReadFile(path) //nolint:gosec // our own state file
-	if err != nil {
-		return "", 0, false
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", 0, false
-	}
-	token := strings.TrimSpace(string(data))
-	return token, max(now.Sub(info.ModTime()), 0), token != ""
-}
-
-func verifySetupToken(cfg config.Config, presented opt.Val[string], now time.Time) error {
-	if !SetupTokenRequired(cfg) {
-		return nil
-	}
-	given, ok := presented.Get()
-	current, age, found := readSetupToken(cfg, now)
-	if !ok || !found || age > SetupTokenTTL || subtle.ConstantTimeCompare([]byte(given), []byte(current)) != 1 {
-		return kerrors.ErrForbidden
-	}
-	return nil
-}
 
 // TransportSecure reports whether the admin's password may travel over
 // this request: HTTPS through a trusted proxy, from this machine, to a
@@ -124,46 +57,6 @@ func InsecureTransportHint(cfg config.Config) string {
 		"trusted network, set security.insecure_setup = true", port)
 }
 
-// SetupURL is the setup link on this server's console address
-// (setup::setup_url): `server.public_url`, else the advertised address
-// (host::console_url; localhost when unknown).
-func SetupURL(cfg config.Config, token, advertise opt.Val[string]) string {
-	return SetupURLAt(cfg.ConsoleURLWithHost(advertise.Or("localhost")), token)
-}
-
-// SetupGuide is the link to open and the notes that go with it
-// (setup::setup_guide): the direct link on a loopback bind or with
-// `security.insecure_setup`; else, over plain http, an SSH tunnel so the
-// admin password never travels unencrypted, and over https the direct link
-// with the tunnel as the way in until DNS and the certificate are ready.
-func SetupGuide(cfg config.Config, token, advertise opt.Val[string]) (string, []string) {
-	port := cfg.BindPort()
-	direct := SetupURL(cfg, token, advertise)
-	if cfg.BindIsLoopback() || cfg.Security.InsecureSetup {
-		return direct, nil
-	}
-	server := advertise.Or("<this server>")
-	ssh := fmt.Sprintf("ssh -L %[1]d:127.0.0.1:%[1]d <you>@%[2]s", port, server)
-	tunnel := SetupURLAt(fmt.Sprintf("http://localhost:%d", port), token)
-	if strings.HasPrefix(direct, "https://") {
-		return direct, []string{fmt.Sprintf("Until DNS and the certificate are ready: run `%s` on your computer, then open %s", ssh, tunnel)}
-	}
-	return tunnel, []string{
-		fmt.Sprintf("Run `%s` on your computer first; the admin password never travels over plain HTTP.", ssh),
-		"For an HTTPS console: kuben setup --domain <domain> --acme-email <email>. On a network you " +
-			"trust: kuben setup --allow-http-setup.",
-	}
-}
-
-// SetupURLAt is the setup link on console, with the token in the fragment.
-func SetupURLAt(console string, token opt.Val[string]) string {
-	fragment := ""
-	if t, ok := token.Get(); ok {
-		fragment = "#token=" + t
-	}
-	return strings.TrimRight(console, "/") + "/setup" + fragment
-}
-
 func (s *Server) setupNeeded(ctx context.Context) (bool, error) {
 	if !s.deps.Config.SetupWizard(s.deps.InCluster) {
 		return false, nil
@@ -188,7 +81,7 @@ func (s *Server) SetupStatus(ctx context.Context) (*gen.SetupStatus, error) {
 	}
 	return &gen.SetupStatus{
 		Needed:        needed,
-		TokenRequired: needed && SetupTokenRequired(s.deps.Config),
+		TokenRequired: needed && firstrun.SetupTokenRequired(s.deps.Config),
 		Secure:        s.transportSecure(ctx),
 	}, nil
 }
@@ -211,7 +104,7 @@ func (s *Server) Setup(ctx context.Context, req *gen.SetupRequest) (gen.SetupRes
 	if t, ok := req.Token.Get(); ok {
 		token = opt.Some(t)
 	}
-	if err := verifySetupToken(s.deps.Config, token, time.UnixMilli(s.deps.Clock.NowMs())); err != nil {
+	if err := firstrun.VerifySetupToken(s.deps.Config, token, time.UnixMilli(s.deps.Clock.NowMs())); err != nil {
 		return nil, err
 	}
 	email := ascii.Lower(strings.TrimSpace(req.Email))
@@ -254,7 +147,7 @@ func (s *Server) Setup(ctx context.Context, req *gen.SetupRequest) (gen.SetupRes
 	if err := s.deps.Store.BindOrgRole(ctx, org.ID, user.ID, perm.Owner); err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal
 	}
-	_ = os.Remove(SetupTokenPath(s.deps.Config)) //nolint:errcheck // gone already is fine
+	_ = os.Remove(firstrun.SetupTokenPath(s.deps.Config)) //nolint:errcheck // gone already is fine
 	s.deps.Logger.Info("setup complete: admin account created", "email", email, "org", org.Slug)
 	return s.startSession(ctx, user)
 }
