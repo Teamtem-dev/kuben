@@ -209,7 +209,37 @@ export const doctor = {
       hint: 'point the record at the Gateway',
     },
   ],
-  graph: { nodes: [], edges: [] },
+  graph: {
+    nodes: [
+      {
+        layer: 'pods',
+        status: 'ok',
+        subject: 'Deployment web-web',
+        evidence: ['2/2 ready'],
+        observedAt: now,
+        action: null,
+      },
+      { layer: 'gateway', status: 'ok', subject: 'kuben-system/kuben', evidence: [], action: null },
+      {
+        layer: 'dns',
+        status: 'fail',
+        subject: 'web.apps.example.com',
+        evidence: ['web.apps.example.com: NXDOMAIN'],
+        action: 'point the record at the Gateway',
+      },
+      {
+        layer: 'tls',
+        status: 'warn',
+        subject: 'web.apps.example.com',
+        evidence: ['no certificate yet'],
+        action: null,
+      },
+    ],
+    edges: [
+      { from: 'dns', to: 'tls' },
+      { from: 'gateway', to: 'tls' },
+    ],
+  },
   findings: [
     {
       kind: 'rootCause',
@@ -235,6 +265,178 @@ const metrics = {
     pods: 2,
   })),
 }
+
+const iso = (ms: number) => new Date(ms).toISOString()
+
+export const members = [
+  {
+    id: user.id,
+    email: user.email,
+    display_name: 'Owner',
+    role: 'owner',
+    must_change_password: false,
+    active: true,
+  },
+  {
+    id: '0190f3c6-0000-7000-8000-000000000002',
+    email: 'carol@example.com',
+    display_name: null,
+    role: 'developer',
+    must_change_password: true,
+    active: true,
+  },
+]
+
+export const incidents = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000e1',
+    kind: 'deployment.failed',
+    severity: 'critical',
+    title: 'web in shop/prod failed to deploy',
+    detail: 'the new pods never became ready',
+    project: 'shop',
+    environment: 'prod',
+    app: 'web',
+    openedAt: iso(now - 3_600_000),
+    lastSeenAt: iso(now - 600_000),
+    occurrences: 3,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    resolvedAt: null,
+    resolvedBy: null,
+    runbook: 'https://runbooks.example.com/deploy-failed',
+  },
+]
+
+export const webhooks = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000w1',
+    name: 'ops-pager',
+    url: 'https://hooks.example.com/kuben',
+    events: ['deployment.failed', 'incident.opened'],
+    createdBy: user.email,
+    createdAt: iso(now - 86_400_000),
+    disabledAt: null,
+    failures: 1,
+    secret: null,
+  },
+]
+
+export const deliveries = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000d1',
+    event: 'deployment.failed',
+    status: 'failed',
+    attempts: 3,
+    lastStatus: 502,
+    lastError: 'bad gateway',
+    createdAt: iso(now - 600_000),
+    finishedAt: iso(now - 500_000),
+  },
+]
+
+export const claims = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000f1',
+    domain: 'example.com',
+    status: 'pending',
+    challengeName: '_kuben-challenge.example.com',
+    challengeValue: 'kuben-verify=4f1d2c',
+    method: null,
+    createdBy: user.email,
+    createdAt: iso(now - 86_400_000),
+    verifiedAt: null,
+    lastCheckedAt: null,
+    lastError: null,
+  },
+]
+
+export const audit = {
+  events: [
+    {
+      seq: 2,
+      id: '0190f3c6-0000-7000-8000-0000000000a2',
+      at: now - 60_000,
+      actor_kind: 'user',
+      actor: user.email,
+      action: 'app.update',
+      target_kind: 'app',
+      target: 'shop/prod/web',
+      outcome: 'success',
+      status: 200,
+      ip: '203.0.113.9',
+      request_id: null,
+    },
+  ],
+  next_before: null,
+}
+
+export const previews = [
+  {
+    environment: 'pr-42',
+    repository: 'acme/shop',
+    pullRequest: 42,
+    epoch: 1,
+    headRepository: 'acme/shop',
+    branch: 'feature/cart',
+    commit: '0123456789abcdef0123',
+    trusted: true,
+    state: 'active',
+    autoDelete: true,
+    expiresAt: iso(now + 20 * 3_600_000),
+    remainingSeconds: 20 * 3_600,
+    createdAt: iso(now - 4 * 3_600_000),
+    closedAt: null,
+    closeReason: null,
+  },
+]
+
+const previewPolicy = {
+  enabled: true,
+  sourceEnvironment: 'prod',
+  ttlHours: 24,
+  maxActive: 5,
+  allowForks: false,
+  updatedBy: user.email,
+  updatedAt: iso(now - 86_400_000),
+}
+
+const statusPage = {
+  slug: 'shop',
+  title: 'Shop status',
+  enabled: true,
+  environments: ['prod'],
+  path: '/status/shop',
+  updatedBy: user.email,
+  updatedAt: iso(now - 86_400_000),
+}
+
+export const publicStatus = {
+  title: 'Shop status',
+  status: 'degraded',
+  components: [
+    { name: 'web', status: 'operational' },
+    { name: 'worker', status: 'degraded' },
+  ],
+  incidents: [
+    { component: 'worker', severity: 'warning', startedAt: iso(now - 3_600_000), resolvedAt: null },
+  ],
+  updatedAt: iso(now),
+}
+
+export const detached = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000b1',
+    app: 'legacy',
+    namespace: 'kb-shop-prod',
+    reason: 'moved to Helm',
+    requestedBy: user.email,
+    requestedAt: iso(now - 86_400_000),
+    completedAt: iso(now - 86_000_000),
+    releasedAt: null,
+    releasedBy: null,
+  },
+]
 
 const sse = (events: [string, unknown][]) =>
   events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('')
@@ -323,11 +525,21 @@ export async function mockApi(page: Page, { signedIn = true, setupNeeded = false
     if (path === '/api/v1/projects/shop/environments/prod') return json(route, environment)
     if (path === '/api/v1/projects/shop/environments/prod/apps') return json(route, [app])
     if (path === '/api/v1/tokens') return json(route, tokens)
+    if (path === '/api/v1/members') return json(route, members)
+    if (path === '/api/v1/incidents') return json(route, incidents)
+    if (path === '/api/v1/webhooks') return json(route, webhooks)
+    if (path === `/api/v1/webhooks/${webhooks[0]?.id}/deliveries`) return json(route, deliveries)
+    if (path === '/api/v1/domains') return json(route, claims)
+    if (path === '/api/v1/audit') return json(route, audit)
+    if (path === '/api/v1/projects/shop/previews') return json(route, previews)
+    if (path === '/api/v1/projects/shop/previews/policy') return json(route, previewPolicy)
+    if (path === '/api/v1/projects/shop/status-page') return json(route, statusPage)
+    if (path === '/api/v1/public/status/shop') return json(route, publicStatus)
+    if (path === '/api/v1/projects/shop/environments/prod/detached') return json(route, detached)
     if (
       path === '/api/v1/templates' ||
       path === '/api/v1/projects/shop/environments/prod/secrets' ||
-      path === '/api/v1/projects/shop/environments/prod/registries' ||
-      path === '/api/v1/projects/shop/environments/prod/detached'
+      path === '/api/v1/projects/shop/environments/prod/registries'
     ) {
       return json(route, [])
     }

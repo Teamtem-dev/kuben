@@ -14,6 +14,7 @@ const locales = [
     settings: 'Settings',
     previous: 'Previous container',
     doctor: 'Doctor',
+    evidence: 'Evidence path',
   },
   {
     locale: 'fa',
@@ -26,6 +27,7 @@ const locales = [
     settings: 'تنظیمات',
     previous: 'container قبلی',
     doctor: 'Doctor',
+    evidence: 'مسیر شواهد',
   },
 ] as const
 
@@ -141,12 +143,169 @@ for (const l of locales) {
         await expect(
           page.getByText('point the record at the Gateway', { exact: false }).first(),
         ).toBeVisible()
+        const path = page.getByRole('list', { name: l.evidence })
+        await expect(path).toBeVisible()
+        await expect(path.getByRole('heading', { level: 3 })).toHaveCount(4)
+        await expect(path.getByRole('link', { name: 'DNS' })).toHaveAttribute('href', '#evidence-dns')
+        await expectAccessible(page)
+        expect(csp).toEqual([])
+      })
+
+      for (const path of ['/incidents', '/webhooks', '/domains', '/team', '/audit', '/projects/shop']) {
+        test(`${path}: one heading, accessible, no CSP violation`, async ({ page }) => {
+          const csp = await watchCsp(page)
+          await prefer(page, l.locale, theme)
+          await mockApi(page)
+          await page.goto(path)
+          await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+          await expect(page.getByRole('main').getByRole('status')).toHaveCount(0)
+          await expectAccessible(page)
+          expect(csp).toEqual([])
+        })
+      }
+
+      test('public status page', async ({ page }) => {
+        const csp = await watchCsp(page)
+        await prefer(page, l.locale, theme)
+        await mockApi(page, { signedIn: false })
+        await page.goto('/status/shop')
+        await expect(page.getByRole('heading', { level: 1, name: 'Shop status' })).toBeVisible()
+        await expect(page.getByText('worker', { exact: true }).first()).toBeVisible()
         await expectAccessible(page)
         expect(csp).toEqual([])
       })
     })
   }
 }
+
+test('incidents: an open one can be acknowledged or resolved; resolved ones are a switch away', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.goto('/incidents')
+  await expect(page.getByRole('heading', { name: 'web in shop/prod failed to deploy' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Acknowledge' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Resolve' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Runbook' })).toHaveAttribute(
+    'href',
+    'https://runbooks.example.com/deploy-failed',
+  )
+  const filter = page.getByRole('switch', { name: 'Show resolved' })
+  await expect(filter).not.toBeChecked()
+  const refetch = page.waitForRequest((r) => r.url().includes('/api/v1/incidents?all=true'))
+  await filter.click()
+  await refetch
+  await expect(filter).toBeChecked()
+})
+
+test('webhooks: add in a dialog, deliveries unfold, delete asks for the name', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/webhooks')
+  await expect(page.getByText('https://hooks.example.com/kuben', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Deliveries' }).click()
+  await expect(page.getByText('bad gateway', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Hide deliveries' })).toHaveAttribute('aria-expanded', 'true')
+
+  await page.getByRole('main').getByRole('button', { name: 'Add a webhook' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add a webhook' })
+  await expect(dialog).toBeVisible()
+  const all = dialog.getByRole('checkbox', { name: 'All events' })
+  await expect(all).toBeChecked()
+  await dialog.getByRole('checkbox', { name: 'build.failed' }).click()
+  await expect(all).not.toBeChecked()
+  await expectAccessible(page)
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toBeHidden()
+
+  await page.getByRole('button', { name: 'Delete webhook' }).click()
+  const confirm = page.getByRole('alertdialog')
+  await expect(confirm.getByRole('button', { name: 'Delete webhook' })).toBeDisabled()
+  await confirm.getByRole('textbox').fill('ops-pager')
+  await expect(confirm.getByRole('button', { name: 'Delete webhook' })).toBeEnabled()
+  expect(csp).toEqual([])
+})
+
+test('domains: a pending claim shows its TXT record to copy', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/domains')
+  await expect(page.getByText('_kuben-challenge.example.com', { exact: true })).toBeVisible()
+  await expect(page.getByText('kuben-verify=4f1d2c', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy' })).toHaveCount(2)
+  await expect(page.getByRole('button', { name: 'Verify' })).toBeVisible()
+  await page.getByRole('main').getByRole('button', { name: 'Claim' }).click()
+  await expect(page.getByRole('dialog', { name: 'Claim' }).getByLabel('Domain')).toBeFocused()
+})
+
+test('team: members in a table, your own row locked, invite in a dialog', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/team')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('combobox', { name: 'Role of owner@example.com' })).toBeDisabled()
+  await expect(table.getByRole('combobox', { name: 'Role of carol@example.com' })).toHaveValue('developer')
+  await expect(table.getByText('invitation pending', { exact: false })).toBeVisible()
+  await page.getByRole('main').getByRole('button', { name: 'Invite a member' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Invite a member' })
+  await expect(dialog.getByLabel('Role')).toHaveValue('developer')
+  await expectAccessible(page)
+})
+
+test('audit log: the events in a table', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/audit')
+  const table = page.getByRole('table')
+  await expect(table.getByRole('cell', { name: 'app.update' })).toBeVisible()
+  await expect(table.getByRole('cell', { name: 'shop/prod/web' })).toBeVisible()
+})
+
+test('project page: previews, their policy and the status page settings', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/projects/shop')
+  await expect(page.getByRole('link', { name: 'pr-42' })).toHaveAttribute('href', '/projects/shop/pr-42')
+  await expect(page.getByRole('checkbox', { name: 'Previews for pull requests' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Also for forks' })).not.toBeChecked()
+  await expect(page.getByRole('switch', { name: 'Show closed' })).not.toBeChecked()
+  await expect(page.getByLabel('Address')).toHaveValue('shop')
+  await expect(page.getByRole('link', { name: 'Open page' })).toHaveAttribute('href', '/status/shop')
+
+  await page.getByRole('button', { name: 'Destroy' }).click()
+  const confirm = page.getByRole('alertdialog', { name: 'Destroy' })
+  await expect(confirm).toContainText('pr-42')
+  await expectAccessible(page)
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  await expect(confirm).toBeHidden()
+  expect(csp).toEqual([])
+})
+
+test('environment page: a detached app and what it left behind', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects/shop/prod')
+  await expect(page.getByRole('heading', { name: 'Detached apps' })).toBeVisible()
+  await expect(page.getByText('moved to Helm', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Release' })).toBeVisible()
+})
+
+test('app page: usage window and detaching behind a dialog', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web')
+  const timeWindow = page.getByRole('group', { name: 'Time window' })
+  await expect(timeWindow.getByRole('radio', { name: '1 hour' })).toBeChecked()
+  await expect(page.getByRole('img', { name: 'CPU over time' })).toBeVisible()
+
+  await page.goto('/projects/shop/prod/web?tab=settings')
+  await expect(page.getByRole('heading', { name: 'Automatic image updates' })).toBeVisible()
+  await page.getByRole('button', { name: 'Detach from Kuben…' }).click()
+  const dialog = page.getByRole('alertdialog', { name: 'Detach this app' })
+  const submit = dialog.getByRole('button', { name: 'Detach' })
+  await expect(submit).toBeDisabled()
+  await dialog.getByLabel('Reason').fill('moving to Helm')
+  await dialog.getByLabel(/Type the app name/).fill('web')
+  await expect(submit).toBeEnabled()
+  await expectAccessible(page)
+})
 
 test('the sidebar opens as a drawer on a phone and closes on navigation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
