@@ -1,0 +1,824 @@
+diff --git a/go/hub/internal/api/apps_detach.go b/go/hub/internal/api/apps_detach.go
+new file mode 100644
+index 0000000..ebbe13f
+--- /dev/null
++++ b/go/hub/internal/api/apps_detach.go
+@@ -0,0 +1,301 @@
++package api
++
++// The export and detach routes (routes/apps/export.rs, M4.11); the
++// document itself is apps_export.go.
++
++import (
++	"context"
++	"strings"
++	"unicode/utf8"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api/access"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++)
++
++// exportOf is the export of app now; 409 before its first delivered run.
++func (s *Server) exportOf(ctx context.Context, app appScope, project, environment string) (map[string]any, error) {
++	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // read only
++	material, found, err := t.ExportMaterial(ctx, app.app.Target)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if !found {
++		return nil, kerr.New(kerr.Conflict, "app `%s` has not been delivered yet", app.app.Slug)
++	}
++	return ExportDocument(ExportSubject{
++		Project: project, Environment: environment, App: app.app.Slug, Namespace: app.app.Namespace,
++		Delivery: string(app.app.Delivery), ExportedAt: Timestamp(s.deps.Clock.NowMs()),
++	}, material), nil
++}
++
++// ExportApp exports an app: portable release and configuration, standard
++// manifests, references, inventory and runbook. No secret values.
++func (s *Server) ExportApp(ctx context.Context, params gen.ExportAppParams) (gen.ExportAppRes, error) {
++	a, err := s.access(ctx)
++	if err != nil {
++		return nil, err
++	}
++	app, err := s.findApp(ctx, a, params.Project, params.Environment, params.App)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := a.Require(perm.AppRead, app.chain()); err != nil {
++		return nil, err //nolint:wrapcheck // a kerr already
++	}
++	doc, err := s.exportOf(ctx, app, params.Project, params.Environment)
++	if err != nil {
++		return nil, err
++	}
++	raw, err := rawObject(doc)
++	if err != nil {
++		return nil, err
++	}
++	out := gen.ExportAppOK(raw)
++	return &out, nil
++}
++
++// detachedDto is DetachedAppDto::from, without the export.
++func detachedDto(d store.DetachedApp) *gen.DetachedAppDto {
++	at := func(v opt.Val[int64]) gen.OptNilString {
++		if ms, ok := v.Get(); ok {
++			return gen.NewOptNilString(Timestamp(ms))
++		}
++		var n gen.OptNilString
++		n.SetToNull()
++		return n
++	}
++	return &gen.DetachedAppDto{
++		ID: d.TargetID, App: d.App, Namespace: d.Namespace, Reason: d.Reason, RequestedBy: d.RequestedBy,
++		RequestedAt: Timestamp(d.RequestedAt), CompletedAt: at(d.CompletedAt), ReleasedAt: at(d.ReleasedAt),
++		ReleasedBy: optNilString(d.ReleasedBy),
++	}
++}
++
++// withExport is dto holding export.
++func withExport(dto *gen.DetachedAppDto, export map[string]any) (*gen.DetachedAppDto, error) {
++	raw, err := rawObject(export)
++	if err != nil {
++		return nil, err
++	}
++	dto.Export = gen.NewOptNilDetachedAppDtoExport(raw)
++	return dto, nil
++}
++
++// DetachApp detaches an app: Kuben lets go of it and leaves its objects
++// running.
++func (s *Server) DetachApp(ctx context.Context, req *gen.DetachRequest, params gen.DetachAppParams) (gen.DetachAppRes, error) {
++	a, err := s.access(ctx)
++	if err != nil {
++		return nil, err
++	}
++	app, err := s.findApp(ctx, a, params.Project, params.Environment, params.App)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := a.Require(perm.AppWrite, app.chain()); err != nil {
++		return nil, err //nolint:wrapcheck // a kerr already
++	}
++	reason := strings.TrimSpace(req.Reason)
++	if req.Confirm != params.App {
++		return nil, kerr.New(kerr.Validation, "confirm must repeat the app's name")
++	}
++	if reason == "" || utf8.RuneCountInString(reason) > 1024 {
++		return nil, kerr.New(kerr.Validation, "reason must be 1 to 1024 characters")
++	}
++	export, err := s.exportOf(ctx, app, params.Project, params.Environment)
++	if err != nil {
++		return nil, err
++	}
++	record, err := s.recordDetach(ctx, a, app, reason, export, params)
++	if err != nil {
++		return nil, err
++	}
++	return withExport(detachedDto(record), export)
++}
++
++// recordDetach marks app deleting, records its detach with export and
++// asks for the deletion that orphans its objects, in one transaction.
++func (s *Server) recordDetach(
++	ctx context.Context, a access.Access, app appScope, reason string, export map[string]any, params gen.DetachAppParams,
++) (store.DetachedApp, error) {
++	t, err := s.deps.Store.Tenant(ctx, app.env.project.org)
++	if err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	busy, err := t.RunInFlight(ctx, app.app.Target)
++	if err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if busy {
++		return store.DetachedApp{}, kerr.New(kerr.Conflict,
++			"a run of app `%s` has not finished: wait for it or cancel it first", params.App)
++	}
++	marked, err := t.MarkTargetDeleting(ctx, app.app.Target)
++	if err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if !marked {
++		return store.DetachedApp{}, kerr.New(kerr.Conflict, "app `%s` is being deleted", params.App)
++	}
++	_, actor := a.Actor()
++	project, env := app.env.project.project.ID, app.env.env.ID
++	if err := t.RecordDetach(ctx, store.NewDetach{
++		Project: project, Environment: env, Target: app.app.Target, App: app.app.Slug,
++		Namespace: app.app.Namespace, Reason: reason, RequestedBy: actor, Export: export,
++	}); err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	audit := requestAudit(a, "app.detached", "app", params.Project+"/"+params.Environment+"/"+params.App)
++	audit.Data = opt.Some[any](map[string]any{"reason": reason})
++	if _, err := t.Request(ctx, store.TargetDelete, store.DetachSubject(project, env, app.app.Target), actor, audit); err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	record, found, err := t.DetachedApp(ctx, app.app.Target)
++	if err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if !found {
++		return store.DetachedApp{}, kerr.New(kerr.Internal, "the detach record is missing")
++	}
++	if err := t.Commit(ctx); err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	return record, nil
++}
++
++// ListDetachedApps is the apps detached from an environment.
++func (s *Server) ListDetachedApps(ctx context.Context, params gen.ListDetachedAppsParams) (gen.ListDetachedAppsRes, error) {
++	a, err := s.access(ctx)
++	if err != nil {
++		return nil, err
++	}
++	e, err := s.findEnvironment(ctx, a, params.Project, params.Environment)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := a.Require(perm.AppRead, e.chain()); err != nil {
++		return nil, err //nolint:wrapcheck // a kerr already
++	}
++	t, err := s.deps.Store.Tenant(ctx, e.project.org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // read only
++	found, err := t.DetachedApps(ctx, e.env.ID)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	out := make(gen.ListDetachedAppsOKApplicationJSON, 0, len(found))
++	for _, d := range found {
++		out = append(out, *detachedDto(d))
++	}
++	return &out, nil
++}
++
++// detachedIn is the detach record id of environment e, 404 when there is
++// none there.
++func detachedIn(ctx context.Context, t *store.Tenant, e envScope, id ids.TargetID) (store.DetachedApp, error) {
++	record, found, err := t.DetachedApp(ctx, id)
++	if err != nil {
++		return store.DetachedApp{}, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if !found || record.EnvironmentID != e.env.ID.UUID() {
++		return store.DetachedApp{}, kerr.New(kerr.NotFound, "detached app `%s`", id)
++	}
++	return record, nil
++}
++
++// GetDetachedApp is one detached app, with its export.
++func (s *Server) GetDetachedApp(ctx context.Context, params gen.GetDetachedAppParams) (gen.GetDetachedAppRes, error) {
++	a, err := s.access(ctx)
++	if err != nil {
++		return nil, err
++	}
++	e, err := s.findEnvironment(ctx, a, params.Project, params.Environment)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := a.Require(perm.AppRead, e.chain()); err != nil {
++		return nil, err //nolint:wrapcheck // a kerr already
++	}
++	target := ids.From[ids.Target](params.ID)
++	t, err := s.deps.Store.Tenant(ctx, e.project.org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // read only
++	record, err := detachedIn(ctx, t, e, target)
++	if err != nil {
++		return nil, err
++	}
++	export, err := t.DetachedExport(ctx, target)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	dto := detachedDto(record)
++	if doc, ok := export.Get(); ok {
++		object, isObject := doc.(map[string]any)
++		if !isObject {
++			// Rust returned the stored value as it was; only objects are
++			// ever stored.
++			return nil, kerr.New(kerr.Internal, "the export of `%s` is not an object", record.App)
++		}
++		return withExport(dto, object)
++	}
++	return dto, nil
++}
++
++// ReleaseDetachedApp releases a detached app: someone owns it now, and
++// deleting the environment no longer keeps its namespace.
++func (s *Server) ReleaseDetachedApp(ctx context.Context, params gen.ReleaseDetachedAppParams) (gen.ReleaseDetachedAppRes, error) {
++	a, err := s.access(ctx)
++	if err != nil {
++		return nil, err
++	}
++	e, err := s.findEnvironment(ctx, a, params.Project, params.Environment)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := a.Require(perm.EnvWrite, e.chain()); err != nil {
++		return nil, err //nolint:wrapcheck // a kerr already
++	}
++	target := ids.From[ids.Target](params.ID)
++	t, err := s.deps.Store.Tenant(ctx, e.project.org)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	defer t.Rollback(ctx) //nolint:errcheck // a no-op after the commit
++	record, err := detachedIn(ctx, t, e, target)
++	if err != nil {
++		return nil, err
++	}
++	if record.CompletedAt.IsNone() {
++		return nil, kerr.New(kerr.Conflict, "the detach of `%s` has not finished", record.App)
++	}
++	_, actor := a.Actor()
++	released, err := t.ReleaseDetached(ctx, target, actor)
++	if err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if !released {
++		return nil, kerr.New(kerr.Conflict, "`%s` was released already", record.App)
++	}
++	ref := params.Project + "/" + params.Environment + "/" + record.App
++	if err := t.AppendAudit(ctx, requestAudit(a, "app.detached.released", "app", ref)); err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	if err := t.Commit(ctx); err != nil {
++		return nil, err //nolint:wrapcheck // a store error, answered as internal
++	}
++	return &gen.ReleaseDetachedAppNoContent{}, nil
++}
+diff --git a/go/hub/internal/api/apps_export.go b/go/hub/internal/api/apps_export.go
+new file mode 100644
+index 0000000..9fb7277
+--- /dev/null
++++ b/go/hub/internal/api/apps_export.go
+@@ -0,0 +1,218 @@
++package api
++
++// Export and detach (routes/apps/export.rs; M4.11, plan §17 exit path, S08).
++//
++// An export is one JSON document:
++//   - the portable release and configuration;
++//   - the Kubernetes objects of the app's newest delivered run, as frozen by
++//     the renderer (with its version), as a `v1/List` that `kubectl apply`
++//     takes;
++//   - the references the objects depend on (Secrets, pull Secrets, volumes,
++//     hostnames, Gateway and issuer);
++//   - the inventory;
++//   - a runbook.
++//
++// Secret values are never in it.
++//
++// A detach is a deletion that leaves the app running: its export is frozen
++// with the request, the materializer orphans the objects, and the app
++// leaves Kuben. The record stays until an operator releases it; until then
++// the environment's namespace outlives the environment.
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"strings"
++
++	"github.com/go-faster/jx"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/kerr"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/version"
++)
++
++// ExportFormat is the export document's format.
++const ExportFormat = "kuben.dev/export/v1"
++
++// ExportSubject is where an exported app lives.
++type ExportSubject struct {
++	Project     string
++	Environment string
++	App         string
++	Namespace   string
++	Delivery    string
++	ExportedAt  string
++}
++
++// member is v[key] as serde_json's Index read it: null unless v is an
++// object holding key.
++func member(v any, key string) any {
++	if o, ok := v.(map[string]any); ok {
++		return o[key]
++	}
++	return nil
++}
++
++// exportItems is the frozen objects, each namespaced in namespace unless
++// it names a namespace already.
++func exportItems(resources any, namespace string) []any {
++	list, _ := resources.([]any) //nolint:errcheck // anything else is no objects, as in Rust
++	items := make([]any, 0, len(list))
++	for _, item := range list {
++		if o, ok := item.(map[string]any); ok {
++			if meta, ok := o["metadata"].(map[string]any); ok {
++				if _, named := meta["namespace"]; !named {
++					copied := make(map[string]any, len(meta)+1)
++					for k, v := range meta {
++						copied[k] = v
++					}
++					copied["namespace"] = namespace
++					dup := make(map[string]any, len(o))
++					for k, v := range o {
++						dup[k] = v
++					}
++					dup["metadata"] = copied
++					item = dup
++				}
++			}
++		}
++		items = append(items, item)
++	}
++	return items
++}
++
++// namesOf is the names of items of kind.
++func namesOf(items []any, kind string) []string {
++	names := []string{}
++	for _, i := range items {
++		if member(i, "kind") != kind {
++			continue
++		}
++		if name, ok := member(member(i, "metadata"), "name").(string); ok {
++			names = append(names, name)
++		}
++	}
++	return names
++}
++
++// hostnamesOf is the hostnames every HTTPRoute of items serves.
++func hostnamesOf(items []any) []string {
++	hosts := []string{}
++	for _, i := range items {
++		if member(i, "kind") != "HTTPRoute" {
++			continue
++		}
++		list, _ := member(member(i, "spec"), "hostnames").([]any) //nolint:errcheck // none unless a list
++		for _, h := range list {
++			if host, ok := h.(string); ok {
++				hosts = append(hosts, host)
++			}
++		}
++	}
++	return hosts
++}
++
++// exportRunbook is what the new owner of the app does next.
++func exportRunbook(s ExportSubject, gateway string, hosts, volumes []string, issuer string, hasIssuer bool) []string {
++	steps := []string{
++		fmt.Sprintf("Secret values are not in this export. The Secrets listed under references.secrets stay in "+
++			"namespace %s; once detached they lose Kuben's managed-by label and are never garbage-collected. "+
++			"Rotate them yourself from now on, registry pull Secrets included.", s.Namespace),
++		"To run the app elsewhere, copy those Secrets first, then apply `manifests` " +
++			"(for example `jq .manifests export.json | kubectl apply -f -`).",
++		"The app's database and any other external service are not managed by Kuben: their lifecycle, " +
++			"credentials and backups stay as they are.",
++	}
++	if len(hosts) > 0 {
++		certificates := ""
++		if hasIssuer {
++			certificates = fmt.Sprintf(" whose HTTPS listeners carry `cert-manager.io/cluster-issuer: %s`, "+
++				"so certificates keep renewing", issuer)
++		}
++		steps = append(steps, fmt.Sprintf("Routing: the HTTPRoute serves %s through Gateway %s. While Kuben runs, "+
++			"its Gateway keeps serving these hostnames. Before you uninstall Kuben, attach the route to a Gateway "+
++			"you own%s.", strings.Join(hosts, ", "), gateway, certificates))
++	}
++	if len(volumes) > 0 {
++		steps = append(steps, fmt.Sprintf("Volumes %s are kept: Kuben never deletes them after a detach. "+
++			"Back them up before you move the app.", strings.Join(volumes, ", ")))
++	}
++	return append(steps,
++		fmt.Sprintf("A new app named `%s` in this environment would take these objects over: pick another "+
++			"name, or remove the objects first.", s.App),
++		"Release the detached app once you own it for good: afterwards, deleting the environment deletes "+
++			"its namespace with everything in it.")
++}
++
++// ExportDocument is the export document of s from its newest delivered
++// run m.
++func ExportDocument(s ExportSubject, m store.ExportMaterial) map[string]any {
++	items := exportItems(m.Resources, s.Namespace)
++	gateway, hasGateway := member(m.Capabilities, "gateway").(string)
++	if !hasGateway {
++		gateway = "(none)"
++	}
++	issuer, hasIssuer := member(m.Capabilities, "clusterIssuer").(string)
++	hosts := hostnamesOf(items)
++	volumes := namesOf(items, "PersistentVolumeClaim")
++	secrets := make([]any, 0, len(m.Secrets))
++	inventory := make([]any, 0, len(items)+len(m.Secrets))
++	for _, i := range items {
++		inventory = append(inventory, map[string]any{
++			"apiVersion": member(i, "apiVersion"), "kind": member(i, "kind"),
++			"name": member(member(i, "metadata"), "name"), "namespace": s.Namespace,
++		})
++	}
++	for _, r := range m.Secrets {
++		secrets = append(secrets, map[string]any{
++			"name": r.Name, "revision": r.Revision, "object": r.Object(), "kind": r.Kind, "registry": r.Registry.Ptr(),
++		})
++		inventory = append(inventory, map[string]any{
++			"apiVersion": "v1", "kind": "Secret", "name": r.Object(), "namespace": s.Namespace,
++		})
++	}
++	clusterIssuer := any(nil)
++	if hasIssuer {
++		clusterIssuer = issuer
++	}
++	return map[string]any{
++		"format":     ExportFormat,
++		"kuben":      version.Version,
++		"exportedAt": s.ExportedAt,
++		"app": map[string]any{
++			"project": s.Project, "environment": s.Environment, "app": s.App,
++			"namespace": s.Namespace, "delivery": s.Delivery,
++		},
++		"run": map[string]any{"id": m.Run.String(), "generation": m.Generation, "phase": m.Phase, "reason": m.Reason},
++		"release": map[string]any{
++			"id": m.Release.String(), "artifacts": m.Artifacts, "processContract": m.ProcessContract,
++			"portableConfig": m.PortableConfig, "source": m.Source.Or(nil),
++		},
++		"config":    map[string]any{"revision": m.ConfigRevision, "spec": m.Config},
++		"renderer":  map[string]any{"version": m.RendererVersion, "capabilities": m.Capabilities},
++		"manifests": map[string]any{"apiVersion": "v1", "kind": "List", "items": items},
++		"references": map[string]any{
++			"secrets": secrets, "volumes": volumes, "hostnames": hosts,
++			"gateway": member(m.Capabilities, "gateway"), "clusterIssuer": clusterIssuer,
++		},
++		"inventory": inventory,
++		"runbook":   exportRunbook(s, gateway, hosts, volumes, issuer, hasIssuer),
++	}
++}
++
++// rawObject is doc as the generated free-form object: each member encoded
++// without HTML escaping, as serde_json wrote it.
++func rawObject(doc map[string]any) (map[string]jx.Raw, error) {
++	out := make(map[string]jx.Raw, len(doc))
++	for key, value := range doc {
++		var buf bytes.Buffer
++		enc := json.NewEncoder(&buf)
++		enc.SetEscapeHTML(false)
++		if err := enc.Encode(value); err != nil {
++			return nil, kerr.Wrap(err, "encode the export")
++		}
++		out[key] = jx.Raw(bytes.TrimRight(buf.Bytes(), "\n"))
++	}
++	return out, nil
++}
+diff --git a/go/hub/internal/api/apps_export_test.go b/go/hub/internal/api/apps_export_test.go
+new file mode 100644
+index 0000000..9821c17
+--- /dev/null
++++ b/go/hub/internal/api/apps_export_test.go
+@@ -0,0 +1,287 @@
++package api_test
++
++import (
++	"context"
++	"encoding/json"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/google/go-cmp/cmp"
++	"github.com/google/uuid"
++
++	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
++	"github.com/Teamtem-dev/kuben/go/hub/internal/wire"
++)
++
++// exportMaterial is routes/apps/export.rs material().
++func exportMaterial(t *testing.T) store.ExportMaterial {
++	t.Helper()
++	return store.ExportMaterial{
++		Run:             ids.From[ids.DeploymentRun](uuid.Nil),
++		Generation:      3,
++		Phase:           "succeeded",
++		Reason:          "deploy",
++		Release:         uuid.Nil,
++		Artifacts:       jsonValue(t, `{"web":"ghcr.io/acme/web@sha256:aa"}`),
++		ProcessContract: jsonValue(t, `{}`),
++		PortableConfig:  jsonValue(t, `{"env":{"MODE":"prod"}}`),
++		ConfigRevision:  2,
++		Config:          jsonValue(t, `{"replicas":2}`),
++		RendererVersion: "kuben-renderer/2",
++		Capabilities:    jsonValue(t, `{"gateway":"kuben-system/kuben","clusterIssuer":"letsencrypt"}`),
++		Resources: jsonValue(t, `[
++			{"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"web-data"}},
++			{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web-web"}},
++			{"apiVersion":"gateway.networking.k8s.io/v1","kind":"HTTPRoute",
++			 "metadata":{"name":"web","namespace":"other"},"spec":{"hostnames":["web.example.com"]}}]`),
++		Secrets: []store.SecretReference{{Name: "db", Revision: 4, Kind: "opaque"}},
++	}
++}
++
++// exportSubject is routes/apps/export.rs subject().
++func exportSubject() api.ExportSubject {
++	return api.ExportSubject{
++		Project: "shop", Environment: "prod", App: "web", Namespace: "shop-prod", Delivery: "controller",
++		ExportedAt: "2026-09-17T00:00:00Z",
++	}
++}
++
++// generic is doc as the JSON the API answers, read back as serde_json's
++// Value.
++func generic(t *testing.T, doc map[string]any) map[string]any {
++	t.Helper()
++	raw, err := json.Marshal(doc)
++	if err != nil {
++		t.Fatal(err)
++	}
++	v, err := wire.DecodeAny(raw)
++	if err != nil {
++		t.Fatal(err)
++	}
++	out, _ := v.(map[string]any)
++	return out
++}
++
++// jsonAt is v at path (object keys and array indices), nil when absent.
++func jsonAt(v any, path ...any) any {
++	for _, step := range path {
++		switch k := step.(type) {
++		case string:
++			o, _ := v.(map[string]any)
++			v = o[k]
++		case int:
++			a, _ := v.([]any)
++			if k >= len(a) {
++				return nil
++			}
++			v = a[k]
++		}
++	}
++	return v
++}
++
++func TestAnExportHoldsManifestsReferencesAndARunbook(t *testing.T) {
++	doc := generic(t, api.ExportDocument(exportSubject(), exportMaterial(t)))
++	checks := []struct {
++		path []any
++		want any
++	}{
++		{[]any{"format"}, api.ExportFormat},
++		{[]any{"manifests", "kind"}, "List"},
++		{[]any{"manifests", "items", 0, "metadata", "namespace"}, "shop-prod"},
++		{[]any{"manifests", "items", 2, "metadata", "namespace"}, "other"},
++		{[]any{"references", "volumes"}, []any{"web-data"}},
++		{[]any{"references", "hostnames"}, []any{"web.example.com"}},
++		{[]any{"references", "secrets", 0, "object"}, "db.r4"},
++		{[]any{"renderer", "version"}, "kuben-renderer/2"},
++	}
++	for _, c := range checks {
++		if diff := cmp.Diff(c.want, jsonAt(doc, c.path...)); diff != "" {
++			t.Errorf("%v (-want +got):\n%s", c.path, diff)
++		}
++	}
++	inventory, _ := doc["inventory"].([]any)
++	if len(inventory) != 4 {
++		t.Errorf("inventory: %v", inventory)
++	}
++	secret := false
++	for _, i := range inventory {
++		secret = secret || (jsonAt(i, "kind") == "Secret" && jsonAt(i, "name") == "db.r4")
++	}
++	if !secret {
++		t.Errorf("no Secret in the inventory: %v", inventory)
++	}
++	runbook, err := json.Marshal(doc["runbook"])
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, want := range []string{"web.example.com", "cert-manager.io/cluster-issuer: letsencrypt", "web-data"} {
++		if !strings.Contains(string(runbook), want) {
++			t.Errorf("the runbook lacks %s", want)
++		}
++	}
++}
++
++func TestAnAppWithoutRoutesOrVolumesGetsAShorterRunbook(t *testing.T) {
++	m := exportMaterial(t)
++	m.Resources = jsonValue(t, `[{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"w"}}]`)
++	m.Secrets = nil
++	doc := generic(t, api.ExportDocument(exportSubject(), m))
++	steps, _ := doc["runbook"].([]any)
++	if len(steps) != 5 {
++		t.Errorf("steps: %v", steps)
++	}
++	runbook, err := json.Marshal(steps)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if strings.Contains(string(runbook), "Gateway kuben-system") {
++		t.Errorf("a routing step: %s", runbook)
++	}
++	// Explicit nulls where Rust wrote them.
++	if refs, _ := doc["references"].(map[string]any); refs["secrets"] == nil || jsonAt(doc, "release", "source") != nil {
++		t.Errorf("references: %v", refs)
++	}
++}
++
++// deliverWithPlan is tests/http.rs deliver_with_plan: freeze a plan with
++// a Deployment and a route for run, and succeed.
++func (f fixture) deliverWithPlan(run map[string]any) {
++	t := f.t
++	ctx := t.Context()
++	runText, _ := run["run"].(string)
++	runID, err := ids.Parse[ids.DeploymentRun](runText)
++	if err != nil {
++		t.Fatalf("run %v: %v", run, err)
++	}
++	claim, ok, err := f.store.ClaimOperation(ctx, "test", []string{store.RunKind}, time.Minute)
++	if err != nil || !ok {
++		t.Fatalf("claim: %v %v", ok, err)
++	}
++	resources := jsonValue(t, `[
++		{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"api-web"}},
++		{"apiVersion":"gateway.networking.k8s.io/v1","kind":"HTTPRoute",
++		 "metadata":{"name":"api"},"spec":{"hostnames":["api.example.com"]}}]`)
++	capabilities := jsonValue(t, `{"sizes":[],"gateway":"kuben-system/kuben"}`)
++	f.withTenant(func(ctx context.Context, tn *store.Tenant, _ store.Project) {
++		if _, frozen, err := tn.FreezeRunPlan(ctx, claim, runID, "kuben-renderer/2", capabilities, resources); err != nil || !frozen {
++			t.Fatalf("freeze: %v %v", frozen, err)
++		}
++	})
++	if finished, err := f.store.FinishOperation(ctx, claim, "succeeded", opt.None[string]()); err != nil || !finished {
++		t.Fatalf("finish: %v %v", finished, err)
++	}
++	f.succeed(run)
++}
++
++// detachedHeld is the unreleased detached apps of prod.
++func (f fixture) detachedHeld() uint64 {
++	var held uint64
++	f.withTenant(func(ctx context.Context, tn *store.Tenant, project store.Project) {
++		env, _, err := tn.Environment(ctx, project.ID, "prod")
++		if err != nil {
++			f.t.Fatal(err)
++		}
++		if held, err = tn.DetachedHeld(ctx, env.ID); err != nil {
++			f.t.Fatal(err)
++		}
++	})
++	return held
++}
++
++// tests/http.rs m4_export_detach_and_release.
++func TestM4ExportDetachAndRelease(t *testing.T) {
++	f := newFixture(t)
++	_, _, target := f.sqlApp()
++	alice := f.signIn("alice@example.com", seedPassword)
++	bob := f.signIn("bob@example.com", seedPassword)
++	const base = prodPath + "/apps/api"
++	if status, body, _ := alice.do("GET", base+"/export", nil); status != http.StatusConflict {
++		t.Fatalf("nothing delivered yet: %d %v", status, body)
++	}
++	status, run, _ := alice.deploy(0, "")
++	if status != http.StatusAccepted {
++		t.Fatalf("deploy: %d %v", status, run)
++	}
++	f.deliverWithPlan(run)
++	status, export, _ := alice.do("GET", base+"/export", nil)
++	if status != http.StatusOK || export["format"] != api.ExportFormat {
++		t.Fatalf("export: %d %v", status, export)
++	}
++	if items, _ := jsonAt(export, "manifests", "items").([]any); len(items) != 2 {
++		t.Errorf("items: %v", items)
++	}
++	if diff := cmp.Diff([]any{"api.example.com"}, jsonAt(export, "references", "hostnames")); diff != "" {
++		t.Errorf("hostnames:\n%s", diff)
++	}
++	if _, ok := jsonAt(export, "release", "artifacts").(map[string]any); !ok {
++		t.Errorf("artifacts: %v", jsonAt(export, "release"))
++	}
++
++	const detach = base + "/detach"
++	body := map[string]any{"confirm": "api", "reason": "moving to our own GitOps"}
++	if status := bob.status("POST", detach, body); status != http.StatusForbidden {
++		t.Errorf("a viewer detached: %d", status)
++	}
++	if status := alice.status("POST", detach, map[string]any{"confirm": "web", "reason": "x"}); status != http.StatusUnprocessableEntity {
++		t.Errorf("the wrong name: %d", status)
++	}
++	status, detached, _ := alice.do("POST", detach, body)
++	if status != http.StatusAccepted {
++		t.Fatalf("detach: %d %v", status, detached)
++	}
++	if diff := cmp.Diff(export["manifests"], jsonAt(detached, "export", "manifests")); diff != "" {
++		t.Errorf("the frozen export:\n%s", diff)
++	}
++	if status := alice.status("POST", detach, body); status != http.StatusConflict {
++		t.Errorf("detached twice: %d", status)
++	}
++	id, _ := detached["id"].(string)
++	if id != target.String() {
++		t.Errorf("id %s, target %s", id, target)
++	}
++
++	status, list := alice.list(prodPath + "/detached")
++	if status != http.StatusOK || len(list) != 1 {
++		t.Fatalf("list: %d %v", status, list)
++	}
++	if _, has := list[0]["export"]; list[0]["completedAt"] != nil || has {
++		t.Errorf("listed: %v", list[0])
++	}
++	release := prodPath + "/detached/" + id + "/release"
++	if status := alice.status("POST", release, map[string]any{}); status != http.StatusConflict {
++		t.Errorf("not finished: %d", status)
++	}
++	if held := f.detachedHeld(); held != 1 {
++		t.Errorf("held: %d", held)
++	}
++	f.withTenant(func(ctx context.Context, tn *store.Tenant, _ store.Project) {
++		if done, err := tn.CompleteDetach(ctx, target); err != nil || !done {
++			t.Fatalf("complete: %v %v", done, err)
++		}
++	})
++	if status := bob.status("POST", release, map[string]any{}); status != http.StatusForbidden {
++		t.Errorf("a viewer released: %d", status)
++	}
++	if status := alice.status("POST", release, map[string]any{}); status != http.StatusNoContent {
++		t.Errorf("release: %d", status)
++	}
++	if status := alice.status("POST", release, map[string]any{}); status != http.StatusConflict {
++		t.Errorf("released twice: %d", status)
++	}
++	status, one, _ := alice.do("GET", prodPath+"/detached/"+id, nil)
++	if status != http.StatusOK || jsonAt(one, "export", "format") != api.ExportFormat {
++		t.Fatalf("one: %d %v", status, one)
++	}
++	if by, _ := one["releasedBy"].(string); !strings.HasPrefix(by, "user:") {
++		t.Errorf("released by: %v", one["releasedBy"])
++	}
++	if held := f.detachedHeld(); held != 0 {
++		t.Errorf("held after the release: %d", held)
++	}
++}

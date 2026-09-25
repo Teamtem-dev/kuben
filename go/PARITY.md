@@ -50,7 +50,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `openapi.rs` | 231 | 2 | api/gen (ogen) + api/genspec | dropped | spec first: the contract generates the server |
 | kuben-api | `previews.rs` | 464 | 0 |  | todo | |
 | kuben-api | `setup.rs` | 375 | 2 | api (setup.go) | ported | setup_guide/banner: G5 |
-| kuben-api | `sso.rs` | 554 | 5 |  | todo | |
+| kuben-api | `sso.rs` | 554 | 5 | api/sso | ported | 5 → 5; reuses api/oidc (JWKS, RS256) |
 | kuben-api | `state.rs` | 151 | 0 |  | todo | |
 | kuben-api | `stream.rs` | 248 | 2 | api/stream, platform/projection (source.go) | ported | 2 → 4 Go tests (the Visibility tests + the stream.Source over the projections: org filter, lag → `resync` without id); the source seeds each connection's filter from its own snapshot taken right after subscribing (Serve asks for snapshot and deltas separately) |
 | kuben-api | `transport.rs` | 157 | 0 | api/outbound | ported | net/http with the same rules (https only unless allowed, proxy from env, header and body timeouts, body cap, no redirects); notify.rs is_private is outbound.IsPrivate |
@@ -59,7 +59,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `auth/mod.rs` | 462 | 1 | api (session_routes.go), api/httpx | ported | SSO routes: S4 |
 | kuben-api | `auth/password.rs` | 75 | 1 | api/auth | ported |  |
 | kuben-api | `auth/session.rs` | 202 | 4 | api/auth, api (identity.go) | ported |  |
-| kuben-api | `auth/sso.rs` | 260 | 1 |  | todo | |
+| kuben-api | `auth/sso.rs` | 260 | 1 | api (sso routes) | ported | 1 → 1 + tests/http.rs `m4_sso_*` (3) |
 | kuben-api | `auth/throttle.rs` | 200 | 5 | api (identity.go) | ported |  |
 | kuben-api | `routes/access.rs` | 322 | 2 | api (access_routes.go) | ported |  |
 | kuben-api | `routes/audit.rs` | 123 | 0 | api (audit_routes.go) | ported |  |
@@ -219,7 +219,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/scans.rs` | 683 | 3 | store (scans.go) | ported | 3 → 3 |
 | kuben-store | `repo/secrets.rs` | 1283 | 5 | store (secrets*.go) | ported | 5 → 5; `SecretKind` is a sealed interface (opaque, registry host) |
 | kuben-store | `repo/sessions.rs` | 125 | 0 | store (sessions.go) | ported | covered by the tests/matrix.rs port |
-| kuben-store | `repo/sso.rs` | 326 | 3 |  | todo | |
+| kuben-store | `repo/sso.rs` | 326 | 3 | store (sso.go) | ported | 3 → 3 |
 | kuben-store | `repo/status.rs` | 244 | 1 | store (status.go) | ported | 1 → 1 (`status_pages_are_found_by_slug_only_when_enabled`) |
 | kuben-store | `repo/support.rs` | 160 | 1 | store (support.go) | ported | 1 → 1; incidents written by hand until repo/notify.rs is ported |
 | kuben-store | `repo/throttle.rs` | 64 | 0 | store (throttle.go) | ported | covered by the tests/matrix.rs port |
@@ -229,7 +229,7 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `repo/users.rs` | 140 | 0 | store (users.go) | ported | covered by the tests/matrix.rs port |
 | kuben-agent | `tests/link.rs` | 756 | 15 | platform/agentlink (link_test.go) | ported | 15 → 15: the real agent link loop against the real hub (the hub module requires go/agent for it) |
 | kuben-agent | `tests/runtime.rs` | 297 | 3 | agent/runtime | partial | 3 → 3 written, never run: they need a cluster with controllers (kind), as Rust's `#[ignore]`; skipped unless `KUBEN_TEST_KUBE=1` (a kind CI job is still to add) |
-| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 36 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies. Left with their slices: scan gate (S3); SSO, webhooks and incidents, export and detach (S4); previews, domain claims (S5) |
+| kuben-api | `tests/http.rs` | 3927 | 44 | api (*_test.go) | partial | 39 of 44: skeleton (10), scenarios 1–5 and 8, deployments (3), m4 policy, approval, roles, quotas, m5 status pages, m4 controls (2), m4 CI trust (2), m5 metrics, m4 secrets, rotations and registry logins (3), m5 image policies, m4 SSO (3). Left with their slices: scan gate (S3); webhooks and incidents, export and detach (S4); previews, domain claims (S5) |
 | kuben-api | `tests/oci.rs` | 41 | 2 |  | todo | |
 | kuben-platform | `tests/agent_link_mtls.rs` | 260 | 6 | platform/agentlink (mtls_test.go) | ported | 6 → 6 |
 | kuben-platform | `tests/execution_crds.rs` | 277 | 2 | platform/controller (execution_crds_test.go) + platform/kubetest | ported | 2 → 2 against envtest's API server |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 |  | todo | |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 10, ported 169, todo 50.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 2, partial 10, ported 172, todo 47.

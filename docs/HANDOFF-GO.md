@@ -113,8 +113,29 @@ bun turbo run build --filter=hub   # builds go/hub/bin/kuben with the console em
 ```
 Owner-side (outside the sandbox, needs Docker): `docker run -d --name kuben-pg -e POSTGRES_PASSWORD=kuben -p 5432:5432 postgres:17-alpine`, then `cd go/hub && KUBEN_TEST_PG_URL=postgres://postgres:kuben@localhost:5432/postgres KUBEN_REQUIRE_PG=1 go test -race ./...`.
 
-## 8. Immediate next action
+## 8. Status (2026-09-25) and next action
 
-S1 is closed (every S1 file ported, reviewed against Rust, tests green on PostgreSQL, lint clean, oracle green). The owner may tag `2.0.0-alpha.1` after CI is green on a pull request.
+Branch `feat/go-rewrite` (pushed). Ledger: go/PARITY.md — 231 Rust files: ported 172, partial 10, todo 47, dropped 2.
 
-Next: **S2** from `docs/GO-REWRITE-ROADMAP.md` §2, in order: 2.1 secret keyring (`kuben-platform/src/secrets.rs`, 10 tests) → 2.2 store secrets → 2.3 secrets and registries routes → 2.4 materializer secrets and resolve with logins → 2.6 domains/DNS → 2.8 doctor → 2.9–2.12 agent and AgentLink (`go/agent`) → 2.13 envtest tests → 2.14 oracle.
+### Done
+- [x] S1 (all), review fixes, envtest infrastructure, oracle
+- [x] S2: keyring, store secrets, secrets/registries routes, materializer secrets, serve keyring; AgentLink (protocol, TLS, enroll, hub, link, local agent, repo/agents) + the `go/agent` binary; api/dns; platform/doctor; notify SealSecret/OpenSecret
+- [x] S3: store builds and scans; GitHub App client (api/github); build contracts (platform/build/build.go)
+- [x] S4: controls (owners, freezes, silences, pause, emergency rollback); installs, backups store; CI trust (store ci, api/oidc, routes/ci, exchange); SSO (store sso, api/sso, SSO routes, 3 http.rs scenarios)
+- [x] S5: usage/rollups/metrics; image policies (store, routes, image_watch in serve/background.go); platform/evidence
+
+### Work in progress — saved as patches in docs/go-wip/ (apply with `git apply --3way docs/go-wip/<name>.patch`, then finish, test, commit)
+- [ ] `s2-domains.patch` — repo/domains.rs rest, routes/domains.rs, doctor delegation/proxy/agent checks (apps_doctor.go); http.rs `m5_domain_claims_and_dns_records` (conflicts only in api/server.go Deps: keep both fields)
+- [ ] `s4-notify.patch` — repo/notify.rs, notify.rs (planning, HMAC signing, delivery worker), routes/incidents.rs; http.rs `m4_signed_webhooks_and_incidents`; start the notifier inside serve/background.go startBackground
+- [ ] `s3-build.patch` — platform/build job/steps/worker/observe/evidence/rescan/scenarios, oci RegistryVerifier, tests/oci.rs; serve wiring (conflict in serve/serve.go: keep both)
+- [ ] `s3-routes.patch` (only apps_builds.go started) — routes apps/builds, apps/scans, vulnerabilities, apps/source (+ Git-sourced app creation in apps_crud.go), routes/git (installations + GitHub webhook); http.rs `m4_the_scan_gate_refuses_known_critical_findings`
+- [ ] `s4-export.patch` — routes/apps/export.rs (+ detach); http.rs `m4_export_detach_and_release`
+Each patch is unverified work in progress: read it against the Rust file, complete it, port every Rust test.
+
+### Still to do after that
+- [ ] routes/apps/evidence.rs (+ wire the graph and findings into apps_doctor.go)
+- [ ] S5: previews.rs + routes/previews.rs + repo/previews.rs rest (http.rs `m5_previews_follow_pull_requests`); client.rs, host.rs; routes/mod.rs, state.rs, lib.rs rest; bin/openapi.rs
+- [ ] partials: serve.rs (builds, background), apps/crud.rs, oci.rs, tests/ops_store_pg.rs, agent tests/runtime.rs (needs a kind CI job with KUBEN_TEST_KUBE=1)
+- [ ] G5: kuben CLI (cli/*: setup, backup, support, doctor, client, ui, upgrade, dns01, admin, agent), bootstrap.rs, bundle.rs, telemetry.rs, main.rs rest
+- [ ] G6: release train (goreleaser, `-X main.version` for both binaries, release CI, images); G7: remove the Rust crates once the oracle and CI are green
+- [ ] Owner decisions: ghinstallation not used (keep hand-written token cache?); hub module depends on go/agent (or move the hub link into kubenapi); automemlimit for the agent; regenerate AgentLink byte fixtures with the Rust compat generator; contract int widths for CI trust (int64/int32 vs u64/u32)
