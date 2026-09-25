@@ -1,4 +1,4 @@
-package secrets
+package keyring
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -36,14 +36,14 @@ var ErrOpen = errors.New("a sealed value does not open: wrong key, identity or c
 // ErrRandom is a failure of the system random source (SecretError::Random).
 var ErrRandom = errors.New("the system random source failed")
 
-// KeyringError is a keyring file that cannot be read, written or parsed
+// Error is a keyring file that cannot be read, written or parsed
 // (SecretError::Keyring).
-type KeyringError struct {
+type Error struct {
 	Path   string
 	Reason string
 }
 
-func (e *KeyringError) Error() string {
+func (e *Error) Error() string {
 	return "cannot read the keyring " + e.Path + ": " + e.Reason
 }
 
@@ -231,7 +231,7 @@ func ValuesJSON(values map[string]string) ([]byte, error) {
 	if values == nil {
 		values = map[string]string{}
 	}
-	text, err := wire.CanonicalValue(values)
+	text, err := jsonx.CanonicalValue(values)
 	if err != nil {
 		return nil, fmt.Errorf("secret values: %w", err)
 	}

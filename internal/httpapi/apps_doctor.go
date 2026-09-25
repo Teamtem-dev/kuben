@@ -26,7 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/evidence"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/integrations/dns"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
@@ -342,7 +342,7 @@ func rawMembers(v any) (map[string]jx.Raw, error) {
 	}
 	out := make(map[string]jx.Raw, len(members))
 	for key, member := range members {
-		text, err := wire.Canonical(member)
+		text, err := jsonx.Canonical(member)
 		if err != nil {
 			return nil, kerrors.Wrap(err, "encode the doctor's report")
 		}

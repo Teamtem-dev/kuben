@@ -1,4 +1,4 @@
-package bootstrap_test
+package firstrun_test
 
 import (
 	"io"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	bootstrap "github.com/Teamtem-dev/kuben/internal/firstrun"
+	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
@@ -28,7 +28,7 @@ func TestBootstrapRunsOnceEvenWhenReplicasRace(t *testing.T) {
 	var g errgroup.Group
 	for i := range generated {
 		g.Go(func() error {
-			p, err := bootstrap.EnsureAdmin(t.Context(), cfg, st, hasher, quiet())
+			p, err := firstrun.EnsureAdmin(t.Context(), cfg, st, hasher, quiet())
 			generated[i] = p
 			return err
 		})
@@ -42,7 +42,7 @@ func TestBootstrapRunsOnceEvenWhenReplicasRace(t *testing.T) {
 	if n, err := st.CountUsers(t.Context()); err != nil || n != 1 {
 		t.Errorf("users %d, %v", n, err)
 	}
-	again, err := bootstrap.EnsureAdmin(t.Context(), cfg, st, hasher, quiet())
+	again, err := firstrun.EnsureAdmin(t.Context(), cfg, st, hasher, quiet())
 	if err != nil || again.IsSome() {
 		t.Errorf("again: %v %v", again, err)
 	}
@@ -63,15 +63,15 @@ func TestPasswordFileSitsInTheStateDirectory(t *testing.T) {
 	dir := t.TempDir()
 	cfg.Server.StateDir = opt.Some(dir)
 	var printed string
-	bootstrap.HandOverPassword(t.Context(), cfg, opt.None[*registry.Registry](), "pw",
-		bootstrap.Stderr{Write: func(s string) { printed += s }}, quiet())
+	firstrun.HandOverPassword(t.Context(), cfg, opt.None[*registry.Registry](), "pw",
+		firstrun.Stderr{Write: func(s string) { printed += s }}, quiet())
 	if printed != "" {
 		t.Errorf("printed without a terminal: %q", printed)
 	}
-	if got := bootstrap.PasswordFile(cfg); got != filepath.Join(dir, bootstrap.InitialAdminFile) {
+	if got := firstrun.PasswordFile(cfg); got != filepath.Join(dir, firstrun.InitialAdminFile) {
 		t.Errorf("file %s", got)
 	}
-	if got := readFile(t, bootstrap.PasswordFile(cfg)); got != "admin@kuben.local\npw\n" {
+	if got := readFile(t, firstrun.PasswordFile(cfg)); got != "admin@kuben.local\npw\n" {
 		t.Errorf("content %q", got)
 	}
 }
@@ -88,33 +88,33 @@ func TestSetupBannerCarriesTheTokenOnlyOverASecurePath(t *testing.T) {
 			t.Errorf("contains %q = %v:\n%s", want, !yes, banner)
 		}
 	}
-	tunnel := bootstrap.SetupBanner(cfg, abc, here)
+	tunnel := firstrun.SetupBanner(cfg, abc, here)
 	contains(tunnel, "    http://localhost:3000/setup#token=abc\n", true)
 	contains(tunnel, "ssh -L 3000:127.0.0.1:3000", true)
 	contains(tunnel, "203.0.113.7:3000/setup", false)
 	contains(tunnel, "30 minutes", true)
-	without := bootstrap.SetupBanner(cfg, opt.None[string](), here)
+	without := firstrun.SetupBanner(cfg, opt.None[string](), here)
 	contains(without, "http://localhost:3000/setup\n", true)
 	contains(without, "token", false)
 
 	cfg.Security.InsecureSetup = true
-	direct := bootstrap.SetupBanner(cfg, abc, here)
+	direct := firstrun.SetupBanner(cfg, abc, here)
 	contains(direct, "http://203.0.113.7:3000/setup#token=abc", true)
 	contains(direct, "ssh", false)
 
 	cfg.Security.InsecureSetup = false
 	cfg.Server.PublicURL = opt.Some("https://kuben.apps.example.com")
-	https := bootstrap.SetupBanner(cfg, abc, here)
+	https := firstrun.SetupBanner(cfg, abc, here)
 	contains(https, "    https://kuben.apps.example.com/setup#token=abc\n", true)
 	contains(https, "http://localhost:3000/setup#token=abc", true) // the tunnel until DNS is ready
 }
 
 func TestRandomPasswordsAre128Bits(t *testing.T) {
-	a, err := bootstrap.RandomPassword()
+	a, err := firstrun.RandomPassword()
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bootstrap.RandomPassword()
+	b, err := firstrun.RandomPassword()
 	if err != nil {
 		t.Fatal(err)
 	}

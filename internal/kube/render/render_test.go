@@ -14,7 +14,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 )
 
@@ -144,7 +144,7 @@ func writePretty(t *testing.T, b *strings.Builder, v any, depth int) {
 	default:
 		// Scalars print as serde prints them, which is what the canonical
 		// text of the scalar is.
-		text, err := wire.CanonicalValue(x)
+		text, err := jsonx.CanonicalValue(x)
 		if err != nil {
 			t.Fatalf("scalar: %v", err)
 		}
@@ -322,7 +322,7 @@ func TestRenderingIsDeterministicAndContentAddressed(t *testing.T) {
 	if diff := cmp.Diff(first, again, cmpOpts()); diff != "" {
 		t.Fatalf("not deterministic (-first +again):\n%s", diff)
 	}
-	if first.Digest != wire.SHA256(first.ResourcesJSON()) {
+	if first.Digest != jsonx.SHA256(first.ResourcesJSON()) {
 		t.Fatal("the digest is the hash of the resources")
 	}
 
@@ -349,7 +349,7 @@ func TestRenderingIsDeterministicAndContentAddressed(t *testing.T) {
 }
 
 func TestCanonicalJSONSortsKeysAtEveryLevel(t *testing.T) {
-	got, err := wire.Canonical([]byte(`{ "b": [ { "y": 1, "x": null } ], "a": "\"q\"" }`))
+	got, err := jsonx.Canonical([]byte(`{ "b": [ { "y": 1, "x": null } ], "a": "\"q\"" }`))
 	if err != nil {
 		t.Fatal(err)
 	}

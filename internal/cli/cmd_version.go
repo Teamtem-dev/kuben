@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	bundle "github.com/Teamtem-dev/kuben/internal/bundlelock"
+	"github.com/Teamtem-dev/kuben/internal/bundlelock"
 )
 
 func versionCmd(g *globals) *cobra.Command {
@@ -33,13 +33,13 @@ func versionCmd(g *globals) *cobra.Command {
 
 func printVersion(w io.Writer, withBundle, asJSON bool) error {
 	if asJSON {
-		_, err := io.WriteString(w, bundle.Lock)
+		_, err := io.WriteString(w, bundlelock.Lock)
 		return err //nolint:wrapcheck // stdout
 	}
 	if _, err := fmt.Fprintln(w, versionString()); err != nil || !withBundle {
 		return err //nolint:wrapcheck // stdout
 	}
-	b, err := bundle.Get()
+	b, err := bundlelock.Get()
 	if err != nil {
 		return err //nolint:wrapcheck // explains itself
 	}

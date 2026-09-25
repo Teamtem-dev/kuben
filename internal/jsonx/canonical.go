@@ -1,4 +1,4 @@
-package wire
+package jsonx
 
 import (
 	"bytes"

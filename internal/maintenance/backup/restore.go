@@ -17,7 +17,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
@@ -114,13 +114,13 @@ func Restore(ctx context.Context, cfg config.Config, opts RestoreOptions, stdout
 
 // fence migrates the restored database, prepares the keyring and fences
 // the time after the backup.
-func fence(ctx context.Context, cfg config.Config, manifest Manifest, keyring *secrets.Keyring, stdout io.Writer, logger *slog.Logger) error {
+func fence(ctx context.Context, cfg config.Config, manifest Manifest, ring *keyring.Keyring, stdout io.Writer, logger *slog.Logger) error {
 	st, err := store.Connect(ctx, cfg.Database)
 	if err != nil {
 		return err //nolint:wrapcheck // explains itself
 	}
 	defer st.Close()
-	if _, err := secrets.Prepare(ctx, st, keyring, logger); err != nil {
+	if _, err := keyring.Prepare(ctx, st, ring, logger); err != nil {
 		return err //nolint:wrapcheck // explains itself
 	}
 	fenced, err := st.AfterRestore(ctx, manifest.CreatedAt, manifest.Kuben, version.Version)
@@ -150,17 +150,17 @@ func fence(ctx context.Context, cfg config.Config, manifest Manifest, keyring *s
 // restoreKeyring is the keyring the restored secrets need: the configured
 // one, else the one in the backup (installed in its place). Its keys must
 // be the backup's.
-func restoreKeyring(cfg config.Config, from string, manifest Manifest, stdout io.Writer) (*secrets.Keyring, error) {
+func restoreKeyring(cfg config.Config, from string, manifest Manifest, stdout io.Writer) (*keyring.Keyring, error) {
 	path := cfg.SecretKeyringFile()
-	var keyring *secrets.Keyring
+	var ring *keyring.Keyring
 	_, statErr := os.Stat(path)
 	switch {
 	case statErr == nil:
-		k, err := secrets.Load(path)
+		k, err := keyring.Load(path)
 		if err != nil {
 			return nil, err //nolint:wrapcheck // names the path
 		}
-		keyring = k
+		ring = k
 	case manifest.KeyringIncluded:
 		text, err := os.ReadFile(joinPath(from, KeyringFile))
 		if err != nil {
@@ -169,7 +169,7 @@ func restoreKeyring(cfg config.Config, from string, manifest Manifest, stdout io
 		if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil { //nolint:gosec // the umask applies, as create_dir_all
 			return nil, err //nolint:wrapcheck // names the path
 		}
-		k, err := secrets.Install(path, string(text))
+		k, err := keyring.Install(path, string(text))
 		clear(text)
 		if err != nil {
 			return nil, err //nolint:wrapcheck // names the path
@@ -177,11 +177,11 @@ func restoreKeyring(cfg config.Config, from string, manifest Manifest, stdout io
 		if _, err := fmt.Fprintf(stdout, "installed the backup's secret keyring at %s\n", path); err != nil {
 			return nil, err //nolint:wrapcheck // stdout
 		}
-		keyring = k
+		ring = k
 	default:
 		return nil, fmt.Errorf("no secret keyring at %s and none in the backup: put the installation's keyring there first", path)
 	}
-	ours := fingerprints(keyring)
+	ours := fingerprints(ring)
 	missing := 0
 	for _, f := range manifest.KeyFingerprints {
 		if !slices.Contains(ours, f) {
@@ -192,5 +192,5 @@ func restoreKeyring(cfg config.Config, from string, manifest Manifest, stdout io
 		return nil, fmt.Errorf("the keyring at %s lacks keys the backup was sealed with (%d of %d): it is not this installation's",
 			path, missing, len(manifest.KeyFingerprints))
 	}
-	return keyring, nil
+	return ring, nil
 }

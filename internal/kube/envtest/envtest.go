@@ -1,4 +1,4 @@
-// Package kubetest is test support for code that talks to Kubernetes: a
+// Package envtest is test support for code that talks to Kubernetes: a
 // real API server (envtest's kube-apiserver and etcd; no controllers, no
 // kubelet) shared by the tests of a package. It stands in for the Rust
 // tests marked `#[ignore]` that ran against a kind cluster.
@@ -7,7 +7,7 @@
 // Without it a test that needs the server skips, unless KUBEN_REQUIRE_K8S=1
 // (CI sets it), which turns the skip into a failure, as pgtest does for
 // PostgreSQL.
-package kubetest
+package envtest
 
 import (
 	"context"
@@ -51,8 +51,8 @@ type Server struct {
 // Main runs the tests of a package with an API server when the envtest
 // binaries are there, and returns the exit code for os.Exit:
 //
-//	var apiserver kubetest.Server
-//	func TestMain(m *testing.M) { os.Exit(kubetest.Main(m, &apiserver)) }
+//	var apiserver envtest.Server
+//	func TestMain(m *testing.M) { os.Exit(envtest.Main(m, &apiserver)) }
 func Main(m *testing.M, s *Server) int {
 	if os.Getenv(AssetsVar) == "" {
 		return m.Run()
@@ -60,13 +60,13 @@ func Main(m *testing.M, s *Server) int {
 	env := &envtest.Environment{}
 	cfg, err := env.Start()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "kubetest: start the API server: %v\n", err)
+		fmt.Fprintf(os.Stderr, "envtest: start the API server: %v\n", err)
 		return 1
 	}
 	s.cfg = cfg
 	code := m.Run()
 	if err := env.Stop(); err != nil {
-		fmt.Fprintf(os.Stderr, "kubetest: stop the API server: %v\n", err)
+		fmt.Fprintf(os.Stderr, "envtest: stop the API server: %v\n", err)
 	}
 	return code
 }
@@ -99,18 +99,18 @@ func (s *Server) Connect(t testing.TB) Clients {
 	cfg := s.Config(t)
 	typed, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		t.Fatalf("kubetest: typed client: %v", err)
+		t.Fatalf("envtest: typed client: %v", err)
 	}
 	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
-		t.Fatalf("kubetest: dynamic client: %v", err)
+		t.Fatalf("envtest: dynamic client: %v", err)
 	}
 	rt, err := client.New(cfg, client.Options{})
 	if err != nil {
-		t.Fatalf("kubetest: runtime client: %v", err)
+		t.Fatalf("envtest: runtime client: %v", err)
 	}
 	if err := controller.EnsureCRDs(t.Context(), rt, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
-		t.Fatalf("kubetest: the API server refused Kuben's CRDs: %v", err)
+		t.Fatalf("envtest: the API server refused Kuben's CRDs: %v", err)
 	}
 	waitEstablished(t, dyn)
 	return Clients{Config: cfg, Typed: typed, Dynamic: dyn, Runtime: rt}
@@ -131,7 +131,7 @@ func waitEstablished(t testing.TB, dyn dynamic.Interface) {
 	for _, crd := range crds {
 		for !established(t.Context(), dyn, crd.GetName()) {
 			if time.Now().After(deadline) { //nolint:forbidigo // as above
-				t.Fatalf("kubetest: CRD %s is not established", crd.GetName())
+				t.Fatalf("envtest: CRD %s is not established", crd.GetName())
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -162,14 +162,14 @@ func Namespace(t testing.TB, c Clients, prefix string) string {
 	name := prefix + "-" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if _, err := c.Typed.CoreV1().Namespaces().Create(t.Context(), ns, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("kubetest: create namespace %s: %v", name, err)
+		t.Fatalf("envtest: create namespace %s: %v", name, err)
 	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		err := c.Typed.CoreV1().Namespaces().Delete(ctx, name, metav1.DeleteOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
-			t.Errorf("kubetest: delete namespace %s: %v", name, err)
+			t.Errorf("envtest: delete namespace %s: %v", name, err)
 		}
 	})
 	return name

@@ -1,8 +1,8 @@
-// Package bootstrap is the first boot (crates/kuben/src/bootstrap.rs): the
+// Package firstrun is the first boot (crates/kuben/src/bootstrap.rs): the
 // default organization and the admin user (Invariant I-2: nothing is ever
 // seeded with a fixed secret; passwords are configured or generated), the
 // hand-over of a generated password, and the setup banner.
-package bootstrap
+package firstrun
 
 import (
 	"context"

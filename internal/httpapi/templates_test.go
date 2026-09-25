@@ -14,7 +14,7 @@ import (
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 )
 
@@ -185,7 +185,7 @@ func TestTemplateCatalogueBody(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d: %s", resp.StatusCode, raw)
 	}
-	got, err := wire.DecodeAny(raw)
+	got, err := jsonx.DecodeAny(raw)
 	if err != nil {
 		t.Fatal(err)
 	}

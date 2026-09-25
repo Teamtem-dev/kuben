@@ -17,7 +17,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/agentlink"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
-	bootstrap "github.com/Teamtem-dev/kuben/internal/firstrun"
+	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	serve "github.com/Teamtem-dev/kuben/internal/server"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -54,7 +54,7 @@ func resetAdmin(ctx context.Context, cfg config.Config, password string, out io.
 	defer st.Close()
 	hasher := auth.HasherFromConfig(cfg.Security)
 	if password == "" {
-		if password, err = bootstrap.RandomPassword(); err != nil {
+		if password, err = firstrun.RandomPassword(); err != nil {
 			return err //nolint:wrapcheck // explains itself
 		}
 	}
@@ -87,7 +87,7 @@ func adminUser(ctx context.Context, cfg config.Config, st *store.Store, hasher *
 		return c.User, nil
 	}
 	cfg.Bootstrap.AdminPassword = config.Secret(password)
-	if _, err := bootstrap.EnsureAdmin(ctx, cfg, st, hasher, logger); err != nil {
+	if _, err := firstrun.EnsureAdmin(ctx, cfg, st, hasher, logger); err != nil {
 		return model.User{}, err //nolint:wrapcheck // explains itself
 	}
 	c, found, err = st.FindUserByEmail(ctx, email)

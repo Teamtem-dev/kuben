@@ -26,7 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	kubetest "github.com/Teamtem-dev/kuben/internal/kube/envtest"
+	"github.com/Teamtem-dev/kuben/internal/kube/envtest"
 	"github.com/Teamtem-dev/kuben/internal/kube/materializer"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
@@ -40,9 +40,9 @@ import (
 // controller runs: the tests create the environment's namespace and play
 // the App controller.
 
-var apiserver kubetest.Server
+var apiserver envtest.Server
 
-func TestMain(m *testing.M) { os.Exit(kubetest.Main(m, &apiserver)) }
+func TestMain(m *testing.M) { os.Exit(envtest.Main(m, &apiserver)) }
 
 const (
 	clusterDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -62,7 +62,7 @@ func gvr(plural string) schema.GroupVersionResource {
 type world struct {
 	t            *testing.T
 	store        *store.Store
-	kube         kubetest.Clients
+	kube         envtest.Clients
 	cluster      registry.Cluster
 	org          ids.OrgID
 	project      ids.ProjectID

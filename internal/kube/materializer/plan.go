@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/controller"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -65,7 +65,7 @@ func (w *Worker) freeze(ctx context.Context, claim store.Claim, m *store.Materia
 	if err != nil {
 		return refused("RenderFailed")
 	}
-	snapshot, err := wire.DecodeAny(snapshotJSON)
+	snapshot, err := jsonx.DecodeAny(snapshotJSON)
 	if err != nil {
 		return refused("RenderFailed")
 	}

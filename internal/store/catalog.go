@@ -20,7 +20,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 const selectEnvironments = "SELECT e.id, e.project_id, e.slug, e.name, " +
@@ -77,7 +77,7 @@ func jsonColumn(text *string) (opt.Val[any], error) {
 	if text == nil {
 		return opt.None[any](), nil
 	}
-	v, err := wire.DecodeAny([]byte(*text))
+	v, err := jsonx.DecodeAny([]byte(*text))
 	if err != nil {
 		return opt.None[any](), decodeErr("read a JSON column", "%v", err)
 	}

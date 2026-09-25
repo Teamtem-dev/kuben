@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 
-	bundle "github.com/Teamtem-dev/kuben/internal/bundlelock"
+	"github.com/Teamtem-dev/kuben/internal/bundlelock"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
@@ -131,7 +131,7 @@ func TestTheIssuerSolvesThroughKubensGateway(t *testing.T) {
 }
 
 func TestPinnedObjectsParseAndChecksumsAreHex(t *testing.T) {
-	b, err := bundle.Get()
+	b, err := bundlelock.Get()
 	if err != nil {
 		t.Fatal(err)
 	}

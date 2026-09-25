@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/notify"
 )
 
@@ -18,7 +18,7 @@ func TestEndpointSecretsAreSealedForTheirEndpoint(t *testing.T) {
 	for i := range key {
 		key[i] = 7
 	}
-	keyring := secrets.FromKeys(map[uint32][32]byte{1: key})
+	keyring := keyring.FromKeys(map[uint32][32]byte{1: key})
 	org, endpoint := ids.New[ids.Org](), uuid.New()
 	sealed, err := notify.SealSecret(keyring, org, endpoint, []byte("whsec"))
 	if err != nil {

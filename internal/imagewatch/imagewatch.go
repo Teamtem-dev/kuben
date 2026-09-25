@@ -28,7 +28,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -78,14 +78,14 @@ func (FoundFailed) found()   {}
 type Watcher struct {
 	store   *store.Store
 	images  oci.Resolver
-	keyring opt.Val[*secrets.Keyring]
+	keyring opt.Val[*keyring.Keyring]
 	clock   clock.Clock
 	logger  *slog.Logger
 }
 
 // New is a watcher resolving images with images and opening
 // registry logins with keyring, when there is one.
-func New(st *store.Store, images oci.Resolver, keyring opt.Val[*secrets.Keyring], c clock.Clock, logger *slog.Logger) *Watcher {
+func New(st *store.Store, images oci.Resolver, keyring opt.Val[*keyring.Keyring], c clock.Clock, logger *slog.Logger) *Watcher {
 	return &Watcher{store: st, images: images, keyring: keyring, clock: c, logger: logger}
 }
 

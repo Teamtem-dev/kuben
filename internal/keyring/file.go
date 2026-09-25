@@ -1,4 +1,4 @@
-package secrets
+package keyring
 
 import (
 	"crypto/rand"
@@ -16,7 +16,7 @@ import (
 func Load(path string) (*Keyring, error) {
 	text, err := readText(path)
 	if err != nil {
-		return nil, &KeyringError{Path: path, Reason: err.Error()}
+		return nil, &Error{Path: path, Reason: err.Error()}
 	}
 	defer clear(text)
 	return checkAndParse(path, text)
@@ -27,10 +27,10 @@ func Load(path string) (*Keyring, error) {
 func Install(path, text string) (*Keyring, error) {
 	k, reason := parse(text)
 	if k == nil {
-		return nil, &KeyringError{Path: path, Reason: reason}
+		return nil, &Error{Path: path, Reason: reason}
 	}
 	if err := writePrivate(path, []byte(text)); err != nil {
-		return nil, &KeyringError{Path: path, Reason: err.Error()}
+		return nil, &Error{Path: path, Reason: err.Error()}
 	}
 	return k, nil
 }
@@ -45,7 +45,7 @@ func LoadOrCreate(path string) (*Keyring, error) {
 		return checkAndParse(path, text)
 	case errors.Is(err, fs.ErrNotExist):
 	default:
-		return nil, &KeyringError{Path: path, Reason: err.Error()}
+		return nil, &Error{Path: path, Reason: err.Error()}
 	}
 	var key [keyLen]byte
 	defer clear(key[:])
@@ -56,7 +56,7 @@ func LoadOrCreate(path string) (*Keyring, error) {
 		base64.StdEncoding.EncodeToString(key[:]) + "\n")
 	defer clear(fresh)
 	if err := writePrivate(path, fresh); err != nil {
-		return nil, &KeyringError{Path: path, Reason: err.Error()}
+		return nil, &Error{Path: path, Reason: err.Error()}
 	}
 	return FromKeys(map[uint32][keyLen]byte{1: key}), nil
 }
@@ -76,11 +76,11 @@ func readText(path string) ([]byte, error) {
 
 func checkAndParse(path string, text []byte) (*Keyring, error) {
 	if reason, ok := checkPrivate(path); !ok {
-		return nil, &KeyringError{Path: path, Reason: reason}
+		return nil, &Error{Path: path, Reason: reason}
 	}
 	k, reason := parse(string(text))
 	if k == nil {
-		return nil, &KeyringError{Path: path, Reason: reason}
+		return nil, &Error{Path: path, Reason: reason}
 	}
 	return k, nil
 }

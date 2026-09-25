@@ -21,7 +21,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -223,7 +223,7 @@ func (s *Server) availableSecretKeys(
 	if !ok || registry == nil {
 		return out, nil
 	}
-	selector := fmt.Sprintf("%s,!%s", v1alpha1.ManagedSelector, secrets.SecretID)
+	selector := fmt.Sprintf("%s,!%s", v1alpha1.ManagedSelector, keyring.SecretID)
 	list, err := registry.Primary().Typed.CoreV1().Secrets(target.namespace()).List(ctx, metav1.ListOptions{
 		LabelSelector: selector,
 	})

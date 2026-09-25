@@ -20,8 +20,8 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/internal/integrations/outbound"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
@@ -43,7 +43,7 @@ const (
 // Deps are what a Notifier works with.
 type Deps struct {
 	Store   *store.Store
-	Keyring *secrets.Keyring
+	Keyring *keyring.Keyring
 	// GitHub reports commit statuses, when Git sources are configured.
 	GitHub opt.Val[*github.App]
 	Config config.NotifyCfg
@@ -223,7 +223,7 @@ func sourceOf(c store.OperationContext) map[string]any {
 	if !ok {
 		return nil
 	}
-	v, err := wire.DecodeAny([]byte(text))
+	v, err := jsonx.DecodeAny([]byte(text))
 	if err != nil {
 		return nil
 	}
@@ -388,7 +388,7 @@ func (n *Notifier) send(ctx context.Context, d store.WebhookDelivery) (int32, er
 	if err != nil {
 		return 0, err
 	}
-	text, err := wire.CanonicalValue(d.Payload)
+	text, err := jsonx.CanonicalValue(d.Payload)
 	if err != nil {
 		return 0, err //nolint:wrapcheck // its text is the delivery's error
 	}

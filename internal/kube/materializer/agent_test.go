@@ -8,7 +8,7 @@ import (
 	agentruntime "github.com/Teamtem-dev/kuben/internal/agent/runtime"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/materializer"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -39,7 +39,7 @@ func TestTheEnvelopePassesTheAgentsChecks(t *testing.T) {
 	if spec.Generation != 3 || spec.ReleaseID != m.Release.String() || spec.Plan.ID != plan.ID.String() {
 		t.Fatalf("%+v", spec)
 	}
-	if wire.SHA256(spec.Plan.Resources) != spec.Plan.Digest {
+	if jsonx.SHA256(spec.Plan.Resources) != spec.Plan.Digest {
 		t.Fatal("digest mismatch")
 	}
 	var resources []map[string]any

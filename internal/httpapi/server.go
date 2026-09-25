@@ -30,7 +30,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
 	"github.com/Teamtem-dev/kuben/internal/integrations/sso"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -80,7 +80,7 @@ type Deps struct {
 	Usage opt.Val[*usage.Buffer]
 	// Keyring seals and opens managed secret values (M4.4); without it
 	// secrets and registry logins cannot be set (503).
-	Keyring opt.Val[*secrets.Keyring]
+	Keyring opt.Val[*keyring.Keyring]
 	// SSO is single sign-on with an OpenID Connect provider (M4.3), when
 	// it is enabled.
 	SSO opt.Val[*sso.Client]

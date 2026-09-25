@@ -26,7 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -82,7 +82,7 @@ func legacySecretDto(s *corev1.Secret) gen.SecretDto {
 // legacySelector selects the Secrets Kuben wrote into the cluster before
 // M4.4 (not revision objects).
 func legacySelector() string {
-	return v1alpha1.ManagedSelector + ",!" + secrets.SecretID
+	return v1alpha1.ManagedSelector + ",!" + keyring.SecretID
 }
 
 // checkValues checks the keys and sizes of data.
@@ -101,7 +101,7 @@ func checkValues(data map[string]string) error {
 		total += len(data[k])
 	}
 	sealed := maxSealedBytes + 1
-	if text, err := secrets.ValuesJSON(data); err == nil {
+	if text, err := keyring.ValuesJSON(data); err == nil {
 		sealed = len(text)
 	}
 	if total > maxSecretBytes || sealed > maxSealedBytes {
@@ -112,7 +112,7 @@ func checkValues(data map[string]string) error {
 
 // keyring is the secret keyring; unavailable when encryption is not
 // configured.
-func (s *Server) keyring() (*secrets.Keyring, error) {
+func (s *Server) keyring() (*keyring.Keyring, error) {
 	k, ok := s.deps.Keyring.Get()
 	if !ok || k == nil {
 		return nil, kerrors.New(kerrors.Unavailable, "secret encryption is not configured")
@@ -243,7 +243,7 @@ type newRevision struct {
 
 // storeRevision seals and records a new revision in t's transaction.
 func (s *Server) storeRevision(ctx context.Context, t *store.Tenant, a access.Access, e envScope, n newRevision) error {
-	keyring, err := s.keyring()
+	ring, err := s.keyring()
 	if err != nil {
 		return err
 	}
@@ -275,8 +275,8 @@ func (s *Server) storeRevision(ctx context.Context, t *store.Tenant, a access.Ac
 	case nil:
 		return kerrors.New(kerrors.Internal, "no reservation")
 	}
-	who := secrets.Identity{Org: e.project.org.String(), Secret: reserved.Secret.String(), Revision: reserved.Revision}
-	sealed, err := keyring.SealValues(who, n.values)
+	who := keyring.Identity{Org: e.project.org.String(), Secret: reserved.Secret.String(), Revision: reserved.Revision}
+	sealed, err := ring.SealValues(who, n.values)
 	if err != nil {
 		return kerrors.New(kerrors.Internal, "sealing a secret failed: %s", err.Error())
 	}
@@ -287,19 +287,19 @@ func (s *Server) storeRevision(ctx context.Context, t *store.Tenant, a access.Ac
 
 // registryLogin is the login of registry in e, opened; none when e has
 // none (or no keyring and no login).
-func (s *Server) registryLogin(ctx context.Context, t *store.Tenant, e envScope, registry string) (opt.Val[secrets.RegistryLogin], error) {
+func (s *Server) registryLogin(ctx context.Context, t *store.Tenant, e envScope, registry string) (opt.Val[keyring.RegistryLogin], error) {
 	if s.deps.Keyring.IsNone() {
 		_, found, err := t.RegistryLogin(ctx, e.env.ID, registry)
 		if err != nil {
-			return opt.None[secrets.RegistryLogin](), err //nolint:wrapcheck // a store error, answered as internal
+			return opt.None[keyring.RegistryLogin](), err //nolint:wrapcheck // a store error, answered as internal
 		}
 		if !found {
-			return opt.None[secrets.RegistryLogin](), nil
+			return opt.None[keyring.RegistryLogin](), nil
 		}
 	}
-	keyring, err := s.keyring()
+	ring, err := s.keyring()
 	if err != nil {
-		return opt.None[secrets.RegistryLogin](), err
+		return opt.None[keyring.RegistryLogin](), err
 	}
-	return keyring.OpenRegistryLogin(ctx, t, e.project.org, e.env.ID, registry) //nolint:wrapcheck // a kerrors or store error
+	return ring.OpenRegistryLogin(ctx, t, e.project.org, e.env.ID, registry) //nolint:wrapcheck // a kerrors or store error
 }

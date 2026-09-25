@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // MaxToken is the longest token considered, in bytes.
@@ -54,17 +54,17 @@ type JWK struct {
 
 // UnmarshalJSON reads a key: `kty` must be there.
 func (k *JWK) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // the JSON error is the answer
 	}
 	var out JWK
 	for _, err := range []error{
-		wire.Optional(o, "kid", &out.Kid),
-		wire.Required(o, "kty", &out.Kty),
-		wire.Optional(o, "alg", &out.Alg),
-		wire.Optional(o, "n", &out.N),
-		wire.Optional(o, "e", &out.E),
+		jsonx.Optional(o, "kid", &out.Kid),
+		jsonx.Required(o, "kty", &out.Kty),
+		jsonx.Optional(o, "alg", &out.Alg),
+		jsonx.Optional(o, "n", &out.N),
+		jsonx.Optional(o, "e", &out.E),
 	} {
 		if err != nil {
 			return err
@@ -81,12 +81,12 @@ type JWKS struct {
 
 // UnmarshalJSON reads a key set: `keys` must be there.
 func (s *JWKS) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // the JSON error is the answer
 	}
 	var keys []JWK
-	if err := wire.Required(o, "keys", &keys); err != nil {
+	if err := jsonx.Required(o, "keys", &keys); err != nil {
 		return err //nolint:wrapcheck // names the member
 	}
 	s.Keys = keys
@@ -118,14 +118,14 @@ func readHeader(text string) (header, error) {
 	if err != nil {
 		return header{}, err
 	}
-	var o wire.Object
+	var o jsonx.Object
 	if json.Unmarshal(raw, &o) != nil {
 		return header{}, ErrMalformed
 	}
 	var h header
 	var crit opt.Val[json.RawMessage]
-	if wire.Required(o, "alg", &h.alg) != nil || wire.Optional(o, "kid", &h.kid) != nil ||
-		wire.Optional(o, "crit", &crit) != nil {
+	if jsonx.Required(o, "alg", &h.alg) != nil || jsonx.Optional(o, "kid", &h.kid) != nil ||
+		jsonx.Optional(o, "crit", &crit) != nil {
 		return header{}, ErrMalformed
 	}
 	h.crit = crit.IsSome()

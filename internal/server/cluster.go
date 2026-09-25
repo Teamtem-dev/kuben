@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/health"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/controller"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/kube/leader"
@@ -49,7 +49,7 @@ type clusterWork struct {
 	// facts is published by discovery on controller replicas.
 	facts *discovery.Watch
 	// keyring opens the secret revisions runs are bound to.
-	keyring *secrets.Keyring
+	keyring *keyring.Keyring
 	// agents is AgentLink's hub, when it listens.
 	agents opt.Val[materializer.AgentDispatch]
 }

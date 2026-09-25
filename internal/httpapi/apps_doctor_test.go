@@ -24,7 +24,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/evidence"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/integrations/dns"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
@@ -506,7 +506,7 @@ func TestAppDoctorWithoutAKeyringCannotSeeTheProxy(t *testing.T) {
 		d.Cluster = opt.Some(registry.Single(doctorCluster(t)))
 		d.Resolver = hosts{}
 		d.DNS = fake
-		d.Keyring = opt.None[*secrets.Keyring]()
+		d.Keyring = opt.None[*keyring.Keyring]()
 	})
 	_, body, _ := signInAt(t, base, "alice@example.com").do("GET", doctorPath, nil)
 	if proxy := checkNamed(t, body, "proxy"); proxy["status"] != "unknown" {

@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/model"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // NewAudit is the input for an audit record. The log is append-only: there
@@ -49,7 +49,7 @@ func (a NewAudit) insert(ctx context.Context, q querier, now int64) (ids.AuditID
 	id := ids.New[ids.Audit]()
 	data := opt.None[string]()
 	if v, ok := a.Data.Get(); ok {
-		text, err := wire.CanonicalValue(v)
+		text, err := jsonx.CanonicalValue(v)
 		if err != nil {
 			return ids.AuditID{}, dbErr(op, err)
 		}
@@ -85,7 +85,7 @@ func scanAudit(row pgx.CollectableRow) (model.AuditEvent, error) {
 	e.RequestID = opt.FromPtr(requestID)
 	// Data that is not JSON reads as absent, as in Rust (`.ok()`).
 	if data != nil {
-		if v, err := wire.DecodeAny([]byte(*data)); err == nil {
+		if v, err := jsonx.DecodeAny([]byte(*data)); err == nil {
 			e.Data = opt.Some(v)
 		}
 	}

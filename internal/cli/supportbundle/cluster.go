@@ -1,4 +1,4 @@
-package support
+package supportbundle
 
 // The cluster's part of a bundle: the API server, nodes, Kuben's pods and
 // warnings, the KubenConfigs, and Kuben's own logs.

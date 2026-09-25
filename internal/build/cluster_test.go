@@ -18,18 +18,18 @@ import (
 	opbuild "github.com/Teamtem-dev/kuben/internal/core/ops/build"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
-	kubetest "github.com/Teamtem-dev/kuben/internal/kube/envtest"
+	"github.com/Teamtem-dev/kuben/internal/kube/envtest"
 )
 
-var apiserver kubetest.Server
+var apiserver envtest.Server
 
-func TestMain(m *testing.M) { os.Exit(kubetest.Main(m, &apiserver)) }
+func TestMain(m *testing.M) { os.Exit(envtest.Main(m, &apiserver)) }
 
 func TestTheAPIServerAcceptsTheBuildObjects(t *testing.T) {
 	c := apiserver.Connect(t)
 	ctx := t.Context()
 	s := settings()
-	s.Namespace = kubetest.Namespace(t, c, "kuben-builds")
+	s.Namespace = envtest.Namespace(t, c, "kuben-builds")
 	p := &provider{}
 	w := build.NewWorker(build.Deps{
 		Client: c.Typed, Dynamic: c.Dynamic, ID: "w", Provider: p, Verifier: registry{},

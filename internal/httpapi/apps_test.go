@@ -12,7 +12,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -20,7 +20,7 @@ import (
 
 func jsonValue(t *testing.T, text string) any {
 	t.Helper()
-	v, err := wire.DecodeAny([]byte(text))
+	v, err := jsonx.DecodeAny([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}

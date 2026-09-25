@@ -1,4 +1,4 @@
-package support_test
+package supportbundle_test
 
 import (
 	"encoding/json"
@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	support "github.com/Teamtem-dev/kuben/internal/cli/supportbundle"
+	"github.com/Teamtem-dev/kuben/internal/cli/supportbundle"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
 
@@ -28,8 +28,8 @@ func TestOnlyAllowlistedConfigurationIsKept(t *testing.T) {
 	cfg.Telemetry.OTLPEndpoint = opt.Some("https://u:otlp-secret@otel.example.com")
 	cfg.Server.PublicURL = opt.Some("https://user:pw-secret@kuben.example.com")
 	cfg.Notify.AllowHTTP = true
-	view := support.AllowedConfig(cfg)
-	shown, err := wire.CanonicalValue(view)
+	view := supportbundle.AllowedConfig(cfg)
+	shown, err := jsonx.CanonicalValue(view)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +69,14 @@ func logSections(about map[string]any) map[string]any {
 }
 
 func TestBundlesAreBoundedByCuttingLogs(t *testing.T) {
-	data, err := support.Encode(logSections(map[string]any{"kuben": version.Version}), 20_000)
+	data, err := supportbundle.Encode(logSections(map[string]any{"kuben": version.Version}), 20_000)
 	if err != nil {
 		t.Fatalf("does not fit: %v", err)
 	}
 	if len(data) > 20_000 {
 		t.Errorf("%d bytes", len(data))
 	}
-	kept, err := wire.DecodeAny(data)
+	kept, err := jsonx.DecodeAny(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestBundlesAreBoundedByCuttingLogs(t *testing.T) {
 		t.Errorf("newest not kept: %q", last)
 	}
 	big := logSections(map[string]any{"big": strings.Repeat("y", 30_000)})
-	if _, err := support.Encode(big, 20_000); err == nil {
+	if _, err := supportbundle.Encode(big, 20_000); err == nil {
 		t.Error("fits without logs")
 	}
 }
@@ -97,33 +97,33 @@ func TestBundlesAreBoundedByCuttingLogs(t *testing.T) {
 func TestOldBundlesArePruned(t *testing.T) {
 	dir := t.TempDir()
 	for _, stamp := range []string{"20260101T000000Z", "20260102T000000Z", "20260103T000000Z"} {
-		if err := os.WriteFile(filepath.Join(dir, support.Prefix+stamp+".json"), []byte("{}"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, supportbundle.Prefix+stamp+".json"), []byte("{}"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, "other.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if removed, err := support.Prune(dir, 2); err != nil || removed != 1 {
+	if removed, err := supportbundle.Prune(dir, 2); err != nil || removed != 1 {
 		t.Fatalf("prune: %d, %v", removed, err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, support.Prefix+"20260101T000000Z.json")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, supportbundle.Prefix+"20260101T000000Z.json")); err == nil {
 		t.Error("the oldest bundle is still there")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "other.json")); err != nil {
 		t.Error("another file was removed")
 	}
-	if removed, err := support.Prune(dir, 0); err != nil || removed != 1 {
+	if removed, err := supportbundle.Prune(dir, 0); err != nil || removed != 1 {
 		t.Errorf("one is always kept: %d, %v", removed, err)
 	}
 }
 
 func TestStringsAreRedactedEverywhere(t *testing.T) {
-	v := support.Redacted(map[string]any{
+	v := supportbundle.Redacted(map[string]any{
 		"a": []any{"see postgres://u:secret@h/db"},
 		"b": map[string]any{"c": "https://x:y@z"},
 	})
-	text, err := wire.CanonicalValue(v)
+	text, err := jsonx.CanonicalValue(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestStringsAreRedactedEverywhere(t *testing.T) {
 
 // The bundle is written as serde_json's pretty printer wrote a Value.
 func TestTheBundleIsPrettyPrintedAsBefore(t *testing.T) {
-	got, err := support.Pretty(map[string]any{"b": []any{}, "a": map[string]any{"x": 1, "y": []any{"<&>"}}, "c": map[string]any{}})
+	got, err := supportbundle.Pretty(map[string]any{"b": []any{}, "a": map[string]any{"x": 1, "y": []any{"<&>"}}, "c": map[string]any{}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,7 @@ import (
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -41,12 +41,12 @@ func (p privateImages) ResolveAs(ctx context.Context, image string, login opt.Va
 }
 
 // testKeyring is tests/http.rs's keyring: version 1, 32 bytes of 7.
-func testKeyring() *secrets.Keyring {
+func testKeyring() *keyring.Keyring {
 	var key [32]byte
 	for i := range key {
 		key[i] = 7
 	}
-	return secrets.FromKeys(map[uint32][32]byte{1: key})
+	return keyring.FromKeys(map[uint32][32]byte{1: key})
 }
 
 // routes/registries.rs registries_are_named_as_image_references_name_them.

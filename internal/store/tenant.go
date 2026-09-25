@@ -20,7 +20,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 const (
@@ -212,7 +212,7 @@ func (t *Tenant) CreateEnvironmentTyped(
 	quotaText := opt.None[string]()
 	if q, ok := quota.Get(); ok {
 		// serde_json's Value::to_string: compact, keys sorted.
-		text, err := wire.CanonicalValue(q)
+		text, err := jsonx.CanonicalValue(q)
 		if err != nil {
 			return ids.EnvironmentID{}, dbErr(op, err)
 		}

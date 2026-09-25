@@ -1,4 +1,4 @@
-package secrets_test
+package keyring_test
 
 import (
 	"io"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
 )
@@ -35,7 +35,7 @@ func TestPrepareResealsUnderTheCurrentKeyAndRefusesAForeignKeyring(t *testing.T)
 		t.Fatal(err)
 	}
 	old := ring(1)
-	if n, err := secrets.Prepare(ctx, s, old, logger); err != nil || n != 0 {
+	if n, err := keyring.Prepare(ctx, s, old, logger); err != nil || n != 0 {
 		t.Fatalf("first start: %d %v", n, err)
 	}
 	reservation, err := tn.ReserveSecretRevision(ctx, project, env, "db", store.SecretOpaque{}, "user:alice")
@@ -43,7 +43,7 @@ func TestPrepareResealsUnderTheCurrentKeyAndRefusesAForeignKeyring(t *testing.T)
 		t.Fatal(err)
 	}
 	reserved := reservation.(store.ReservationReserved).Reserved
-	who := secrets.Identity{Org: o.ID.String(), Secret: reserved.Secret.String(), Revision: reserved.Revision}
+	who := keyring.Identity{Org: o.ID.String(), Secret: reserved.Secret.String(), Revision: reserved.Revision}
 	values := map[string]string{"url": "postgres://db"}
 	sealed, err := old.SealValues(who, values)
 	if err != nil {
@@ -56,16 +56,16 @@ func TestPrepareResealsUnderTheCurrentKeyAndRefusesAForeignKeyring(t *testing.T)
 		t.Fatal(err)
 	}
 
-	foreign := secrets.FromKeys(map[uint32][32]byte{1: filled(9), 2: filled(2)})
-	if _, err := secrets.Prepare(ctx, s, foreign, logger); err == nil ||
+	foreign := keyring.FromKeys(map[uint32][32]byte{1: filled(9), 2: filled(2)})
+	if _, err := keyring.Prepare(ctx, s, foreign, logger); err == nil ||
 		!strings.Contains(err.Error(), "under versions [1]: every replica must read the same keyring") {
 		t.Fatalf("a foreign keyring: %v", err)
 	}
 	rotated := ring(1, 2)
-	if n, err := secrets.Prepare(ctx, s, rotated, logger); err != nil || n != 1 {
+	if n, err := keyring.Prepare(ctx, s, rotated, logger); err != nil || n != 1 {
 		t.Fatalf("rotation: %d %v", n, err)
 	}
-	if n, err := secrets.Prepare(ctx, s, rotated, logger); err != nil || n != 0 {
+	if n, err := keyring.Prepare(ctx, s, rotated, logger); err != nil || n != 0 {
 		t.Fatalf("again: %d %v", n, err)
 	}
 	tn, err = s.Tenant(ctx, o.ID)

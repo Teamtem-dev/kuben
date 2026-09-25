@@ -13,33 +13,33 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/source"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // The answers Kuben reads, with the members serde required.
 type (
 	tokenBody struct {
-		Token     wire.Must[string] `json:"token"`
-		ExpiresAt wire.Must[string] `json:"expires_at"`
+		Token     jsonx.Must[string] `json:"token"`
+		ExpiresAt jsonx.Must[string] `json:"expires_at"`
 	}
 	repositoryBody struct {
-		ID wire.Must[uint64] `json:"id"`
+		ID jsonx.Must[uint64] `json:"id"`
 	}
 	refObject struct {
-		Sha wire.Must[string] `json:"sha"`
+		Sha jsonx.Must[string] `json:"sha"`
 	}
 	refBody struct {
-		Object wire.Must[refObject] `json:"object"`
+		Object jsonx.Must[refObject] `json:"object"`
 	}
 	installationAccount struct {
-		Login wire.Must[string] `json:"login"`
+		Login jsonx.Must[string] `json:"login"`
 	}
 	installationBody struct {
-		Account     wire.Must[installationAccount] `json:"account"`
-		SuspendedAt opt.Val[string]                `json:"suspended_at"`
+		Account     jsonx.Must[installationAccount] `json:"account"`
+		SuspendedAt opt.Val[string]                 `json:"suspended_at"`
 	}
 	pullBody struct {
-		State wire.Must[string] `json:"state"`
+		State jsonx.Must[string] `json:"state"`
 	}
 	// anyBody is any JSON value.
 	anyBody struct{}

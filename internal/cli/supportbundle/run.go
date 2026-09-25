@@ -1,4 +1,4 @@
-package support
+package supportbundle
 
 // `kuben support-bundle` itself: the sections, the preview, the file and
 // its audit record.
@@ -21,7 +21,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
@@ -138,7 +138,7 @@ func clusterSections(ctx context.Context, cfg config.Config, opts Options, secti
 
 // printPreview says what the bundle data would hold, section by section.
 func printPreview(w io.Writer, data []byte) error {
-	value, err := wire.DecodeAny(data)
+	value, err := jsonx.DecodeAny(data)
 	if err != nil {
 		return err //nolint:wrapcheck // explains itself
 	}
@@ -150,7 +150,7 @@ func printPreview(w io.Writer, data []byte) error {
 	fmt.Fprintf(&b, "the bundle would hold %d KiB:\n", len(data)>>10)
 	for _, name := range slices.Sorted(maps.Keys(sections)) {
 		size := 0
-		if text, err := wire.CanonicalValue(sections[name]); err == nil {
+		if text, err := jsonx.CanonicalValue(sections[name]); err == nil {
 			size = len(text)
 		}
 		fmt.Fprintf(&b, "  %-10s %7d bytes\n", name, size)

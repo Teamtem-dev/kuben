@@ -10,7 +10,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
@@ -56,7 +56,7 @@ func generic(t *testing.T, doc map[string]any) map[string]any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := wire.DecodeAny(raw)
+	v, err := jsonx.DecodeAny(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestTheExportWireFormIsPinned(t *testing.T) {
 	m := exportMaterial(t)
 	m.Resources = jsonValue(t, `[{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"w"}}]`)
 	m.Capabilities = jsonValue(t, `{"gateway":"kuben-system/kuben"}`)
-	got, err := wire.CanonicalValue(api.ExportDocument(exportSubject(), m))
+	got, err := jsonx.CanonicalValue(api.ExportDocument(exportSubject(), m))
 	if err != nil {
 		t.Fatal(err)
 	}

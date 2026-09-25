@@ -1,4 +1,4 @@
-package wire_test
+package jsonx_test
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // The fixtures come from the Rust code (crates/kuben-platform/src/
@@ -33,7 +33,7 @@ func TestCanonicalMatchesRust(t *testing.T) {
 		t.Fatal("no cases")
 	}
 	for _, c := range f.Cases {
-		got, err := wire.Canonical([]byte(c.Input))
+		got, err := jsonx.Canonical([]byte(c.Input))
 		if err != nil {
 			t.Errorf("%s: %v", c.Input, err)
 			continue
@@ -41,7 +41,7 @@ func TestCanonicalMatchesRust(t *testing.T) {
 		if got != c.Canonical {
 			t.Errorf("%s:\n got %q\nwant %q", c.Input, got, c.Canonical)
 		}
-		if h := wire.SHA256(got); h != c.SHA256 {
+		if h := jsonx.SHA256(got); h != c.SHA256 {
 			t.Errorf("%s: hash %s, want %s", c.Input, h, c.SHA256)
 		}
 	}
@@ -62,7 +62,7 @@ func TestFloatsPrintAsSerde(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := wire.FormatFloat(math.Float64frombits(bits)); got != p.Text {
+		if got := jsonx.FormatFloat(math.Float64frombits(bits)); got != p.Text {
 			failures++
 			if failures <= 10 {
 				t.Errorf("%v: got %s, want %s", math.Float64frombits(bits), got, p.Text)
@@ -70,7 +70,7 @@ func TestFloatsPrintAsSerde(t *testing.T) {
 		}
 	}
 	for _, p := range f.Parsed {
-		got, err := wire.Canonical([]byte(p.Input))
+		got, err := jsonx.Canonical([]byte(p.Input))
 		if err != nil || got != p.Canonical {
 			t.Errorf("%s: got %q (%v), want %q", p.Input, got, err, p.Canonical)
 		}
@@ -82,14 +82,14 @@ func TestFloatsPrintAsSerde(t *testing.T) {
 
 func TestCanonicalRefusesWhatIsNotOneValue(t *testing.T) {
 	for _, bad := range []string{``, `{`, `1 2`, `[1e999]`} {
-		if _, err := wire.Canonical([]byte(bad)); err == nil {
+		if _, err := jsonx.Canonical([]byte(bad)); err == nil {
 			t.Errorf("%q must be refused", bad)
 		}
 	}
 }
 
 func TestCanonicalValueSortsStructFields(t *testing.T) {
-	got, err := wire.CanonicalValue(struct {
+	got, err := jsonx.CanonicalValue(struct {
 		Z string `json:"z"`
 		A []int  `json:"a"`
 	}{Z: "<&>", A: []int{2, 1}})
@@ -110,7 +110,7 @@ func FuzzCanonicalIsStable(f *testing.F) {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, text string) {
-		once, err := wire.Canonical([]byte(text))
+		once, err := jsonx.Canonical([]byte(text))
 		if err != nil {
 			return
 		}
@@ -120,7 +120,7 @@ func FuzzCanonicalIsStable(f *testing.F) {
 		if strings.ContainsAny(once, ".eE") && strings.ContainsAny(once, "0123456789") {
 			return // floats: see above
 		}
-		twice, err := wire.Canonical([]byte(once))
+		twice, err := jsonx.Canonical([]byte(once))
 		if err != nil || once != twice {
 			t.Fatalf("not a fixed point: %q then %q (%v)", once, twice, err)
 		}

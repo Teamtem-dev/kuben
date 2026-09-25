@@ -28,7 +28,7 @@ import (
 	coresso "github.com/Teamtem-dev/kuben/internal/core/sso"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oidc"
 	"github.com/Teamtem-dev/kuben/internal/integrations/outbound"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // MaxDocument is the largest answer read from the provider, in bytes.
@@ -86,16 +86,16 @@ type Discovery struct {
 // UnmarshalJSON reads a discovery document: the four members must be
 // there, the rest is ignored.
 func (d *Discovery) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // the JSON error is the answer
 	}
 	var out Discovery
 	for _, err := range []error{
-		wire.Required(o, "issuer", &out.Issuer),
-		wire.Required(o, "authorization_endpoint", &out.AuthorizationEndpoint),
-		wire.Required(o, "token_endpoint", &out.TokenEndpoint),
-		wire.Required(o, "jwks_uri", &out.JWKSURI),
+		jsonx.Required(o, "issuer", &out.Issuer),
+		jsonx.Required(o, "authorization_endpoint", &out.AuthorizationEndpoint),
+		jsonx.Required(o, "token_endpoint", &out.TokenEndpoint),
+		jsonx.Required(o, "jwks_uri", &out.JWKSURI),
 	} {
 		if err != nil {
 			return err
@@ -335,12 +335,12 @@ func (c *Client) exchange(ctx context.Context, p provider, code, verifier string
 	if status < 200 || status > 299 {
 		return "", CodeRefusedError{Reason: httpStatus(status)}
 	}
-	var o wire.Object
+	var o jsonx.Object
 	var idToken opt.Val[string]
 	if err := json.Unmarshal(body, &o); err != nil {
 		return "", CodeRefusedError{Reason: err.Error()}
 	}
-	if err := wire.Optional(o, "id_token", &idToken); err != nil {
+	if err := jsonx.Optional(o, "id_token", &idToken); err != nil {
 		return "", CodeRefusedError{Reason: err.Error()}
 	}
 	token, ok := idToken.Get()

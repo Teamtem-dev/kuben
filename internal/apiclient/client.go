@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
 
@@ -233,7 +233,7 @@ func get[T any](ctx context.Context, c Client, path string) (T, error) {
 }
 
 // Me is who the token belongs to: the /me document as it came, read with
-// wire.DecodeAny (objects are map[string]any).
+// jsonx.DecodeAny (objects are map[string]any).
 func (c Client) Me(ctx context.Context) (any, error) {
 	const path = "/me"
 	response, err := c.send(ctx, http.MethodGet, path, nil, nil)
@@ -244,7 +244,7 @@ func (c Client) Me(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	me, err := wire.DecodeAny(answer)
+	me, err := jsonx.DecodeAny(answer)
 	if err != nil {
 		return nil, TransportError{Reason: fmt.Sprintf("unexpected answer from %s: %v", path, err)}
 	}

@@ -1,20 +1,20 @@
 package cli
 
-// `kuben support-bundle` (SupportOpts; the work is package cli/support).
+// `kuben support-bundle` (SupportOpts; the work is package cli/supportbundle).
 
 import (
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	support "github.com/Teamtem-dev/kuben/internal/cli/supportbundle"
+	"github.com/Teamtem-dev/kuben/internal/cli/supportbundle"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 )
 
 func supportBundleCmd(g *globals) *cobra.Command {
 	var (
 		out  string
-		opts support.Options
+		opts supportbundle.Options
 	)
 	cmd := &cobra.Command{
 		Use: "support-bundle",
@@ -22,9 +22,9 @@ func supportBundleCmd(g *globals) *cobra.Command {
 			"cluster state and (with --logs) Kuben's logs. Nothing is uploaded; `--preview` writes nothing",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			if opts.LogLines < 1 || opts.LogLines > support.MaxLogLines {
+			if opts.LogLines < 1 || opts.LogLines > supportbundle.MaxLogLines {
 				return fmt.Errorf("invalid value '%d' for '--log-lines <LOG_LINES>': %d is not in 1..=%d",
-					opts.LogLines, opts.LogLines, support.MaxLogLines)
+					opts.LogLines, opts.LogLines, supportbundle.MaxLogLines)
 			}
 			cfg, err := g.load()
 			if err != nil {
@@ -33,11 +33,11 @@ func supportBundleCmd(g *globals) *cobra.Command {
 			if c.Flags().Changed("out") {
 				opts.Out = opt.Some(out)
 			}
-			env := support.Env{Build: versionString(), Stdout: g.stdout, Stderr: g.stderr}
+			env := supportbundle.Env{Build: versionString(), Stdout: g.stdout, Stderr: g.stderr}
 			if g.configFile != "" {
 				env.ConfigPath = opt.Some(g.configFile)
 			}
-			return support.Run(c.Context(), cfg, opts, env) //nolint:wrapcheck // explains itself
+			return supportbundle.Run(c.Context(), cfg, opts, env) //nolint:wrapcheck // explains itself
 		},
 	}
 	flags := cmd.Flags()

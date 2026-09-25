@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	bundle "github.com/Teamtem-dev/kuben/internal/bundlelock"
+	"github.com/Teamtem-dev/kuben/internal/bundlelock"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/install/journal"
 )
@@ -51,9 +51,9 @@ func (m *machine) showPlan(ctx context.Context, opts Opts) {
 
 func (m *machine) planLines(ctx context.Context, opts Opts, j *journal.Journal) []planLine {
 	version := "v" + m.version
-	b, err := bundle.Get()
+	b, err := bundlelock.Get()
 	if err != nil {
-		b = bundle.Bundle{}
+		b = bundlelock.Bundle{}
 	}
 	binary := fmt.Sprintf("install %s to %s", version, Bin)
 	if exists(Bin) {
@@ -106,7 +106,7 @@ func (m *machine) planLines(ctx context.Context, opts Opts, j *journal.Journal) 
 	return plan
 }
 
-func planPlatform(opts Opts, b bundle.Bundle) planLine {
+func planPlatform(opts Opts, b bundlelock.Bundle) planLine {
 	if opts.Kubeconfig.IsSome() {
 		return planLine{"Platform", "nothing: a cluster brought with --kubeconfig is left as it is (kuben doctor says what it lacks)"}
 	}
@@ -135,7 +135,7 @@ func planConsole(opts Opts) planLine {
 	}
 }
 
-func (m *machine) planCluster(opts Opts, b bundle.Bundle) planLine {
+func (m *machine) planCluster(opts Opts, b bundlelock.Bundle) planLine {
 	var action string
 	path, given := opts.Kubeconfig.Get()
 	existing := m.existingKubeconfig()

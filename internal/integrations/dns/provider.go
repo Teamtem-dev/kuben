@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/dnsname"
 	"github.com/Teamtem-dev/kuben/internal/integrations/outbound"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
 
@@ -145,7 +145,7 @@ func errorsText(errs []json.RawMessage) string {
 	if err != nil {
 		return "[]"
 	}
-	text, err := wire.Canonical(raw)
+	text, err := jsonx.Canonical(raw)
 	if err != nil {
 		return string(raw)
 	}

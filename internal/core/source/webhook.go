@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ascii"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
@@ -122,7 +122,7 @@ func (PullEvent) webhookEvent()         {}
 func (Ignored) webhookEvent()           {}
 
 // need is m's value, or an invalid-payload error naming the missing field.
-func need[T any](m wire.Must[T], field string) (T, error) {
+func need[T any](m jsonx.Must[T], field string) (T, error) {
 	v, err := m.Get(field)
 	if err != nil {
 		return v, &Invalid{Kind: InvalidPayload, Value: err.Error()}
@@ -131,8 +131,8 @@ func need[T any](m wire.Must[T], field string) (T, error) {
 }
 
 type rawRepository struct {
-	ID       wire.Must[uint64] `json:"id"`
-	FullName wire.Must[string] `json:"full_name"`
+	ID       jsonx.Must[uint64] `json:"id"`
+	FullName jsonx.Must[string] `json:"full_name"`
 }
 
 func (r rawRepository) read() (uint64, string, error) {
@@ -145,11 +145,11 @@ func (r rawRepository) read() (uint64, string, error) {
 }
 
 type rawAccount struct {
-	Login wire.Must[string] `json:"login"`
+	Login jsonx.Must[string] `json:"login"`
 }
 
 type rawInstallation struct {
-	ID      wire.Must[uint64]   `json:"id"`
+	ID      jsonx.Must[uint64]  `json:"id"`
 	Account opt.Val[rawAccount] `json:"account"`
 }
 
@@ -194,12 +194,12 @@ func ParseGitHub(event string, body []byte) (WebhookEvent, error) {
 }
 
 type rawPush struct {
-	Ref          wire.Must[string]        `json:"ref"`
-	After        wire.Must[string]        `json:"after"`
-	Forced       bool                     `json:"forced"`
-	Deleted      bool                     `json:"deleted"`
-	Repository   wire.Must[rawRepository] `json:"repository"`
-	Installation opt.Val[rawInstallation] `json:"installation"`
+	Ref          jsonx.Must[string]        `json:"ref"`
+	After        jsonx.Must[string]        `json:"after"`
+	Forced       bool                      `json:"forced"`
+	Deleted      bool                      `json:"deleted"`
+	Repository   jsonx.Must[rawRepository] `json:"repository"`
+	Installation opt.Val[rawInstallation]  `json:"installation"`
 }
 
 func parsePush(body []byte) (WebhookEvent, error) {
@@ -264,8 +264,8 @@ func (r rawInstallation) readIf(present bool) (uint64, error) {
 }
 
 type rawInstallationEvent struct {
-	Action       wire.Must[string]          `json:"action"`
-	Installation wire.Must[rawInstallation] `json:"installation"`
+	Action       jsonx.Must[string]          `json:"action"`
+	Installation jsonx.Must[rawInstallation] `json:"installation"`
 }
 
 func parseInstallation(body []byte) (WebhookEvent, error) {
@@ -302,29 +302,29 @@ func parseInstallation(body []byte) (WebhookEvent, error) {
 }
 
 type rawPullRepo struct {
-	FullName wire.Must[string] `json:"full_name"`
+	FullName jsonx.Must[string] `json:"full_name"`
 }
 
 type rawPullSide struct {
-	Sha wire.Must[string] `json:"sha"`
-	Ref wire.Must[string] `json:"ref"`
+	Sha jsonx.Must[string] `json:"sha"`
+	Ref jsonx.Must[string] `json:"ref"`
 	// Repo is null when the fork was deleted.
 	Repo opt.Val[rawPullRepo] `json:"repo"`
 }
 
 type rawPull struct {
-	Number    wire.Must[uint64]      `json:"number"`
-	State     wire.Must[string]      `json:"state"`
-	Draft     bool                   `json:"draft"`
-	UpdatedAt wire.Must[string]      `json:"updated_at"`
-	Head      wire.Must[rawPullSide] `json:"head"`
+	Number    jsonx.Must[uint64]      `json:"number"`
+	State     jsonx.Must[string]      `json:"state"`
+	Draft     bool                    `json:"draft"`
+	UpdatedAt jsonx.Must[string]      `json:"updated_at"`
+	Head      jsonx.Must[rawPullSide] `json:"head"`
 }
 
 type rawPullEvent struct {
-	Action       wire.Must[string]        `json:"action"`
-	PullRequest  wire.Must[rawPull]       `json:"pull_request"`
-	Repository   wire.Must[rawRepository] `json:"repository"`
-	Installation opt.Val[rawInstallation] `json:"installation"`
+	Action       jsonx.Must[string]        `json:"action"`
+	PullRequest  jsonx.Must[rawPull]       `json:"pull_request"`
+	Repository   jsonx.Must[rawRepository] `json:"repository"`
+	Installation opt.Val[rawInstallation]  `json:"installation"`
 }
 
 // pullFields is a pull request payload with every required field read.

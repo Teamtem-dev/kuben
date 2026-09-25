@@ -28,7 +28,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -129,7 +129,7 @@ func readDeploymentRequest(req *gen.StartDeploymentRequest) (deploymentRequest, 
 		if err != nil {
 			return deploymentRequest{}, kerrors.Wrap(err, "a deployment's config")
 		}
-		value, err := wire.DecodeAny(data)
+		value, err := jsonx.DecodeAny(data)
 		if err != nil {
 			return deploymentRequest{}, kerrors.Wrap(err, "a deployment's config")
 		}
@@ -155,7 +155,7 @@ func (r deploymentRequest) inputHash(project, environment, app string) ([]byte, 
 	if config, ok := r.config.Get(); ok {
 		request["config"] = config
 	}
-	text, err := wire.CanonicalValue(map[string]any{
+	text, err := jsonx.CanonicalValue(map[string]any{
 		"project": project, "environment": environment, "app": app, "request": request,
 	})
 	if err != nil {

@@ -1,4 +1,4 @@
-package bundle_test
+package bundlelock_test
 
 import (
 	"os"
@@ -8,16 +8,16 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	bundle "github.com/Teamtem-dev/kuben/internal/bundlelock"
+	"github.com/Teamtem-dev/kuben/internal/bundlelock"
 	"github.com/Teamtem-dev/kuben/internal/core/compat"
 )
 
 // root is the repository root, relative to this package's directory.
 const root = "../../"
 
-func get(t *testing.T) bundle.Bundle {
+func get(t *testing.T) bundlelock.Bundle {
 	t.Helper()
-	b, err := bundle.Get()
+	b, err := bundlelock.Get()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,8 +30,8 @@ func TestTheEmbeddedLockIsTheRepositorysLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bundle.Lock != string(want) {
-		t.Fatal("internal/bundle/bundle.lock.json differs from the repository's bundle.lock.json: copy it over")
+	if bundlelock.Lock != string(want) {
+		t.Fatal("internal/bundlelock/bundle.lock.json differs from the repository's bundle.lock.json: copy it over")
 	}
 }
 

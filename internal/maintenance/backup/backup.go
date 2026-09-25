@@ -38,8 +38,8 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/version"
 )
@@ -86,20 +86,20 @@ type FileSum struct {
 // UnmarshalJSON requires every member, as serde did (unknown ones are
 // ignored).
 func (m *Manifest) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // the caller says what did not parse
 	}
 	var out Manifest
 	err := errors.Join(
-		wire.Required(o, "format", &out.Format),
-		wire.Required(o, "kuben", &out.Kuben),
-		wire.Required(o, "created_at", &out.CreatedAt),
-		wire.Required(o, "schema", &out.Schema),
-		wire.Required(o, "database_version", &out.DatabaseVersion),
-		wire.Required(o, "dump", &out.Dump),
-		wire.Required(o, "keyring_included", &out.KeyringIncluded),
-		wire.Required(o, "key_fingerprints", &out.KeyFingerprints),
+		jsonx.Required(o, "format", &out.Format),
+		jsonx.Required(o, "kuben", &out.Kuben),
+		jsonx.Required(o, "created_at", &out.CreatedAt),
+		jsonx.Required(o, "schema", &out.Schema),
+		jsonx.Required(o, "database_version", &out.DatabaseVersion),
+		jsonx.Required(o, "dump", &out.Dump),
+		jsonx.Required(o, "keyring_included", &out.KeyringIncluded),
+		jsonx.Required(o, "key_fingerprints", &out.KeyFingerprints),
 	)
 	if err != nil {
 		return err //nolint:wrapcheck // names the field
@@ -110,15 +110,15 @@ func (m *Manifest) UnmarshalJSON(data []byte) error {
 
 // UnmarshalJSON requires every member, as serde did.
 func (f *FileSum) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // the caller says what did not parse
 	}
 	var out FileSum
 	err := errors.Join(
-		wire.Required(o, "file", &out.File),
-		wire.Required(o, "bytes", &out.Bytes),
-		wire.Required(o, "sha256", &out.SHA256),
+		jsonx.Required(o, "file", &out.File),
+		jsonx.Required(o, "bytes", &out.Bytes),
+		jsonx.Required(o, "sha256", &out.SHA256),
 	)
 	if err != nil {
 		return err //nolint:wrapcheck // names the field
@@ -292,7 +292,7 @@ func SHA256File(path string) (uint64, string, error) {
 }
 
 // fingerprints is `version:hex` of every key of keyring, by version.
-func fingerprints(keyring *secrets.Keyring) []string {
+func fingerprints(keyring *keyring.Keyring) []string {
 	fps := keyring.Fingerprints()
 	out := make([]string, 0, len(fps))
 	for _, f := range fps {
@@ -439,7 +439,7 @@ func writeBackup(ctx context.Context, cfg config.Config, st *store.Store, root s
 		return "", Manifest{}, fmt.Errorf("pg_dump %d is older than the PostgreSQL %d server; install client tools %d or newer",
 			major, facts.Major(), facts.Major())
 	}
-	keyring, err := secrets.Load(cfg.SecretKeyringFile())
+	keyring, err := keyring.Load(cfg.SecretKeyringFile())
 	if err != nil {
 		return "", Manifest{}, fmt.Errorf("the secret keyring: %w", err)
 	}

@@ -37,7 +37,7 @@ func AuditStatus(data opt.Val[any]) opt.Val[int32] {
 	if !ok {
 		return opt.None[int32]()
 	}
-	// Stored documents are read with wire.DecodeAny: numbers are
+	// Stored documents are read with jsonx.DecodeAny: numbers are
 	// json.Number, and serde's as_u64 takes only integer literals.
 	n, ok := fields["status"].(json.Number)
 	if !ok {

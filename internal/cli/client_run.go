@@ -28,7 +28,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // lineWriter writes lines and keeps the first write error, so a command's
@@ -446,7 +446,7 @@ func printStatusJSON(w io.Writer, detail apiclient.AppDetail, releases []apiclie
 	if err != nil {
 		return fmt.Errorf("writing JSON: %w", err)
 	}
-	sorted, err := wire.Canonical(raw)
+	sorted, err := jsonx.Canonical(raw)
 	if err != nil {
 		return fmt.Errorf("writing JSON: %w", err)
 	}

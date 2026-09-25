@@ -17,7 +17,7 @@
 //   - status and null fields are dropped;
 //   - objects are ordered by kind (volumes, workloads, autoscalers, cron
 //     jobs, service, grant, route) and then by name;
-//   - the JSON is canonical (wire.Canonical): object keys sorted, no
+//   - the JSON is canonical (jsonx.Canonical): object keys sorted, no
 //     whitespace.
 //
 // A plan larger than the envelope bound (v1alpha1.MaxEnvelopeBytes) is
@@ -30,7 +30,7 @@ import (
 	"slices"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // RendererVersion is recorded with every plan; a renderer change that
@@ -62,7 +62,7 @@ func (p Plan) ResourcesJSON() string { return p.resources }
 // Resources is the resources as a JSON value (for the SQL row), numbers
 // kept as their text.
 func (p Plan) Resources() (any, error) {
-	v, err := wire.DecodeAny([]byte(p.resources))
+	v, err := jsonx.DecodeAny([]byte(p.resources))
 	if err != nil {
 		return nil, fmt.Errorf("plan resources: %w", err)
 	}
@@ -138,14 +138,14 @@ func Render(app *v1alpha1.App, capabilities Capabilities) (Plan, error) {
 		inventory = append(inventory, e.item)
 		sorted = append(sorted, e.object)
 	}
-	resources, err := wire.CanonicalValue(sorted)
+	resources, err := jsonx.CanonicalValue(sorted)
 	if err != nil {
 		return Plan{}, fmt.Errorf("a rendered object does not serialize: %w", err)
 	}
 	if len(resources) > v1alpha1.MaxEnvelopeBytes {
 		return Plan{}, &TooLargeError{Bytes: len(resources), Max: v1alpha1.MaxEnvelopeBytes}
 	}
-	inventoryText, err := wire.CanonicalValue(inventory)
+	inventoryText, err := jsonx.CanonicalValue(inventory)
 	if err != nil {
 		return Plan{}, fmt.Errorf("a rendered object does not serialize: %w", err)
 	}
@@ -153,8 +153,8 @@ func Render(app *v1alpha1.App, capabilities Capabilities) (Plan, error) {
 		Capabilities:  capabilities,
 		resources:     resources,
 		Inventory:     inventory,
-		Digest:        wire.SHA256(resources),
-		InventoryHash: wire.SHA256(inventoryText),
+		Digest:        jsonx.SHA256(resources),
+		InventoryHash: jsonx.SHA256(inventoryText),
 	}, nil
 }
 

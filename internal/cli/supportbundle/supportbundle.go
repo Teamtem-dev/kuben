@@ -1,4 +1,4 @@
-// Package support is `kuben support-bundle` (M4.11; plan §19.3 S09), the
+// Package supportbundle is `kuben support-bundle` (M4.11; plan §19.3 S09), the
 // port of crates/kuben/src/cli/support.rs: a local file for a support
 // conversation.
 //
@@ -16,7 +16,7 @@
 // would go in and writes nothing. Older bundles beyond `--keep` are
 // removed. Making a bundle is audited. Redaction is best effort: read the
 // file before you share it.
-package support
+package supportbundle
 
 import (
 	"bytes"
@@ -34,7 +34,7 @@ import (
 	"time"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
 )
 
@@ -128,7 +128,7 @@ func generic(v any) (any, error) {
 	if err := enc.Encode(v); err != nil {
 		return nil, fmt.Errorf("encoding %T: %w", v, err)
 	}
-	return wire.DecodeAny(buf.Bytes()) //nolint:wrapcheck // explains itself
+	return jsonx.DecodeAny(buf.Bytes()) //nolint:wrapcheck // explains itself
 }
 
 var marshalerType = reflect.TypeFor[json.Marshaler]() //nolint:gochecknoglobals // a type, never changed
@@ -224,7 +224,7 @@ func Redacted(value any) any {
 // Pretty is v as serde_json::to_vec_pretty wrote a serde_json::Value: keys
 // sorted, two-space indents, no final newline.
 func Pretty(v any) ([]byte, error) {
-	compact, err := wire.CanonicalValue(v)
+	compact, err := jsonx.CanonicalValue(v)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // explains itself
 	}

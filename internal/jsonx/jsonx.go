@@ -1,8 +1,8 @@
-// Package wire decodes JSON as strictly as serde did: a member the Rust type
+// Package jsonx decodes JSON as strictly as serde did: a member the Rust type
 // required must be present and not null, and absent and null are the same
 // for an optional one. Contract-exact encoding (canonical JSON for content
 // hashes) joins this package with the render port.
-package wire
+package jsonx
 
 import (
 	"bytes"

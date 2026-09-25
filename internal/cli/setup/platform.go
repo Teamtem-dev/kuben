@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	bundle "github.com/Teamtem-dev/kuben/internal/bundlelock"
+	"github.com/Teamtem-dev/kuben/internal/bundlelock"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/install/journal"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
@@ -179,7 +179,7 @@ func tempFile(prefix, suffix string) string {
 
 // installK3s installs the locked k3s with its verified installer.
 func (m *machine) installK3s(ctx context.Context, datastore Datastore) error {
-	b, err := bundle.Get()
+	b, err := bundlelock.Get()
 	if err != nil {
 		return err //nolint:wrapcheck // explains itself
 	}
@@ -260,7 +260,7 @@ func certManagerValues(images map[string]string) string {
 
 // certManagerChart is cert-manager from the chart archive setup downloaded
 // and verified (chart, base64): k3s installs exactly those bytes.
-func certManagerChart(cm bundle.CertManager, chart string) map[string]any {
+func certManagerChart(cm bundlelock.CertManager, chart string) map[string]any {
 	return labelled(map[string]any{
 		"apiVersion": "helm.cattle.io/v1",
 		"kind":       "HelmChart",
@@ -277,7 +277,7 @@ func certManagerChart(cm bundle.CertManager, chart string) map[string]any {
 }
 
 // certManagerArchive is the pinned cert-manager chart archive, base64.
-func (m *machine) certManagerArchive(ctx context.Context, cm bundle.CertManager) (string, error) {
+func (m *machine) certManagerArchive(ctx context.Context, cm bundlelock.CertManager) (string, error) {
 	file := tempFile("kuben-cert-manager", ".tgz")
 	body, err := m.downloadVerified(ctx, cm.Chart.URL, cm.Chart.SHA256, file)
 	_ = os.Remove(file) //nolint:errcheck // a temporary file
@@ -457,7 +457,7 @@ func documents(text string) ([]map[string]any, error) {
 
 // ensureGatewayAPI installs the Gateway API CRDs when the cluster has
 // none; never upgrades them.
-func (m *machine) ensureGatewayAPI(ctx context.Context, c cluster, book *journal.Book, pinned bundle.GatewayAPI) (string, error) {
+func (m *machine) ensureGatewayAPI(ctx context.Context, c cluster, book *journal.Book, pinned bundlelock.GatewayAPI) (string, error) {
 	if crdEstablished(ctx, c, "gateways.gateway.networking.k8s.io") {
 		if _, err := book.Claim(journal.KindKubernetesObject, CRDs, false); err != nil {
 			return "", err
@@ -491,7 +491,7 @@ func (m *machine) ensureGatewayAPI(ctx context.Context, c cluster, book *journal
 func (m *machine) ensurePlatform(ctx context.Context, kubeconfig string, wanted Wanted, agent bool, book *journal.Book) error {
 	st := m.ui.Step("Gateway, TLS and platform components")
 	defer st.Close()
-	b, err := bundle.Get()
+	b, err := bundlelock.Get()
 	if err != nil {
 		return err //nolint:wrapcheck // explains itself
 	}
@@ -516,7 +516,7 @@ func (m *machine) ensurePlatform(ctx context.Context, kubeconfig string, wanted 
 	return book.Done(changed, detail)
 }
 
-func (m *machine) ensureCertManager(ctx context.Context, c cluster, book *journal.Book, cm bundle.CertManager, track func(bool, error) error) (opt.Val[string], error) {
+func (m *machine) ensureCertManager(ctx context.Context, c cluster, book *journal.Book, cm bundlelock.CertManager, track func(bool, error) error) (opt.Val[string], error) {
 	if crdEstablished(ctx, c, "clusterissuers.cert-manager.io") && !book.Journal().Owns(journal.KindKubernetesObject, CertManager) {
 		if _, err := book.Claim(journal.KindKubernetesObject, CertManager, false); err != nil {
 			return opt.None[string](), err
@@ -559,7 +559,7 @@ func (m *machine) ensureAcmeIssuer(ctx context.Context, c cluster, book *journal
 }
 
 func (m *machine) platformObjects(ctx context.Context, c cluster, wanted Wanted, agent bool, book *journal.Book,
-	b bundle.Bundle,
+	b bundlelock.Bundle,
 ) (bool, []string, error) {
 	changed, notes := false, []string{}
 	track := func(did bool, err error) error {

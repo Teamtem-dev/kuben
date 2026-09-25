@@ -26,7 +26,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // File is the journal, relative to the state directory.
@@ -235,12 +235,12 @@ func marshal(v any) ([]byte, error) {
 // UnmarshalJSON reads the journal as serde did: format is required, the
 // lists default to empty.
 func (j *Journal) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // a JSON error
 	}
 	var out Journal
-	if err := wire.Required(o, "format", &out.Format); err != nil {
+	if err := jsonx.Required(o, "format", &out.Format); err != nil {
 		return err //nolint:wrapcheck // names the member
 	}
 	if err := optionalList(o, "runs", &out.Runs); err != nil {
@@ -255,21 +255,21 @@ func (j *Journal) UnmarshalJSON(data []byte) error {
 
 // UnmarshalJSON reads a run: kuben and startedAt are required.
 func (r *Run) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // a JSON error
 	}
 	var out Run
-	if err := wire.Required(o, "kuben", &out.Kuben); err != nil {
+	if err := jsonx.Required(o, "kuben", &out.Kuben); err != nil {
 		return err //nolint:wrapcheck // names the member
 	}
-	if err := wire.Required(o, "startedAt", &out.StartedAt); err != nil {
+	if err := jsonx.Required(o, "startedAt", &out.StartedAt); err != nil {
 		return err //nolint:wrapcheck // names the member
 	}
-	if err := wire.Optional(o, "finishedAt", &out.FinishedAt); err != nil {
+	if err := jsonx.Optional(o, "finishedAt", &out.FinishedAt); err != nil {
 		return err //nolint:wrapcheck // names the member
 	}
-	if err := wire.Optional(o, "succeeded", &out.Succeeded); err != nil {
+	if err := jsonx.Optional(o, "succeeded", &out.Succeeded); err != nil {
 		return err //nolint:wrapcheck // names the member
 	}
 	if err := optionalList(o, "steps", &out.Steps); err != nil {
@@ -281,16 +281,16 @@ func (r *Run) UnmarshalJSON(data []byte) error {
 
 // UnmarshalJSON reads a step: every member is required.
 func (s *Step) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // a JSON error
 	}
 	var out Step
 	for _, err := range []error{
-		wire.Required(o, "id", &out.ID),
-		wire.Required(o, "result", &out.Result),
-		wire.Required(o, "detail", &out.Detail),
-		wire.Required(o, "at", &out.At),
+		jsonx.Required(o, "id", &out.ID),
+		jsonx.Required(o, "result", &out.Result),
+		jsonx.Required(o, "detail", &out.Detail),
+		jsonx.Required(o, "at", &out.At),
 	} {
 		if err != nil {
 			return err //nolint:wrapcheck // names the member
@@ -302,16 +302,16 @@ func (s *Step) UnmarshalJSON(data []byte) error {
 
 // UnmarshalJSON reads a resource: every member is required.
 func (r *Resource) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err //nolint:wrapcheck // a JSON error
 	}
 	var out Resource
 	for _, err := range []error{
-		wire.Required(o, "kind", &out.Kind),
-		wire.Required(o, "name", &out.Name),
-		wire.Required(o, "owner", &out.Owner),
-		wire.Required(o, "since", &out.Since),
+		jsonx.Required(o, "kind", &out.Kind),
+		jsonx.Required(o, "name", &out.Name),
+		jsonx.Required(o, "owner", &out.Owner),
+		jsonx.Required(o, "since", &out.Since),
 	} {
 		if err != nil {
 			return err //nolint:wrapcheck // names the member
@@ -323,13 +323,13 @@ func (r *Resource) UnmarshalJSON(data []byte) error {
 
 // optionalList decodes a `#[serde(default)]` list: absent is empty, null is
 // refused as serde refused it.
-func optionalList[T any](o wire.Object, key string, out *[]T) error {
+func optionalList[T any](o jsonx.Object, key string, out *[]T) error {
 	raw, ok := o[key]
 	if !ok {
 		*out = nil
 		return nil
 	}
-	if wire.IsNull(raw) {
+	if jsonx.IsNull(raw) {
 		return fmt.Errorf("field `%s`: invalid type: null, expected a sequence", key)
 	}
 	if err := json.Unmarshal(raw, out); err != nil {

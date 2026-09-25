@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
 )
 
@@ -14,7 +14,7 @@ func TestTheLatestJournalOfAHostIsKeptOnce(t *testing.T) {
 	ctx := t.Context()
 	decode := func(text string) any {
 		t.Helper()
-		v, err := wire.DecodeAny([]byte(text))
+		v, err := jsonx.DecodeAny([]byte(text))
 		if err != nil {
 			t.Fatal(err)
 		}

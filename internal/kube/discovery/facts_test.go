@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 )
 
@@ -165,7 +165,7 @@ func TestFactsRoundtripCompactlyAndSummarize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	generic, err := wire.DecodeAny(text)
+	generic, err := jsonx.DecodeAny(text)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestWireFormIsPinned(t *testing.T) {
 		if diff := cmp.Diff(c.serde, string(text)); diff != "" {
 			t.Errorf("%s serde form (-want +got):\n%s", c.name, diff)
 		}
-		canonical, err := wire.CanonicalValue(c.facts)
+		canonical, err := jsonx.CanonicalValue(c.facts)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}

@@ -20,7 +20,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -127,7 +127,7 @@ func (s *Server) PutRegistryLogin(
 	if err := checkLogin(req); err != nil {
 		return nil, err
 	}
-	values := secrets.RegistryLogin{Username: req.Username, Password: req.Password}.Values()
+	values := keyring.RegistryLogin{Username: req.Username, Password: req.Password}.Values()
 	t, err := s.deps.Store.Tenant(ctx, e.project.org)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // a store error, answered as internal

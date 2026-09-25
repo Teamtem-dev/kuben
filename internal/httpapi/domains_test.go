@@ -24,7 +24,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/httpx"
 	"github.com/Teamtem-dev/kuben/internal/integrations/dns"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/notify"
 )
 
@@ -381,7 +381,7 @@ func TestClaimsAndProvidersAreListedRevokedAndRemoved(t *testing.T) {
 
 	locked := signInAt(t, serverOn(t, f, func(d *api.Deps) {
 		d.DNS = &fakeDNS{}
-		d.Keyring = opt.None[*secrets.Keyring]()
+		d.Keyring = opt.None[*keyring.Keyring]()
 	}), "alice@example.com")
 	if status := locked.status("POST", providers, good); status != http.StatusServiceUnavailable {
 		t.Fatalf("without a keyring: %d", status)

@@ -1,4 +1,4 @@
-package secrets_test
+package keyring_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -25,15 +25,15 @@ func filled(b byte) [32]byte {
 	return k
 }
 
-func ring(versions ...uint32) *secrets.Keyring {
+func ring(versions ...uint32) *keyring.Keyring {
 	keys := map[uint32][32]byte{}
 	for _, v := range versions {
 		keys[v] = filled(byte(v))
 	}
-	return secrets.FromKeys(keys)
+	return keyring.FromKeys(keys)
 }
 
-var who = secrets.Identity{Org: "org-1", Secret: "sec-1", Revision: 3}
+var who = keyring.Identity{Org: "org-1", Secret: "sec-1", Revision: 3}
 
 func TestValuesRoundTrip(t *testing.T) {
 	k := ring(1)
@@ -85,7 +85,7 @@ func TestValuesAreSealedAsOneObject(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := k.OpenValues(who, notAnObject); !errors.Is(err, secrets.ErrOpen) {
+		if _, err := k.OpenValues(who, notAnObject); !errors.Is(err, keyring.ErrOpen) {
 			t.Fatalf("%q: %v", text, err)
 		}
 	}
@@ -97,30 +97,30 @@ func TestAValueMovedToAnotherIdentityDoesNotOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, other := range []secrets.Identity{
+	for _, other := range []keyring.Identity{
 		{Org: "org-2", Secret: who.Secret, Revision: who.Revision},
 		{Org: who.Org, Secret: "sec-2", Revision: who.Revision},
 		{Org: who.Org, Secret: who.Secret, Revision: 4},
 	} {
-		if _, err := k.Open(other, sealed); !errors.Is(err, secrets.ErrOpen) {
+		if _, err := k.Open(other, sealed); !errors.Is(err, keyring.ErrOpen) {
 			t.Fatalf("%+v: %v", other, err)
 		}
 	}
 	tampered := sealed
 	tampered.Ciphertext = bytes.Clone(sealed.Ciphertext)
 	tampered.Ciphertext[len(tampered.Ciphertext)-1] ^= 1
-	if _, err := k.Open(who, tampered); !errors.Is(err, secrets.ErrOpen) {
+	if _, err := k.Open(who, tampered); !errors.Is(err, keyring.ErrOpen) {
 		t.Fatalf("tampered: %v", err)
 	}
 	relabelled := sealed
 	relabelled.KeyVersion = 2
-	var unknown *secrets.UnknownKeyError
+	var unknown *keyring.UnknownKeyError
 	if _, err := k.Open(who, relabelled); !errors.As(err, &unknown) || unknown.Version != 2 {
 		t.Fatalf("relabelled: %v", err)
 	}
 	truncated := sealed
 	truncated.Ciphertext = []byte{1, 2}
-	if _, err := k.Open(who, truncated); !errors.Is(err, secrets.ErrOpen) {
+	if _, err := k.Open(who, truncated); !errors.Is(err, keyring.ErrOpen) {
 		t.Fatalf("truncated: %v", err)
 	}
 }
@@ -152,19 +152,19 @@ func TestRotationKeepsOldRevisionsReadableAndRewrapsThem(t *testing.T) {
 	if _, err := retired.Open(who, sealed); err == nil {
 		t.Fatal("the retired key is gone")
 	}
-	wrong := secrets.FromKeys(map[uint32][32]byte{1: filled(9)})
-	if _, err := wrong.Open(who, sealed); !errors.Is(err, secrets.ErrOpen) {
+	wrong := keyring.FromKeys(map[uint32][32]byte{1: filled(9)})
+	if _, err := wrong.Open(who, sealed); !errors.Is(err, keyring.ErrOpen) {
 		t.Fatalf("another installation: %v", err)
 	}
 }
 
 func TestRegistryLoginsBecomePullSecrets(t *testing.T) {
-	login := secrets.RegistryLogin{Username: "bot", Password: "s3cret"}
-	back, ok := secrets.RegistryLoginFrom(login.Values())
+	login := keyring.RegistryLogin{Username: "bot", Password: "s3cret"}
+	back, ok := keyring.RegistryLoginFrom(login.Values())
 	if !ok || back != login {
 		t.Fatalf("round trip: %v %t", back, ok)
 	}
-	if _, ok := secrets.RegistryLoginFrom(map[string]string{}); ok {
+	if _, ok := keyring.RegistryLoginFrom(map[string]string{}); ok {
 		t.Fatal("an empty secret is not a login")
 	}
 	if got := login.Basic(); got != "Basic Ym90OnMzY3JldA==" {
@@ -189,7 +189,7 @@ func TestRegistryLoginsBecomePullSecrets(t *testing.T) {
 	if config.Auths["ghcr.io"].Auth != "Ym90OnMzY3JldA==" {
 		t.Fatalf("%+v", config)
 	}
-	hub := login.DockerConfig(secrets.DockerHub)
+	hub := login.DockerConfig(keyring.DockerHub)
 	if err := json.Unmarshal([]byte(hub), &config); err != nil {
 		t.Fatal(err)
 	}
@@ -204,8 +204,8 @@ func TestRegistryLoginsBecomePullSecrets(t *testing.T) {
 }
 
 func TestFingerprintsNameKeysWithoutRevealingThem(t *testing.T) {
-	a := secrets.FromKeys(map[uint32][32]byte{1: filled(1), 2: filled(2)}).Fingerprints()
-	b := secrets.FromKeys(map[uint32][32]byte{1: filled(1), 2: filled(9)}).Fingerprints()
+	a := keyring.FromKeys(map[uint32][32]byte{1: filled(1), 2: filled(2)}).Fingerprints()
+	b := keyring.FromKeys(map[uint32][32]byte{1: filled(1), 2: filled(9)}).Fingerprints()
 	if len(a) != 2 || a[0] != b[0] || a[1] == b[1] {
 		t.Fatalf("%v %v", a, b)
 	}
@@ -217,8 +217,8 @@ func TestFingerprintsNameKeysWithoutRevealingThem(t *testing.T) {
 func TestKeyringsParseStrictly(t *testing.T) {
 	dir := t.TempDir()
 	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
-	install := func(name, text string) (*secrets.Keyring, error) {
-		return secrets.Install(filepath.Join(dir, name), text)
+	install := func(name, text string) (*keyring.Keyring, error) {
+		return keyring.Install(filepath.Join(dir, name), text)
 	}
 	k, err := install("good", "# comment\n\n1:"+key+"\n 3 : "+key+"\r\n+4:"+key+"\n")
 	if err != nil {
@@ -256,7 +256,7 @@ func TestKeyringsParseStrictly(t *testing.T) {
 
 func TestANewKeyringIsPrivateAndReused(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state", "secrets.keyring")
-	first, err := secrets.LoadOrCreate(path)
+	first, err := keyring.LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestANewKeyringIsPrivateAndReused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := secrets.LoadOrCreate(path)
+	second, err := keyring.LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,14 +281,14 @@ func TestANewKeyringIsPrivateAndReused(t *testing.T) {
 	if err := os.Chmod(path, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := secrets.LoadOrCreate(path); err != nil {
+	if _, err := keyring.LoadOrCreate(path); err != nil {
 		t.Fatalf("group read, as fsGroup makes it: %v", err)
 	}
 	if err := os.Chmod(path, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var keyringErr *secrets.KeyringError
-	if _, err := secrets.LoadOrCreate(path); !errors.As(err, &keyringErr) {
+	var keyringErr *keyring.Error
+	if _, err := keyring.LoadOrCreate(path); !errors.As(err, &keyringErr) {
 		t.Fatalf("readable by others: %v", err)
 	}
 }
@@ -296,21 +296,21 @@ func TestANewKeyringIsPrivateAndReused(t *testing.T) {
 func TestARestoredKeyringIsInstalledOnceAndLoaded(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
 	path := filepath.Join(dir, "secrets.keyring")
-	if _, err := secrets.Load(path); err == nil {
+	if _, err := keyring.Load(path); err == nil {
 		t.Fatal("missing")
 	}
 	text := "1:" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)) + "\n"
-	installed, err := secrets.Install(path, text)
+	installed, err := keyring.Install(path, text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := secrets.Install(path, text); err == nil {
+	if _, err := keyring.Install(path, text); err == nil {
 		t.Fatal("never over an existing file")
 	}
-	if _, err := secrets.Install(filepath.Join(dir, "other"), "garbage"); err == nil {
+	if _, err := keyring.Install(filepath.Join(dir, "other"), "garbage"); err == nil {
 		t.Fatal("garbage installed")
 	}
-	loaded, err := secrets.Load(path)
+	loaded, err := keyring.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestARestoredKeyringIsInstalledOnceAndLoaded(t *testing.T) {
 }
 
 func TestRevisionObjectsAreNamedAfterTheSecret(t *testing.T) {
-	if got := secrets.ObjectName("db", 12); got != "db.r12" {
+	if got := keyring.ObjectName("db", 12); got != "db.r12" {
 		t.Fatal(got)
 	}
 }
@@ -362,14 +362,14 @@ func TestRustSealedSecretsOpen(t *testing.T) {
 	for _, k := range f.Keys {
 		keys[k.Version] = [32]byte(k.Key)
 	}
-	k := secrets.FromKeys(keys)
+	k := keyring.FromKeys(keys)
 	for i, fp := range k.Fingerprints() {
 		want := f.Fingerprints[i]
 		if fp.Version != want.Version || !bytes.Equal(fp.SHA256[:], want.SHA256) {
 			t.Fatalf("fingerprint %d: %x, Rust %x", fp.Version, fp.SHA256, want.SHA256)
 		}
 	}
-	id := secrets.Identity{Org: f.Identity.Org, Secret: f.Identity.Secret, Revision: f.Identity.Revision}
+	id := keyring.Identity{Org: f.Identity.Org, Secret: f.Identity.Secret, Revision: f.Identity.Revision}
 	sealed := store.SealedBytes{Ciphertext: f.Sealed.Ciphertext, WrappedKey: f.Sealed.WrappedKey, KeyVersion: f.Sealed.KeyVersion}
 	// The plaintext is serde_json's text of the BTreeMap: Go must write the
 	// same bytes when it seals.
@@ -377,7 +377,7 @@ func TestRustSealedSecretsOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ours, err := secrets.ValuesJSON(f.Values)
+	ours, err := keyring.ValuesJSON(f.Values)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestRustSealedSecretsOpen(t *testing.T) {
 	}
 	other := id
 	other.Revision++
-	if _, err := k.Open(other, sealed); !errors.Is(err, secrets.ErrOpen) {
+	if _, err := k.Open(other, sealed); !errors.Is(err, keyring.ErrOpen) {
 		t.Fatalf("another revision: %v", err)
 	}
 }

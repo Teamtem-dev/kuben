@@ -26,7 +26,7 @@ import (
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -266,7 +266,7 @@ func writtenBy(operation ids.OperationID, id string) map[string]string {
 // SecretObjectName is the name of the immutable Secret holding revision
 // of the managed secret name (crate::secrets::object_name).
 func SecretObjectName(name string, revision uint64) string {
-	return secrets.ObjectName(name, revision)
+	return keyring.ObjectName(name, revision)
 }
 
 // appSpec is the configuration revision with the release's image as its

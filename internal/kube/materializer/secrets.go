@@ -4,7 +4,7 @@ package materializer
 //
 // Before a run writes its App or envelope, every secret revision it is
 // bound to is opened and written as an immutable Secret named after the
-// revision (secrets.ObjectName); the rendered objects read from those. A
+// revision (keyring.ObjectName); the rendered objects read from those. A
 // rotation is therefore a new object and a new pod template, never a change
 // under running pods. Once a run succeeds, the revision objects of its
 // environment that no run needs any more are removed.
@@ -23,7 +23,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -33,16 +33,16 @@ const keepUnused = 10 * time.Minute
 
 // SecretObject is the immutable Secret of the bound revision b of m's run;
 // the refusal code when it cannot be opened (SecretUnreadable).
-func SecretObject(m *store.Materialization, b *store.BoundSecret, keyring *secrets.Keyring) (corev1.Secret, string) {
+func SecretObject(m *store.Materialization, b *store.BoundSecret, ring *keyring.Keyring) (corev1.Secret, string) {
 	org, secret := m.Org.String(), b.Binding.Secret.String()
-	who := secrets.Identity{Org: org, Secret: secret, Revision: b.Binding.Revision}
-	values, err := keyring.OpenValues(who, b.Sealed)
+	who := keyring.Identity{Org: org, Secret: secret, Revision: b.Binding.Revision}
+	values, err := ring.OpenValues(who, b.Sealed)
 	if err != nil {
 		return corev1.Secret{}, "SecretUnreadable"
 	}
 	typ, data := corev1.SecretTypeOpaque, make(map[string][]byte, len(values))
 	if registry, ok := b.Binding.Registry.Get(); ok {
-		login, ok := secrets.RegistryLoginFrom(values)
+		login, ok := keyring.RegistryLoginFrom(values)
 		if !ok {
 			return corev1.Secret{}, "SecretUnreadable"
 		}
@@ -56,15 +56,15 @@ func SecretObject(m *store.Materialization, b *store.BoundSecret, keyring *secre
 	immutable := true
 	return corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      secrets.ObjectName(b.Binding.Name, b.Binding.Revision),
+			Name:      keyring.ObjectName(b.Binding.Name, b.Binding.Revision),
 			Namespace: m.Namespace,
 			Labels: map[string]string{
 				v1alpha1.LabelManagedBy:   v1alpha1.LabelManagerValue,
 				v1alpha1.LabelOrg:         org,
 				v1alpha1.LabelProject:     m.ProjectSlug,
 				v1alpha1.LabelEnvironment: EnvironmentName(m.ProjectSlug, m.EnvironmentSlug),
-				secrets.SecretID:          secret,
-				secrets.SecretRevision:    strconv.FormatUint(b.Binding.Revision, 10),
+				keyring.SecretID:          secret,
+				keyring.SecretRevision:    strconv.FormatUint(b.Binding.Revision, 10),
 			},
 		},
 		Immutable: &immutable,
@@ -78,14 +78,14 @@ func SecretObject(m *store.Materialization, b *store.BoundSecret, keyring *secre
 func IsRevision(live *corev1.Secret, m *store.Materialization, b *store.BoundSecret) bool {
 	l := live.Labels
 	return BelongsTo(l, m.Org) &&
-		l[secrets.SecretID] == b.Binding.Secret.String() &&
-		l[secrets.SecretRevision] == strconv.FormatUint(b.Binding.Revision, 10)
+		l[keyring.SecretID] == b.Binding.Secret.String() &&
+		l[keyring.SecretRevision] == strconv.FormatUint(b.Binding.Revision, 10)
 }
 
 // RevisionOf is the (secret, revision) a revision object carries.
 func RevisionOf(s *corev1.Secret) (store.SecretRevisionKey, bool) {
-	id, hasID := s.Labels[secrets.SecretID]
-	revision, hasRevision := s.Labels[secrets.SecretRevision]
+	id, hasID := s.Labels[keyring.SecretID]
+	revision, hasRevision := s.Labels[keyring.SecretRevision]
 	if !hasID || !hasRevision {
 		return store.SecretRevisionKey{}, false
 	}
@@ -106,8 +106,8 @@ func (w *Worker) writeSecrets(ctx context.Context, m *store.Materialization) sto
 	if len(m.Secrets) == 0 {
 		return nil
 	}
-	keyring, ok := w.d.Keyring.Get()
-	if !ok || keyring == nil {
+	ring, ok := w.d.Keyring.Get()
+	if !ok || ring == nil {
 		return refused("SecretsUnavailable")
 	}
 	bound, err := w.runSecrets(ctx, m)
@@ -120,7 +120,7 @@ func (w *Worker) writeSecrets(ctx context.Context, m *store.Materialization) sto
 		if b.Revoked {
 			return refused("SecretRevoked")
 		}
-		name := secrets.ObjectName(b.Binding.Name, b.Binding.Revision)
+		name := keyring.ObjectName(b.Binding.Name, b.Binding.Revision)
 		live, err := api.Get(ctx, name, metav1.GetOptions{})
 		switch {
 		case err == nil && IsRevision(live, m, b):
@@ -130,7 +130,7 @@ func (w *Worker) writeSecrets(ctx context.Context, m *store.Materialization) sto
 		case !isNotFound(err):
 			return retryKube(err)
 		}
-		desired, code := SecretObject(m, b, keyring)
+		desired, code := SecretObject(m, b, ring)
 		if code != "" {
 			w.d.Logger.Error("a secret revision does not open",
 				"run", m.Run.String(), "secret", b.Binding.Name, "revision", b.Binding.Revision)
@@ -167,7 +167,7 @@ func (w *Worker) collectSecrets(ctx context.Context, m *store.Materialization) (
 		return 0, storeError(err)
 	}
 	api := w.d.Cluster.Typed.CoreV1().Secrets(m.Namespace)
-	selector := v1alpha1.ManagedSelector + "," + v1alpha1.LabelOrg + "=" + m.Org.String() + "," + secrets.SecretID
+	selector := v1alpha1.ManagedSelector + "," + v1alpha1.LabelOrg + "=" + m.Org.String() + "," + keyring.SecretID
 	listed, err := api.List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return 0, kubeError(err)

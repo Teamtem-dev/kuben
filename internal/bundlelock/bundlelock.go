@@ -1,10 +1,10 @@
-// Package bundle is the bundle lock (crates/kuben/src/bundle.rs, M2.17):
+// Package bundlelock is the bundle lock (crates/kuben/src/bundle.rs, M2.17):
 // what a release installs besides Kuben, pinned by version and digest.
 // `bundle.lock.json` at the repository root is the one place these pins
 // live; this package embeds a byte-identical copy (a test holds them
 // together), `kuben setup` installs from it, the chart's PostgreSQL follows
 // it, and each release publishes it under its signed checksums.
-package bundle
+package bundlelock
 
 import (
 	_ "embed"

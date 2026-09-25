@@ -1,4 +1,4 @@
-package kubetest_test
+package envtest_test
 
 import (
 	"encoding/json"
@@ -13,16 +13,16 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	kubetest "github.com/Teamtem-dev/kuben/internal/kube/envtest"
+	"github.com/Teamtem-dev/kuben/internal/kube/envtest"
 )
 
 // Two writers against a real API server (ADR-027, the M0 spike of
 // crates/kuben-platform/tests/two_writer_cas.rs): what the materializer's
 // and the agent's fencing relies on.
 
-var apiserver kubetest.Server
+var apiserver envtest.Server
 
-func TestMain(m *testing.M) { os.Exit(kubetest.Main(m, &apiserver)) }
+func TestMain(m *testing.M) { os.Exit(envtest.Main(m, &apiserver)) }
 
 const genKey = "generation"
 
@@ -45,7 +45,7 @@ func generationOf(c *corev1.ConfigMap) uint64 {
 func configMaps(t *testing.T) typedcorev1.ConfigMapInterface {
 	t.Helper()
 	c := apiserver.Connect(t)
-	return c.Typed.CoreV1().ConfigMaps(kubetest.Namespace(t, c, "kuben-m0-cas"))
+	return c.Typed.CoreV1().ConfigMaps(envtest.Namespace(t, c, "kuben-m0-cas"))
 }
 
 func live(t *testing.T, api typedcorev1.ConfigMapInterface) *corev1.ConfigMap {

@@ -11,7 +11,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/imagewatch"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/notify"
 	"github.com/Teamtem-dev/kuben/internal/previews"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -24,7 +24,7 @@ import (
 // the preview janitor (M5.1) and the image update watcher (M5.4). The
 // channels are closed when each has ended.
 func startBackground(
-	ctx context.Context, cfg config.Config, st *store.Store, keyring *secrets.Keyring, app opt.Val[*github.App],
+	ctx context.Context, cfg config.Config, st *store.Store, keyring *keyring.Keyring, app opt.Val[*github.App],
 	h *health.Health, logger *slog.Logger,
 ) []<-chan struct{} {
 	notifier := notify.New(notify.Deps{

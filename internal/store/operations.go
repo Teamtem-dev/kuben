@@ -21,7 +21,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 const (
@@ -208,7 +208,7 @@ func orgID(op, value string) (ids.OrgID, error) {
 
 // canonical is serde_json's `Value::to_string` of v: compact, keys sorted.
 func canonical(op string, v any) (string, error) {
-	text, err := wire.CanonicalValue(v)
+	text, err := jsonx.CanonicalValue(v)
 	if err != nil {
 		return "", dbErr(op, err)
 	}
@@ -230,7 +230,7 @@ func canonicalOpt(op string, v opt.Val[any]) (opt.Val[string], error) {
 
 // jsonValue reads JSON text; invalid JSON is a decode error.
 func jsonValue(op, text string) (any, error) {
-	v, err := wire.DecodeAny([]byte(text))
+	v, err := jsonx.DecodeAny([]byte(text))
 	if err != nil {
 		return nil, decodeErr(op, "%v", err)
 	}

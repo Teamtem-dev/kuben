@@ -6,27 +6,27 @@ import (
 	"strconv"
 	"strings"
 
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/perm"
 )
 
 // audiences reads `aud`: one string, or a list of them.
-func audiences(o wire.Object, out *[]string) error {
+func audiences(o jsonx.Object, out *[]string) error {
 	var one string
-	if wire.Required(o, "aud", &one) == nil {
+	if jsonx.Required(o, "aud", &one) == nil {
 		*out = []string{one}
 		return nil
 	}
-	return wire.Required(o, "aud", out)
+	return jsonx.Required(o, "aud", out)
 }
 
 // numericID reads an id GitHub sends as a string, or as a number.
-func numericID(o wire.Object, key string, out *uint64) error {
+func numericID(o jsonx.Object, key string, out *uint64) error {
 	var text string
-	if wire.Required(o, key, &text) != nil {
-		return wire.Required(o, key, out)
+	if jsonx.Required(o, key, &text) != nil {
+		return jsonx.Required(o, key, out)
 	}
 	// Rust's integer parser takes one leading `+`.
 	id, err := strconv.ParseUint(strings.TrimPrefix(text, "+"), 10, 64)
@@ -40,7 +40,7 @@ func numericID(o wire.Object, key string, out *uint64) error {
 // UnmarshalJSON reads the claims of a token; every claim without a default
 // must be there.
 func (c *GithubClaims) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (c *GithubClaims) UnmarshalJSON(data []byte) error {
 		{"event_name", &out.EventName},
 	}
 	for _, f := range text {
-		if err := wire.Required(o, f.key, f.out); err != nil {
+		if err := jsonx.Required(o, f.key, f.out); err != nil {
 			return err
 		}
 	}
@@ -72,15 +72,15 @@ func (c *GithubClaims) UnmarshalJSON(data []byte) error {
 		{"actor", &out.Actor},
 	}
 	for _, f := range maybe {
-		if err := wire.Optional(o, f.key, f.out); err != nil {
+		if err := jsonx.Optional(o, f.key, f.out); err != nil {
 			return err
 		}
 	}
 	steps := []error{
 		audiences(o, &out.Aud),
-		wire.Required(o, "iat", &out.Iat),
-		wire.Optional(o, "nbf", &out.Nbf),
-		wire.Required(o, "exp", &out.Exp),
+		jsonx.Required(o, "iat", &out.Iat),
+		jsonx.Optional(o, "nbf", &out.Nbf),
+		jsonx.Required(o, "exp", &out.Exp),
 		numericID(o, "repository_id", &out.RepositoryID),
 		numericID(o, "repository_owner_id", &out.RepositoryOwnerID),
 	}
@@ -109,7 +109,7 @@ func (p TrustPolicy) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON reads a policy. Only `environments` may be left out, and
 // the role must be one.
 func (p *TrustPolicy) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
@@ -118,12 +118,12 @@ func (p *TrustPolicy) UnmarshalJSON(data []byte) error {
 		role string
 	)
 	steps := []error{
-		wire.Required(o, "repositoryId", &out.RepositoryID),
-		wire.Required(o, "repositoryOwnerId", &out.RepositoryOwnerID),
-		wire.Required(o, "refs", &out.Refs),
-		wire.Required(o, "events", &out.Events),
-		wire.Required(o, "role", &role),
-		wire.Required(o, "tokenTtlSecs", &out.TokenTTLSecs),
+		jsonx.Required(o, "repositoryId", &out.RepositoryID),
+		jsonx.Required(o, "repositoryOwnerId", &out.RepositoryOwnerID),
+		jsonx.Required(o, "refs", &out.Refs),
+		jsonx.Required(o, "events", &out.Events),
+		jsonx.Required(o, "role", &role),
+		jsonx.Required(o, "tokenTtlSecs", &out.TokenTTLSecs),
 	}
 	for _, err := range steps {
 		if err != nil {
@@ -131,7 +131,7 @@ func (p *TrustPolicy) UnmarshalJSON(data []byte) error {
 		}
 	}
 	if raw, ok := o["environments"]; ok {
-		if err := wire.Required(wire.Object{"environments": raw}, "environments", &out.Environments); err != nil {
+		if err := jsonx.Required(jsonx.Object{"environments": raw}, "environments", &out.Environments); err != nil {
 			return err
 		}
 	}

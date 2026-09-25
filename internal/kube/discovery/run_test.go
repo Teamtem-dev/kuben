@@ -8,7 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
@@ -90,11 +90,11 @@ func TestFactsAreRecordedForEveryPrimaryCluster(t *testing.T) {
 	if !ok || !published.MetricsAPI {
 		t.Fatalf("published: %+v, %v", published, ok)
 	}
-	text, err := wire.CanonicalValue(published)
+	text, err := jsonx.CanonicalValue(published)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := wire.DecodeAny([]byte(text))
+	want, err := jsonx.DecodeAny([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}

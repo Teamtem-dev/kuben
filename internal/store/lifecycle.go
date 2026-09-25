@@ -18,7 +18,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // The lifecycle operation kinds.
@@ -96,23 +96,23 @@ type Subject struct {
 // default to false when absent (null is refused), other members are
 // ignored.
 func (s *Subject) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
 	var out Subject
-	if err := wire.Required(o, "project", &out.Project); err != nil {
+	if err := jsonx.Required(o, "project", &out.Project); err != nil {
 		return err
 	}
-	if err := wire.Optional(o, "environment", &out.Environment); err != nil {
+	if err := jsonx.Optional(o, "environment", &out.Environment); err != nil {
 		return err
 	}
-	if err := wire.Optional(o, "target", &out.Target); err != nil {
+	if err := jsonx.Optional(o, "target", &out.Target); err != nil {
 		return err
 	}
 	for key, flag := range map[string]*bool{"delete_volumes": &out.DeleteVolumes, "detach": &out.Detach} {
 		if raw, ok := o[key]; ok {
-			if err := json.Unmarshal(raw, flag); err != nil || wire.IsNull(raw) {
+			if err := json.Unmarshal(raw, flag); err != nil || jsonx.IsNull(raw) {
 				return &json.UnmarshalTypeError{Value: string(raw), Field: key}
 			}
 		}

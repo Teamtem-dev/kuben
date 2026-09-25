@@ -8,7 +8,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // The builder (controller::resources, the App half): an App's spec becomes
@@ -734,7 +734,7 @@ func httpRoute(app *v1alpha1.App, p Platform, owner OwnerReference) (opt.Val[obj
 	}
 	// serde_json::to_string(&claims): members in declaration order, which
 	// is also the sorted order, so the canonical text is the same bytes.
-	domains, err := wire.CanonicalValue(claims)
+	domains, err := jsonx.CanonicalValue(claims)
 	if err != nil {
 		domains = ""
 	}

@@ -1,4 +1,4 @@
-// Package secrets is Kuben's managed secret values at rest (ADR-030, M4.4);
+// Package keyring is Kuben's managed secret values at rest (ADR-030, M4.4);
 // it replaces crates/kuben-platform/src/secrets.rs.
 //
 // Every revision gets a random data key (DEK). The values are sealed with
@@ -10,7 +10,7 @@
 // the newest version seals, every listed version opens. The byte layout
 // (nonce ‖ ciphertext ‖ tag) and the associated data are the Rust ones,
 // pinned by testdata/compat/secrets.json, which the Rust code sealed.
-package secrets
+package keyring
 
 import "strconv"
 

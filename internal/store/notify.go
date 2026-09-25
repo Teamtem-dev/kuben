@@ -155,7 +155,7 @@ type WebhookDelivery struct {
 	Endpoint uuid.UUID
 	EventID  uuid.UUID
 	Event    string
-	// Payload is the event's JSON value (wire.DecodeAny).
+	// Payload is the event's JSON value (jsonx.DecodeAny).
 	Payload   any
 	Attempts  int32
 	CreatedAt int64

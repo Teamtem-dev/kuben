@@ -13,21 +13,21 @@ import (
 	"k8s.io/client-go/dynamic"
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
-	kubetest "github.com/Teamtem-dev/kuben/internal/kube/envtest"
+	"github.com/Teamtem-dev/kuben/internal/kube/envtest"
 )
 
 // The execution CRDs' rules are enforced by the API server itself
 // (ADR-027), which also proves the rules fit its CEL cost budget
 // (crates/kuben-platform/tests/execution_crds.rs).
 
-var apiserver kubetest.Server
+var apiserver envtest.Server
 
-func TestMain(m *testing.M) { os.Exit(kubetest.Main(m, &apiserver)) }
+func TestMain(m *testing.M) { os.Exit(envtest.Main(m, &apiserver)) }
 
 func hash(c string) string { return "sha256:" + strings.Repeat(c, 64) }
 
 // resource is the namespaced client of a kuben.dev resource in ns.
-func resource(c kubetest.Clients, plural, ns string) dynamic.ResourceInterface {
+func resource(c envtest.Clients, plural, ns string) dynamic.ResourceInterface {
 	return c.Dynamic.Resource(schema.GroupVersionResource{
 		Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: plural,
 	}).Namespace(ns)
@@ -52,7 +52,7 @@ func (p patcher) merge(patch map[string]any, subresources ...string) error {
 
 func (p patcher) refused(what string, patch map[string]any, subresources ...string) {
 	p.t.Helper()
-	if err := p.merge(patch, subresources...); !kubetest.IsInvalid(err) {
+	if err := p.merge(patch, subresources...); !envtest.IsInvalid(err) {
 		p.t.Errorf("%s: expected 422, got %v", what, err)
 	}
 }
@@ -69,7 +69,7 @@ func status(fields map[string]any) map[string]any { return map[string]any{"statu
 
 func TestTheApiserverFencesApplicationRuntimes(t *testing.T) {
 	c := apiserver.Connect(t)
-	ns := kubetest.Namespace(t, c, "kuben-m1-exec")
+	ns := envtest.Namespace(t, c, "kuben-m1-exec")
 	ri := resource(c, v1alpha1.ApplicationRuntimeResource, ns)
 	runtime := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": v1alpha1.SchemeGroupVersion.String(), "kind": v1alpha1.ApplicationRuntimeKind,
@@ -107,7 +107,7 @@ func TestTheApiserverFencesApplicationRuntimes(t *testing.T) {
 
 func TestTheApiserverKeepsTaskInputsCancelsAndReceipts(t *testing.T) {
 	c := apiserver.Connect(t)
-	ns := kubetest.Namespace(t, c, "kuben-m1-exec")
+	ns := envtest.Namespace(t, c, "kuben-m1-exec")
 	ri := resource(c, v1alpha1.ExecutionTaskResource, ns)
 	task := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": v1alpha1.SchemeGroupVersion.String(), "kind": v1alpha1.ExecutionTaskKind,

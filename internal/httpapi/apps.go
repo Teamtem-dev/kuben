@@ -28,7 +28,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/httpapi/access"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/gen"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oci"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
@@ -194,7 +194,7 @@ func configOf(spec *v1alpha1.AppSpec) (any, error) {
 	if err != nil {
 		return nil, kerrors.Wrap(err, "an app spec")
 	}
-	config, err := wire.DecodeAny(data)
+	config, err := jsonx.DecodeAny(data)
 	if err != nil {
 		return nil, kerrors.Wrap(err, "an app spec")
 	}

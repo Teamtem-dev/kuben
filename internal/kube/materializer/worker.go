@@ -31,7 +31,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/health"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/controller"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
@@ -72,7 +72,7 @@ type Deps struct {
 	DeletionCheck time.Duration
 	// Keyring opens the secret revisions runs are bound to; runs bound to
 	// any fail without it.
-	Keyring opt.Val[*secrets.Keyring]
+	Keyring opt.Val[*keyring.Keyring]
 }
 
 // Worker is the materializer of one process. It holds no state of its own

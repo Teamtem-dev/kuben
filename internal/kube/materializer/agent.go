@@ -34,7 +34,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/agentlink/protocol"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -58,11 +58,11 @@ const (
 
 // Envelope is the envelope of m's run, carrying its frozen plan.
 func Envelope(m *store.Materialization, plan store.RunPlan) (protocol.Apply, error) {
-	resources, err := wire.CanonicalValue(plan.Resources)
+	resources, err := jsonx.CanonicalValue(plan.Resources)
 	if err != nil {
 		return protocol.Apply{}, fmt.Errorf("the plan's resources: %w", err)
 	}
-	digest := wire.SHA256(resources)
+	digest := jsonx.SHA256(resources)
 	if uint64(m.Generation) > math.MaxInt64 {
 		return protocol.Apply{}, fmt.Errorf("generation %d is out of range", uint64(m.Generation))
 	}
@@ -72,7 +72,7 @@ func Envelope(m *store.Materialization, plan store.RunPlan) (protocol.Apply, err
 		LifecycleUID: m.LifecycleUID.String(),
 		ControlEpoch: 0,
 		Generation:   generation,
-		InputHash:    wire.SHA256(fmt.Sprintf("%s/%s/%d/%s", m.Release, m.ConfigRevision, generation, digest)),
+		InputHash:    jsonx.SHA256(fmt.Sprintf("%s/%s/%d/%s", m.Release, m.ConfigRevision, generation, digest)),
 		ReleaseID:    m.Release.String(),
 		Plan: v1alpha1.PlanEnvelope{
 			ID: plan.ID.String(), RendererVersion: plan.RendererVersion, Digest: digest, Resources: resources,

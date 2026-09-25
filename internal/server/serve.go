@@ -26,14 +26,14 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	bootstrap "github.com/Teamtem-dev/kuben/internal/firstrun"
+	"github.com/Teamtem-dev/kuben/internal/firstrun"
 	"github.com/Teamtem-dev/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/internal/host"
 	api "github.com/Teamtem-dev/kuben/internal/httpapi"
 	"github.com/Teamtem-dev/kuben/internal/httpapi/auth"
 	"github.com/Teamtem-dev/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/internal/integrations/sso"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/kube/projection"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
@@ -184,7 +184,7 @@ func waitAll(done []<-chan struct{}, timeout time.Duration, logger *slog.Logger)
 	}
 }
 
-func serveAPI(ctx context.Context, cfg config.Config, cluster opt.Val[*registry.Registry], st *store.Store, h *health.Health, app opt.Val[*github.App], projections *projection.Projections, keyring *secrets.Keyring, inCluster bool, subsystems *[]<-chan struct{}, logger *slog.Logger) error {
+func serveAPI(ctx context.Context, cfg config.Config, cluster opt.Val[*registry.Registry], st *store.Store, h *health.Health, app opt.Val[*github.App], projections *projection.Projections, keyring *keyring.Keyring, inCluster bool, subsystems *[]<-chan struct{}, logger *slog.Logger) error {
 	live := opt.None[*usage.Buffer]()
 	if r, ok := cluster.Get(); ok {
 		buffer, done := startUsage(ctx, r.Primary(), st, h, logger)
@@ -296,7 +296,7 @@ func redactCredentials(raw string) string {
 // seeded; otherwise the configured or a generated password is used, and a
 // generated one is handed over exactly once.
 func firstAdmin(ctx context.Context, cfg config.Config, st *store.Store, cluster opt.Val[*registry.Registry], inCluster bool, logger *slog.Logger) error {
-	stderr := bootstrap.Stderr{
+	stderr := firstrun.Stderr{
 		Write:      func(s string) { fmt.Fprint(os.Stderr, s) }, //nolint:errcheck // the operator's terminal
 		IsTerminal: stderrIsTerminal(),
 	}
@@ -306,16 +306,16 @@ func firstAdmin(ctx context.Context, cfg config.Config, st *store.Store, cluster
 			return fmt.Errorf("count users: %w", err)
 		}
 		if n == 0 {
-			bootstrap.AnnounceSetup(cfg, stderr, host.AdvertiseIP(ctx), time.UnixMilli(clock.System{}.NowMs()), logger)
+			firstrun.AnnounceSetup(cfg, stderr, host.AdvertiseIP(ctx), time.UnixMilli(clock.System{}.NowMs()), logger)
 		}
 		return nil
 	}
-	password, err := bootstrap.EnsureAdmin(ctx, cfg, st, auth.HasherFromConfig(cfg.Security), logger)
+	password, err := firstrun.EnsureAdmin(ctx, cfg, st, auth.HasherFromConfig(cfg.Security), logger)
 	if err != nil {
 		return fmt.Errorf("bootstrap the admin: %w", err)
 	}
 	if p, ok := password.Get(); ok {
-		bootstrap.HandOverPassword(ctx, cfg, cluster, p, stderr, logger)
+		firstrun.HandOverPassword(ctx, cfg, cluster, p, stderr, logger)
 	}
 	return nil
 }

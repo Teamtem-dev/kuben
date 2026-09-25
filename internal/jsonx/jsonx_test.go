@@ -1,4 +1,4 @@
-package wire_test
+package jsonx_test
 
 import (
 	"encoding/json"
@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
-func object(t *testing.T, text string) wire.Object {
+func object(t *testing.T, text string) jsonx.Object {
 	t.Helper()
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal([]byte(text), &o); err != nil {
 		t.Fatal(err)
 	}
@@ -21,12 +21,12 @@ func object(t *testing.T, text string) wire.Object {
 func TestRequiredRefusesAbsentAndNull(t *testing.T) {
 	o := object(t, `{"a":1,"b":null,"c":"x"}`)
 	var n int
-	if err := wire.Required(o, "a", &n); err != nil || n != 1 {
+	if err := jsonx.Required(o, "a", &n); err != nil || n != 1 {
 		t.Fatalf("got %d, %v", n, err)
 	}
-	var missing *wire.MissingError
+	var missing *jsonx.MissingError
 	for _, key := range []string{"b", "z"} {
-		err := wire.Required(o, key, &n)
+		err := jsonx.Required(o, key, &n)
 		if err == nil {
 			t.Fatalf("%s: absent and null are refused", key)
 		}
@@ -34,7 +34,7 @@ func TestRequiredRefusesAbsentAndNull(t *testing.T) {
 			t.Errorf("%s: got %v", key, err)
 		}
 	}
-	if err := wire.Required(o, "c", &n); err == nil || errors.As(err, &missing) {
+	if err := jsonx.Required(o, "c", &n); err == nil || errors.As(err, &missing) {
 		t.Errorf("a wrong type is a decode error, got %v", err)
 	}
 }
@@ -42,12 +42,12 @@ func TestRequiredRefusesAbsentAndNull(t *testing.T) {
 func TestOptionalTakesNullAsAbsent(t *testing.T) {
 	o := object(t, `{"a":2,"b":null}`)
 	var v opt.Val[int]
-	if err := wire.Optional(o, "a", &v); err != nil || v != opt.Some(2) {
+	if err := jsonx.Optional(o, "a", &v); err != nil || v != opt.Some(2) {
 		t.Fatalf("got %v, %v", v, err)
 	}
 	for _, key := range []string{"b", "z"} {
 		v = opt.Some(9)
-		if err := wire.Optional(o, key, &v); err != nil || v.IsSome() {
+		if err := jsonx.Optional(o, key, &v); err != nil || v.IsSome() {
 			t.Errorf("%s: got %v, %v", key, v, err)
 		}
 	}
@@ -55,7 +55,7 @@ func TestOptionalTakesNullAsAbsent(t *testing.T) {
 
 func TestMustField(t *testing.T) {
 	var doc struct {
-		ID wire.Must[uint64] `json:"id"`
+		ID jsonx.Must[uint64] `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(`{"id":7}`), &doc); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestMustField(t *testing.T) {
 	if id, err := doc.ID.Get("id"); err != nil || id != 7 {
 		t.Fatalf("got %d, %v", id, err)
 	}
-	doc.ID = wire.Must[uint64]{}
+	doc.ID = jsonx.Must[uint64]{}
 	if err := json.Unmarshal([]byte(`{"id":null}`), &doc); err != nil {
 		t.Fatal(err)
 	}
@@ -76,13 +76,13 @@ func TestTakeLeavesTheRest(t *testing.T) {
 	o := object(t, `{"a":1,"b":null,"rest":true}`)
 	var n int
 	var b opt.Val[int]
-	if err := wire.Take(o, "a", &n); err != nil {
+	if err := jsonx.Take(o, "a", &n); err != nil {
 		t.Fatal(err)
 	}
-	if err := wire.TakeOptional(o, "b", &b); err != nil {
+	if err := jsonx.TakeOptional(o, "b", &b); err != nil {
 		t.Fatal(err)
 	}
-	if err := wire.Take(o, "missing", &n); err == nil {
+	if err := jsonx.Take(o, "missing", &n); err == nil {
 		t.Fatal("still required")
 	}
 	if len(o) != 1 || o["rest"] == nil {
@@ -91,18 +91,18 @@ func TestTakeLeavesTheRest(t *testing.T) {
 }
 
 func TestDecodeAnyKeepsNumberText(t *testing.T) {
-	v, err := wire.DecodeAny([]byte(`{"a":1.0,"b":1,"c":[1e21]}`))
+	v, err := jsonx.DecodeAny([]byte(`{"a":1.0,"b":1,"c":[1e21]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := wire.CanonicalValue(v)
+	got, err := jsonx.CanonicalValue(v)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != `{"a":1.0,"b":1,"c":[1e+21]}` {
 		t.Fatalf("got %s", got)
 	}
-	if _, err := wire.DecodeAny([]byte(`{} {}`)); err == nil {
+	if _, err := jsonx.DecodeAny([]byte(`{} {}`)); err == nil {
 		t.Fatal("trailing data")
 	}
 }

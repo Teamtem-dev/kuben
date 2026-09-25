@@ -23,7 +23,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/capacity"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 )
 
 // The names of the probes that can fail, as listed in
@@ -92,15 +92,15 @@ type NodeSize struct {
 
 // UnmarshalJSON requires both members, as serde did.
 func (n *NodeSize) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
 	var out NodeSize
-	if err := wire.Required(o, "cpuMillis", &out.CPUMillis); err != nil {
+	if err := jsonx.Required(o, "cpuMillis", &out.CPUMillis); err != nil {
 		return err
 	}
-	if err := wire.Required(o, "memoryBytes", &out.MemoryBytes); err != nil {
+	if err := jsonx.Required(o, "memoryBytes", &out.MemoryBytes); err != nil {
 		return err
 	}
 	*n = out
@@ -161,21 +161,21 @@ type Readiness struct {
 
 // UnmarshalJSON requires the name and the readiness, as serde did.
 func (r *Readiness) UnmarshalJSON(data []byte) error {
-	var o wire.Object
+	var o jsonx.Object
 	if err := json.Unmarshal(data, &o); err != nil {
 		return err
 	}
 	var out Readiness
-	if err := wire.Required(o, "name", &out.Name); err != nil {
+	if err := jsonx.Required(o, "name", &out.Name); err != nil {
 		return err
 	}
-	if err := wire.Optional(o, "controller", &out.Controller); err != nil {
+	if err := jsonx.Optional(o, "controller", &out.Controller); err != nil {
 		return err
 	}
-	if err := wire.Required(o, "ready", &out.Ready); err != nil {
+	if err := jsonx.Required(o, "ready", &out.Ready); err != nil {
 		return err
 	}
-	if err := wire.Optional(o, "message", &out.Message); err != nil {
+	if err := jsonx.Optional(o, "message", &out.Message); err != nil {
 		return err
 	}
 	*r = out

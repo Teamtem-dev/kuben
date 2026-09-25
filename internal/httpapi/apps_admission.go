@@ -25,7 +25,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/internal/core/scan"
 	"github.com/Teamtem-dev/kuben/internal/doctor"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/controller"
 	"github.com/Teamtem-dev/kuben/internal/kube/discovery"
 	"github.com/Teamtem-dev/kuben/internal/kube/registry"
@@ -227,7 +227,7 @@ func specOf(config opt.Val[any], image opt.Val[string]) (v1alpha1.AppSpec, bool)
 			c = withImage
 		}
 	}
-	text, err := wire.CanonicalValue(c)
+	text, err := jsonx.CanonicalValue(c)
 	if err != nil {
 		return v1alpha1.AppSpec{}, false
 	}

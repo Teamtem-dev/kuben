@@ -33,7 +33,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/httpapi/problem"
 	"github.com/Teamtem-dev/kuben/internal/integrations/oidc"
 	"github.com/Teamtem-dev/kuben/internal/integrations/outbound"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -283,7 +283,7 @@ func bearer(h http.Header) (string, bool) {
 // exchangePolicy is the policy id of an exchange request, `{"policy":
 // "<id>"}` and nothing else.
 func exchangePolicy(body []byte) (uuid.UUID, bool) {
-	var o wire.Object
+	var o jsonx.Object
 	if json.Unmarshal(body, &o) != nil {
 		return uuid.Nil, false
 	}
@@ -293,7 +293,7 @@ func exchangePolicy(body []byte) (uuid.UUID, bool) {
 		}
 	}
 	var text string
-	if wire.Required(o, "policy", &text) != nil {
+	if jsonx.Required(o, "policy", &text) != nil {
 		return uuid.Nil, false
 	}
 	id, err := uuid.Parse(text)

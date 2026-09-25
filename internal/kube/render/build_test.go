@@ -11,7 +11,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/api/v1alpha1"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 )
 
@@ -447,7 +447,7 @@ func TestListenerNamesArePinned(t *testing.T) {
 // a size preset's cpuLimit is written as null, as serde did.
 func TestTheCapabilitySnapshotJSONIsTheRustOne(t *testing.T) {
 	caps := capabilities(t)
-	text, err := wire.CanonicalValue(caps)
+	text, err := jsonx.CanonicalValue(caps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ func TestTheCapabilitySnapshotJSONIsTheRustOne(t *testing.T) {
 	}
 	caps.Gateway = opt.None[string]()
 	caps.Sizes = nil
-	if text, _ := wire.CanonicalValue(caps); text != `{"baseDomain":"apps.example.com","clusterIssuer":"letsencrypt","sizes":[]}` {
+	if text, _ := jsonx.CanonicalValue(caps); text != `{"baseDomain":"apps.example.com","clusterIssuer":"letsencrypt","sizes":[]}` {
 		t.Fatal(text)
 	}
 }

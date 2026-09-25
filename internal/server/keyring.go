@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/Teamtem-dev/kuben/internal/core/config"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -16,15 +16,15 @@ import (
 // checked against the keys this installation has used, and with older
 // revisions resealed under its current key. A keyring that is not the
 // installation's, or a file anyone else may read, stops the server.
-func secretKeyring(ctx context.Context, cfg config.Config, st *store.Store, logger *slog.Logger) (*secrets.Keyring, error) {
+func secretKeyring(ctx context.Context, cfg config.Config, st *store.Store, logger *slog.Logger) (*keyring.Keyring, error) {
 	file := cfg.SecretKeyringFile()
-	keyring, err := secrets.LoadOrCreate(file)
+	ring, err := keyring.LoadOrCreate(file)
 	if err != nil {
 		return nil, fmt.Errorf("secret keyring: %w", err)
 	}
-	if _, err := secrets.Prepare(ctx, st, keyring, logger); err != nil {
+	if _, err := keyring.Prepare(ctx, st, ring, logger); err != nil {
 		return nil, fmt.Errorf("secret keyring: %w", err)
 	}
-	logger.Info("secret keyring ready", "file", file, "key_version", keyring.Current())
-	return keyring, nil
+	logger.Info("secret keyring ready", "file", file, "key_version", ring.Current())
+	return ring, nil
 }

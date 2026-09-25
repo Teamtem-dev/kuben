@@ -1,4 +1,4 @@
-package secrets
+package keyring
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
@@ -74,7 +74,7 @@ func (l RegistryLogin) DockerConfig(registry string) string {
 		"password": l.Password,
 		"auth":     l.encoded(),
 	}}}
-	text, err := wire.CanonicalValue(config)
+	text, err := jsonx.CanonicalValue(config)
 	if err != nil {
 		// Strings always encode; unreachable.
 		return ""

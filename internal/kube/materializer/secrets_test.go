@@ -9,27 +9,27 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	secrets "github.com/Teamtem-dev/kuben/internal/keyring"
+	"github.com/Teamtem-dev/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/internal/kube/materializer"
 	"github.com/Teamtem-dev/kuben/internal/store"
 )
 
 // Ported from materializer/secrets.rs.
 
-func keyringOf(b byte) *secrets.Keyring {
+func keyringOf(b byte) *keyring.Keyring {
 	var key [32]byte
 	for i := range key {
 		key[i] = b
 	}
-	return secrets.FromKeys(map[uint32][32]byte{1: key})
+	return keyring.FromKeys(map[uint32][32]byte{1: key})
 }
 
 func sealedBinding(
-	t *testing.T, m *store.Materialization, keyring *secrets.Keyring, revision uint64, values map[string]string, registry opt.Val[string],
+	t *testing.T, m *store.Materialization, ring *keyring.Keyring, revision uint64, values map[string]string, registry opt.Val[string],
 ) store.BoundSecret {
 	t.Helper()
 	secret := uuid.Must(uuid.NewV7())
-	sealed, err := keyring.SealValues(secrets.Identity{Org: m.Org.String(), Secret: secret.String(), Revision: revision}, values)
+	sealed, err := ring.SealValues(keyring.Identity{Org: m.Org.String(), Secret: secret.String(), Revision: revision}, values)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func sealedBinding(
 	}
 }
 
-func boundSecret(t *testing.T, m *store.Materialization, keyring *secrets.Keyring, revision uint64) store.BoundSecret {
+func boundSecret(t *testing.T, m *store.Materialization, keyring *keyring.Keyring, revision uint64) store.BoundSecret {
 	t.Helper()
 	return sealedBinding(t, m, keyring, revision, map[string]string{"url": "postgres://db"}, opt.None[string]())
 }
@@ -88,11 +88,11 @@ func TestARevisionBecomesAnImmutableLabelledSecret(t *testing.T) {
 }
 
 func TestARegistryLoginBecomesAPullSecret(t *testing.T) {
-	keyring := keyringOf(3)
+	ring := keyringOf(3)
 	m := secretSample(t)
-	login := secrets.RegistryLogin{Username: "bot", Password: "token"}
-	b := sealedBinding(t, &m, keyring, 1, login.Values(), opt.Some("ghcr.io"))
-	s, code := materializer.SecretObject(&m, &b, keyring)
+	login := keyring.RegistryLogin{Username: "bot", Password: "token"}
+	b := sealedBinding(t, &m, ring, 1, login.Values(), opt.Some("ghcr.io"))
+	s, code := materializer.SecretObject(&m, &b, ring)
 	if code != "" {
 		t.Fatal(code)
 	}
@@ -110,8 +110,8 @@ func TestARegistryLoginBecomesAPullSecret(t *testing.T) {
 	if config.Auths["ghcr.io"].Username != "bot" {
 		t.Fatalf("%+v", config)
 	}
-	broken := sealedBinding(t, &m, keyring, 1, map[string]string{}, opt.Some("ghcr.io"))
-	if _, code := materializer.SecretObject(&m, &broken, keyring); code == "" {
+	broken := sealedBinding(t, &m, ring, 1, map[string]string{}, opt.Some("ghcr.io"))
+	if _, code := materializer.SecretObject(&m, &broken, ring); code == "" {
 		t.Fatal("not a login")
 	}
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/store"
 	"github.com/Teamtem-dev/kuben/internal/store/pgtest"
 )
@@ -31,7 +31,7 @@ func TestLiveTargetsAndEnvironmentsAreCountedPerOrganization(t *testing.T) {
 	}
 	var newest any
 	for _, text := range []string{`{"env":[]}`, `{"env":[{"name":"A","value":"1"}]}`} {
-		config, err := wire.DecodeAny([]byte(text))
+		config, err := jsonx.DecodeAny([]byte(text))
 		if err != nil {
 			t.Fatal(err)
 		}

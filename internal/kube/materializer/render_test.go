@@ -13,7 +13,7 @@ import (
 	"github.com/Teamtem-dev/kuben/internal/core/ops/run"
 	"github.com/Teamtem-dev/kuben/internal/core/ops/target"
 	"github.com/Teamtem-dev/kuben/internal/core/opt"
-	wire "github.com/Teamtem-dev/kuben/internal/jsonx"
+	"github.com/Teamtem-dev/kuben/internal/jsonx"
 	"github.com/Teamtem-dev/kuben/internal/kube/materializer"
 	"github.com/Teamtem-dev/kuben/internal/kube/render"
 	"github.com/Teamtem-dev/kuben/internal/store"
@@ -32,7 +32,7 @@ func digest(t *testing.T) artifact.Digest {
 
 func config(t *testing.T, text string) any {
 	t.Helper()
-	v, err := wire.DecodeAny([]byte(text))
+	v, err := jsonx.DecodeAny([]byte(text))
 	if err != nil {
 		t.Fatal(err)
 	}
