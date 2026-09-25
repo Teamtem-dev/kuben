@@ -158,6 +158,8 @@ jobs:
       KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
       # A database test that skips here fails instead (go/CONVENTIONS.md).
       KUBEN_REQUIRE_PG: "1"
+      # Likewise for the tests against a Kubernetes API server (envtest).
+      KUBEN_REQUIRE_K8S: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -174,6 +176,12 @@ jobs:
           version: v2.13.2
           working-directory: go/hub
           args: --config ../../.golangci.yml
+      # kube-apiserver and etcd for internal/platform/kubetest, pinned with
+      # controller-runtime's release.
+      - name: Kubernetes API server binaries (envtest)
+        run: |
+          assets=$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.1 use 1.37.x -p path --bin-dir "$RUNNER_TEMP/envtest")
+          echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
       - run: bun turbo run lint test --filter=hub --filter=agent --filter=kubenapi --filter=tools
       - run: cd go/hub && go tool govulncheck ./...
       - run: scripts/rust-drift.sh

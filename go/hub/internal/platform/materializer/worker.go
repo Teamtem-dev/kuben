@@ -103,7 +103,7 @@ func Run(ctx context.Context, w *Worker, h *health.Health) error {
 		if err != nil {
 			return err
 		}
-		if !worked {
+		if worked.IsNone() {
 			if !sleep(ctx, idle) {
 				return nil
 			}
@@ -142,15 +142,15 @@ func (w *Worker) resource(gvr schema.GroupVersionResource, namespace string) dyn
 	return r.Namespace(namespace)
 }
 
-// WorkOnce claims one due operation and carries it as far as it goes;
-// false when nothing was due.
-func (w *Worker) WorkOnce(ctx context.Context) (bool, error) {
+// WorkOnce claims one due operation and carries it as far as it goes; it
+// is the operation it worked on, none when nothing was due.
+func (w *Worker) WorkOnce(ctx context.Context) (opt.Val[ids.OperationID], error) {
 	claim, ok, err := w.d.Store.ClaimOperation(ctx, w.d.ID, kinds(), Lease)
 	if err != nil {
-		return false, storeError(err)
+		return opt.None[ids.OperationID](), storeError(err)
 	}
 	if !ok {
-		return false, nil
+		return opt.None[ids.OperationID](), nil
 	}
 	var st stop
 	if claim.Kind == store.RunKind {
@@ -158,7 +158,7 @@ func (w *Worker) WorkOnce(ctx context.Context) (bool, error) {
 	} else {
 		st = w.carryLifecycle(ctx, claim)
 	}
-	return true, w.settle(ctx, claim, st)
+	return opt.Some(claim.ID), w.settle(ctx, claim, st)
 }
 
 func (w *Worker) carry(ctx context.Context, claim store.Claim) stop {
