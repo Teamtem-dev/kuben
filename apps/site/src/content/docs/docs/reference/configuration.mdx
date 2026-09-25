@@ -11,9 +11,11 @@ Lowest to highest:
 
 1. Built-in defaults
 2. `/etc/kuben/config.toml`
-3. `./kuben.toml`
-4. `--config <file>` (if given)
-5. `KUBEN_*` environment variables. Nested keys are separated by `__`: `KUBEN_SECURITY__SESSION_TTL_HOURS`.
+3. `./kuben.toml` (the nearest one: the working directory, else its parents)
+4. `--config <file>` or `KUBEN_CONFIG` (if given)
+5. `KUBEN_*` environment variables. Nested keys are separated by `__`: `KUBEN_SECURITY__SESSION_TTL_HOURS`. A value may be written as in TOML: a list `[a, b]`, a table `{admins = "admin"}`, `true`, a number; anything else is a string.
+
+Keys Kuben does not read are ignored; a value of the wrong type stops the server at start.
 
 A TOML file uses the same sections:
 
@@ -40,6 +42,11 @@ trust_forwarded_for = true
 | `KUBEN_ROLES` | `all` | roles of this process: `all`, `api`, `controller`, `activator` (comma-separated) |
 | `KUBEN_SERVER__REQUEST_TIMEOUT_SECS` | `30` | per-request timeout (streams excepted) |
 | `KUBEN_SERVER__MAX_BODY_BYTES` | `1048576` | request body limit (1 MiB) |
+| `KUBEN_SERVER__STATE_DIR` | see below | files of this installation: the setup token, a generated admin password, the secret keyring and backups by default |
+
+`KUBEN_ROLES` (or `kuben serve --roles`) overrides `server.roles` (`KUBEN_SERVER__ROLES`, a list: `["api", "controller"]`).
+
+Without `state_dir`: `/data` when it exists (the container image and the chart), else systemd's `$STATE_DIRECTORY`, `$XDG_STATE_HOME/kuben`, `~/.local/state/kuben`, or the working directory.
 
 ## `database`
 
@@ -63,7 +70,7 @@ The container image sets no database; the Helm chart sets `KUBEN_DATABASE__URL`,
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KUBEN_KUBE__KUBECONFIG` | unset | path to a kubeconfig; otherwise in-cluster, then `$KUBECONFIG`, then `~/.kube/config` |
+| `KUBEN_KUBE__KUBECONFIG` | unset | path to a kubeconfig; otherwise `$KUBECONFIG`, then `~/.kube/config`, then the pod's service account |
 | `KUBEN_KUBE__CONTEXT` | unset | kubeconfig context to use |
 | `KUBEN_KUBE__WATCH_NAMESPACE` | unset (all) | restrict informers to one namespace |
 | `KUBEN_KUBE__REQUIRED` | `false` (`true` in the chart) | fail to start when no cluster is reachable |
@@ -78,6 +85,9 @@ The container image sets no database; the Helm chart sets `KUBEN_DATABASE__URL`,
 | `KUBEN_SECURITY__SESSION_TTL_HOURS` | `12` | session lifetime |
 | `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` | `5` | upper bound for a revoked session to stay valid on another replica |
 | `KUBEN_SECURITY__PASSWORD_MIN_LENGTH` | `12` | |
+| `KUBEN_SECURITY__ARGON2_M_KIB` | `19456` | Argon2id memory per password hash, KiB (19 MiB) |
+| `KUBEN_SECURITY__ARGON2_T` | `2` | Argon2id iterations |
+| `KUBEN_SECURITY__ARGON2_P` | `1` | Argon2id parallelism |
 | `KUBEN_SECURITY__LOGIN_CONCURRENCY` | `2` | concurrent Argon2id verifications; bounds memory under a login flood |
 | `KUBEN_SECURITY__LOGIN_MAX_FAILURES` | `5` | per email + client IP, within the window |
 | `KUBEN_SECURITY__LOGIN_MAX_FAILURES_PER_IP` | `30` | |
@@ -94,16 +104,20 @@ See [Sign-in and throttling](/docs/guides/sign-in-security/).
 | Variable | Default | Purpose |
 |---|---|---|
 | `KUBEN_TELEMETRY__LOG_FORMAT` | `json` | `json` or `pretty` |
-| `KUBEN_TELEMETRY__LOG_LEVEL` | `info` | a `tracing` filter, e.g. `info,kuben_platform=debug` |
-| `KUBEN_TELEMETRY__OTLP_ENDPOINT` | unset | OpenTelemetry trace export |
+| `KUBEN_TELEMETRY__LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn` or `error`; `RUST_LOG` wins when set. A 1.x filter such as `info,kuben_platform=debug` is still accepted, but only its global level counts |
+| `KUBEN_TELEMETRY__OTLP_ENDPOINT` | unset | accepted, not used: no traces are exported yet (the support bundle leaves it out) |
 
 ## `runtime`
 
+The 1.x server ran on Tokio, and these keys sized its thread pools. Since 2.0 the server is written in Go: the keys are still accepted, so an existing configuration keeps loading, but they have **no effect**.
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `KUBEN_RUNTIME__WORKER_THREADS` | number of CPUs | Tokio worker threads |
-| `KUBEN_RUNTIME__MAX_BLOCKING_THREADS` | `16` | |
-| `KUBEN_RUNTIME__BULKHEAD` | `false` | run the controllers on a second Tokio runtime, isolated from the API. Off in phase 0 (ADR-013) |
+| `KUBEN_RUNTIME__WORKER_THREADS` | unset | no effect since 2.0 |
+| `KUBEN_RUNTIME__MAX_BLOCKING_THREADS` | `16` | no effect since 2.0 |
+| `KUBEN_RUNTIME__BULKHEAD` | `false` | no effect since 2.0 (ADR-013: there is no second runtime) |
+
+The Go runtime's own variables take their place. `GOMAXPROCS` (the threads running Go code at once) defaults to the CPUs available, and follows the container's CPU limit. `GOMEMLIMIT` (a soft memory limit, e.g. `GOMEMLIMIT=400MiB`) is unset by default; set it a little below the container's memory limit so the garbage collector works harder before the kernel kills the process.
 
 ## `bootstrap`
 
@@ -153,6 +167,7 @@ How long rows that only describe the past are kept. See [Budgets](/docs/operatio
 | `KUBEN_RETENTION__OUTBOX_DAYS` | `7` | delivered outbox messages |
 | `KUBEN_RETENTION__WEBHOOK_DELIVERY_DAYS` | `30` | finished webhook deliveries |
 | `KUBEN_RETENTION__RESOLVED_INCIDENT_DAYS` | `180` | resolved incidents |
+| `KUBEN_RETENTION__USAGE_DAYS` | `7` | hourly usage of apps |
 
 ## `domains`
 
@@ -162,6 +177,96 @@ How long rows that only describe the past are kept. See [Budgets](/docs/operatio
 | `KUBEN_DOMAINS__DOH_URL` | `https://cloudflare-dns.com/dns-query` | the DNS-over-HTTPS resolver claims are checked with (JSON API) |
 | `KUBEN_DOMAINS__CLOUDFLARE_API_URL` | `https://api.cloudflare.com/client/v4` | the Cloudflare API |
 | `KUBEN_DOMAINS__CNAME_TARGET` | unset | app DNS records become a CNAME to this name instead of A/AAAA records of the Gateway |
+
+## `agent`
+
+AgentLink, where cluster agents connect to Kuben (ADR-027).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_AGENT__BIND` | unset (set in the chart) | where Kuben listens for agents (`host:port`); unset, it does not |
+| `KUBEN_AGENT__HUB_NAME` | `hub.kuben.internal` | the name Kuben's certificate carries; agents check it |
+| `KUBEN_AGENT__CERTIFICATE_HOURS` | `24` | lifetime of the client certificates Kuben issues to agents |
+| `KUBEN_AGENT__HEARTBEAT_SECS` | `10` | how often agents send a heartbeat |
+| `KUBEN_AGENT__LOCAL` | `false` (`true` in the chart) | enroll an agent in Kuben's own cluster |
+| `KUBEN_AGENT__ADVERTISE` | unset | the address agents in the cluster dial (`host:port`) |
+| `KUBEN_AGENT__NAMESPACE` | Kuben's own, else `kuben-system` | namespace of the local agent and its Secrets |
+
+## `git`
+
+The GitHub App Kuben acts as. Git sources are on only when the App id, its key file and the webhook secret are all set.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_GIT__GITHUB_APP_ID` | unset | the App's numeric id |
+| `KUBEN_GIT__GITHUB_PRIVATE_KEY_FILE` | unset | PEM file of the App's private key (PKCS#1 or PKCS#8 RSA) |
+| `KUBEN_GIT__GITHUB_WEBHOOK_SECRET` | unset | the secret GitHub signs webhook deliveries with |
+| `KUBEN_GIT__GITHUB_API_URL` | `https://api.github.com` | the REST API root, for GitHub Enterprise Server |
+| `KUBEN_GIT__GITHUB_CLONE_URL` | `https://github.com` | where build pods clone from |
+
+## `build`
+
+Builds run as one rootless BuildKit Job per attempt (ADR-028).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_BUILD__ENABLED` | `false` | run the build worker |
+| `KUBEN_BUILD__NAMESPACE` | Kuben's own, else `kuben-builds` | namespace of build Jobs |
+| `KUBEN_BUILD__BUILDKIT_IMAGE` | `moby/buildkit:v0.33.0-rootless` | pin it by digest in production; the worker warns about images that are not |
+| `KUBEN_BUILD__FETCH_IMAGE` | `alpine/git:2.49.1` | the image with `git` that fetches the source |
+| `KUBEN_BUILD__RAILPACK_FRONTEND` | unset | Railpack's BuildKit frontend image; with `railpack_image`, enables Railpack builds |
+| `KUBEN_BUILD__RAILPACK_IMAGE` | unset | the image with `sh` and the `railpack` CLI; unset, only Dockerfile builds run |
+| `KUBEN_BUILD__CPU_REQUEST` | `500m` | |
+| `KUBEN_BUILD__CPU_LIMIT` | `2` | |
+| `KUBEN_BUILD__MEMORY` | `2Gi` | memory request and limit (equal) |
+| `KUBEN_BUILD__EPHEMERAL_STORAGE` | `10Gi` | |
+| `KUBEN_BUILD__DEADLINE_SECS` | `1800` | hard deadline of one attempt |
+| `KUBEN_BUILD__MAX_CONCURRENT` | `2` | builds at once, over all organizations; `0` disables building |
+| `KUBEN_BUILD__MAX_CONCURRENT_PER_ORG` | `1` | |
+| `KUBEN_BUILD__PUSH_SECRET` | unset | a `kubernetes.io/dockerconfigjson` Secret in the build namespace with push access |
+| `KUBEN_BUILD__INSECURE_REGISTRY` | `false` | push over plain HTTP (an in-cluster registry without TLS) |
+| `KUBEN_BUILD__REGISTRY_AUTH_FILE` | unset | `user:password` the verifier uses |
+| `KUBEN_BUILD__NODE_POOL` | unset | node selector `key=value` of the build pool |
+| `KUBEN_BUILD__SCANNER_IMAGE` | `aquasec/trivy:0.74.0` | writes the SBOM of every built image and scans it; empty disables scanning |
+| `KUBEN_BUILD__SCANNER_MEMORY` | `1Gi` | memory request and limit of the scan container |
+| `KUBEN_BUILD__RESCAN_HOURS` | `24` | rescan the images apps run when their newest scan is older than this |
+
+## `ci`
+
+External CI trust: a GitHub Actions workflow exchanges its OIDC token for a short-lived Kuben token under an organization's trust policy.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_CI__GITHUB_ACTIONS` | `false` | accept GitHub Actions OIDC tokens |
+| `KUBEN_CI__GITHUB_OIDC_ISSUER` | `https://token.actions.githubusercontent.com` | the only issuer trusted; its keys are read from `<issuer>/.well-known/jwks` |
+| `KUBEN_CI__GITHUB_OIDC_AUDIENCE` | `server.public_url` | the audience workflows request |
+
+## `sso`
+
+Single sign-on with an OpenID Connect provider.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_SSO__ENABLED` | `false` | |
+| `KUBEN_SSO__ISSUER` | unset | the provider's issuer URL; its discovery document names the rest |
+| `KUBEN_SSO__CLIENT_ID` | unset | |
+| `KUBEN_SSO__CLIENT_SECRET_FILE` | unset | a file holding the client secret (preferred over `client_secret`) |
+| `KUBEN_SSO__CLIENT_SECRET` | unset | the client secret itself |
+| `KUBEN_SSO__DISPLAY_NAME` | `Single sign-on` | shown on the sign-in button |
+| `KUBEN_SSO__SCOPES` | `["openid", "email", "profile"]` | |
+| `KUBEN_SSO__GROUP_CLAIM` | `groups` | the ID token claim that lists the person's groups |
+| `KUBEN_SSO__GROUPS` | empty | provider group → organization role (`viewer` … `owner`): `{admins = "admin"}`, or one variable per group, `KUBEN_SSO__GROUPS__DEVS=developer` |
+| `KUBEN_SSO__DEFAULT_ROLE` | unset | role of people in no mapped group; unset refuses them |
+| `KUBEN_SSO__ALLOWED_DOMAINS` | empty (any) | email domains allowed |
+| `KUBEN_SSO__REQUIRE_VERIFIED_EMAIL` | `true` | |
+| `KUBEN_SSO__ORG` | `bootstrap.org_slug` | the organization people join |
+| `KUBEN_SSO__DISABLE_PASSWORD_FOR_LINKED` | `false` | accounts linked to the provider cannot sign in with a password |
+
+## `secrets`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_SECRETS__KEYRING_FILE` | `secrets.keyring` in the state directory, created with one key when missing | the keyring of key-encryption keys; every replica must read the same file, and it must be backed up apart from the database. See [Backup and restore](/docs/operations/backup-restore/) |
 
 <Aside type="note" title="Platform settings live in the cluster">
 `baseDomain`, `gateway`, `clusterIssuer`, `wildcardTlsSecret`, the registry and the size presets are **not** process configuration: they are the `KubenConfig` custom resource, so every replica and every `kubectl` user sees the same values. The Helm chart writes it from `platform.*`. See [Custom resources](/docs/reference/custom-resources/).

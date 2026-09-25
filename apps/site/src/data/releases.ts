@@ -9,6 +9,29 @@ export type Release = {
 }
 
 export const releases: Release[] = [
+  // Ships with the v1.2.1 tag: the type has no "not yet released" state, so
+  // this entry is live on the site as soon as it is merged.
+  {
+    version: 'v1.2.1',
+    date: '2026-09-26',
+    title: 'Scan reports parse again, and idle mode defaults to off under Helm',
+    highlights: [
+      'The image scan wrote a control character where the Trivy database date belongs, so no report parsed and every scan was recorded as unavailable: the scan gate never saw a finding. Reports parse again, with the date.',
+      'The CRD manifest quotes off: kubectl and Helm read a plain off as the boolean false, so apps installed through the Helm chart got false as the default idle mode instead of off.',
+    ],
+  },
+  {
+    version: 'v1.2.0',
+    date: '2026-09-17',
+    title: 'PostgreSQL, Git builds and the supported MVP',
+    highlights: [
+      'Breaking: Kuben keeps its data in PostgreSQL. SQLite is gone and 1.x data is not imported; without a database URL the server stops with a message that shows how to run a local PostgreSQL.',
+      'Deploy an image to an app and expose it over HTTPS; the cluster agent connects to Kuben over mutual TLS (AgentLink).',
+      'Git sources through a GitHub App, built in isolated in-cluster BuildKit Jobs.',
+      'Organizations with roles, kuben backup and restore, managed secrets, single sign-on, CI trust for GitHub Actions, and image scans with a gate on deploys.',
+      'Preview environments, custom domains with claims and DNS-01 certificates (kuben dns01-issuer), and status pages.',
+    ],
+  },
   {
     version: 'v1.1.2',
     date: '2026-09-13',

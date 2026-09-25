@@ -19,7 +19,7 @@ import (
 func targetFlags(cmd *cobra.Command) func() clientTarget {
 	var context, project, environment string
 	flags := cmd.Flags()
-	flags.StringVar(&context, "context", "", "A context written by `kuben login` (default: the current one)")
+	flags.StringVar(&context, "context", "", "A context written by 'kuben login' (default: the current one)")
 	bindEnv(flags, "context", "KUBEN_CONTEXT")
 	flags.StringVar(&project, "project", "", "Project of apps named without one")
 	bindEnv(flags, "project", "KUBEN_PROJECT")

@@ -41,7 +41,7 @@ func supportBundleCmd(g *globals) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&out, "out", "", "Directory the bundle goes to [default: `support` in the state dir]")
+	flags.StringVar(&out, "out", "", "Directory the bundle goes to [default: 'support' in the state dir]")
 	flags.BoolVar(&opts.Preview, "preview", false, "Show what the bundle would hold, and write nothing")
 	flags.BoolVar(&opts.Logs, "logs", false,
 		"Also the newest lines of Kuben's own logs (they may name apps and people: read them before sharing)")

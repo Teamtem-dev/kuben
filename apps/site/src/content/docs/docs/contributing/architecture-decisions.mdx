@@ -21,7 +21,7 @@ Code comments cite decisions as `ADR-NNN`. New decisions get their own file unde
 | 010 | CEL and ValidatingAdmissionPolicy instead of admission webhooks | decided | CRD schemas in `charts/kuben/crds/`, `go/kubenapi` |
 | 011 | React 19 + TanStack for the console | decided | `apps/console` |
 | 012 | Licensing and a clean-room boundary to the system being replaced | decided | — |
-| 013 | One runtime in phase 0; a second one only behind `runtime.bulkhead` | decided | `serve` |
+| 013 | One runtime in phase 0; a second one only behind `runtime.bulkhead` | decided; moot since 033 (Go has one scheduler; `runtime.bulkhead` is accepted and has no effect) | `core/config` |
 | 014 | One SSE stream per browser tab; WebSocket only for terminals | decided | `api/stream` |
 | 015 | Data ownership: SQL references CRDs only by `uid` | decided | `store`, invariant I-17 |
 | 016 | Persistent buildkitd plus a light `buildctl` Job; external registry in the MVP | decided, phase 1 | — |
