@@ -5,7 +5,7 @@
 # releases, because install.sh, the oracle job, the smoke test and
 # existing documentation download them by name:
 #   kuben-<rust target triple>.tar.gz (.zip on Windows) with kuben
-#   (+ kuben-agent on Linux), LICENSE and README.md; <archive>.sha256;
+#   (+ kuben-agent on Linux), LICENSE and README.md;
 #   checksums.txt over every archive, SBOM, install.sh and bundle.lock.json,
 #   signed keyless as checksums.txt.sigstore.json.
 # Pre-releases (2.0.0-alpha.N, -beta.N, -rc.N) are published as such and
