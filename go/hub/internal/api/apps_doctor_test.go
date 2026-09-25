@@ -3,9 +3,10 @@ package api_test
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -17,16 +18,17 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/api/auth"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/core/config"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/doctor"
-	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/health"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/projection"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/registry"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/render"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/secrets"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/store"
 )
 
 const doctorPath = "/api/v1/projects/shop/environments/prod/apps/api/doctor"
@@ -96,25 +98,16 @@ func doctorCluster(t *testing.T) registry.Cluster {
 }
 
 // doctorServer is a server on f's store and projections that reaches
-// cluster and resolves api.example.com to the Gateway's address; its URL.
-func doctorServer(t *testing.T, f fixture, cluster registry.Cluster) string {
+// cluster, resolves api.example.com to the Gateway's address and asks
+// fake for name servers and provider accounts; its URL.
+func doctorServer(t *testing.T, f fixture, cluster registry.Cluster, fake *fakeDNS) string {
 	t.Helper()
-	cfg := config.Default()
-	cfg.Server.Bind = "127.0.0.1:3000"
-	h := health.New(clock.System{})
-	h.SetReady(true)
-	server, err := api.New(api.Deps{
-		Config: cfg, Store: f.store, Hasher: auth.InsecureForTests(), Health: h,
-		Projections: f.projections, Images: testImages(t),
-		Cluster:  opt.Some(registry.Single(cluster)),
-		Resolver: hosts{"api.example.com": {"127.0.0.1"}},
+	return serverOn(t, f, func(d *api.Deps) {
+		d.Images = testImages(t)
+		d.Cluster = opt.Some(registry.Single(cluster))
+		d.Resolver = hosts{"api.example.com": {"127.0.0.1"}}
+		d.DNS = fake
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ts := httptest.NewServer(server.Handler())
-	t.Cleanup(ts.Close)
-	return ts.URL
 }
 
 // signInAt is email signed in to the server at base.
@@ -132,10 +125,11 @@ func signInAt(t *testing.T, base, email string) *client {
 	return c
 }
 
-// doctorClient is alice, signed in to doctorServer.
+// doctorClient is alice, signed in to doctorServer with a fake DNS that
+// holds no record.
 func doctorClient(t *testing.T, f fixture, cluster registry.Cluster) *client {
 	t.Helper()
-	return signInAt(t, doctorServer(t, f, cluster), "alice@example.com")
+	return signInAt(t, doctorServer(t, f, cluster, &fakeDNS{}), "alice@example.com")
 }
 
 // recordFacts records facts of the primary cluster observed at observedAt.
@@ -219,7 +213,7 @@ func TestAppDoctorAssemblesTheChecks(t *testing.T) {
 		{"certificate", "api.example.com", "fail"},
 		{"dns", "api.example.com", "ok"},
 		{"claim", "api.example.com", "warn"},
-		{"delegation", "api.example.com", "unknown"},
+		{"delegation", "api.example.com", "ok"},
 		{"proxy", "api.example.com", "unknown"},
 	}
 	if diff := cmp.Diff(want, seenChecks(t, body)); diff != "" {
@@ -294,7 +288,7 @@ func TestAppDoctorWithoutAGateway(t *testing.T) {
 		{"route", "", "fail"},
 		{"dns", "api.example.com", "unknown"},
 		{"claim", "api.example.com", "warn"},
-		{"delegation", "api.example.com", "unknown"},
+		{"delegation", "api.example.com", "ok"},
 		{"proxy", "api.example.com", "unknown"},
 	}
 	if diff := cmp.Diff(want, seenChecks(t, body)); diff != "" {
@@ -318,5 +312,144 @@ func TestDoctorReportShape(t *testing.T) {
 	}
 	if empty := api.DoctorReportOf(nil); empty.Status != "ok" || len(empty.Checks) != 0 {
 		t.Fatalf("no checks: %+v", empty)
+	}
+}
+
+// handOverToAgent links an agent to the primary cluster (with the runtime
+// feature) and hands app api over to it; the cluster.
+func handOverToAgent(t *testing.T, f fixture) ids.ClusterID {
+	t.Helper()
+	ctx := t.Context()
+	tn, err := f.store.Tenant(ctx, f.org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tn.Rollback(ctx) //nolint:errcheck // a no-op after the commit
+	cluster, err := tn.EnsureCluster(ctx, registry.Primary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, _, err := tn.Project(ctx, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, _, err := tn.Environment(ctx, project.ID, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, _, err := tn.App(ctx, env.ID, "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The ensured cluster row stays locked until the transaction ends, and
+	// the agent's rows point at it: read only, and let go first.
+	if err := tn.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const device = "sha256:device-a"
+	if err := f.store.RecordAgentCertificate(ctx, f.org, cluster, device, clock.System{}.NowMs()+3_600_000); err != nil {
+		t.Fatal(err)
+	}
+	if linked, err := f.store.RecordAgentLink(ctx, cluster, device, 1, []string{store.RuntimeFeature}, "1.0.0"); err != nil || !linked {
+		t.Fatalf("link: %v %v", linked, err)
+	}
+	tn, err = f.store.Tenant(ctx, f.org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tn.Rollback(ctx) //nolint:errcheck // a no-op after the commit
+	if handed, err := tn.HandOverToAgent(ctx, app.Target); err != nil || !handed {
+		t.Fatalf("hand over: %v %v", handed, err)
+	}
+	if err := tn.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return cluster
+}
+
+// routes/apps/doctor.rs domain_checks and agent: the delegation from the
+// name servers, the proxy from the organization's provider account, and
+// the agent of an agent-delivered app, linked and then revoked.
+func TestAppDoctorReadsDelegationProxyAndAgent(t *testing.T) {
+	f := newFixture(t)
+	f.seedApp()
+	recordFacts(t, f, discovery.ClusterFacts{}, clock.System{}.NowMs())
+	addProvider(t, f, "good")
+	cluster := handOverToAgent(t, f)
+	fake := &fakeDNS{records: []dns.ProviderRecord{{
+		ID: "r1", Name: "api.example.com", RecordType: "A", Content: "203.0.113.10", Proxied: true,
+	}}}
+	alice := signInAt(t, doctorServer(t, f, doctorCluster(t), fake), "alice@example.com")
+
+	status, body, _ := alice.do("GET", doctorPath, nil)
+	if status != http.StatusOK {
+		t.Fatalf("doctor: %d %v", status, body)
+	}
+	delegation := checkNamed(t, body, "delegation")
+	if delegation["status"] != "ok" ||
+		delegation["detail"] != "example.com is served by ada.ns.cloudflare.com (Cloudflare)" {
+		t.Fatalf("delegation: %v", delegation)
+	}
+	if proxy := checkNamed(t, body, "proxy"); proxy["status"] != "warn" {
+		t.Fatalf("proxy: %v", proxy)
+	}
+	agent := checkNamed(t, body, "agent")
+	if detail, _ := agent["detail"].(string); agent["status"] != "ok" || !strings.HasPrefix(detail, "linked, heard from ") {
+		t.Fatalf("agent: %v", agent)
+	}
+
+	ctx := t.Context()
+	tn, err := f.store.Tenant(ctx, f.org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tn.Rollback(ctx) //nolint:errcheck // a no-op after the commit
+	if revoked, err := tn.RevokeClusterAgent(ctx, cluster); err != nil || !revoked {
+		t.Fatalf("revoke: %v %v", revoked, err)
+	}
+	if err := tn.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, body, _ = alice.do("GET", doctorPath, nil)
+	if agent := checkNamed(t, body, "agent"); agent["status"] != "fail" ||
+		agent["detail"] != "the cluster's agent was revoked" {
+		t.Fatalf("revoked agent: %v", agent)
+	}
+}
+
+// Without a keyring no provider account can be opened: the proxy is
+// unknown, as in Rust.
+func TestAppDoctorWithoutAKeyringCannotSeeTheProxy(t *testing.T) {
+	f := newFixture(t)
+	f.seedApp()
+	recordFacts(t, f, discovery.ClusterFacts{}, clock.System{}.NowMs())
+	addProvider(t, f, "good")
+	fake := &fakeDNS{records: []dns.ProviderRecord{{ID: "r1", Name: "api.example.com", RecordType: "A", Proxied: true}}}
+	base := serverOn(t, f, func(d *api.Deps) {
+		d.Cluster = opt.Some(registry.Single(doctorCluster(t)))
+		d.Resolver = hosts{}
+		d.DNS = fake
+		d.Keyring = opt.None[*secrets.Keyring]()
+	})
+	_, body, _ := signInAt(t, base, "alice@example.com").do("GET", doctorPath, nil)
+	if proxy := checkNamed(t, body, "proxy"); proxy["status"] != "unknown" {
+		t.Fatalf("proxy: %v", proxy)
+	}
+}
+
+// An agent is stale after three heartbeats, never sooner than 30 s, and
+// the product saturates instead of wrapping.
+func TestAgentStaleAfterThreeHeartbeats(t *testing.T) {
+	for _, c := range []struct{ heartbeat, want uint64 }{
+		{0, 30},
+		{10, 30},
+		{11, 33},
+		{60, 180},
+		{math.MaxUint64 / 3, math.MaxUint64 / 3 * 3},
+		{math.MaxUint64/3 + 1, math.MaxUint64},
+	} {
+		if got := api.AgentStaleAfter(c.heartbeat); got != c.want {
+			t.Errorf("heartbeat %d: %d, want %d", c.heartbeat, got, c.want)
+		}
 	}
 }

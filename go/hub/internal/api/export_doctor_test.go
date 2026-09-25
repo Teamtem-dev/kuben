@@ -5,3 +5,6 @@ var DoctorReportOf = doctorReport
 
 // FactsFreshMs is how old recorded cluster facts may be.
 const FactsFreshMs = factsFreshMs
+
+// AgentStaleAfter is how long an agent may stay silent.
+var AgentStaleAfter = agentStaleAfter

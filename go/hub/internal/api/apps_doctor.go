@@ -7,15 +7,21 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"math"
 	"net"
 	"net/netip"
+	"slices"
+	"unicode/utf8"
 
 	"github.com/go-faster/jx"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/dns"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/api/gen"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/api/notify"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/domain"
+	"github.com/Teamtem-dev/kuben/go/hub/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/core/perm"
 	"github.com/Teamtem-dev/kuben/go/hub/internal/platform/discovery"
@@ -27,10 +33,6 @@ import (
 
 // factsFreshMs: a recorded observation older than this is asked again.
 const factsFreshMs = 5 * 60 * 1000
-
-// errNoNameServerLookup stands for the DNS-over-HTTPS resolver of dns.rs,
-// which is not ported yet: the delegation of a custom domain is unknown.
-var errNoNameServerLookup = errors.New("DNS-over-HTTPS lookups are not available in this version")
 
 // GetAppDoctor is why the app is or is not reachable: the GatewayClass and
 // the Gateway, the issuer, ports 80 and 443 (from the server), the route,
@@ -90,7 +92,11 @@ func (s *Server) doctorChecks(ctx context.Context, a appScope, cluster registry.
 	}
 	checks = append(checks, domains...)
 	if a.app.Delivery == store.DeliveryAgent {
-		checks = append(checks, agentCheck())
+		agent, err := s.agentState(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+		checks = append(checks, doctor.AgentCheck(agent, agentStaleAfter(s.deps.Config.Agent.HeartbeatSecs)))
 	}
 	return checks, nil
 }
@@ -152,12 +158,12 @@ func (s *Server) domainChecks(ctx context.Context, a appScope) ([]doctor.Check, 
 		case found:
 			holder = doctor.ClaimOthers{}
 		}
+		zone := domain.LockKey(host)
+		servers, lookupErr := s.deps.DNS.NS(ctx, zone)
 		checks = append(checks,
 			doctor.ClaimCheck(host, holder, s.deps.Config.Domains.RequireClaim),
-			doctor.DelegationCheck(host, domain.LockKey(host), nil, errNoNameServerLookup),
-			// No DNS provider account can be read yet (dns.rs, S5), as Rust
-			// without a keyring: no account holds the record.
-			doctor.ProxyCheck(host, opt.None[bool]()),
+			doctor.DelegationCheck(host, zone, servers, lookupErr),
+			doctor.ProxyCheck(host, s.proxied(ctx, org, host)),
 		)
 	}
 	return checks, nil
@@ -196,15 +202,87 @@ func decodeFacts(recorded any) (discovery.ClusterFacts, bool) {
 	return facts, true
 }
 
-// agentCheck is the agent of an app its cluster's agent delivers. The
-// store does not read an agent's enrollment and last contact yet
-// (repo/agents.rs cluster_agent, ported with the AgentLink), so the check
-// is unknown, never ok; doctor.AgentCheck judges it once it can be read.
-func agentCheck() doctor.Check {
-	return doctor.Check{
-		ID: "agent", Status: doctor.StatusUnknown,
-		Detail: "the agent's link could not be checked",
+// proxied is whether a DNS provider account of org proxies host's record;
+// none when no account holds it (or none answered). Accounts that cannot
+// be opened are passed over.
+func (s *Server) proxied(ctx context.Context, org ids.OrgID, host string) opt.Val[bool] {
+	keyring, ok := s.deps.Keyring.Get()
+	if !ok || keyring == nil {
+		return opt.None[bool]()
 	}
+	t, err := s.deps.Store.Tenant(ctx, org)
+	if err != nil {
+		return opt.None[bool]()
+	}
+	defer t.Rollback(ctx) //nolint:errcheck // read only
+	providers, err := t.DNSProviders(ctx)
+	if err != nil {
+		return opt.None[bool]()
+	}
+	for _, p := range providers {
+		kind, sealed, found, err := t.DNSProviderSecret(ctx, p.ID)
+		if err != nil || !found {
+			continue
+		}
+		token, err := notify.OpenSecret(keyring, org, p.ID, sealed)
+		if err != nil || !utf8.Valid(token) {
+			continue
+		}
+		api, ok := s.deps.DNS.Provider(kind, string(token))
+		if !ok {
+			continue
+		}
+		zone, found, err := api.ZoneFor(ctx, host)
+		if err != nil || !found {
+			continue
+		}
+		records, err := api.Records(ctx, zone, host)
+		if err != nil || len(records) == 0 {
+			continue
+		}
+		return opt.Some(slices.ContainsFunc(records, func(r dns.ProviderRecord) bool { return r.Proxied }))
+	}
+	return opt.None[bool]()
+}
+
+// agentStaleAfter is how long an agent sending a heartbeat every
+// heartbeat seconds may stay silent, in seconds: three heartbeats, at least
+// 30 (saturating where Rust's multiplication would overflow).
+func agentStaleAfter(heartbeat uint64) uint64 {
+	if heartbeat > math.MaxUint64/3 {
+		return math.MaxUint64
+	}
+	return max(heartbeat*3, 30)
+}
+
+// agentState is what is known of the agent of the app's cluster (the
+// primary one): none, revoked, or when it was last heard of.
+func (s *Server) agentState(ctx context.Context, a appScope) (doctor.AgentState, error) {
+	t, err := s.deps.Store.Tenant(ctx, a.env.project.org)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // a store error, answered as internal
+	}
+	// Rust dropped the tenant without committing: a cluster ensured here
+	// is not kept.
+	cluster, err := t.EnsureCluster(ctx, registry.Primary)
+	_ = t.Rollback(ctx) //nolint:errcheck // nothing to keep
+	if err != nil {
+		return nil, err //nolint:wrapcheck // a store error, answered as internal
+	}
+	agent, found, err := s.deps.Store.ClusterAgent(ctx, cluster)
+	switch {
+	case err != nil:
+		return nil, err //nolint:wrapcheck // a store error, answered as internal
+	case !found:
+		return doctor.AgentNone{}, nil
+	case agent.RevokedAt.IsSome():
+		return doctor.AgentRevoked{}, nil
+	}
+	age := opt.None[uint64]()
+	if seen, ok := agent.LastSeenAt.Get(); ok {
+		age = opt.Some(uint64(max(clock.SaturatingSub(s.deps.Clock.NowMs(), seen), 0) / 1000)) //nolint:gosec // not negative
+	}
+	return doctor.AgentSeen{Age: age}, nil
 }
 
 // doctorReport is the report of checks. The evidence graph and its
