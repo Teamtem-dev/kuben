@@ -19,9 +19,9 @@ import (
 
 // startBackground starts the work every replica shares through SQL claims
 // (serve.rs spawn_background): the notifier (M4.10: incidents, webhooks
-// and commit statuses from the outbox; app reports the commit statuses)
-// and the image update watcher (M5.4). The channels are closed when each
-// has ended.
+// and commit statuses from the outbox; app reports the commit statuses),
+// the preview janitor (M5.1) and the image update watcher (M5.4). The
+// channels are closed when each has ended.
 func startBackground(
 	ctx context.Context, cfg config.Config, st *store.Store, keyring *secrets.Keyring, app opt.Val[*github.App],
 	h *health.Health, logger *slog.Logger,
@@ -33,9 +33,15 @@ func startBackground(
 	notifications := supervise.Go(ctx, notify.Subsystem, h, logger, func(ctx context.Context) error {
 		return notify.Run(ctx, notifier, h)
 	})
+	previews := api.NewPreviews(api.PreviewDeps{
+		Store: st, GitHub: app, OrgEnvironments: cfg.Quota.OrgEnvironments, Clock: clock.System{}, Logger: logger,
+	})
+	janitor := supervise.Go(ctx, api.PreviewsSubsystem, h, logger, func(ctx context.Context) error {
+		return api.RunPreviewJanitor(ctx, previews, h)
+	})
 	watcher := api.NewImageWatcher(st, oci.Registry{}, opt.Some(keyring), clock.System{}, logger)
 	images := supervise.Go(ctx, api.ImageWatchSubsystem, h, logger, func(ctx context.Context) error {
 		return api.RunImageWatch(ctx, watcher, h)
 	})
-	return []<-chan struct{}{notifications, images}
+	return []<-chan struct{}{notifications, janitor, images}
 }

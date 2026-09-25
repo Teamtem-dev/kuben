@@ -250,7 +250,13 @@ func orConflict(err, conflict error) error {
 // admitEnvironment is admission::admit_environment: the organization's
 // environment quota (M4.5).
 func (s *Server) admitEnvironment(ctx context.Context, t *store.Tenant) error {
-	limit, ok := s.deps.Config.Quota.OrgEnvironments.Get()
+	return admitEnvironmentUnder(ctx, t, s.deps.Config.Quota.OrgEnvironments)
+}
+
+// admitEnvironmentUnder is admitEnvironment with the quota given: the
+// preview lifecycle admits its environments without a Server.
+func admitEnvironmentUnder(ctx context.Context, t *store.Tenant, quota opt.Val[uint64]) error {
+	limit, ok := quota.Get()
 	if !ok {
 		return nil
 	}

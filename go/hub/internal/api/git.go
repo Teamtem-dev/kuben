@@ -323,11 +323,18 @@ type pullOutcome struct {
 	result  string
 }
 
-// onPull is previews::on_pull: previews (M5.1, previews.rs) are not ported
-// yet, so no project follows pull requests and a pull request event changes
-// nothing, as in a Rust installation without preview settings.
-func (s *Server) onPull(context.Context, ids.OrgID, source.PullEvent) ([]pullOutcome, error) {
-	return nil, nil
+// onPull is previews::on_pull (M5.1, previews.go): the event applied to
+// every project of org whose previews follow its repository.
+func (s *Server) onPull(ctx context.Context, org ids.OrgID, pull source.PullEvent) ([]pullOutcome, error) {
+	outcomes, err := s.previews().OnPull(ctx, org, pull)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pullOutcome, 0, len(outcomes))
+	for _, o := range outcomes {
+		out = append(out, pullOutcome{project: o.Project.String(), result: o.Result})
+	}
+	return out, nil
 }
 
 // pushEvent records a push and asks every binding it concerns for a sync.
