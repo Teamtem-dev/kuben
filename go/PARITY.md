@@ -89,9 +89,9 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-api | `routes/apps/builds.rs` | 273 | 2 | api (apps_builds.go) | ported | 2 → 2 |
 | kuben-api | `routes/apps/crud.rs` | 419 | 0 | api (apps_crud.go) | ported | list, create (image and Git), get, update, delete, restart, handover; `TestAppsReadFromSQL`, `TestViewersCanReadAppsButNotWrite` |
 | kuben-api | `routes/apps/deployments.rs` | 510 | 2 | api (apps_deployments.go) | ported | 2 → 2; `a_deployment_is_accepted_once_and_can_be_polled`, `a_lost_answer_is_given_again_without_a_second_run`, `deployments_need_deploy_rights_a_pinned_image_and_an_app_in_sql` → Go (PostgreSQL); the input hash is the text Rust hashed, so an Idempotency-Key replay matches across the cutover; `Location` through httpx.SetHeader |
-| kuben-api | `routes/apps/doctor.rs` | 231 | 0 | api (apps_doctor.go) | partial | 0 → 8; delegation from the DNS backend's NS, proxy from the organization's provider accounts (unknown without keyring), agent from the store's cluster agent (none/revoked/last seen, stale after max(3×heartbeat, 30) s, saturating). The graph and findings stay empty until evidence.rs |
+| kuben-api | `routes/apps/doctor.rs` | 231 | 0 | api (apps_doctor.go) | ported | 0 → 8; delegation from the DNS backend's NS, proxy from the organization's provider accounts (unknown without keyring), agent from the store's cluster agent (stale after max(3×heartbeat, 30) s, saturating); graph and findings from apps_evidence.go + platform/evidence, members as canonical (sorted-key) JSON |
 | kuben-api | `routes/apps/domains.rs` | 90 | 0 | api (apps_domains.go) + platform/doctor | ported | DNS checks of an app's hosts, concurrent with a 3 s timeout each, addresses ordered as IpAddr; resolver injectable |
-| kuben-api | `routes/apps/evidence.rs` | 296 | 2 |  | todo | |
+| kuben-api | `routes/apps/evidence.rs` | 296 | 2 | api (apps_evidence.go) | ported | 2 → 5 (+ pods node, build phase Debug names); "cannot read" facts carry client-go's error text |
 | kuben-api | `routes/apps/export.rs` | 544 | 2 | api (apps_export.go, apps_detach.go) | ported | 2 → 5 (+ runbook text, whole wire form, no-Gateway case) + http.rs m4_export_detach_and_release; members as wire.CanonicalValue; top-level member order is ogen's map order |
 | kuben-api | `routes/apps/image_policy.rs` | 220 | 0 | api (apps_image_policy.go) | ported | tests/http.rs `m5_image_policies_deploy_new_digests` → `TestM5ImagePoliciesDeployNewDigests` |
 | kuben-api | `routes/apps/jobs.rs` | 105 | 1 | api (apps_jobs.go) | ported | 1 → 1; `manual_job_names_fit_the_limit`, manual Job creation from live CronJob, 503 without a cluster |
@@ -238,4 +238,4 @@ Status: `todo` · `partial` (the parts a slice needs; the note says what is left
 | kuben-store | `tests/matrix.rs` | 261 | 1 | store (matrix_test.go) | ported | 1 → 1, every section |
 | kuben-store | `tests/ops_store_pg.rs` | 341 | 1 | store (spike_pg_test.go) | ported | 1 → 1 (five subtests on throwaway `m0_*` tables in the test's own schema; runs in CI with PostgreSQL) |
 
-Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 9, ported 202, todo 17.
+Totals: 231 files, 87964 lines, 685 Rust tests; dropped 3, partial 8, ported 204, todo 16.
