@@ -1,8 +1,8 @@
 # goreleaser v2 — release builds of the Go hub and agent (plan §5, §14),
-# run by .github/workflows/release-go.yml for tags v2.*.
+# run by .github/workflows/release.yml for tags v2.*.
 #
-# The artifacts keep the names, layout and signatures of the Rust releases
-# (release.yml), because install.sh, the oracle job, the smoke test and
+# The artifacts keep the names, layout and signatures of the Rust 1.x
+# releases, because install.sh, the oracle job, the smoke test and
 # existing documentation download them by name:
 #   kuben-<rust target triple>.tar.gz (.zip on Windows) with kuben
 #   (+ kuben-agent on Linux), LICENSE and README.md; <archive>.sha256;
@@ -63,7 +63,7 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    # Rust target triples, as release.yml named them.
+    # Rust target triples, as the 1.x releases named them.
     name_template: >-
       kuben-{{ if eq .Arch "amd64" }}x86_64{{ else }}aarch64{{ end }}-{{ if eq .Os "linux" }}unknown-linux-musl{{ else if eq .Os "darwin" }}apple-darwin{{ else }}pc-windows-msvc{{ end }}
     wrap_in_directory: false
