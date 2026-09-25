@@ -60,16 +60,26 @@ linters:
         - switch
         - map
       default-signifies-exhaustive: false
-      # Kinds of other packages' enums we deliberately switch on partially.
-      ignore-enum-types: ^reflect\.Kind$
+      # Kinds of other packages' enums we deliberately switch on partially;
+      # a ResourceList holds the resources it limits, never all of them.
+      ignore-enum-types: ^(reflect\.Kind|k8s\.io/api/core/v1\.ResourceName)$
     gochecksumtype:
       default-signifies-exhaustive: false
     funlen:
       lines: 100
       statements: 60
       ignore-comments: true
+    recvcheck:
+      # controller-gen's DeepCopy methods take pointers; the JSON methods
+      # of the same Kubernetes types take values.
+      exclusions:
+        - "*.DeepCopy"
+        - "*.DeepCopyInto"
+        - "*.DeepCopyObject"
     gocyclo:
-      min-complexity: 15
+      # funlen bounds size; a handler's sequence of checks, each `if err !=
+      # nil`, reaches 15 without real branching.
+      min-complexity: 20
     govet:
       enable-all: true
       disable:

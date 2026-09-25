@@ -105,7 +105,7 @@ func TestTheSingletonIsTheConfigNamedKubenElseTheFirst(t *testing.T) {
 
 func TestParsesUnitsAndCompounds(t *testing.T) {
 	for in, want := range map[string]uint64{
-		"90s": 90, "15m": 15 * 60, "168h": 168 * 3600, "14d": 14 * 86_400, "1h30m": 90 * 60, "0s": 0, " 2m ": 120,
+		"90s": 90, "15m": 15 * 60, "168h": 168 * 3600, "14d": 14 * 86_400, "1h30m": 90 * 60, "0s": 0, " 2m ": 120, //nolint:gocritic // spaces are trimmed
 	} {
 		if got, ok := controller.ParseDuration(in); !ok || got != want {
 			t.Errorf("%q = %d, %v; want %d", in, got, ok, want)

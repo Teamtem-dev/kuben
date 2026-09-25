@@ -70,7 +70,7 @@ func TestJSONValidatesToo(t *testing.T) {
 func TestDigestsOrderAndKeyMaps(t *testing.T) {
 	a, _ := artifact.ParseDigest(sha256)
 	b, _ := artifact.ParseDigest("sha256:" + strings.Repeat("f", 64))
-	if a.Compare(b) >= 0 || b.Compare(a) <= 0 || a.Compare(a) != 0 {
+	if a.Compare(b) >= 0 || b.Compare(a) <= 0 || a.Compare(a) != 0 { //nolint:gocritic // a digest equals itself
 		t.Error("digests order by their text")
 	}
 	if seen := map[artifact.Digest]bool{a: true}; !seen[a] || seen[b] {

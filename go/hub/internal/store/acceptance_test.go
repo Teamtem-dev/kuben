@@ -161,8 +161,8 @@ func TestConcurrentDeploysOfOneGenerationLetExactlyOneIn(t *testing.T) {
 	}
 	won, moved := 0, 0
 	for _, r := range results {
-		switch {
-		case r == store.StartedRejected{Reject: target.GenerationMoved{Current: 1, Expected: 0}}:
+		switch r {
+		case store.StartedRejected{Reject: target.GenerationMoved{Current: 1, Expected: 0}}:
 			moved++
 		default:
 			a, ok := r.(store.StartedAccepted)

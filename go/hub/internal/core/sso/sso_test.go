@@ -2,6 +2,7 @@ package sso_test
 
 import (
 	"encoding/json"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -65,7 +66,7 @@ func TestIDTokensAreBoundToIssuerClientNonceAndTime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		got := claims(t, tc.extra).Check("https://idp.example.com", "kuben-console", tc.nonce, tc.now)
-		if got != tc.want {
+		if !errors.Is(got, tc.want) {
 			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
 		}
 	}
@@ -150,7 +151,7 @@ func TestUnknownUnverifiedAndForeignPeopleAreRefused(t *testing.T) {
 	}
 	for _, tc := range cases {
 		person, err := tc.policy.Admit(claims(t, tc.extra), tc.groups)
-		if err != tc.want {
+		if !errors.Is(err, tc.want) {
 			t.Errorf("%s: got %v, want %v", tc.name, err, tc.want)
 		}
 		if tc.name == "default role" && person.Role != perm.Viewer {

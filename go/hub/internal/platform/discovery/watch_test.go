@@ -64,7 +64,7 @@ func TestWatchHandsOutCopies(t *testing.T) {
 
 // Readers that take Changed before Get see the last facts, however the
 // publications interleave with them (run with -race).
-func TestWatchReadersNeverMissTheLastChange(t *testing.T) {
+func TestWatchReadersNeverMissTheLastChange(_ *testing.T) {
 	var w discovery.Watch
 	const last = 200
 	var readers sync.WaitGroup

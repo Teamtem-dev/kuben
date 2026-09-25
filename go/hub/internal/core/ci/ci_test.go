@@ -124,7 +124,7 @@ func TestTokensAreCheckedForIssuerAudienceAndTime(t *testing.T) {
 	}
 	extreme := c
 	extreme.Exp, extreme.Iat = 1<<63-1, -1<<63
-	if got := extreme.Check(ci.GithubActionsIssuer, audience, now); got != ci.TokenTooLong {
+	if got := extreme.Check(ci.GithubActionsIssuer, audience, now); !errors.Is(got, ci.TokenTooLong) {
 		t.Errorf("overflow must saturate, got %v", got)
 	}
 }
@@ -175,7 +175,7 @@ func TestEverythingElseIsDenied(t *testing.T) {
 		{"unsafe even when named", permissive, map[string]any{"event_name": "pull_request_target"}, ci.DeniedEvent},
 	}
 	for _, tc := range cases {
-		if got := tc.policy.Evaluate(claims(t, tc.extra)); got != tc.want {
+		if got := tc.policy.Evaluate(claims(t, tc.extra)); !errors.Is(got, tc.want) {
 			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
 		}
 	}
@@ -187,10 +187,10 @@ func TestEnvironmentsNarrowAPolicy(t *testing.T) {
 	if err := p.Evaluate(claims(t, nil)); err != nil {
 		t.Error(err)
 	}
-	if got := p.Evaluate(claims(t, map[string]any{"environment": "staging"})); got != ci.DeniedEnvironment {
+	if got := p.Evaluate(claims(t, map[string]any{"environment": "staging"})); !errors.Is(got, ci.DeniedEnvironment) {
 		t.Errorf("got %v", got)
 	}
-	if got := p.Evaluate(claims(t, map[string]any{"environment": nil})); got != ci.DeniedEnvironment {
+	if got := p.Evaluate(claims(t, map[string]any{"environment": nil})); !errors.Is(got, ci.DeniedEnvironment) {
 		t.Errorf("got %v", got)
 	}
 }

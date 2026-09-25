@@ -96,8 +96,8 @@ func byHost(t *testing.T, plan controller.ListenerPlan, host string) map[string]
 }
 
 func TestListenerNamesAreStableAndDistinct(t *testing.T) {
-	if render.HostListenerName("api.acme.com") != render.HostListenerName("api.acme.com") ||
-		render.HostListenerName("api.acme.com") == render.HostListenerName("www.acme.com") {
+	first, again := render.HostListenerName("api.acme.com"), render.HostListenerName("api.acme.com")
+	if first != again || first == render.HostListenerName("www.acme.com") {
 		t.Fatal("stable and distinct")
 	}
 	if name := render.HostListenerName("api.acme.com"); !strings.HasPrefix(name, "h-") || len(name) != 14 {

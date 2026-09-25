@@ -170,13 +170,32 @@ func (r *gatewayReconciler) reconcile(ctx context.Context) error {
 	if len(plan.Skipped) > 0 {
 		r.logger.Warn("gateway listener limit reached", "hosts", plan.Skipped, "max", MaxListeners)
 	}
+	if err := r.applyListeners(ctx, gateway, platform, plan, live.IsNone()); err != nil {
+		return err
+	}
+	live, err = r.gatewayAt(ctx, gatewayKind(), gateway.Namespace, gateway.Name)
+	if err != nil {
+		return err
+	}
+	verdict := Verdict{false, "Pending", "the Gateway is being created"}
+	if g, ok := live.Get(); ok && g != nil {
+		verdict = Readiness(g, platform, facts)
+	}
+	return r.report(ctx, opt.Some(verdict))
+}
+
+// applyListeners writes the Gateway's listeners when they changed since
+// the last write (or the Gateway is missing), and the HTTP→HTTPS redirect
+// with them. A refused write is reported on KubenConfig as
+// GatewayWriteFailed before it is returned.
+func (r *gatewayReconciler) applyListeners(ctx context.Context, gateway render.GatewayRef, platform render.Platform, plan ListenerPlan, missing bool) error {
 	body := GatewayPatch(gateway, platform, plan)
 	encoded, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("encoding the Gateway: %w", err)
 	}
 	last, applied := r.last.Get()
-	if live.IsNone() || !applied || !bytes.Equal(last, encoded) {
+	if missing || !applied || !bytes.Equal(last, encoded) {
 		if err := apply(ctx, r.client, body); err != nil {
 			cause := err
 			if inner := errors.Unwrap(err); inner != nil {
@@ -194,15 +213,7 @@ func (r *gatewayReconciler) reconcile(ctx context.Context) error {
 			"gateway", gateway.Namespace+"/"+gateway.Name, "listeners", len(plan.Listeners), "tls", platform.TLS)
 		r.last = opt.Some(encoded)
 	}
-	live, err = r.gatewayAt(ctx, gatewayKind(), gateway.Namespace, gateway.Name)
-	if err != nil {
-		return err
-	}
-	verdict := Verdict{false, "Pending", "the Gateway is being created"}
-	if g, ok := live.Get(); ok && g != nil {
-		verdict = Readiness(g, platform, facts)
-	}
-	return r.report(ctx, opt.Some(verdict))
+	return nil
 }
 
 // run is the debounced loop: any projection change marks the listener set

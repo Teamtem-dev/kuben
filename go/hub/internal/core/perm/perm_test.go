@@ -74,7 +74,9 @@ func TestRoleParses(t *testing.T) {
 }
 
 func TestRolesDecodeStrictly(t *testing.T) {
-	var got struct{ Role perm.Role }
+	var got struct {
+		Role perm.Role `json:"Role"`
+	}
 	if err := json.Unmarshal([]byte(`{"Role":"admin"}`), &got); err != nil || got.Role != perm.Admin {
 		t.Fatalf("got %v, %v", got.Role, err)
 	}

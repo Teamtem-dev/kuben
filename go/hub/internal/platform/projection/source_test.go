@@ -108,7 +108,9 @@ func TestTheSourceStreamsWhatTheCallerMaySee(t *testing.T) {
 		t.Fatalf("snapshot: %+v", snap)
 	}
 	var mine projection.ProjectView
-	if err := json.Unmarshal(snap.Projects[0], &struct{ Name *string }{&mine.Name}); err != nil || mine.Name != "mine" {
+	if err := json.Unmarshal(snap.Projects[0], &struct {
+		Name *string `json:"name"`
+	}{&mine.Name}); err != nil || mine.Name != "mine" {
 		t.Fatalf("project: %s", snap.Projects[0])
 	}
 

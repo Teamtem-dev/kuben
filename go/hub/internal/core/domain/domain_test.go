@@ -58,7 +58,7 @@ func TestRefusedNames(t *testing.T) {
 		{tooLong, domain.Error{Kind: domain.Invalid, Name: tooLong}},
 		{"a.*.com", domain.Error{Kind: domain.Invalid, Name: "a.*.com"}},
 		{"xn--zz.com", domain.Error{Kind: domain.Invalid, Name: "xn--zz.com"}},
-		{"a‍b.com", domain.Error{Kind: domain.Invalid, Name: "a‍b.com"}},
+		{"a\u200db.com", domain.Error{Kind: domain.Invalid, Name: "a\u200db.com"}},
 		{"example.com。", domain.Error{Kind: domain.Invalid, Name: "example.com。"}},
 		{" a_b.com ", domain.Error{Kind: domain.Invalid, Name: " a_b.com "}},
 	}

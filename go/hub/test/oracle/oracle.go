@@ -138,17 +138,25 @@ func (c *Client) Do(s Step) (Result, error) {
 			r.Headers[h] = v
 		}
 	}
-	var decoded any
-	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
-		// The console's page names hashed assets of its own build: only
-		// the headers are the contract.
-		r.Body = "<html>"
-	} else if len(raw) > 0 && json.Unmarshal(raw, &decoded) == nil {
-		r.Body = normalizeJSON(decoded)
-	} else if len(raw) > 0 {
-		r.Body = Normalize(string(raw))
-	}
+	r.Body = decodeBody(resp.Header.Get("Content-Type"), raw)
 	return r, nil
+}
+
+// decodeBody is a response body as compared: normalized JSON or text; the
+// console's page names hashed assets of its own build, so only its
+// headers are the contract.
+func decodeBody(contentType string, raw []byte) any {
+	var decoded any
+	switch {
+	case strings.HasPrefix(contentType, "text/html"):
+		return "<html>"
+	case len(raw) == 0:
+		return nil
+	case json.Unmarshal(raw, &decoded) == nil:
+		return normalizeJSON(decoded)
+	default:
+		return Normalize(string(raw))
+	}
 }
 
 // Diff describes how two results differ ("" when they do not).

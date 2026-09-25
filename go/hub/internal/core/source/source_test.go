@@ -89,7 +89,7 @@ func TestBranchesFollowRefFormat(t *testing.T) {
 		}
 	}
 	bad := []string{
-		"", "-x", ".x", "a..b", "a b", "a\tb", "a b", "ab", "ab", "a~1", "a^", "a?", "a*", "a[", "a\\b",
+		"", "-x", ".x", "a..b", "a b", "a\tb", "a b", "a\u0085b", "a\u007fb", "a~1", "a^", "a?", "a*", "a[", "a\\b",
 		"x.lock", "a/", "a.", "/a", "a//b", "a/.hidden", "a@{1}", "a:b", "a\xffb", strings.Repeat("a", 256),
 	}
 	for _, s := range bad {
@@ -152,7 +152,7 @@ func TestMessagesArePinned(t *testing.T) {
 		{source.Invalid{Kind: source.InvalidCommit, Value: "abc"}, `not a full 40-character commit SHA: "abc"`},
 		{source.Invalid{Kind: source.InvalidRepository, Value: "ac me"}, "not an `owner/name` repository: \"ac me\""},
 		{
-			source.Invalid{Kind: source.InvalidBranch, Value: "a\"b\\c\né"},
+			source.Invalid{Kind: source.InvalidBranch, Value: "a\"b\\c\n\u0001é"},
 			`not a valid branch name: "a\"b\\c\n\u{1}é"`,
 		},
 		{source.Invalid{Kind: source.InvalidPath, Value: "../x"}, `not a relative path inside the repository: "../x"`},

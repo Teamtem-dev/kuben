@@ -14,11 +14,21 @@ import (
 )
 
 type authFixture struct {
-	Passwords []struct{ Password, Phc string }
-	Tokens    []struct {
-		Plaintext, ID, Secret, SHA256, DisplayPrefix string
-	}
-	Session struct{ Input, SHA256 string }
+	Passwords []struct {
+		Password string `json:"password"`
+		Phc      string `json:"phc"`
+	} `json:"passwords"`
+	Tokens []struct {
+		Plaintext     string `json:"plaintext"`
+		ID            string `json:"id"`
+		Secret        string `json:"secret"`
+		SHA256        string `json:"sha256"`
+		DisplayPrefix string `json:"displayPrefix"`
+	} `json:"tokens"`
+	Session struct {
+		Input  string `json:"input"`
+		SHA256 string `json:"sha256"`
+	} `json:"session"`
 }
 
 func loadFixture(t *testing.T) authFixture {

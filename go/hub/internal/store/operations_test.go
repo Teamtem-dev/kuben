@@ -300,7 +300,7 @@ func TestInboxDeduplicatesDeliveries(t *testing.T) {
 	if !ok {
 		t.Fatal("a first delivery is new")
 	}
-	if r := receive(a, "github", `{"ref":"main"}`); r != (store.ReceivedDuplicate{Receipt: first.Receipt}) {
+	if r := receive(a, "github", `{"ref":"main"}`); r != store.ReceivedDuplicate(first) {
 		t.Fatalf("again: %#v", r)
 	}
 	if r := receive(a, "github", `{"ref":"evil"}`); r != (store.ReceivedChanged{}) {

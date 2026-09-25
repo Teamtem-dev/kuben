@@ -2,6 +2,7 @@ package oracle_test
 
 import (
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/Teamtem-dev/kuben/go/hub/test/oracle"
@@ -117,7 +118,7 @@ func TestSkeletonMatchesRust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allSteps := append(skeleton, sliceS1...)
+	allSteps := slices.Concat(skeleton, sliceS1)
 	for _, step := range allSteps {
 		want, err := rust.Do(step)
 		if err != nil {

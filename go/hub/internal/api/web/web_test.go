@@ -14,7 +14,7 @@ func TestThePolicyAllowsNothingInlineOrForeign(t *testing.T) {
 		t.Fatal(web.CSP)
 	}
 	for _, d := range []string{"default-src 'self'", "script-src 'self'", "style-src 'self'", "frame-ancestors 'none'"} {
-		if !strings.Contains(web.CSP, d) {
+		if !strings.Contains(web.CSP, d) { //nolint:gocritic // the policy contains the directive
 			t.Errorf("%s missing", d)
 		}
 	}
