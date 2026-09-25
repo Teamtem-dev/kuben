@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	ht "github.com/ogen-go/ogen/http"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -79,11 +78,12 @@ func (s *Server) CreateApp(ctx context.Context, req *gen.CreateApp, params gen.C
 	if err != nil {
 		return nil, err
 	}
-	if req.Git.IsSet() && !req.Git.IsNull() {
-		// Git sources and builds come with slice S3: 501 until then.
-		return nil, ht.ErrNotImplemented
+	var dto gen.AppDto
+	if git, ok := req.Git.Get(); ok {
+		dto, err = s.createGitApp(ctx, a, e, req.Name, spec, &git)
+	} else {
+		dto, err = s.createApp(ctx, a, e, req.Name, spec)
 	}
-	dto, err := s.createApp(ctx, a, e, req.Name, spec)
 	if err != nil {
 		return nil, err
 	}
