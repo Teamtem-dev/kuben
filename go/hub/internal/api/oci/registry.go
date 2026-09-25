@@ -138,20 +138,35 @@ type session struct {
 }
 
 func (r Registry) session(image string, ref ImageRef, login opt.Val[Login]) (*session, error) {
-	registry, err := name.NewRegistry(ref.Registry)
+	basic := opt.None[string]()
+	if l, ok := login.Get(); ok {
+		basic = opt.Some(l.encoded())
+	}
+	return newSession(r.transport, image, ref, basic, false)
+}
+
+// newSession is a session through inner (go-containerregistry's default
+// transport when nil), authenticating with the base64 `user:password` of
+// basic when given. Only an insecure session may use plain HTTP, and never
+// for a token.
+func newSession(inner http.RoundTripper, image string, ref ImageRef, basic opt.Val[string], insecure bool) (*session, error) {
+	var options []name.Option
+	if insecure {
+		options = append(options, name.Insecure)
+	}
+	registry, err := name.NewRegistry(ref.Registry, options...)
 	if err != nil {
 		return nil, Unreachable{Image: image, Reason: err.Error()}
 	}
-	inner := r.transport
 	if inner == nil {
 		inner = remote.DefaultTransport
 	}
-	obs := &observer{inner: inner}
+	obs := &observer{inner: inner, plainHTTP: insecure}
 	auth := authn.Anonymous
-	if l, ok := login.Get(); ok {
+	if b, ok := basic.Get(); ok {
 		// Exactly the Basic value of the login, as Rust sent it (ggcr would
 		// drop an empty username or password from Username/Password).
-		auth = authn.FromConfig(authn.AuthConfig{Auth: l.encoded()})
+		auth = authn.FromConfig(authn.AuthConfig{Auth: b})
 	}
 	puller, err := remote.NewPuller(
 		remote.WithTransport(obs),
@@ -277,6 +292,9 @@ func retryAfter(h http.Header) uint64 {
 // (go-containerregistry's errors keep the status but not the headers).
 type observer struct {
 	inner http.RoundTripper
+	// plainHTTP allows plain HTTP to the registry (never to a token
+	// service): build.insecure_registry.
+	plainHTTP bool
 
 	mu sync.Mutex // guards the fields below
 	// status is the last answer of the registry itself (not of a token
@@ -284,6 +302,11 @@ type observer struct {
 	status int
 	// headOK: a HEAD was answered with 200.
 	headOK bool
+	// headDigest is the Docker-Content-Digest of the last HEAD answered
+	// with 200.
+	headDigest string
+	// tokenAsked: a token service was asked.
+	tokenAsked bool
 	// limited: a 429 was answered, asking for retry seconds.
 	limited bool
 	retry   uint64
@@ -291,7 +314,8 @@ type observer struct {
 
 // RoundTrip implements http.RoundTripper.
 func (o *observer) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL == nil || req.URL.Scheme != "https" {
+	plain := req.URL != nil && req.URL.Scheme == "http" && o.plainHTTP && !isTokenRequest(req)
+	if req.URL == nil || (req.URL.Scheme != "https" && !plain) {
 		host := ""
 		if req.URL != nil {
 			host = req.URL.Host
@@ -310,10 +334,13 @@ func (o *observer) RoundTrip(req *http.Request) (*http.Response, error) {
 	if resp.StatusCode == http.StatusTooManyRequests {
 		o.limited, o.retry = true, retryAfter(resp.Header)
 	}
-	if !isTokenRequest(req) {
+	if isTokenRequest(req) {
+		o.tokenAsked = true
+	} else {
 		o.status = resp.StatusCode
 		if req.Method == http.MethodHead && resp.StatusCode == http.StatusOK {
 			o.headOK = true
+			o.headDigest = strings.TrimSpace(resp.Header.Get("Docker-Content-Digest"))
 		}
 	}
 	if resp.Body != nil {

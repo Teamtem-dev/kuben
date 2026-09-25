@@ -1,7 +1,6 @@
-// Package oci resolves image references to digests (plan §8.1, I03). It
-// replaces the image-resolution part of the Rust module
-// crates/kuben-api/src/oci.rs; the build-output verifier of that module
-// (RegistryVerifier) belongs to the build slice and is not here.
+// Package oci resolves image references to digests (plan §8.1, I03) and
+// verifies build outputs in their registry ([Verifier]). It replaces the
+// Rust module crates/kuben-api/src/oci.rs.
 //
 // A release pins every image by digest. When the API is given a tag, it asks
 // the image's registry once which digest the tag names now, and records both:
