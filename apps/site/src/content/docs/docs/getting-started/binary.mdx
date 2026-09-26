@@ -118,7 +118,7 @@ On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page]
 To read the installer before it runs, and check every byte first:
 
 ```bash
-V=v1.2.0
+V=v1.2.1
 base=https://github.com/Teamtem-dev/kuben/releases/download/$V
 curl -fsSLO "$base/install.sh" -O "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json"
 cosign verify-blob --bundle checksums.txt.sigstore.json \
@@ -132,7 +132,7 @@ sudo sh install.sh --version "$V" --require-signature
 `cosign verify-blob` proves `checksums.txt` was signed by this repository's release workflow for that tag (the signature is in Sigstore's public transparency log); `sha256sum --check` then proves `install.sh` is the file it lists. The image and the Helm chart are signed the same way:
 
 ```bash
-cosign verify ghcr.io/teamtem-dev/kuben:1.2.0 \
+cosign verify ghcr.io/teamtem-dev/kuben:1.2.1 \
   --certificate-identity-regexp '^https://github.com/Teamtem-dev/kuben/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
