@@ -70,7 +70,7 @@ helm upgrade --install kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-sys
 - **One-click templates:** PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more, with generated credentials.
 - **Teams and CI/CD:** four roles, invitations, single sign-on (OpenID Connect), scoped API tokens, GitHub Actions sign-in without a stored token, and an audit log of every change.
 - **Operations:** scheduled backups with a checked restore, an upgrade preflight, incidents with webhooks, and local support bundles.
-- **GitOps-friendly:** apps are Kubernetes custom resources, so `kubectl` and GitOps tools work alongside the console.
+- **Plain Kubernetes underneath:** projects, environments and apps are custom resources and everything they run is ordinary Kubernetes objects, so `kubectl` shows it all. Kuben's database is the source of truth, and it puts back what someone else changed.
 - **Small and auditable:** one static binary with the console embedded. In the Helm chart the Kuben container requests 50m CPU and 64 MiB of memory; the chart's own PostgreSQL requests another 128 MiB.
 
 ## Documentation
