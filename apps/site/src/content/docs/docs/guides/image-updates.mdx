@@ -9,6 +9,8 @@ import { Aside } from '@astrojs/starlight/components'
 
 An app deployed from an image can **follow** its repository. Kuben watches the repository's tags and deploys the matching image when it changes, like Keel or Renovate but inside Kuben's own release model.
 
+In the console, open the app, **Settings** tab, **Automatic image updates**. Set **Tags to follow**, the **Repository** (the current image's by default) and **Check every (minutes)**, tick **Follow new images**, and press **Follow**. The card then shows the **Last tag**, the **Next check** and the **Last error**; **Stop following** ends it. Changing it needs the `developer` role or higher. Or with the API:
+
 ```bash
 curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"pattern":"semver:^1.4","intervalSecs":300}' \
@@ -28,13 +30,13 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json
 
 ## What happens
 
-- **Checks.** Every `intervalSecs` (60 seconds to 1 day), Kuben lists the repository's tags, picks the matching one and resolves it to a digest.
+- **Checks.** Every `intervalSecs` (300 by default, 60 seconds to 1 day), Kuben lists the repository's tags, picks the matching one and resolves it to a digest.
 - **Deploys.** When the digest differs from what the app runs, Kuben records a new release and deploys it with the app's current configuration.
-- **Protected environments** keep their rules. The run waits for approval, and the vulnerability gate and freezes still apply. In development and preview environments, the run starts right away.
+- **Protected environments** keep their rules. In a production environment the run waits for approval (see [Approvals](/docs/guides/promote/#approvals-freezes-and-pauses)), and the vulnerability gate still applies. A freeze refuses the run; Kuben records that as the last error and tries again later. Where no approval is needed (every non-production environment by default), the run starts right away.
 - **Failures.** A failed check is retried with growing waits, up to once a day. A registry's `Retry-After` is honored.
-- **No duplicates.** The same digest is never deployed twice.
+- **No repeats.** Nothing is deployed while the app already runs the chosen digest. A rollback does not stop following, though: press **Stop following** first, or the next check moves the app forward again.
 
-`GET` on the same address shows the last tag and digest found, the last run started, the next check and the last error. `DELETE` stops following.
+`GET` on the same address shows the last tag and digest found, the last run started, the next check and the last error. `"enabled": false` pauses following and keeps the policy; `DELETE` removes it.
 
 <Aside type="caution">
 A moving tag such as `latest` deploys whatever the registry points it at. Prefer a SemVer range for production, and keep its approval requirement.

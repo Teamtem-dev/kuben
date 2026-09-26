@@ -1,25 +1,30 @@
 ---
-title: Deploy from CI with an API token
-description: Create a scoped API token, store it in your CI system and roll out a freshly built image with one HTTP request. Includes a complete GitHub Actions workflow.
+title: Deploy from CI
+description: Roll out a freshly built image from CI with a scoped API token, or from GitHub Actions with no stored secret through a CI trust policy. Includes complete workflows.
 sidebar:
   order: 1
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components'
 
-Kuben does not build images yet (Git builds are on the [roadmap](/docs/roadmap/)), so the usual flow is: your CI builds and pushes an image, then tells Kuben to roll it out. That second step is a single `PATCH`.
+When your CI builds the image, the flow is: CI builds and pushes it, then tells Kuben to roll it out. That second step is a single `PATCH`. It needs a Kuben token, which CI gets in one of two ways:
+
+- a **scoped API token** stored as a CI secret (any CI system), below;
+- a **CI trust policy**: GitHub Actions exchanges its own OIDC token for a short-lived Kuben token, and nothing is stored. See [GitHub Actions without a stored secret](#github-actions-without-a-stored-secret).
 
 ## 1. Create a token
 
 <Steps>
 
-1. Open **API tokens** in the console and press **New token**:
+1. Open **API tokens** in the sidebar and fill in **Create a token**:
 
    - **Name:** `github-actions`
    - **Role:** `developer`. It can deploy and change apps, but not administer.
-   - **Project:** `shop`
-   - **Environment:** `staging`
-   - **Lifetime:** 90 days by default, 365 at most.
+   - **Project (optional):** `shop`
+   - **Environment (optional):** `staging`
+   - **Expires in (days):** 90 by default, 365 at most.
+
+   Then press **Create token**.
 
 2. Copy the token. It is shown **once**; only its SHA-256 hash is stored.
 
@@ -27,13 +32,7 @@ Kuben does not build images yet (Git builds are on the [roadmap](/docs/roadmap/)
 
 </Steps>
 
-The same over the API:
-
-```bash
-curl -fsS -X POST "$KUBEN_URL/api/v1/tokens" \
-  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"name": "github-actions", "role": "developer", "project": "shop", "environment": "staging", "expires_in_days": 90}'
-```
+Tokens are made by a signed-in person, in the console or with `POST /api/v1/tokens` from a session; another token cannot create one.
 
 <Aside type="caution" title="What a token can never do">
 A token never has more rights than its owner, and a token cannot create tokens, manage members or change passwords, whatever its role. If it leaks, the blast radius is one environment of one project, until you revoke it.
@@ -50,7 +49,7 @@ curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/ap
   -d '{"image": "ghcr.io/acme/shop-api:b8e2f31"}'
 ```
 
-`PATCH` is a partial update: omitted fields stay as they are, and lists (`env`, `domains`, `volumes`) are replaced only when you send them. Every successful update becomes a numbered [release](/docs/guides/rollbacks/).
+`PATCH` is a partial update: omitted fields stay as they are, and lists (`env`, `domains`, `volumes`) are replaced only when you send them. Every change becomes a numbered [release](/docs/guides/rollbacks/). Use a new tag for every build, such as the commit SHA: sending the image the app already has changes nothing, even if the tag now points somewhere else.
 
 The `kuben` binary does the same as a client, and waits for the rollout. With `KUBEN_URL` and `KUBEN_TOKEN` set, it needs no login:
 
@@ -58,7 +57,7 @@ The `kuben` binary does the same as a client, and waits for the rollout. With `K
 kuben deploy shop/staging/api --image "ghcr.io/acme/shop-api:${GITHUB_SHA}"
 ```
 
-It resolves the tag to its digest, deploys on top of the revision it saw (a newer deploy is never replaced silently), and exits non-zero if the rollout fails; `kuben status shop/staging/api` then shows why. See the [client commands](/docs/reference/cli/#client-commands).
+It resolves the tag to its digest, deploys on top of the revision it saw (a newer deploy is never replaced silently), and exits non-zero if the rollout fails; `kuben status shop/staging/api` then shows why. It resolves tags without registry credentials, so for a private image pass the digest instead: `--image ghcr.io/acme/shop-api@sha256:…`. `--no-wait` returns once the deployment is accepted, and `--timeout` (600 seconds by default) bounds the wait. See the [client commands](/docs/reference/cli/#client-commands).
 
 ### GitHub Actions
 
@@ -97,7 +96,7 @@ jobs:
 ```
 
 <Aside type="tip" title="Private registries">
-The cluster pulls the image, not Kuben. For a private registry, create an image pull secret in the environment namespace (`shop-staging`) and attach it to the namespace's default service account, or use your cloud provider's node-level registry credentials.
+The cluster pulls the image, not Kuben. For a private registry, add a login on the environment page under **Registry logins** (**Save login**), or with `PUT /api/v1/projects/shop/environments/staging/registries/ghcr` and `{"registry": "ghcr.io", "username": "…", "password": "…"}`. The password is never shown again.
 </Aside>
 
 ### GitLab CI
@@ -114,10 +113,61 @@ deploy:
   only: [main]
 ```
 
+## GitHub Actions without a stored secret
+
+A **CI trust policy** lets a GitHub Actions workflow exchange the OIDC token GitHub gives it for a short-lived Kuben token. There is no Kuben secret in the repository to leak or rotate.
+
+<Steps>
+
+1. Turn it on in the server's configuration: `[ci] github_actions = true` (`KUBEN_CI__GITHUB_ACTIONS=true`), with `server.public_url` set; see [Configuration](/docs/reference/configuration/). The Helm chart has no value for it yet.
+
+2. Open **Settings** in the sidebar. Under **CI trust policies**, press **Add a policy** and fill in:
+
+   - **Name**, and the **Project** (and optionally one **Environment**) the tokens may act on;
+   - **Role:** `developer` deploys; `admin` also promotes;
+   - **Repository**, **Repository id** and **Owner id**: GitHub's numeric `repository_id` and `repository_owner_id` decide, so a renamed repository keeps working;
+   - **Refs** (for example `refs/heads/main`), **GitHub environments** and **Workflow events**, one per line (events default to `push`, `workflow_dispatch` and `release`);
+   - **Token life (seconds):** 900 by default, 60 to 3600.
+
+   Only owners can manage policies, from a signed-in session. The workflow needs the policy's id, which `GET /api/v1/ci/trust-policies` lists.
+
+3. In the workflow, request an OIDC token for Kuben's public URL and exchange it:
+
+   ```yaml
+   permissions:
+     contents: read
+     id-token: write
+   steps:
+     - name: Get a Kuben token
+       env:
+         KUBEN_URL: ${{ vars.KUBEN_URL }}      # exactly server.public_url
+         POLICY: ${{ vars.KUBEN_POLICY }}      # the policy's id
+       run: |
+         oidc=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+           "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$KUBEN_URL" | jq -r .value)
+         token=$(curl -fsS -X POST "$KUBEN_URL/api/v1/ci/github/token" \
+           -H "Authorization: Bearer $oidc" -H 'Content-Type: application/json' \
+           -d "{\"policy\": \"$POLICY\"}" | jq -r .token)
+         echo "::add-mask::$token"
+         echo "KUBEN_TOKEN=$token" >> "$GITHUB_ENV"
+   ```
+
+   Later steps deploy with `$KUBEN_TOKEN` exactly as above.
+
+</Steps>
+
+The exchanged token acts with the rights of the person who made the policy, capped at the policy's role. Each GitHub token can be exchanged once. Pull request events (`pull_request`, `pull_request_target`, `workflow_run`) and `refs/pull/*` are always refused, so code from a fork never gets a token. **Revoke** on a policy stops new exchanges and every token already issued under it.
+
+## What can hold a deploy
+
+- A **change freeze** on the environment refuses new releases with `409`.
+- **Pause delivery** on the app accepts the deployment, and it waits until delivery resumes.
+- A **production** environment needs one approval per deployment by default, from someone other than the requester, so a CI deploy there waits for it. A token can never approve.
+
 ## 3. Promote to production
 
 Developers deploy to staging; admins promote to production. Promotion copies the image, commands, ports, health check and environment variables to the target environment and keeps the target's domains, scaling and volumes. A `dry_run` shows the diff first. See [Promote between environments](/docs/guides/promote/).
 
 ## Revoking
 
-Delete the token from **API tokens** or with `DELETE /api/v1/tokens/{id}`. It stops working immediately on every replica, and the revocation is in the [audit log](/docs/guides/audit-log/).
+Press **Revoke** on the token under **API tokens**, or call `DELETE /api/v1/tokens/{id}` from a signed-in session. It stops working immediately on every replica, and the revocation is in the [audit log](/docs/guides/audit-log/).
