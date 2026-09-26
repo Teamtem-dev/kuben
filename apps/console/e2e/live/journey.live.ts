@@ -211,11 +211,12 @@ test('team, API tokens, audit log and sign out', async ({ page }) => {
   await expect(ownRole).toBeDisabled()
   await expectAccessible(page)
 
-  const invite = card(page, en['team.invite'])
-  await invite.getByLabel(en['login.email'], { exact: true }).fill(MEMBER)
-  await invite.getByLabel(en['team.role'], { exact: true }).selectOption('developer')
-  await invite.getByRole('button', { name: en['team.inviteButton'], exact: true }).click()
-  await expect(invite.getByRole('status')).toContainText(`${en['team.tempPasswordFor']} ${MEMBER}`)
+  await page.getByRole('button', { name: en['team.invite'] }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(en['login.email'], { exact: true }).fill(MEMBER)
+  await dialog.getByLabel(en['team.role'], { exact: true }).selectOption('developer')
+  await dialog.getByRole('button', { name: en['team.inviteButton'], exact: true }).click()
+  await expect(page.getByRole('status')).toContainText(`${en['team.tempPasswordFor']} ${MEMBER}`)
   await expect(card(page, fill(en['team.members'], { count: 2 }))).toContainText(en['team.invitationPending'])
 
   await nav(page, en).getByRole('link', { name: en['nav.tokens'] }).click()
