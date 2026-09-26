@@ -69,6 +69,7 @@ Rows that only describe the past are removed after their budget. A background pa
 | Delivered outbox messages | 7 days | `retention.outbox_days` |
 | Finished webhook deliveries | 30 days | `retention.webhook_delivery_days` |
 | Resolved incidents | 180 days | `retention.resolved_incident_days` |
+| Hourly usage of apps | 7 days | `retention.usage_days` |
 | Database backups | newest 7 | `backup.keep` |
 
 Audit events, deployment runs, releases, render plans, SBOMs and scan results are never removed by this pass. They are the history an audit or a rollback depends on.
