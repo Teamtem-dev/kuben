@@ -68,9 +68,10 @@ printf '{"digest":"%s","strategy":"%s"}' "$digest" "$strategy" >/dev/termination
 	// image. The SBOM goes to the log (gzip, base64, between markers); the
 	// summary to the termination log, which holds 4 KiB.
 	//
-	// The byte 0x01 is in the Rust constant (the `\1` of the sed expression
-	// that reads the database date is U+0001 in the Rust source) and is kept,
-	// so the pods run the same script.
+	// The database date is read with sed's `\1`. Kuben 1.2.0 carried a raw
+	// byte 0x01 there instead, so every report held a control character, did
+	// not parse, and every scan counted as unavailable (the scan gate never
+	// saw a finding); TestTheScanReportCarriesTheDatabaseDate pins the fix.
 	ScanScript = `set -u
 report() { printf '{"status":"unavailable","scanner":"%s","detail":"%s"}' "${scanner:-}" "$1" >/dev/termination-log; exit 0; }
 cd /workspace
@@ -84,7 +85,7 @@ trivy image --quiet $insecure --format cyclonedx --output sbom.json "$KUBEN_REPO
 trivy sbom --quiet --scanners vuln --format template   --template '{{ range . }}{{ range .Vulnerabilities }}{{ .Severity }}:{{ .VulnerabilityID }}{{ "
 " }}{{ end }}{{ end }}'   --output found.txt sbom.json 2>scan.err || report "the vulnerability database is not available"
 db=$(trivy version --format json 2>/dev/null | tr ',' '
-' | sed -n 's/.*"UpdatedAt": *"\([^"]*\)".*/` + "\x01" + `/p' | head -n 1)
+' | sed -n 's/.*"UpdatedAt": *"\([^"]*\)".*/\1/p' | head -n 1)
 sort -u found.txt | tr -cd 'A-Za-z0-9:._
 -' >unique.txt
 n() { grep -c "^$1:" unique.txt || true; }

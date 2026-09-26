@@ -3,8 +3,6 @@ package build_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -309,14 +307,15 @@ func TestEverythingIsOwnedByTheBuildRun(t *testing.T) {
 	}
 }
 
-// The scripts are Rust's bytes, 0x01 included; while the Rust tree exists
-// they are also compared with it.
-func TestScriptsAreRustsBytes(t *testing.T) {
+// The build scripts are pinned: a change to what the pods run must be
+// deliberate. They were Rust's bytes until 2.0, except SCAN_SCRIPT, whose
+// database-date sed was fixed (TestTheScanReportCarriesTheDatabaseDate).
+func TestTheScriptsArePinned(t *testing.T) {
 	want := map[string]string{
 		"FETCH_SCRIPT": "0a7c532321f25903f7b7d79e3931aec4595291187d975771484ecee09695059c",
 		"PLAN_SCRIPT":  "999e1e5057fe636fbac9deb7fee06c4f52987a0b2c1dd1205bb47ace634b7185",
 		"BUILD_SCRIPT": "a23464ba28932a1417f16ff3293c703b59649af441408d6ac4e11f304f5fc23d",
-		"SCAN_SCRIPT":  "c39d1e6745e506d38923cd6ef83a8a559aff26ddbf95f238df6fe89bcecc9338",
+		"SCAN_SCRIPT":  "61624fcbbeefceb6628a625e6fb1ba0b54f34eea8fbaa1869a787363133e4bb1",
 	}
 	pod := rendered(t, source.BuildRecipe{}, settings())
 	all := append(slices.Clone(pod.InitContainers), pod.Containers...)
@@ -326,18 +325,10 @@ func TestScriptsAreRustsBytes(t *testing.T) {
 		"BUILD_SCRIPT": container(t, all, outcome.BuildContainer).Command[2],
 		"SCAN_SCRIPT":  build.ScanScript,
 	}
-	rust, err := os.ReadFile("../../../../../crates/kuben-platform/src/build/job.rs")
 	for name, script := range got {
 		sum := sha256.Sum256([]byte(script))
 		if hex.EncodeToString(sum[:]) != want[name] {
 			t.Errorf("%s changed", name)
-		}
-		if err != nil {
-			continue
-		}
-		m := regexp.MustCompile(`(?s)const ` + name + `: &str = r#"(.*?)"#;`).FindSubmatch(rust)
-		if m == nil || string(m[1]) != script {
-			t.Errorf("%s differs from the Rust constant", name)
 		}
 	}
 }
