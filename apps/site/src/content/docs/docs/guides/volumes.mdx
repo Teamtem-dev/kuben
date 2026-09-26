@@ -9,7 +9,7 @@ import { Aside } from '@astrojs/starlight/components'
 
 ## Add a volume
 
-When deploying, set **Volume** to `/data:5Gi`, or in the API:
+In the **Deploy app** form, set **Volume** to `/data:5Gi` (mount path and size; the console names the volume `data`, and the size defaults to `1Gi`). Or in the API:
 
 ```json
 {
@@ -20,14 +20,14 @@ When deploying, set **Volume** to `/data:5Gi`, or in the API:
 }
 ```
 
-Kuben creates a `PersistentVolumeClaim` named `<app>-<volume>` in the environment namespace with `ReadWriteOnce` access, using the cluster's default StorageClass unless the app specifies one.
+Kuben creates a `PersistentVolumeClaim` named `<app>-<volume>` in the environment namespace with `ReadWriteOnce` access, using the cluster's default StorageClass. The API and the console always use the default; only the `App` resource has a `storageClass` field. The app's **Overview** tab lists its volumes.
 
 ## What a volume changes
 
-- **One pod.** `ReadWriteOnce` volumes can be mounted by one node at a time, so an app with volumes runs a single process with at most one replica, and autoscaling is off.
+- **One pod.** `ReadWriteOnce` volumes can be mounted by one node at a time, so an app with volumes runs a single process with one replica. Kuben refuses more replicas, autoscaling or a second process on it.
 - **Recreate rollouts.** Deploys stop the old pod before starting the new one, which means a few seconds of downtime per rollout. Stateless apps keep zero-downtime rolling updates.
-- **Growing.** Change `size` to a larger value and the PVC is expanded if the StorageClass allows it (`allowVolumeExpansion: true`). A volume can never shrink.
-- **Non-root images.** Images that run as a non-root user often cannot write to a freshly provisioned volume. Set `fs_group` (for example `1000`) on the app so Kubernetes chowns the volume for that group.
+- **Growing.** Change `size` to a larger value through the API and the PVC is expanded if the StorageClass allows it (`allowVolumeExpansion: true`). A volume can never shrink; Kuben refuses a smaller size.
+- **Non-root images.** Images that run as a non-root user often cannot write to a freshly provisioned volume. Set `fs_group` (for example `1000`) on the app through the API so Kubernetes chowns the volume for that group.
 
 <Aside type="note" title="Templates">
 The database templates (PostgreSQL, Redis, MariaDB) declare their volumes for you, with sensible sizes. See the [template catalogue](/docs/reference/templates/).
@@ -35,7 +35,7 @@ The database templates (PostgreSQL, Redis, MariaDB) declare their volumes for yo
 
 ## Deleting an app
 
-Deleting an app **keeps** its volumes by default; the PVCs stay in the namespace with a `kuben.dev/retain` label, so a mistaken delete does not lose data. To remove them together with the app, tick *Also delete the app's volumes* in the console or add `?delete_volumes=true`:
+Deleting an app **keeps** its volumes by default; the PVCs stay in the namespace with a `kuben.dev/retain` annotation, so a mistaken delete does not lose data. To remove them together with the app, tick *Also delete the app's volumes when deleting it* on the app's **Settings** tab, under **Danger zone**, or add `?delete_volumes=true`:
 
 ```bash
 curl -fsS -X DELETE "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/wiki?delete_volumes=true" \
@@ -46,4 +46,4 @@ Deleting an **environment** deletes its namespace and therefore every volume in 
 
 ## Backups
 
-Volumes are ordinary PVCs. `kuben backup` does not include their contents; use `VolumeSnapshot`s or a cluster backup tool such as Velero. See [Backup and restore](/docs/operations/backup-restore/).
+Volumes are ordinary PVCs. `kuben backup` backs up Kuben's database, not their contents; use `VolumeSnapshot`s or a cluster backup tool such as Velero. See [Backup and restore](/docs/operations/backup-restore/).

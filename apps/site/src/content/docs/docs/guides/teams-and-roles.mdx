@@ -1,6 +1,6 @@
 ---
 title: Teams and roles
-description: The four roles, what each may do, how invitations and temporary passwords work, and the rules that keep an organisation from locking itself out.
+description: The four roles, what each may do, roles for one project or environment, how invitations and temporary passwords work, single sign-on, and the rules that keep an organisation from locking itself out.
 sidebar:
   order: 2
 ---
@@ -14,21 +14,32 @@ Roles form a strict ladder; each includes everything below it.
 | Role | Can |
 |---|---|
 | **viewer** | read projects, environments, apps, releases and logs |
-| **developer** | + deploy, change apps, restart, roll back, open terminals, read secrets |
-| **admin** | + create projects and environments, write secrets, promote, read the audit log, invite and manage members |
-| **owner** | + manage owners and delete protected (production) environments |
+| **developer** | + deploy, change apps, restart, roll back, pause and resume delivery, silence alerts, acknowledge incidents, read plain environment variable values |
+| **admin** | + create projects and environments, write secrets, deploy templates, promote, approve deployments, emergency rollback, change freezes, read the audit log, invite and manage members |
+| **owner** | + CI trust policies, domain claims, webhooks and vulnerability exceptions, weaken an environment's protection, delete production environments |
 
-Roles are per organisation. A member has the same role in every project. API tokens are capped at a role (`viewer`, `developer` or `admin`) and can additionally be scoped to a project or an environment; see [Deploy from CI](/docs/guides/deploy-from-ci/).
+Your organisation role applies in every project. You can also give a member a stronger role on one project or one environment; see [Roles for one project or environment](#roles-for-one-project-or-environment).
+
+API tokens are capped at a role (`viewer`, `developer` or `admin`, never `owner`) and can be scoped to a project or an environment. A token acts with the weaker of its cap and its creator's role; see [Deploy from CI](/docs/guides/deploy-from-ci/).
+
+The **Owner** card on a project page and on an app's **Settings** tab is something else: it names the team or person who answers for it, a contact and a runbook URL, for the people who find an incident. It grants no permission.
 
 ## Inviting someone
 
-1. On **Team**, enter an email address, an optional display name and a role, then press **Invite**.
-2. The new account gets a **temporary password shown once**. Share it over a channel you trust.
+1. Open **Team** in the sidebar. Under **Invite a member**, enter the **Email**, pick a **Role**, and press **Invite**.
+2. A new account gets a **temporary password shown once**. Share it over a channel you trust. Someone who already has an account on this Kuben server is simply added, with no new password.
 3. On first sign-in the invitee must replace the temporary password. Until they do, the API answers `403` to everything else.
 
+The API takes an optional display name too. Managing members needs a signed-in person, so call it with a session; API tokens get `403`. Sign in first, keeping the cookie (it asks for your password), then send the `X-Kuben-Client` header with every change:
+
 ```bash
+read -rs KUBEN_PASSWORD
+curl -fsS -c cookies.txt -X POST "$KUBEN_URL/api/v1/auth/login" \
+  -H 'Content-Type: application/json' -H 'X-Kuben-Client: curl' \
+  -d "{\"email\": \"you@example.com\", \"password\": \"$KUBEN_PASSWORD\"}"
+
 curl -fsS -X POST "$KUBEN_URL/api/v1/members" \
-  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/json' -H 'X-Kuben-Client: curl' -b cookies.txt \
   -d '{"email": "carol@example.com", "display_name": "Carol", "role": "developer"}'
 ```
 
@@ -41,29 +52,46 @@ Kuben does not send email. There is no SMTP to configure and no invitation link 
 - **Nobody grants a role above their own.** An admin can invite viewers, developers and admins, but not owners.
 - **Only owners change or remove owners.**
 - **The last owner can be neither demoted nor removed.** An organisation can never lose all its owners.
+- **You cannot change your own role or remove yourself.**
 - **Removing a member revokes their sessions and API tokens immediately.**
-- **Changing your own password** (under **Account**) signs out your other sessions.
+- **Changing your own password** (account menu at the top right → **Account** → **Change password**) signs out your other sessions.
 
 Every one of these actions, including denied attempts, appears in the [audit log](/docs/guides/audit-log/).
 
 ## Changing a role
 
+On **Team**, pick the new role in the member's row. Or, from a signed-in session:
+
 ```bash
 curl -fsS -X PATCH "$KUBEN_URL/api/v1/members/<member-id>" \
-  -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/json' -H 'X-Kuben-Client: curl' -b cookies.txt \
   -d '{"role": "admin"}'
 ```
 
+## Roles for one project or environment
+
+A member can hold a stronger role on one project, or on one environment, than in the organisation: a developer who is admin of `shop`, say. A scoped role adds to the organisation role and never takes anything away, and only someone at least as strong on that project or environment can grant or remove it. This is API only for now:
+
+```bash
+curl -fsS -X PUT "$KUBEN_URL/api/v1/projects/shop/members/<member-id>" \
+  -H 'Content-Type: application/json' -H 'X-Kuben-Client: curl' -b cookies.txt \
+  -d '{"role": "admin"}'
+```
+
+For one environment, use `/api/v1/projects/shop/environments/production/members/<member-id>`. `DELETE` on the same path removes the scoped role.
+
+## Single sign-on
+
+Kuben signs people in through your identity provider with OpenID Connect, next to local passwords. The provider's groups decide the organisation role at every sign-in, so for people who sign in that way, a role changed on **Team** lasts only until their next sign-in. Setup is in [Sign-in](/docs/guides/sign-in-security/#single-sign-on).
+
+Local passwords need at least 12 characters (`KUBEN_SECURITY__PASSWORD_MIN_LENGTH`).
+
 ## Lost admin password
 
-An owner can reset any member's access by removing and re-inviting them. If the *only* owner has lost their password, reset it from the server side:
+Kuben has no password reset for members, and removing and re-inviting someone keeps their old password. For the first admin account (`bootstrap.admin_email`, by default `admin@kuben.local`), reset it from the server side:
 
 ```bash
 kubectl -n kuben-system exec deploy/kuben -- /kuben reset-admin
 ```
 
-The command prints a new random password once, or takes one with `--password`. See the [CLI reference](/docs/reference/cli/).
-
-## What is coming
-
-Single sign-on with OIDC is on the [roadmap](/docs/roadmap/). Until then, every member has a local password with a minimum length of 12 characters (`KUBEN_SECURITY__PASSWORD_MIN_LENGTH`).
+The command prints a new random password once, or takes one with `--password`, and signs that account out everywhere. See the [CLI reference](/docs/reference/cli/).

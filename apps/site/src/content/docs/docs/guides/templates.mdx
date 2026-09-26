@@ -1,13 +1,15 @@
 ---
 title: One-click templates
-description: Start PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden or Gitea in one click, with generated credentials that never appear in a spec, a release or the audit log.
+description: Start PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea or whoami in one click, with generated credentials that never appear in a spec, a release or the audit log.
 sidebar:
   order: 6
 ---
 
 import { Aside } from '@astrojs/starlight/components'
 
-The environment page lists the template catalogue. Pick one, give it a name, and Kuben creates the app, its volume and its credentials.
+The environment page lists the catalogue under **One-click templates**. Press **Use template** on one, enter an **App name**, and press **Deploy**: Kuben creates the app, its volume and its credentials, and tells you the name of the credentials secret and how to connect another app to it.
+
+Deploying a template writes a secret, so it needs the `admin` role or higher. The name is a DNS label of at most 40 characters, and the deploy stops if a secret `<name>-credentials` already exists.
 
 ```bash
 curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/staging/templates/postgres" \
@@ -38,15 +40,15 @@ In the API that is a secret reference:
 ```
 
 <Aside type="note" title="Reading the credentials yourself">
-Members with `secret-read` (developers and up) can see secret values in the console. If you need them outside Kuben, read the Kubernetes Secret directly: `kubectl -n shop-staging get secret db-credentials -o jsonpath='{.data.url}' | base64 -d`.
+Kuben never shows the values in the console or the API. The credentials are an ordinary Kubernetes Secret in the environment namespace, so someone with cluster access can read them: `kubectl -n kb-shop-staging get secret db-credentials -o jsonpath='{.data.url}' | base64 -d`. Database templates have the keys `url`, `host`, `port`, `username` and `database` (Redis: `url`, `host`, `port`).
 </Aside>
 
 ## Internal only
 
-Database templates use `protocol: tcp`. They get a cluster-internal Service named after the app (`db` above), reachable from the other apps in the environment and never from the internet. The NetworkPolicy of the environment blocks connections from other environments.
+Database templates use `protocol: tcp`. They get a cluster-internal Service named after the app (`db` above), reachable from the other apps in the environment and never from the internet. The NetworkPolicy of the environment blocks connections from other environments; namespaces Kuben does not manage, such as the Gateway's and monitoring, can still connect.
 
-HTTP templates (n8n, Uptime Kuma, Vaultwarden, Gitea, whoami) get a public route like any other web app: `https://<name>-<environment>.<baseDomain>` plus any [custom domains](/docs/guides/custom-domains/).
+HTTP templates (n8n, Uptime Kuma, Vaultwarden, Gitea, whoami) get a public route like any other web app: `https://<name>-<project>-<environment>.<baseDomain>` (for example `n8n-shop-staging.apps.example.com`) plus any [custom domains](/docs/guides/custom-domains/).
 
 ## After deploying
 
-A template deploy is an ordinary app afterwards: it has [releases](/docs/guides/rollbacks/), [volumes](/docs/guides/volumes/), logs and the same day-2 operations. You can change its image tag to upgrade the database, which creates a new revision you can roll back from.
+A template deploy is an ordinary app afterwards: it has [releases](/docs/guides/rollbacks/), [volumes](/docs/guides/volumes/), logs and the same day-2 operations. You can change its image tag to upgrade the database, which creates a new revision you can roll back from. A new **major** version of PostgreSQL or MariaDB needs a data migration first, and rolling back the image does not undo changes the new version made to the files on the volume: take a backup before you upgrade.
