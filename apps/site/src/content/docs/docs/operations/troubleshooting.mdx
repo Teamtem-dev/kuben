@@ -13,7 +13,7 @@ sidebar:
 | `GET …/apps/{app}/doctor` | why one app is or is not reachable (below) |
 | `GET /api/v1/healthz/details` | per-subsystem status (sign-in required) |
 | `/livez`, `/readyz` | Kubernetes probes. `/readyz` stays `503` until the informers have synced |
-| `kubectl -n kuben-system get lease kuben-controller` | which pod runs the controllers (`holderIdentity`); the others report `controllers: standby` |
+| `kubectl -n kuben-system get lease kuben-controller` | which pod runs the controllers (`holderIdentity`); the others report the subsystem `controllers` as `standby` in `/api/v1/healthz/details` |
 | `kubectl get apps,environments -A` | conditions (`Ready`, `Exposed`) with `reason` and `message` |
 | `:9090/metrics` | Prometheus metrics |
 
@@ -28,6 +28,9 @@ Apps and environments explain themselves through conditions.
 | `Progressing` | a rollout is in progress; new pods are not all ready yet |
 | `Available` | the desired number of pods is ready |
 | `RolloutFailed` | no progress for 10 minutes; the previous pods keep serving. The `message` carries the Deployment's own reason (image pull, quota, failing probe) |
+| `Scheduled` | the app has only scheduled processes (CronJobs), and they are in place |
+| `AwaitingBuild` | a Git-sourced app has no image yet; it runs once a build has produced one |
+| `InvalidSource`, `MultiplePorts`, `ScheduledWithPort`, `InvalidSchedule`, `UnknownSize`, `VolumeNeedsSingleReplica`, `InvalidDomainTls`, `NoProcesses` | the spec cannot be rendered; the `message` names the field |
 
 **App `Exposed`**
 
@@ -98,7 +101,6 @@ Kuben logs structured JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=json`; `pret
 |---|---|
 | `gateway listener limit reached` | the Gateway has 60 Kuben listeners; use a wildcard certificate for generated hosts |
 | `hostname requested by two namespaces` | two apps in different environments claim the same domain; the first keeps it |
-| `controllers: standby` | this replica is not the leader (normal with several replicas) |
 | `migrations applied` | boot-time migrations succeeded |
 
 ## Common situations

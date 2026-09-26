@@ -1,13 +1,17 @@
 ---
 title: CLI
-description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, backup, restore, upgrade-check, support-bundle, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, and how configuration is loaded.
+description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, agent-token, backup, restore, upgrade-check, dns01-issuer, support-bundle, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, exit codes and how configuration is loaded.
 ---
 
 The `kuben` binary is the server, the operator's tool, and a client of any Kuben server ([below](#client-commands)). Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
 
 ```
-kuben [--config <file>] <command>
+kuben [--config <file>] <command> [options]
+kuben --version | -V
+kuben <command> --help
 ```
+
+`--config` is also `KUBEN_CONFIG`. `kuben --version` prints `kuben <version>`, for example `kuben 2.0.0-alpha.1`.
 
 ## `serve`
 
@@ -19,7 +23,7 @@ kuben serve [--roles api,controller] [--dev]
 
 | Option | Meaning |
 |---|---|
-| `--roles` | Comma-separated roles for this process: `all` (default), `api`, `controller`, `activator`. Also `KUBEN_ROLES`. |
+| `--roles` | Comma-separated roles for this process: `all`, `api`, `controller`, `activator`. Also `KUBEN_ROLES`; without either, `server.roles` from the configuration (default `all`). `activator` is reserved for scale-to-zero: this build logs a warning and ignores it. |
 | `--dev` | Development mode: pretty debug logs and an insecure cookie so the console works over plain HTTP. It still needs PostgreSQL through `KUBEN_DATABASE__URL`. Never use in production. |
 
 On the first start with an empty database, `serve` creates the initial admin. Inside Kubernetes the generated password goes into the Secret `kuben-initial-admin`; outside it is printed once to the terminal, or, without a terminal (systemd), written to `initial-admin-password` in Kuben's state directory (`/var/lib/kuben` on a server set up by `kuben setup`), readable only by its user. It never goes to the log. `KUBEN_BOOTSTRAP__ADMIN_PASSWORD` sets it instead.
@@ -58,7 +62,7 @@ Sets a new password for the initial admin account (`admin_email` in the bootstra
 kuben reset-admin [--password <new>]
 ```
 
-Without `--password` (or `KUBEN_ADMIN_PASSWORD`), a random password is generated and printed once. Inside the chart:
+Without `--password` (or `KUBEN_ADMIN_PASSWORD`), a random password is generated and printed once. When the account does not exist, it is created. Inside the chart:
 
 ```bash
 kubectl -n kuben-system exec deploy/kuben -- /kuben reset-admin
@@ -87,6 +91,22 @@ kuben setup-token
 With an `https://` public URL the link points there instead, with the tunnel as the way in until DNS and the certificate are ready. The token follows `#`, so browsers never send it to a server or write it to a proxy log.
 
 The token lives in `setup-token` in Kuben's state directory (`/var/lib/kuben` on a server set up by `kuben setup`), readable by Kuben's user only, and is deleted once the account exists. After that, `/setup` answers 404 and the page redirects to the sign-in.
+
+## `agent-token`
+
+Issues a bootstrap token for the cluster agent of a cluster, for an agent you run yourself. The token is printed once and valid for one enrollment; only its hash is kept. The agents in Kuben's own cluster (the chart's, and the one `kuben setup` installs) enroll without it.
+
+```bash
+kuben agent-token [--cluster primary] [--org <slug>] [--ttl-minutes 30]
+```
+
+| Option | Meaning |
+|---|---|
+| `--cluster <name>` | the cluster the agent runs in; created when it does not exist yet. Default `primary` |
+| `--org <slug>` | the organization; default `bootstrap.org_slug` |
+| `--ttl-minutes <n>` | how long the token stays valid. Default `30` |
+
+The output names the file of the hub's CA certificate and the `kuben-agent` command line. Give the agent the token through a file or standard input (`kuben-agent --token-file` or `--token-stdin`), never as an argument.
 
 ## `setup`
 
@@ -181,8 +201,17 @@ kuben upgrade-check [--major]
 Creates or updates a cert-manager ClusterIssuer that answers ACME DNS-01 challenges through Cloudflare, for wildcard and apex certificates. The token goes into a Secret next to cert-manager. See [Custom domains](/docs/guides/custom-domains/#wildcard-and-apex-certificates-dns-01).
 
 ```bash
-kuben dns01-issuer --email ops@example.com --token-file ./cloudflare-token [--name letsencrypt-dns] [--staging] [--dry-run]
+kuben dns01-issuer --email ops@example.com --token-file ./cloudflare-token [--name letsencrypt-dns] [--namespace cert-manager] [--staging] [--dry-run]
 ```
+
+| Option | Meaning |
+|---|---|
+| `--email <address>` | the ACME account's email address |
+| `--token-file <file>` | a file holding a Cloudflare API token with `Zone:DNS:Edit` on the zones |
+| `--name <name>` | the ClusterIssuer to create or update. Default `letsencrypt-dns` |
+| `--namespace <ns>` | the namespace cert-manager runs in; the token's Secret goes there. Default `cert-manager` |
+| `--staging` | Let's Encrypt's staging server (untrusted certificates) |
+| `--dry-run` | print the objects instead of applying them, with the token redacted |
 
 ## `support-bundle`
 
@@ -201,14 +230,16 @@ Nothing is uploaded. `--preview` shows what the bundle would hold and writes not
 kuben support-bundle [--preview] [--logs [--log-lines 500]] [--out DIR] [--keep 3]
 ```
 
+`--out` defaults to `support` in the state directory; `--keep` is how many bundles stay there.
+
 ## `version`
 
-Prints the version, the git commit and the build target.
-
 ```bash
-kuben version
+kuben version [--bundle [--json]]
 kuben --version
 ```
+
+`kuben version` prints the version and the platform, `kuben 2.0.0-alpha.1 (linux x86_64)`; `kuben --version` (or `-V`) only `kuben 2.0.0-alpha.1`. `--bundle` adds what a release installs besides Kuben, pinned with its digests: k3s, the Gateway API CRDs, cert-manager and PostgreSQL. `--bundle --json` prints the lock file itself (`bundle.lock.json`).
 
 ## Client commands
 
@@ -268,4 +299,10 @@ A new revision with the image and configuration of an earlier one, by default th
 
 ## Exit codes and logs
 
-All commands log to stderr as JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=pretty` for a terminal) and exit non-zero on failure. `serve` also exits non-zero when a required subsystem fails to start, for example when `KUBEN_KUBE__REQUIRED=true` and no cluster is reachable.
+| Code | Meaning |
+|---|---|
+| `0` | success |
+| `1` | the command failed; the reason is on stderr |
+| `2` | the command line does not parse: an unknown command or flag, or a bad flag value |
+
+`kuben deploy` exits `1` when the deployment ends in any state but success. `serve` exits `1` when a required subsystem fails to start, for example when `KUBEN_KUBE__REQUIRED=true` and no cluster is reachable. Commands that log write to stderr, as JSON by default (`KUBEN_TELEMETRY__LOG_FORMAT=pretty` for a terminal).

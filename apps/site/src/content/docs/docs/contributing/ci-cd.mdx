@@ -14,10 +14,11 @@ Every CI job calls the same Turborepo task a developer runs locally. Pull reques
 | Job | What it runs |
 |---|---|
 | **Detect changes** | selects job groups from the changed paths; a change to CI itself or to the task runner selects everything (fail open) |
-| **Go** | `go mod verify`, golangci-lint, `scripts/go-check.sh` (gofumpt, `go vet`, exhaustive switches, sum types, NilAway), `go test -race` with every database test against PostgreSQL 17 and every API-server test against envtest (a skip fails the job), and govulncheck on the hub, the agent and the shared types |
+| **Go** | `go mod verify`, golangci-lint, `scripts/go-check.sh` (gofumpt, `go vet`, exhaustive switches, sum types, NilAway), `go test -race` with every database test against PostgreSQL 17 and every API-server test against envtest (a skip fails the job), and govulncheck on the module |
 | **Go agent runtime (kind)** | the agent's executor against a cluster whose Deployments really roll out |
 | **Oracle** | the Go hub and the released Rust 1.2.0 binary on two empty databases, answering the same requests; the answers must match |
-| **Web** | Biome, `tsc`, `bun test`, the Vite build, the Astro build, **size-limit** (200 kB JS, 25 kB CSS, brotli), and the console in a browser (Playwright, axe, Kuben's CSP) |
+| **Web** | Biome, `tsc`, `bun test`, the Vite build, the Astro build, **size-limit** (200 kB initial JS, 80 kB per lazy chunk, 25 kB CSS, brotli), and the console in a browser against a mocked API (Playwright, axe, Kuben's CSP) |
+| **Console on the Go server** | the console as it ships, embedded in the Go binary on PostgreSQL, nothing mocked: first-run setup, sign-in, a project, an environment, an image app, team, API tokens, the audit log and sign-out, with Persian for sign-in and the project list (Playwright, axe, CSP) |
 | **Generated files** | regenerates `schema.d.ts` from the frozen `openapi.json` and fails on any diff |
 | **API compatibility** | [oasdiff](https://github.com/oasdiff/oasdiff) between the spec of the base branch and the pull request: additions pass, breaking changes need the `breaking` label |
 | **Shell scripts** | execute bits, shellcheck, `install.sh` under sh/dash/bash, change-detection tests, `helm lint --strict`, `helm template`, and a Trivy misconfiguration scan of the rendered chart |
@@ -70,12 +71,12 @@ Artifacts of a release:
 | `x86_64-apple-darwin` | `kuben-x86_64-apple-darwin.tar.gz` |
 | `x86_64-pc-windows-msvc` | `kuben-x86_64-pc-windows-msvc.zip` |
 
-plus a `.sha256` per archive, `checksums.txt` and its keyless Sigstore signature `checksums.txt.sigstore.json`, `install.sh`, `bundle.lock.json` (what setup installs besides Kuben, pinned), the image `ghcr.io/teamtem-dev/kuben:{X.Y.Z, X.Y, latest}` and the chart `oci://ghcr.io/teamtem-dev/charts/kuben`. Tags like `v2.0.0-rc.1` become pre-releases and never move `latest`.
+The Linux archives also hold `kuben-agent`. Next to them: a CycloneDX SBOM per archive (`kuben-<target>.cdx.json`), `checksums.txt` over all of these and its keyless Sigstore signature `checksums.txt.sigstore.json`, `install.sh`, `bundle.lock.json` (what setup installs besides Kuben, pinned), the image `ghcr.io/teamtem-dev/kuben:{X.Y.Z, X.Y, latest}` and the chart `oci://ghcr.io/teamtem-dev/charts/kuben`. Tags like `v2.0.0-rc.1` become GitHub pre-releases: the image gets only its exact tag, `latest` and `X.Y` do not move, and `install.sh` and Helm skip them unless asked for that version.
 
 Design decisions worth knowing:
 
 - **The image is built from the published binaries, not from source.** The release Dockerfile is a single `COPY`, so the bytes in the image are exactly the ones that were checksummed and attested.
-- **Everything is signed without a key to lose.** `checksums.txt` (and through it every archive, `install.sh` and the bundle lock), the image and the Helm chart are signed with cosign's keyless flow: the certificate names the release workflow and the tag, and the signature is recorded in Sigstore's transparency log. `install.sh` checks it whenever cosign is installed.
+- **Everything is signed without a key to lose.** `checksums.txt` (and through it every archive, SBOM, `install.sh` and the bundle lock), the image and the Helm chart are signed with cosign's keyless flow: the certificate names the release workflow and the tag, and the signature is recorded in Sigstore's transparency log. `install.sh` checks it whenever cosign is installed.
 - **One place for third-party pins.** `bundle.lock.json` holds the versions and digests of k3s, the Gateway API CRDs, cert-manager (chart and images) and the chart's PostgreSQL; the binary embeds it and tests fail when the chart or setup disagree with it.
 - **Every binary carries its dependency list.** Go embeds the exact module list (`go version -m`), so `trivy`, `grype`, `osv-scanner` or `govulncheck -mode=binary` can audit a deployed binary or image.
 - **Releases build without a cache.**

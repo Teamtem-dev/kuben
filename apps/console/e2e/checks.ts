@@ -36,7 +36,12 @@ export async function expectAccessible(page: Page) {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()
+  // The rule and target keep the assertion stable; the element's HTML and
+  // axe's summary (colours and ratio for contrast) say which one it is.
   expect(
     results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
+    results.violations
+      .flatMap((v) => v.nodes.map((n) => `${v.id} ${n.html}\n${n.failureSummary ?? ''}`))
+      .join('\n\n'),
   ).toEqual([])
 }
