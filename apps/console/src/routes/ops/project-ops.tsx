@@ -292,7 +292,12 @@ export function StatusPageCard({ project }: { project: string }) {
         />
         <ErrorAlert error={save.error} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant={current ? 'secondary' : 'default'} disabled={save.isPending}>
+          <Button
+            key={current ? 'update' : 'create'}
+            type="submit"
+            variant={current ? 'secondary' : 'default'}
+            disabled={save.isPending}
+          >
             {current ? t('ops.save') : t('statusPage.publish')}
           </Button>
           {current && (

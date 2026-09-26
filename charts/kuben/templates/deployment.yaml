@@ -53,7 +53,7 @@ spec:
           command:
             - sh
             - -c
-            - until pg_isready -q -h {{ include "kuben.postgresql.fullname" . }} -p 5432; do sleep 2; done
+            - until pg_isready -q -h {{ include "kuben.postgresql.fullname" . }} -p 5432 -U kuben -d kuben; do sleep 2; done
           resources:
             requests:
               cpu: 10m

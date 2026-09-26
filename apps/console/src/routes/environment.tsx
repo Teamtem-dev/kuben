@@ -72,7 +72,11 @@ export function EnvironmentPage() {
           </span>
         }
         actions={
+          // Keyed per state: switching variants on one element animated the
+          // background (transition-all) under already-white text, a moment of
+          // failing contrast; two elements each render in their final colours.
           <Button
+            key={deploying ? 'cancel' : 'deploy'}
             variant={deploying ? 'outline' : 'default'}
             onClick={() => setDeploying((v) => !v)}
             disabled={env.deleting}

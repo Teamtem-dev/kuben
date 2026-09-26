@@ -181,7 +181,12 @@ export function ImagePolicyCard({ project, environment, app }: AppRef) {
         )}
         <ErrorAlert error={save.error ?? remove.error} />
         <div className="flex gap-2">
-          <Button type="submit" variant={p ? 'secondary' : 'default'} disabled={save.isPending}>
+          <Button
+            key={p ? 'update' : 'create'}
+            type="submit"
+            variant={p ? 'secondary' : 'default'}
+            disabled={save.isPending}
+          >
             {p ? t('ops.save') : t('imagePolicy.follow')}
           </Button>
           {p && (
