@@ -12,7 +12,7 @@ This page gets Kuben running inside a cluster and signs you in. Publishing apps 
 ## Before you start
 
 - A Kubernetes cluster, **1.29 or later**: k3s, kind, EKS, GKE or AKS all work.
-- A StorageClass that supports `ReadWriteOnce`. By default the chart runs its own PostgreSQL 17 for users, sessions, releases and the audit log, on an 8 GiB volume.
+- A StorageClass that supports `ReadWriteOnce`. By default the chart runs its own PostgreSQL 17 for users, sessions, releases and the audit log, on an 8 GiB volume, and keeps nightly backups of it on a second, 20 GiB volume.
 - [Helm](https://helm.sh) 3.8 or later (for OCI charts).
 
 <Aside type="tip" title="No cluster yet?">
@@ -23,12 +23,14 @@ On a single server, [k3s](https://k3s.io) installs in under a minute and ships a
 
 <Steps>
 
-1. Install the chart. It creates the namespace, the CRDs, RBAC, one PostgreSQL pod with its volume, and one Kuben pod.
+1. Install the chart. It creates the namespace, the CRDs, RBAC, one PostgreSQL pod with its volume, the backup CronJob with its volume, and one Kuben pod.
 
    ```bash
    helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben \
      --namespace kuben-system --create-namespace
    ```
+
+   Without `--version`, Helm installs the latest stable release, which stays on 1.2.x until 2.0.0 is out. See [Try the 2.0 pre-release](#try-the-20-pre-release) below.
 
 2. Wait for the pod to become ready. A pod reports ready only after it has listed every Project, Environment, App and Pod once, so it never answers `404` for objects that exist.
 
@@ -51,7 +53,7 @@ On a single server, [k3s](https://k3s.io) installs in under a minute and ships a
 
    Browse to `http://localhost:8080` and sign in as `admin@kuben.local` with that password. Browsers treat `localhost` as a secure context, so the `Secure` session cookie works without TLS.
 
-5. Change the password under **Account**, then delete the bootstrap Secret:
+5. Open **Account** from the account menu at the top right, set a new password under **Change password**, then delete the bootstrap Secret:
 
    ```bash
    kubectl -n kuben-system delete secret kuben-initial-admin
@@ -62,8 +64,21 @@ On a single server, [k3s](https://k3s.io) installs in under a minute and ships a
 ## What you have now
 
 - A Kuben deployment in `kuben-system` running as a non-root user with a read-only root filesystem.
-- The `kuben.dev` custom resources installed: `KubenConfig`, `Project`, `Environment`, `App`, `Release`, `BuildRun`.
+- The `kuben.dev` custom resources installed: `KubenConfig`, `Project`, `Environment`, `App`, `Release`, `BuildRun`, and the internal `ApplicationRuntime` and `ExecutionTask`.
+- A backup of the database every night at 03:17 (the cluster's time zone), seven kept, and one before every `helm upgrade`. Copy them off the cluster; see [Backup and restore](/docs/operations/backup-restore/).
 - A `KubenConfig` singleton with empty platform settings. Apps get cluster-internal Services until you set a `baseDomain` and a Gateway.
+
+## Try the 2.0 pre-release
+
+Kuben 2.0 is published as pre-releases first: `2.0.0-alpha.N`, then `-beta.N`, then `-rc.N`. Helm and the installer never pick a pre-release on their own; name it:
+
+```bash
+helm install kuben oci://ghcr.io/teamtem-dev/charts/kuben \
+  --namespace kuben-system --create-namespace \
+  --version 2.0.0-alpha.N
+```
+
+Replace `N` with a number from the [releases page](https://github.com/Teamtem-dev/kuben/releases). Alphas are for a test cluster with a fresh database, or a copy of a 1.2 database; they carry no upgrade guarantee. See the [roadmap](/docs/roadmap/#the-20-release-train) for what each stage promises.
 
 ## Next steps
 
@@ -94,14 +109,17 @@ helm uninstall kuben -n kuben-system
 Kept on purpose, so that a re-install finds everything again:
 
 - the PostgreSQL volume `data-kuben-postgresql-0`, with the users and the audit log, and the Secret `kuben-postgresql` with its passwords, so a re-install finds the data with the same password;
-- the `KubenConfig` named `kuben`, so apps keep their routes while Kuben stops (also `keep`, since 1.0.3);
+- the backup volume `kuben-backup`;
+- the Secret `kuben-secrets-keyring`, the keys that seal managed secrets in the database: without it they cannot be read again;
+- the `KubenConfig` named `kuben`, so apps keep their routes while Kuben stops;
 - the Secret `kuben-initial-admin` and the Lease `kuben-controller`, which Kuben creates itself;
 - the CRDs, which Helm never deletes.
 
-To start over with an empty database but keep the namespace, delete the volume and the Secret:
+To start over with an empty database but keep the namespace, delete the volumes and the Secrets:
 
 ```bash
-kubectl -n kuben-system delete pvc/data-kuben-postgresql-0 secret/kuben-postgresql
+kubectl -n kuben-system delete pvc/data-kuben-postgresql-0 pvc/kuben-backup \
+  secret/kuben-postgresql secret/kuben-secrets-keyring
 ```
 
 To remove everything:
@@ -115,7 +133,8 @@ kubectl delete projects.kuben.dev,kubenconfigs.kuben.dev --all
 ```
 
 ```bash
-kubectl delete crd kubenconfigs.kuben.dev projects.kuben.dev environments.kuben.dev apps.kuben.dev releases.kuben.dev buildruns.kuben.dev
+kubectl delete crd kubenconfigs.kuben.dev projects.kuben.dev environments.kuben.dev apps.kuben.dev \
+  releases.kuben.dev buildruns.kuben.dev applicationruntimes.kuben.dev executiontasks.kuben.dev
 ```
 
 An environment deleted after the uninstall waits forever on its `kuben.dev/environment` finalizer, and its namespace keeps running. Remove the finalizer, then delete the namespace yourself:

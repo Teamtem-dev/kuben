@@ -28,9 +28,9 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
   ██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ██║╚██╗██║
   ██║  ██╗╚██████╔╝██████╔╝███████╗██║ ╚████║
   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝
-  v1.1.1 · a Kubernetes PaaS in a single binary · kuben.teamtem.com
+  v1.2.1 · a Kubernetes PaaS in a single binary · kuben.teamtem.com
 
-✔ Installed kuben v1.1.1 (x86_64-unknown-linux-musl) to /usr/local/bin/kuben. sha256 3f9e…
+✔ Installed kuben v1.2.1 (x86_64-unknown-linux-musl) to /usr/local/bin/kuben. sha256 3f9e…
 ✔ Preflight checks. Ubuntu 24.04.4 LTS, x86_64, 4 GB RAM
 ✔ Creating the kuben system user. kuben (uid 998)
 ✔ PostgreSQL. PostgreSQL 16.9 (Ubuntu 16.9-0ubuntu0.24.04.1), role and database kuben
@@ -99,13 +99,13 @@ Until the console has an `https://` address the session cookie is not `Secure` (
 - **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
 - **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
 - **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, the pinned downloads of the bundle lock (k3s's installer, the Gateway API CRDs, cert-manager's chart), the image registries and the distribution's package mirrors when PostgreSQL is missing.
-- **Tested after every release, and every day.** CI runs exactly this command on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
+- **Tested after every release, and every day.** CI runs this script on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
 
 Other options, as flags or environment variables:
 
 | Flag | Variable | Default |
 |---|---|---|
-| `--version v1.1.0` | `KUBEN_VERSION` | latest stable release |
+| `--version v1.2.1` | `KUBEN_VERSION` | latest stable release (1.2.x until 2.0.0 is out) |
 | `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
 | `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
 | `--binary-only` | `KUBEN_BINARY_ONLY=1` | run `kuben setup` on a Linux server as root |
@@ -113,12 +113,28 @@ Other options, as flags or environment variables:
 
 On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases).
 
+### Try the 2.0 pre-release
+
+The latest stable release is what the script installs by default, and it stays on 1.2.x until 2.0.0 is out. Kuben 2.0 comes first as pre-releases (`v2.0.0-alpha.N`, then `-beta.N`, then `-rc.N`), which the script installs only when you name one:
+
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v2.0.0-alpha.N
+```
+
+or, with the variable:
+
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | KUBEN_VERSION=v2.0.0-alpha.N sh
+```
+
+Replace `N` with a number from the [releases page](https://github.com/Teamtem-dev/kuben/releases). Put an alpha on a test server, not on the one your team uses: alphas carry no upgrade guarantee. The [roadmap](/docs/roadmap/#the-20-release-train) says what each stage promises.
+
 ### Download, verify, then run
 
 To read the installer before it runs, and check every byte first:
 
 ```bash
-V=v1.2.0
+V=v1.2.1
 base=https://github.com/Teamtem-dev/kuben/releases/download/$V
 curl -fsSLO "$base/install.sh" -O "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json"
 cosign verify-blob --bundle checksums.txt.sigstore.json \
@@ -132,7 +148,7 @@ sudo sh install.sh --version "$V" --require-signature
 `cosign verify-blob` proves `checksums.txt` was signed by this repository's release workflow for that tag (the signature is in Sigstore's public transparency log); `sha256sum --check` then proves `install.sh` is the file it lists. The image and the Helm chart are signed the same way:
 
 ```bash
-cosign verify ghcr.io/teamtem-dev/kuben:1.2.0 \
+cosign verify ghcr.io/teamtem-dev/kuben:1.2.1 \
   --certificate-identity-regexp '^https://github.com/Teamtem-dev/kuben/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
@@ -204,4 +220,4 @@ To keep a manual install running, `kuben setup` is still the easiest way to get 
 
 ## Other commands
 
-`kuben status`, `kuben uninstall`, `kuben migrate`, `kuben backup`, `kuben restore`, `kuben reset-admin`, `kuben setup-token` and `kuben version` are described in the [CLI reference](/docs/reference/cli/).
+`kuben status`, `kuben uninstall`, `kuben migrate`, `kuben backup`, `kuben restore`, `kuben reset-admin`, `kuben setup-token`, `kuben upgrade-check`, `kuben support-bundle` and `kuben version` manage the server. `kuben login`, `kuben apps`, `kuben deploy`, `kuben logs` and `kuben rollback` talk to a Kuben server with an API token, from your laptop or from CI. All of them are described in the [CLI reference](/docs/reference/cli/).
