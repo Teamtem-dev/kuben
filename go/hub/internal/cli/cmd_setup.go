@@ -55,7 +55,7 @@ func setupCmd(g *globals) *cobra.Command {
 	flags.BoolVar(&f.bindLocal, "bind-local", false, "Listen on 127.0.0.1 only (reach the console through an SSH tunnel)")
 	flags.BoolVarP(&f.yes, "yes", "y", false, "Go ahead on warnings without asking")
 	flags.BoolVar(&f.plan, "plan", false, "Show what setup would do, and change nothing")
-	flags.StringVar(&f.domain, "domain", "", "Base domain for app hostnames (`<app>-<environment>.<domain>`); point a "+
+	flags.StringVar(&f.domain, "domain", "", "Base domain for app hostnames (<app>-<environment>.<domain>); point a "+
 		"wildcard DNS record at this server")
 	bindEnv(flags, "domain", "KUBEN_DOMAIN")
 	flags.StringVar(&f.acmeEmail, "acme-email", "", "Email for Let's Encrypt: apps get HTTPS certificates. Without it they "+
@@ -117,7 +117,7 @@ func uninstallCmd(g *globals) *cobra.Command {
 	}
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.Purge, "purge", false, "Also delete the data, the configuration, the binary, and k3s when "+
-		"`kuben setup` installed it")
+		"'kuben setup' installed it")
 	flags.BoolVar(&opts.KeepApps, "keep-apps", false, "With --purge: keep the apps running without Kuben. The cluster "+
 		"(k3s too), the Gateway, the ClusterIssuer and the apps' namespaces, Secrets and volumes stay; what is left is "+
 		"listed. Detach the apps first for a clean handover")

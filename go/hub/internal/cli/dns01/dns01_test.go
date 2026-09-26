@@ -2,6 +2,7 @@ package dns01_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -112,5 +113,31 @@ spec:
 `
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("dry run (-want +got):\n%s", diff)
+	}
+}
+
+// Compared with the v1.2.0 binary: the default output above is byte for
+// byte what it printed. Where a value reads as something else than a string
+// the two differ on purpose: serde_yaml_ng left YAML 1.1 booleans such as
+// `y`, `on` or `no` plain (and single-quoted `true`, `null`, numbers),
+// sigs.k8s.io/yaml double-quotes all of them. kubectl reads YAML 1.1, where
+// a plain `on` is true, so only the quoted form applies as the namespace
+// that was asked for.
+func TestAValueThatReadsAsABooleanIsQuoted(t *testing.T) {
+	for ns, want := range map[string]string{
+		"on":   `  namespace: "on"`,
+		"y":    `  namespace: "y"`,
+		"true": `  namespace: "true"`,
+		"017":  `  namespace: "017"`,
+	} {
+		o := opts(false)
+		o.Namespace = ns
+		got, err := dns01.DryRun(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(got, "\n"+want+"\n") {
+			t.Errorf("%s:\n%s", ns, got)
+		}
 	}
 }

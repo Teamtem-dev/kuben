@@ -8,10 +8,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -64,7 +66,11 @@ func Root() *cobra.Command {
 			return applyEnv(c)
 		},
 	}
-	cmd.SetVersionTemplate(versionString() + "\n")
+	// clap's --version and -V: `kuben <version>`, no completion command.
+	cmd.SetVersionTemplate("kuben {{.Version}}\n")
+	cmd.Flags().BoolP("version", "V", false, "Print version")
+	cmd.CompletionOptions.DisableDefaultCmd = true
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	flags := cmd.PersistentFlags()
 	flags.StringVar(&g.configFile, "config", "", "Path to a TOML config file (merged over defaults, under env vars)")
 	bindEnv(flags, "config", "KUBEN_CONFIG")
@@ -154,4 +160,25 @@ func rustArch(goarch string) string {
 	default:
 		return goarch
 	}
+}
+
+// usageError is a command line that does not parse; clap exited with 2 for
+// it, and scripts may tell it apart from a failed command (exit 1).
+type usageError struct{ err error }
+
+func (u usageError) Error() string { return u.err.Error() }
+func (u usageError) Unwrap() error { return u.err }
+
+// ExitCode is the process exit status for err: 0 without one, 2 for a
+// command line that does not parse (a bad flag or an unknown command), 1
+// otherwise.
+func ExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var u usageError
+	if errors.As(err, &u) || strings.HasPrefix(err.Error(), "unknown command ") {
+		return 2
+	}
+	return 1
 }

@@ -36,10 +36,10 @@ func backupCmd(g *globals) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&out, "out", "", "Directory the backup is written under [default: `backup.dir`]")
+	flags.StringVar(&out, "out", "", "Directory the backup is written under [default: backup.dir]")
 	flags.BoolVar(&opts.IncludeKeyring, "include-keyring", false,
 		"Also copy the secret keyring into the backup. Whoever holds such a backup can read every secret: keep it encrypted")
-	flags.Uint32Var(&keep, "keep", 0, "Backups kept under the directory [default: `backup.keep`]")
+	flags.Uint32Var(&keep, "keep", 0, "Backups kept under the directory [default: backup.keep]")
 	flags.BoolVar(&opts.Scheduled, "scheduled", false, "Record the backup as scheduled (the timer and the CronJob set it)")
 	_ = flags.MarkHidden("scheduled") //nolint:errcheck // the flag is defined above
 	return cmd
@@ -60,7 +60,7 @@ func restoreCmd(g *globals) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&opts.From, "from", "", "A backup directory (`kuben-<time>`) made by `kuben backup`")
+	flags.StringVar(&opts.From, "from", "", "A backup directory ('kuben-<time>') made by 'kuben backup'")
 	flags.BoolVar(&opts.Check, "check", false, "Only check that the backup is intact and restorable")
 	_ = cmd.MarkFlagRequired("from") //nolint:errcheck // the flag is defined above
 	return cmd
