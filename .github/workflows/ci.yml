@@ -226,6 +226,61 @@ jobs:
           npx playwright install --with-deps chromium-headless-shell
           npx playwright test
 
+  # The console as it ships: embedded in the Go binary, served by `kuben
+  # serve` on PostgreSQL, in a browser, nothing mocked. First-run setup,
+  # sign-in, a project, an environment and an image app (no cluster: the
+  # console shows what the API answers without one), team, API tokens, audit
+  # log, sign-out; axe and Kuben's CSP on every page, Persian for sign-in and
+  # the project list (apps/console/e2e/live).
+  console-live:
+    name: Console on the Go server (Playwright)
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: kuben
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      KUBEN_DATABASE__URL: postgres://postgres:kuben@localhost:5432/postgres
+      KUBEN_SERVER__BIND: 127.0.0.1:3100
+      CONSOLE_URL: http://127.0.0.1:3100
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/hub/go.mod
+          cache-dependency-path: "go/*/go.sum"
+      - uses: $/.github/actions/setup
+      # Builds the console first and embeds it in the binary.
+      - run: bun turbo run hub#build
+      - name: Start Kuben on an empty database
+        run: |
+          export KUBEN_SERVER__STATE_DIR="$RUNNER_TEMP/kuben-state"
+          echo "KUBEN_SERVER__STATE_DIR=$KUBEN_SERVER__STATE_DIR" >> "$GITHUB_ENV"
+          go/hub/bin/kuben serve >"$RUNNER_TEMP/kuben.log" 2>&1 &
+          for _ in $(seq 60); do curl -fs "$CONSOLE_URL/readyz" >/dev/null && break; sleep 1; done
+          curl -fsS "$CONSOLE_URL/readyz"
+          # The link a user is given; on a loopback bind it carries no token.
+          link=$(go/hub/bin/kuben setup-token)
+          echo "setup link: $link"
+          echo "CONSOLE_SETUP_LINK=$link" >> "$GITHUB_ENV"
+      - name: Console in a browser against the server (Playwright, axe)
+        working-directory: apps/console/e2e
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npx playwright install --with-deps chromium-headless-shell
+          npx playwright test --config live/playwright.config.ts
+      - if: failure()
+        run: tail -n 200 "$RUNNER_TEMP/kuben.log"
+
   drift:
     name: Generated files up to date
     needs: changes
@@ -543,7 +598,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, go, go-kind, oracle, web, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
+    needs: [changes, go, go-kind, oracle, web, console-live, drift, api-compat, scripts, budgets, e2e, e2e-build, host-install, k3s-install, zizmor]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

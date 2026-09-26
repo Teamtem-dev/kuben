@@ -6,11 +6,11 @@
 #   scripts/ci-changes.sh --all        # everything (push to main, merge queue, …)
 #
 # Groups and the jobs they gate:
-#   web      web app and TypeScript packages       → web, budgets
+#   web      web app and TypeScript packages       → web, console-live, budgets
 #   codegen  the frozen contracts and the TS client → drift, api-compat
 #   scripts  shell scripts, installer, Helm chart  → scripts, e2e jobs
 #   go       Go modules (go/, go.work), and the     → go, go-kind, oracle, e2e jobs,
-#            frozen contracts the Go tests pin        budgets
+#            frozen contracts the Go tests pin        console-live, budgets
 #
 # Fail open: a change to CI itself (.github/) or to the task runner every job
 # goes through (turbo.json, the root package.json, bun.lock, bunfig.toml), or an
