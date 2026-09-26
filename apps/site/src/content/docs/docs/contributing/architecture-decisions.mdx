@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-Code comments cite decisions as `ADR-NNN`. New decisions get their own file under `docs/adr/` in the repository, with Context, Decision and Consequences. This page is the index. Since 2.0 the code is Go (ADR-033); paths in the last column are Go packages under `internal/` unless they say otherwise.
+Code comments cite decisions as `ADR-NNN`. This page is the index: each decision in one line, with its status and where it shows in the code. The full records (context, decision, consequences) are not published in the repository. Since 2.0 the code is Go (ADR-033); paths in the last column are Go packages under `internal/` unless they say otherwise.
 
 | ADR | Decision | Status | Where it shows |
 |---|---|---|---|
@@ -23,8 +23,8 @@ Code comments cite decisions as `ADR-NNN`. New decisions get their own file unde
 | 012 | Licensing and a clean-room boundary to the system being replaced | decided | — |
 | 013 | One runtime in phase 0; a second one only behind `runtime.bulkhead` | decided; moot since 033 (Go has one scheduler; `runtime.bulkhead` is accepted and has no effect) | `core/config` |
 | 014 | One SSE stream per browser tab; WebSocket only for terminals | decided | `httpapi/stream` |
-| 015 | Data ownership: SQL references CRDs only by `uid` | decided | `store`, invariant I-17 |
-| 016 | Persistent buildkitd plus a light `buildctl` Job; external registry in the MVP | decided, phase 1 | — |
+| 015 | Data ownership: SQL references CRDs only by `uid` | superseded by 025 | invariant I-17 |
+| 016 | Persistent buildkitd plus a light `buildctl` Job; external registry in the MVP | superseded by 028 | — |
 | 017 | The binary applies its CRDs at boot (server-side apply) | decided | `kube/controller` (`crds.go`) |
 | 018 | Environments are soft-deleted with a grace period | decided | `kube/controller` (`environment.go`) |
 | 019 | Explicit bootstrap order; polling fallback for webhooks | decided | deployment docs |
@@ -33,6 +33,14 @@ Code comments cite decisions as `ADR-NNN`. New decisions get their own file unde
 | 022 | Threat model; Kuben's service account is treated like cluster-admin | decided, threat model pending | `charts/kuben/templates/rbac.yaml` |
 | 023 | Lease-based leader election for the controllers | decided | `kube/leader` |
 | 024 | Turborepo runs every task; Bun replaces pnpm and Node; Cargo stays the Rust build graph | decided; amended by 033 (the Go module replaces Cargo) | `turbo.json`, `package.json`, `bunfig.toml` |
+| 025 | PostgreSQL holds product intent and durable operations; Kubernetes holds what actually runs | decided (1.2) | `store`, `store/migrations` |
+| 026 | Environment, placement and target as identities; Release separate from DeploymentRun; a frozen RenderPlan per run | decided (1.2) | `core/ops/run`, `kube/render`, `store` |
+| 027 | Execution boundary: a separate cluster agent over outbound mTLS (AgentLink), two internal execution CRDs, generation fencing | decided (1.2); `ExecutionTask` not used yet | `agentlink`, `agent`, `api/v1alpha1` |
+| 028 | Build trust and isolation: one rootless BuildKit Job per attempt, capacity admission, build pools in production | decided (1.2) | `build` |
+| 029 | Registry and artifact access independent of the Kuben API | decided | `integrations/oci` |
+| 030 | Secret authority: managed secrets are immutable revisions, sealed in SQL | decided (1.2) | `keyring`, `kube/materializer` (`secrets.go`) |
+| 031 | Managed bootstrap (k3s) or a cluster you bring; a Gateway capability gate; public HTTPS as the release gate | decided (1.2) | `cli/setup`, `cli/doctor`, `kube/discovery` |
+| 032 | SQL decides; `Project`, `Environment` and `App` become the materializer's output, and direct edits are drift | decided (1.2) | `kube/materializer` |
 | 033 | Go runtime: the hub and the agent are rewritten in Go; the API contract, the CRD manifest and the SQL schema stay frozen | decided | `go.mod`, `ARCHITECTURE.md` |
 
 ## ADR-023 in brief: leader election without trusting clocks
@@ -52,5 +60,3 @@ Kuben 1.x was written in Rust. For 2.0 the hub and the cluster agent are rewritt
 - **The SQL schema:** the migrations of 1.2, byte for byte. 2.0 adds none, so going back to 1.2 is an image change; the first new migration comes with 2.1.
 
 The release keeps the archive names, checksums and signatures of 1.x, so `install.sh` and the chart work unchanged. 1.2.x receives security fixes from the `release/1.2` branch for six months after 2.0.
-
-The full texts, with context and consequences, are in the repository under [`docs/adr/`](https://github.com/Teamtem-dev/kuben/tree/main/docs/adr).
