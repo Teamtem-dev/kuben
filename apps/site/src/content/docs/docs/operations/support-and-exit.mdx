@@ -37,7 +37,7 @@ Kuben removes anything in the bundle that looks like a credential in a URL, but 
 In a Helm install, run the command in the Kuben pod and copy the file out:
 
 ```bash
-kubectl -n kuben-system exec deploy/kuben -- kuben support-bundle --out /tmp/support
+kubectl -n kuben-system exec deploy/kuben -- /kuben support-bundle --out /tmp/support
 kubectl -n kuben-system cp <pod>:/tmp/support ./support
 ```
 

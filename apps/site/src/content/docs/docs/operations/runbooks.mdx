@@ -43,7 +43,7 @@ The incident's detail is the failure code:
 
 **Signal:** a warning `build.failed` incident, or a `failure` status on the `kuben/build` context.
 
-**Check:** open the build in the console (app → Builds), or call `GET …/apps/{app}/builds`.
+**Check:** `GET …/apps/{app}/builds` lists the app's builds with their outcome, and `GET …/apps/{app}/builds/{build}` one of them.
 
 | Code | Fix |
 |---|---|
@@ -128,7 +128,7 @@ Private addresses and `http://` are refused unless `notify.allow_private_targets
 
 ## A certificate is not issued
 
-**Signal:** an app answers over HTTP but not HTTPS. Its doctor shows `CertificatePending`.
+**Signal:** an app answers over HTTP but not HTTPS. Its Doctor's `certificate` check fails with cert-manager's message, or `not issued yet`.
 
 **Check:**
 

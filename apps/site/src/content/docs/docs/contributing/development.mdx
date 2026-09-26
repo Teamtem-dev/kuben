@@ -78,7 +78,6 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
   - api-client/ openapi.json (the frozen API contract) and the generated TypeScript types
 - charts/kuben/ the Helm chart and the frozen CRD manifest
 - scripts/ ci.sh, e2e.sh, budgets, scans, change detection
-- docs/ ADRs and design documents
 </FileTree>
 
 ## Everyday commands
@@ -97,9 +96,10 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 
 ## The console
 
-- **Tokens, not colours.** Pages use the semantic names in `apps/console/src/styles.css` (`bg-canvas`, `bg-surface`, `text-fg`, `text-muted`, `border-line`, `bg-accent`, `text-ok`, `text-warn`, `text-danger`, …). The dark and light themes are two blocks of values; a raw palette colour (`text-slate-400`) would look wrong in one of them.
-- **Both directions.** Persian is right to left: use logical utilities (`ms-`, `pe-`, `start-`, `border-e`) and mark code, commands and addresses `dir="ltr"`. Interface text lives in `src/lib/messages.ts`; the Persian table has the English table's type, so a missing translation does not compile.
-- **Components are written here.** The spike for M2.15 weighed shadcn and Base UI against small components of our own: the console needs few widgets, stays under its size budget, and keeps the strict content security policy (`script-src 'self'; style-src 'self'`, nothing inline) without an exception. A library comes in only for a widget that is hard to make accessible by hand (a combobox, a date picker), and only if it sets styles through the CSSOM, never inline markup. `src/lib/csp.test.ts` fails on inline scripts, style attributes or injected HTML.
+- **shadcn/ui components.** `src/components/ui/` holds the components as the shadcn CLI generated them (style `new-york`, on Radix and Base UI), kept byte-comparable with upstream. Changes to them are listed in `src/components/ui/PATCHES.md`; after `shadcn add <name> --overwrite`, run `bun scripts/rtl-codemod.ts` and re-apply those patches. Kuben's own shared pieces are in `src/components/` (`kit.tsx`, `data-table.tsx`).
+- **Tokens, not colours.** Colours, radius and chart colours are CSS variables in `src/styles/theme.css`, one block for light and one for dark, used through the semantic utilities (`bg-background`, `text-muted-foreground`, `bg-primary`, `text-destructive`, `border-border`, …). A raw palette colour (`text-slate-400`) would look wrong in one of the themes.
+- **Both directions.** Persian is right to left: use logical utilities (`ms-`, `pe-`, `start-`, `border-e`) and mark code, commands and addresses `dir="ltr"`. The RTL codemod rewrites the generated components, and `src/lib/rtl.test.ts` fails when one of them still has physical classes. Interface text lives in `src/lib/messages.ts` and `src/lib/messages/`; the Persian table has the English table's type, so a missing translation does not compile.
+- **A strict content security policy.** Kuben serves the console with `script-src 'self'; style-src 'self'`, nothing inline. Libraries that inject `<style>` elements are handled at build time (`vite-plugins/csp-styles.ts`), and `react-style-singleton` is replaced by `src/lib/style-singleton.ts`, which uses constructed stylesheets. `src/lib/csp.test.ts` fails on inline scripts, style elements or injected HTML, and the browser tests check for CSP violations on every page.
 - **Self-hosted fonts only.** Inter's Latin subsets ship in `src/assets/fonts` with their licence; nothing is loaded from another origin (`font-src 'self'`).
 
 ## Rules
@@ -108,7 +108,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 - **The contracts are frozen** (ADR-033). `packages/api-client/openapi.json`, `charts/kuben/crds/kuben.dev_all.yaml` and the SQL schema are the ones 1.2 shipped. The Go server is generated from the spec (`go generate ./internal/httpapi`), and the Go tests pin the embedded CRDs to the manifest. Changing a contract means editing that file on purpose, then `bun run gen` for the TypeScript types; CI fails on drift, and on a breaking API change without the `breaking` label.
 - **Every operation has a unique `operationId`** in the spec; the TypeScript types, the Go handlers and the audit log are keyed by it.
 - **CRD types stay structural:** no internally tagged unions; use one-of structs with optional fields (`Source { image, git }`). A test guards this.
-- **Budgets are gates:** binary ≤ 45 MiB, image (Kuben and its agent) ≤ 50 MiB, console JS ≤ 200 kB and CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
+- **Budgets are gates:** binary ≤ 45 MiB, image (Kuben and its agent) ≤ 50 MiB, console initial JS ≤ 200 kB, every lazily loaded chunk ≤ 80 kB and all CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
 - **Commits** follow Conventional Commits (`feat(api): …`, `fix(controller): …`). Label pull requests (`feature`, `bug`, `security`, `breaking`); release notes are grouped by label.
 - **Migrations are PostgreSQL only** (ADR-025), in `internal/store/migrations/`. 2.0 adds none, so going back to 1.2 is an image change; the next migration (`0035`) comes with 2.1.
 

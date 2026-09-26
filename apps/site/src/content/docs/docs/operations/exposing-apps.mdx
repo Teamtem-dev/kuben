@@ -107,9 +107,10 @@ spec:
     name: letsencrypt-dns       # a DNS-01 issuer
 ```
 
+The chart has no value for it; set it on the `KubenConfig` itself:
+
 ```bash
-helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values \
-  --set platform.wildcardTlsSecret=apps-wildcard
+kubectl patch kubenconfig kuben --type merge -p '{"spec":{"wildcardTlsSecret":"apps-wildcard"}}'
 ```
 
 ## TLS per domain
