@@ -83,7 +83,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
-      # A database test that skips here fails instead (apps/kuben/docs/CONVENTIONS.md).
+      # A database test that skips here fails instead (apps/kuben/CONVENTIONS.md).
       KUBEN_REQUIRE_PG: "1"
       # Likewise for the tests against a Kubernetes API server (envtest).
       KUBEN_REQUIRE_K8S: "1"

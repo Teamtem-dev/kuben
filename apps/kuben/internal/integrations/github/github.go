@@ -10,7 +10,7 @@
 // Requests are built and sent by go-github over the outbound client; the
 // JWT, the token cache and the reading of answers are this package's own,
 // because ghinstallation's JWT claims, token cache and error texts differ
-// from the Rust behaviour (apps/kuben/docs/history/SUBSTITUTIONS.md).
+// from the Rust behaviour (apps/kuben/history/SUBSTITUTIONS.md).
 package github
 
 import (

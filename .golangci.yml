@@ -1,5 +1,5 @@
 # golangci-lint v2. The linters below are what stands in for the guarantees
-# the Rust compiler gave (see apps/kuben/docs/CONVENTIONS.md); a finding
+# the Rust compiler gave (see apps/kuben/CONVENTIONS.md); a finding
 # fails the build. It covers every module of go.work: run it in each module
 # directory (scripts/go-check.sh does, and the turbo task `lint`).
 version: "2"

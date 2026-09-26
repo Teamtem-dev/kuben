@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Static checks for the Go modules: what stands in for the guarantees the
-# Rust compiler gave (apps/kuben/docs/CONVENTIONS.md). gofumpt, go vet,
+# Rust compiler gave (apps/kuben/CONVENTIONS.md). gofumpt, go vet,
 # exhaustive, go-check-sumtype and NilAway need nothing but `go` (the tools
 # are pinned in tools/go.mod, see scripts/go-tool.sh); golangci-lint with
 # .golangci.yml runs as well when it is installed (CI always runs it).

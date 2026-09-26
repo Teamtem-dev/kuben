@@ -9,9 +9,9 @@ named after the last element of its module path, next to the Bun
 workspace's `@kuben/*` packages. This file is the map: the packages, what
 each Go package is, and the dependency rules the linter enforces. How the Go
 code is written (errors, optional values, state machines, tests) is in
-[`apps/kuben/docs/CONVENTIONS.md`](apps/kuben/docs/CONVENTIONS.md); which
+[`apps/kuben/CONVENTIONS.md`](apps/kuben/CONVENTIONS.md); which
 Rust file each package replaced is in
-[`apps/kuben/docs/history/PARITY.md`](apps/kuben/docs/history/PARITY.md).
+[`apps/kuben/history/PARITY.md`](apps/kuben/history/PARITY.md).
 
 ## The repository
 
@@ -171,7 +171,7 @@ apps/kuben/                   module github.com/Teamtem-dev/kuben/apps/kuben
   test/
     oracle/                   compares the Go hub with the released Rust 1.2 binary
   testdata/                   fixtures several packages share (Rust-written compat files)
-  docs/                       CONVENTIONS.md, and history/: the record of the Rust → Go port
+  CONVENTIONS.md, and history/: the record of the Rust → Go port
 
 tools/                        module github.com/Teamtem-dev/kuben/tools: the pinned Go tools, and genspec
                               (prepares the API contract for ogen)

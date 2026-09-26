@@ -31,7 +31,7 @@ reviews:
   path_instructions:
     - path: "**/*.go"
       instructions: >-
-        Check the invariants in CONTRIBUTING.md and apps/kuben/docs/CONVENTIONS.md that the
+        Check the invariants in CONTRIBUTING.md and apps/kuben/CONVENTIONS.md that the
         change touches, in particular: mutations need an authorization proof
         (I-1); errors returned to clients carry no internal details; objects
         in another org answer 404, not 403; channels and streams stay

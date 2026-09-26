@@ -25,7 +25,7 @@ The Go modules are Turborepo packages like the web ones (`kuben`,
 --filter=kuben`, `lint --filter=api`, `build --filter=kuben-agent`. See
 ADR-024 (how the task graph is organised) and ADR-033 (the Go runtime) in the
 [architecture decisions](https://kuben.teamtem.com/docs/contributing/architecture-decisions/). Go code follows
-[`apps/kuben/docs/CONVENTIONS.md`](apps/kuben/docs/CONVENTIONS.md);
+[`apps/kuben/CONVENTIONS.md`](apps/kuben/CONVENTIONS.md);
 [`ARCHITECTURE.md`](ARCHITECTURE.md) maps the repository, its packages and
 the dependency rules.
 
