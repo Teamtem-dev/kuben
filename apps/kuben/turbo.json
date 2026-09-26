@@ -1,0 +1,88 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "description": "The hub as it ships, console embedded, into bin/kuben (scripts/go-build.sh).",
+      "command": ["bash", "../../scripts/go-build.sh", "kuben", "bin/kuben"],
+      "dependsOn": ["^build", "@kuben/console#build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!bin/**",
+        "!internal/httpapi/web/dist/**",
+        "$TURBO_ROOT$/apps/console/dist/**",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/scripts/go-build.sh"
+      ],
+      "outputs": ["bin/kuben"]
+    },
+    "check": {
+      "command": ["go", "vet", "./..."],
+      "inputs": ["$TURBO_DEFAULT$", "!bin/**", "$TURBO_ROOT$/go.work", "$TURBO_ROOT$/go.work.sum"]
+    },
+    "lint": {
+      "command": ["bash", "../../scripts/go-check.sh", "."],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!bin/**",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/.golangci.yml",
+        "$TURBO_ROOT$/tools/go.mod",
+        "$TURBO_ROOT$/tools/go.sum",
+        "$TURBO_ROOT$/scripts/go-check.sh",
+        "$TURBO_ROOT$/scripts/go-tool.sh"
+      ]
+    },
+    "format": {
+      "command": ["bash", "../../scripts/go-tool.sh", "gofumpt", "-w", "."],
+      "cache": false
+    },
+    "test": {
+      "description": "go test with the race detector. The tests read the frozen contracts and the chart; PostgreSQL and envtest tests skip without KUBEN_TEST_PG_URL and KUBEBUILDER_ASSETS.",
+      "command": ["go", "test", "-race", "-shuffle=on", "./..."],
+      "env": ["KUBEN_TEST_*", "KUBEN_REQUIRE_*", "KUBEBUILDER_ASSETS"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!bin/**",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/packages/api-client/openapi.json",
+        "$TURBO_ROOT$/charts/kuben/crds/**",
+        "$TURBO_ROOT$/charts/kuben/files/**",
+        "$TURBO_ROOT$/charts/kuben/values.yaml",
+        "$TURBO_ROOT$/bundle.lock.json"
+      ]
+    },
+    "gen": {
+      "description": "The API server (internal/httpapi/gen, ogen) and the API reference's copy of the spec, from packages/api-client/openapi.json.",
+      "command": ["go", "generate", "./internal/httpapi"],
+      "inputs": [
+        "internal/httpapi/doc.go",
+        "internal/httpapi/ogen.yml",
+        "internal/httpapi/genspec/**",
+        "$TURBO_ROOT$/packages/api-client/openapi.json",
+        "$TURBO_ROOT$/tools/go.mod",
+        "$TURBO_ROOT$/tools/go.sum",
+        "$TURBO_ROOT$/scripts/go-tool.sh"
+      ],
+      "outputs": ["internal/httpapi/gen/**", "internal/httpapi/apidocs/openapi.json"]
+    },
+    "dev": {
+      "description": "The API with every role, in dev mode (Vite proxies /api to it).",
+      "command": ["go", "run", "./cmd/kuben", "serve", "--roles=all", "--dev"]
+    },
+    "size": {
+      "description": "Binary size budget on the hub as it ships (static, console embedded).",
+      "command": ["bash", "../../scripts/check-budgets.sh", "binary", "bin/kuben"],
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "e2e": {
+      "description": "End-to-end suite against the current kube context (scripts/e2e.sh), with this build's hub and agent.",
+      "command": ["bash", "../../scripts/e2e.sh"],
+      "dependsOn": ["build", "kuben-agent#build"]
+    }
+  }
+}

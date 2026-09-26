@@ -8,7 +8,7 @@
 # people's objects alone, and `kuben uninstall --purge` taking k3s away.
 # Needs root through sudo and changes the host: run it on a throwaway machine.
 #
-#   KUBEN_BIN=bin/kuben KUBEN_AGENT_IMAGE=docker.io/library/kuben-agent:e2e \
+#   KUBEN_BIN=apps/kuben/bin/kuben KUBEN_AGENT_IMAGE=docker.io/library/kuben-agent:e2e \
 #     scripts/k3s-install-test.sh
 #
 # KUBEN_AGENT_IMAGE names the agent image when it is not the release's (CI
@@ -16,7 +16,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BIN=${KUBEN_BIN:-bin/kuben}
+BIN=${KUBEN_BIN:-apps/kuben/bin/kuben}
 AGENT_IMAGE=${KUBEN_AGENT_IMAGE:-}
 IMAGE=${KUBEN_E2E_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
 DOMAIN=k3s.test

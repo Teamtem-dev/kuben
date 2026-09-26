@@ -1,8 +1,9 @@
 # Go build output (scripts/go-build.sh) and the console build copied in
-# before `go build` (turbo task //#go:build)
-/bin/
-/internal/httpapi/web/dist/*
-!/internal/httpapi/web/dist/.gitkeep
+# before `go build` (turbo task kuben#build)
+/apps/kuben/bin/
+/apps/kuben-agent/bin/
+/apps/kuben/internal/httpapi/web/dist/*
+!/apps/kuben/internal/httpapi/web/dist/.gitkeep
 
 # JS / Bun / Turborepo
 node_modules

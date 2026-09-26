@@ -1,0 +1,6 @@
+{
+  "name": "@kuben/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The shared TypeScript settings of the workspace: base.json for the console and the API client, astro.json on top of Astro's strict preset for the site."
+}

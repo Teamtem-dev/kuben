@@ -7,7 +7,7 @@
       "outputs": ["src/schema.d.ts"]
     },
     "check": {
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+      "inputs": ["$TURBO_DEFAULT$"]
     }
   }
 }

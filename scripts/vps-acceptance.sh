@@ -110,7 +110,7 @@ check "App after the second setup" "https://${APP_HOST}" https_ok "$APP_HOST"
 
 log "footprint (idle a minute first)"
 sleep 60
-bash scripts/spikes/m0-footprint.sh >"$work/footprint.md" 2>&1 || true
+bash scripts/footprint.sh >"$work/footprint.md" 2>&1 || true
 
 echo "# Kuben M2 acceptance — ${DOMAIN} — $(date -u +%Y-%m-%dT%H:%MZ)"
 echo

@@ -1,4 +1,4 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "@kuben/typescript-config/base.json",
   "include": ["src"]
 }

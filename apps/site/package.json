@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "catalog:",
+    "@kuben/typescript-config": "workspace:*",
     "starlight-links-validator": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:"

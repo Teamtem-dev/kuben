@@ -28,7 +28,7 @@ defaults:
 
 # Every job runs the turbo task a developer runs locally (turbo.json, ADR-024);
 # .github/actions/setup installs Bun and the JS dependencies; jobs that build or
-# test Go install it first with actions/setup-go (the version in go.mod).
+# test Go install it first with actions/setup-go (the version in go.work).
 jobs:
   # Pull requests run only the job groups their files touch
   # (scripts/ci-changes.sh). Pushes to main, the merge queue and manual runs
@@ -83,7 +83,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       KUBEN_TEST_PG_URL: postgres://postgres:kuben@localhost:5432/postgres
-      # A database test that skips here fails instead (go/CONVENTIONS.md).
+      # A database test that skips here fails instead (apps/kuben/CONVENTIONS.md).
       KUBEN_REQUIRE_PG: "1"
       # Likewise for the tests against a Kubernetes API server (envtest).
       KUBEN_REQUIRE_K8S: "1"
@@ -93,24 +93,37 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       # Checksums against sum.golang.org (the sandbox mirror cannot check them).
-      - run: go mod verify && (cd tools && go mod verify)
+      # tools/ is not a member of go.work.
+      - run: go mod verify && (cd tools && GOWORK=off go mod verify)
+      # Installed only: each Go package's `lint` (scripts/go-check.sh) runs it
+      # in its module.
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.13.2
-      # kube-apiserver and etcd for internal/kube/envtest, pinned with
-      # controller-runtime's release.
+          install-only: true
+      # kube-apiserver and etcd for apps/kuben/internal/kube/envtest, pinned
+      # with controller-runtime's release.
       - name: Kubernetes API server binaries (envtest)
         run: |
           assets=$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.1 use 1.37.x -p path --bin-dir "$RUNNER_TEMP/envtest")
           echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
-      - run: bun turbo run go:lint go:test
-      - run: go tool -modfile=tools/go.mod govulncheck ./...
+      - run: bun turbo run lint --filter=kuben --filter=kuben-agent --filter=api
+      - run: bun turbo run test --filter=kuben --filter=kuben-agent --filter=api
+      # genspec, Kuben's own tool in the tools module.
+      - run: cd tools && GOWORK=off go test ./genspec/
+      - name: Vulnerabilities (govulncheck, per module)
+        run: |
+          for module in apps/kuben apps/kuben-agent packages/api; do
+            (cd "$module" && ../../scripts/go-tool.sh govulncheck ./...)
+          done
 
   # The Go agent's runtime against a cluster with controllers (tests/runtime.rs:
   # Deployments must roll out, which envtest cannot do); KUBEN_TEST_KUBE=1 turns
@@ -129,15 +142,18 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           cluster_name: kuben-go-agent
           wait: 120s
-      - run: go test -race -count=1 -v ./internal/agent/runtime/
+      - run: go test -race -count=1 -v ./internal/runtime/
+        working-directory: apps/kuben-agent
 
   oracle:
     name: Go matches Rust (oracle)
@@ -162,9 +178,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       # The released Rust binary is the referee (plan §3, principle 4).
@@ -176,7 +194,7 @@ jobs:
           curl -fsSLO "$base/$asset" && curl -fsSLO "$base/$asset.sha256"
           echo "$(cut -d' ' -f1 "$asset.sha256")  $asset" | sha256sum -c -
           mkdir rust && tar -xzf "$asset" -C rust && find rust -name kuben -type f -exec mv {} kuben-rust \;
-      - run: bun turbo run go:build
+      - run: bun turbo run build --filter=kuben
       - name: Start both servers on empty databases
         run: |
           psql "$PG/postgres" -c 'CREATE DATABASE rust' -c 'CREATE DATABASE go'
@@ -185,11 +203,12 @@ jobs:
               "$1" serve >"$RUNNER_TEMP/$2.log" 2>&1 &
           }
           start "$RUNNER_TEMP/kuben-rust" rust 3001
-          start "$PWD/bin/kuben" go 3002
+          start "$PWD/apps/kuben/bin/kuben" go 3002
           for port in 3001 3002; do
             for _ in $(seq 60); do curl -fs "http://127.0.0.1:$port/readyz" && break; sleep 1; done
           done
       - run: go test -run TestSkeletonMatchesRust -v ./test/oracle/
+        working-directory: apps/kuben
         env:
           KUBEN_ORACLE_RUST: http://127.0.0.1:3001
           KUBEN_ORACLE_GO: http://127.0.0.1:3002
@@ -210,9 +229,11 @@ jobs:
       # another toolchain.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       - run: bun turbo run biome:check check test build size --filter=// --filter='@kuben/*'
@@ -265,22 +286,24 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       # Builds the console first and embeds it in the binary.
-      - run: bun turbo run go:build
+      - run: bun turbo run build --filter=kuben
       - name: Start Kuben on an empty database
         run: |
           export KUBEN_SERVER__STATE_DIR="$RUNNER_TEMP/kuben-state"
           echo "KUBEN_SERVER__STATE_DIR=$KUBEN_SERVER__STATE_DIR" >> "$GITHUB_ENV"
-          bin/kuben serve >"$RUNNER_TEMP/kuben.log" 2>&1 &
+          apps/kuben/bin/kuben serve >"$RUNNER_TEMP/kuben.log" 2>&1 &
           for _ in $(seq 60); do curl -fs "$CONSOLE_URL/readyz" >/dev/null && break; sleep 1; done
           curl -fsS "$CONSOLE_URL/readyz"
           # The link a user is given; on a loopback bind it carries no token.
-          link=$(bin/kuben setup-token)
+          link=$(apps/kuben/bin/kuben setup-token)
           echo "setup link: $link"
           echo "CONSOLE_SETUP_LINK=$link" >> "$GITHUB_ENV"
       - name: Console in a browser against the server (Playwright, axe)
@@ -304,9 +327,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       # The spec and the CRD manifest are frozen (Rust generated them up to
@@ -364,7 +389,7 @@ jobs:
             echo "::error::not executable in git (fix: git update-index --chmod=+x <file>): $bad"
             exit 1
           fi
-      - run: shellcheck install.sh scripts/*.sh scripts/spikes/*.sh
+      - run: shellcheck install.sh scripts/*.sh
       - name: install.sh parses under sh, dash and bash
         run: |
           sudo apt-get install -y --no-install-recommends dash >/dev/null
@@ -412,9 +437,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
@@ -432,7 +459,7 @@ jobs:
         run: |
           context="$RUNNER_TEMP/agent-image"
           mkdir -p "$context"
-          CGO_ENABLED=0 go build -trimpath -o "$context/kuben-agent" ./cmd/kuben-agent
+          (cd apps/kuben-agent && CGO_ENABLED=0 go build -trimpath -o "$context/kuben-agent" ./cmd/kuben-agent)
           docker build -q -f deploy/e2e-agent.Dockerfile -t kuben-agent:e2e "$context"
           kind load docker-image kuben-agent:e2e --name kuben-e2e
           gateway=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' | tr ' ' '\n' | grep -m1 -E '^[0-9]+\.')
@@ -444,12 +471,14 @@ jobs:
       # a registry problem shows here and not as an e2e failure.
       - name: Registry resolution (network)
         run: go test -count=1 -v ./internal/integrations/oci/
+        working-directory: apps/kuben
         env:
           KUBEN_TEST_NETWORK: "1"
-      # Builds the hub first (go:e2e depends on go:build). The cluster tests
-      # of the two writers, the materializer and the execution CRDs run in the
-      # go job against envtest; the agent's executor runs in go-kind.
-      - run: bun turbo run go:e2e
+      # Builds the hub and the agent first (kuben#e2e depends on their
+      # builds). The cluster tests of the two writers, the materializer and
+      # the execution CRDs run in the go job against envtest; the agent's
+      # executor runs in go-kind.
+      - run: bun turbo run e2e --filter=kuben
       # The chart against the real API server, whose CRDs the e2e run applied:
       # server-side validation catches what `helm template` cannot, like a
       # custom resource that does not match its schema (v1.0.3 shipped
@@ -485,16 +514,18 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           cluster_name: kuben-e2e-build
           wait: 120s
-      - run: bun turbo run go:build
+      - run: bun turbo run build --filter=kuben
       - name: Build engine e2e test suite
         run: scripts/e2e-build.sh
 
@@ -513,16 +544,18 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           cluster_name: kuben-host
           wait: 120s
-      - run: bun turbo run go:build
+      - run: bun turbo run build --filter=kuben
       - name: kuben setup provisions PostgreSQL and runs Kuben
         run: scripts/host-install-test.sh
 
@@ -542,19 +575,21 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
-      - run: bun turbo run go:build
+      - run: bun turbo run build --filter=kuben
       # k3s imports the images in its airgap directory when it starts, so the
       # agent's pod finds this build's image without a registry.
       - name: Agent image for k3s
         run: |
           context="$RUNNER_TEMP/agent-image"
           mkdir -p "$context"
-          CGO_ENABLED=0 go build -trimpath -o "$context/kuben-agent" ./cmd/kuben-agent
+          (cd apps/kuben-agent && CGO_ENABLED=0 go build -trimpath -o "$context/kuben-agent" ./cmd/kuben-agent)
           docker build -q -f deploy/e2e-agent.Dockerfile -t kuben-agent:e2e "$context"
           sudo mkdir -p /var/lib/rancher/k3s/agent/images
           docker save kuben-agent:e2e | sudo tee /var/lib/rancher/k3s/agent/images/kuben-agent.tar >/dev/null
@@ -575,25 +610,26 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           cache-dependency-path: |
-            go.sum
+            go.work.sum
+            apps/*/go.sum
+            packages/*/go.sum
             tools/go.sum
       - uses: $/.github/actions/setup
-      # The budget is measured on the shipped binary, UI included: go:build
+      # The budget is measured on the shipped binary, UI included: kuben#build
       # builds the console first and links statically (CGO_ENABLED=0) with
-      # the release flags (scripts/go-build.sh).
-      - run: bun turbo run go:build
-      - run: scripts/check-budgets.sh binary bin/kuben
+      # the release flags (scripts/go-build.sh); kuben#size checks it.
+      - run: bun turbo run size --filter=kuben
       - name: Smoke test
-        run: bin/kuben --version
+        run: apps/kuben/bin/kuben --version
       - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
         with:
           tool: trivy@0.74.0
       # The module list Go embeds must be present and free of fixed
       # HIGH/CRITICAL issues.
       - name: Scan the shipped binary (Trivy)
-        run: scripts/scan-binary.sh bin/kuben
+        run: scripts/scan-binary.sh apps/kuben/bin/kuben
 
   # Static analysis of the workflows and the setup action: template injection,
   # excessive permissions, cache poisoning, impostor or unpinned actions. It

@@ -39,6 +39,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@kuben/typescript-config": "workspace:*",
     "@size-limit/file": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/bun": "catalog:",

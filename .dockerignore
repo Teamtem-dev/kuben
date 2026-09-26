@@ -1,6 +1,6 @@
-bin
-internal/httpapi/web/dist/*
-!internal/httpapi/web/dist/.gitkeep
+**/bin
+apps/kuben/internal/httpapi/web/dist/*
+!apps/kuben/internal/httpapi/web/dist/.gitkeep
 **/node_modules
 **/.turbo
 apps/console/dist

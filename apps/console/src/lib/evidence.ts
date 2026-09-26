@@ -1,5 +1,5 @@
 /**
- * The Doctor's evidence graph (`internal/evidence`): one
+ * The Doctor's evidence graph (`apps/kuben/internal/evidence`): one
  * node per layer from the build to the visitor, and edges from a cause to
  * what it affects. The API types it as a free-form object; this reads it
  * defensively and orders it for display.

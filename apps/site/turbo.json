@@ -9,7 +9,7 @@
     },
     "check": {
       "description": "astro check: TypeScript in .astro files and content frontmatter.",
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+      "inputs": ["$TURBO_DEFAULT$"]
     },
     "dev": {
       "description": "Astro dev server on :4321."

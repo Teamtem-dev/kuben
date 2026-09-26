@@ -1,10 +1,13 @@
 # golangci-lint v2. The linters below are what stands in for the guarantees
-# the Rust compiler gave (see go/CONVENTIONS.md); a finding fails the build.
+# the Rust compiler gave (see apps/kuben/CONVENTIONS.md); a finding
+# fails the build. It covers every module of go.work: run it in each module
+# directory (scripts/go-check.sh does, and the turbo task `lint`).
 version: "2"
 
 run:
   timeout: 5m
   tests: true
+  allow-parallel-runners: true
 
 formatters:
   enable:
@@ -119,14 +122,15 @@ linters:
               desc: deprecated; use io and os.
         # The layering of ARCHITECTURE.md. depguard sees direct imports only;
         # internal/server's layering_test.go checks that the server does not
-        # reach internal/cli transitively either.
+        # reach internal/cli transitively either. Go's internal rule already
+        # keeps each module out of the others' internal/ packages.
         core-is-pure:
           list-mode: lax
           files:
-            - "**/internal/core/**"
+            - "**/apps/kuben/internal/core/**"
           allow:
-            - github.com/Teamtem-dev/kuben/internal/core
-            - github.com/Teamtem-dev/kuben/internal/jsonx
+            - github.com/Teamtem-dev/kuben/apps/kuben/internal/core
+            - github.com/Teamtem-dev/kuben/apps/kuben/internal/jsonx
           deny:
             - pkg: github.com/Teamtem-dev/kuben
               desc: core imports only core and jsonx (both pure); it performs no IO.
@@ -136,38 +140,51 @@ linters:
               desc: core performs no IO (database/sql/driver for Valuer is fine).
             - pkg: os$
               desc: core performs no IO; config loading is the one allowed exception.
+        api-is-shared:
+          list-mode: lax
+          files:
+            - "**/packages/api/**"
+          allow:
+            - github.com/Teamtem-dev/kuben/packages/api
+          deny:
+            - pkg: github.com/Teamtem-dev/kuben
+              desc: the API module is what the hub and the agent share; it imports neither.
+            - pkg: sigs.k8s.io/controller-runtime
+              desc: the agent builds on these types and stays small; client-go is enough.
         agent-is-small:
           list-mode: lax
           files:
-            - "**/internal/agent/**"
-            - "**/cmd/kuben-agent/**"
+            - "**/apps/kuben-agent/**"
           allow:
-            - github.com/Teamtem-dev/kuben/internal/agent
-            - github.com/Teamtem-dev/kuben/internal/agentlink/protocol
-            - github.com/Teamtem-dev/kuben/api/v1alpha1
-            - github.com/Teamtem-dev/kuben/internal/core
-            - github.com/Teamtem-dev/kuben/internal/jsonx
-            - github.com/Teamtem-dev/kuben/internal/version
+            - github.com/Teamtem-dev/kuben/apps/kuben-agent
+            - github.com/Teamtem-dev/kuben/packages/api
           deny:
             - pkg: github.com/Teamtem-dev/kuben
               desc: the agent applies envelopes and nothing else (ADR-027); it never imports the hub's packages.
             - pkg: sigs.k8s.io/controller-runtime
               desc: the agent stays small; client-go is enough.
+        agenttest-in-tests-only:
+          files:
+            - $all
+            - "!$test"
+          deny:
+            - pkg: github.com/Teamtem-dev/kuben/apps/kuben-agent/agenttest
+              desc: agenttest opens the agent to the hub's tests; nothing ships with it.
         httpapi-behind-server:
           files:
             - $all
-            - "!**/internal/server/**"
-            - "!**/internal/httpapi/**"
+            - "!**/apps/kuben/internal/server/**"
+            - "!**/apps/kuben/internal/httpapi/**"
           deny:
-            - pkg: github.com/Teamtem-dev/kuben/internal/httpapi$
+            - pkg: github.com/Teamtem-dev/kuben/apps/kuben/internal/httpapi$
               desc: only internal/server mounts the HTTP API; share code through a package below it.
         cli-is-a-leaf:
           files:
             - $all
-            - "!**/internal/cli/**"
-            - "!**/cmd/kuben/**"
+            - "!**/apps/kuben/internal/cli/**"
+            - "!**/apps/kuben/cmd/kuben/**"
           deny:
-            - pkg: github.com/Teamtem-dev/kuben/internal/cli
+            - pkg: github.com/Teamtem-dev/kuben/apps/kuben/internal/cli
               desc: the CLI only parses flags and prints; what others need lives outside internal/cli.
     forbidigo:
       forbid:

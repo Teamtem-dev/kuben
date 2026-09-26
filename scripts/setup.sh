@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# One-time setup: checks for Go (the version in go.mod) and Bun,
-# installs the JS dependencies and downloads the Go modules (the root module and tools/).
+# One-time setup: checks for Go (the version in go.work) and Bun,
+# installs the JS dependencies and downloads the Go modules (the members of
+# go.work and tools/).
 #
 #   bun run setup
 set -euo pipefail
@@ -12,5 +13,6 @@ need bun https://bun.com/docs/installation
 
 go version
 bun install --frozen-lockfile
-go mod download && (cd tools && go mod download)
+for module in apps/kuben apps/kuben-agent packages/api; do (cd "$module" && go mod download); done
+(cd tools && GOWORK=off go mod download)
 echo "ready: bun run dev (API on :8080, UI on :5173) · bun run ci (everything CI checks)"

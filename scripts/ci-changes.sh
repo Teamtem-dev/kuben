@@ -9,9 +9,10 @@
 #   web      web app and TypeScript packages       → web, console-live, budgets
 #   codegen  the frozen contracts and the TS client → drift, api-compat
 #   scripts  shell scripts, installer, Helm chart  → scripts, e2e jobs
-#   go       the Go module (cmd/, api/, internal/,  → go, go-kind, oracle, e2e jobs,
-#            test/, tools/, go.mod), and the frozen    console-live, budgets
-#            contracts the Go tests pin
+#   go       the Go modules (apps/kuben,             → go, go-kind, oracle, e2e jobs,
+#            apps/kuben-agent, packages/api, tools,    console-live, budgets
+#            go.work), and the frozen contracts the
+#            Go tests pin
 #
 # Fail open: a change to CI itself (.github/) or to the task runner every job
 # goes through (turbo.json, the root package.json, bun.lock, bunfig.toml), or an
@@ -32,8 +33,9 @@ else
     count=$((count + 1))
     case "$path" in
     .github/* | turbo.json | package.json | bun.lock | bunfig.toml) select_all ;;
-    cmd/* | api/* | internal/* | test/* | testdata/* | tools/* | go.mod | go.sum | go/* | .golangci.yml) go=true ;;
-    scripts/go-check.sh | scripts/go-build.sh)
+    # Before apps/* and packages/*: these are the Go modules of go.work.
+    apps/kuben/* | apps/kuben-agent/* | packages/api/* | tools/* | go.work | go.work.sum | .golangci.yml) go=true ;;
+    scripts/go-check.sh | scripts/go-build.sh | scripts/go-tool.sh)
       go=true
       scripts=true
       ;;
@@ -53,8 +55,8 @@ else
       scripts=true
       go=true
       ;;
-    apps/* | packages/* | biome.json | tsconfig.base.json) web=true ;;
-    scripts/* | install.sh | charts/* | deploy/* | Dockerfile | .trivyignore.yaml) scripts=true ;;
+    apps/* | packages/* | biome.json) web=true ;;
+    scripts/* | install.sh | charts/* | deploy/* | .trivyignore.yaml) scripts=true ;;
     *) ;; # docs, Markdown, license: no checks needed
     esac
   done

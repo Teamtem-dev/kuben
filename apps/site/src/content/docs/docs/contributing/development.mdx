@@ -9,7 +9,7 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 
 ## Toolchain
 
-- **Go**, the version in `go.mod` (one module at the root: the hub, the agent and the CRD types; the pinned tools are the module in `tools/`)
+- **Go**, the version in `go.work` (three modules: the hub in `apps/kuben`, the agent in `apps/kuben-agent` and what both share in `packages/api`; the pinned tools are the module in `tools/`)
 - **Bun** 1.4 or later: package manager, JS runtime and test runner. Node is not needed.
 - **Turborepo** runs every task in both languages from one graph (installed by `bun install`).
 - **kind** for the end-to-end tests, **Helm** for the chart.
@@ -57,42 +57,46 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 ## Repository layout
 
 <FileTree>
-- cmd/
-  - kuben/ the hub: the server and the `kuben` CLI
-  - kuben-agent/ the agent that runs inside member clusters
-- api/v1alpha1/ the kuben.dev CRD types
-- internal/ every Go package (ARCHITECTURE.md lists them and the dependency rules)
-  - cli/ the CLI: flags and output
-  - server/ `kuben serve`: wiring, background work, shutdown
-  - httpapi/ HTTP routes (generated from openapi.json by ogen), auth, the event stream, embedded console
-  - kube/ controllers, materializer, projections, leader election, rendering
-  - agent/, agentlink/ the agent and both ends of the hub–agent link
-  - store/ PostgreSQL repositories and the migrations
-  - core/ config, ids, authz, errors and the other pure domain packages
-- tools/ pinned Go tools (gofumpt, ogen, govulncheck, NilAway, …)
-- go/ CONVENTIONS.md (the Go rules every package follows), PARITY.md, SUBSTITUTIONS.md
 - apps/
   - console/ React 19 + TanStack, Tailwind v4 (embedded into the binary)
   - site/ this website: Astro + Starlight
+  - kuben/ the hub, a Go module: the server and the `kuben` CLI
+    - cmd/kuben/ its main package
+    - internal/ every hub package (ARCHITECTURE.md lists them and the dependency rules)
+      - cli/ the CLI: flags and output
+      - server/ `kuben serve`: wiring, background work, shutdown
+      - httpapi/ HTTP routes (generated from openapi.json by ogen), auth, the event stream, embedded console
+      - kube/ controllers, materializer, projections, leader election, rendering
+      - agentlink/ the hub's end of the hub–agent link
+      - store/ PostgreSQL repositories and the migrations
+      - core/ config, ids, authz, errors and the other pure domain packages
+    - CONVENTIONS.md (the Go rules every package follows) and history/ (the record of the Rust → Go port)
+  - kuben-agent/ the agent that runs inside member clusters, a Go module
 - packages/
+  - api/ what the hub and the agent share, a Go module: the kuben.dev CRD types and the AgentLink protocol
   - api-client/ openapi.json (the frozen API contract) and the generated TypeScript types
+  - typescript-config/ the shared TypeScript settings
+- tools/ pinned Go tools (gofumpt, ogen, govulncheck, NilAway, …), outside the Go workspace
 - charts/kuben/ the Helm chart and the frozen CRD manifest
+- deploy/ Dockerfiles and the kind configuration
 - scripts/ ci.sh, e2e.sh, budgets, scans, change detection
+- go.work the Go workspace
+- turbo.json the task graph
 </FileTree>
 
 ## Everyday commands
 
 | Command | Does |
 |---|---|
-| `bun run build` | the hub with the console embedded (`bin/kuben`) and the web bundle |
-| `bun run check` | `tsc` |
-| `bun run lint` | `scripts/go-check.sh` on the Go module, and Biome |
+| `bun run build` | the hub with the console embedded (`apps/kuben/bin/kuben`), the agent (`apps/kuben-agent/bin/kuben-agent`) and the web bundles |
+| `bun run check` | `tsc`, `astro check` and `go vet` |
+| `bun run lint` | `scripts/go-check.sh` in each Go module, and Biome |
 | `bun run format` | gofumpt and Biome fixes |
 | `bun run test` | `go test -race` and `bun test` |
-| `bun run gen` | regenerate `schema.d.ts` from the frozen `openapi.json` |
+| `bun run gen` | regenerate `schema.d.ts` and the Go API server from the frozen `openapi.json`, and the CRD types' DeepCopy |
 | `bun run drift` | regenerate and fail on any difference (what CI does) |
-| `bun turbo run go:test` | only the Go tests |
-| `bun turbo run go:size` | the hub with the embedded console, checked against the binary budget |
+| `bun turbo run test --filter=kuben` | only the hub's Go tests (`kuben-agent` and `api` are the other Go packages) |
+| `bun turbo run size --filter=kuben` | the hub with the embedded console, checked against the binary budget |
 
 ## The console
 
@@ -104,13 +108,13 @@ import { Aside, FileTree, Steps } from '@astrojs/starlight/components'
 
 ## Rules
 
-- **Dependencies.** Go versions live in the root `go.mod` (the pinned tools in `tools/go.mod`); JS versions only in the root `package.json` catalog (packages write `catalog:`). A new Go dependency needs a reason in the pull request, and govulncheck must stay clean.
-- **The contracts are frozen** (ADR-033). `packages/api-client/openapi.json`, `charts/kuben/crds/kuben.dev_all.yaml` and the SQL schema are the ones 1.2 shipped. The Go server is generated from the spec (`go generate ./internal/httpapi`), and the Go tests pin the embedded CRDs to the manifest. Changing a contract means editing that file on purpose, then `bun run gen` for the TypeScript types; CI fails on drift, and on a breaking API change without the `breaking` label.
+- **Dependencies.** Go versions live in each module's `go.mod` (the pinned tools in `tools/go.mod`); JS versions only in the root `package.json` catalog (packages write `catalog:`). A new Go dependency needs a reason in the pull request, and govulncheck must stay clean.
+- **The contracts are frozen** (ADR-033). `packages/api-client/openapi.json`, `charts/kuben/crds/kuben.dev_all.yaml` and the SQL schema are the ones 1.2 shipped. The Go server is generated from the spec (`bun turbo run gen --filter=kuben`), and the Go tests pin the embedded CRDs to the manifest. Changing a contract means editing that file on purpose, then `bun run gen` for the TypeScript types; CI fails on drift, and on a breaking API change without the `breaking` label.
 - **Every operation has a unique `operationId`** in the spec; the TypeScript types, the Go handlers and the audit log are keyed by it.
 - **CRD types stay structural:** no internally tagged unions; use one-of structs with optional fields (`Source { image, git }`). A test guards this.
 - **Budgets are gates:** binary ≤ 45 MiB, image (Kuben and its agent) ≤ 50 MiB, console initial JS ≤ 200 kB, every lazily loaded chunk ≤ 80 kB and all CSS ≤ 25 kB (brotli). Raising a budget needs a written reason in the pull request.
 - **Commits** follow Conventional Commits (`feat(api): …`, `fix(controller): …`). Label pull requests (`feature`, `bug`, `security`, `breaking`); release notes are grouped by label.
-- **Migrations are PostgreSQL only** (ADR-025), in `internal/store/migrations/`. 2.0 adds none, so going back to 1.2 is an image change; the next migration (`0035`) comes with 2.1.
+- **Migrations are PostgreSQL only** (ADR-025), in `apps/kuben/internal/store/migrations/`. 2.0 adds none, so going back to 1.2 is an image change; the next migration (`0035`) comes with 2.1.
 
 ## The review checklist
 

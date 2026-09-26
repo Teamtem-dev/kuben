@@ -1,0 +1,7 @@
+go 1.27.0
+
+use (
+	./apps/kuben
+	./apps/kuben-agent
+	./packages/api
+)

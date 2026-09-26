@@ -1,0 +1,49 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "description": "The agent as it ships into bin/kuben-agent (scripts/go-build.sh).",
+      "command": ["bash", "../../scripts/go-build.sh", "kuben-agent", "bin/kuben-agent"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!bin/**",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/scripts/go-build.sh"
+      ],
+      "outputs": ["bin/kuben-agent"]
+    },
+    "check": {
+      "command": ["go", "vet", "./..."],
+      "inputs": ["$TURBO_DEFAULT$", "!bin/**", "$TURBO_ROOT$/go.work", "$TURBO_ROOT$/go.work.sum"]
+    },
+    "lint": {
+      "command": ["bash", "../../scripts/go-check.sh", "."],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!bin/**",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/.golangci.yml",
+        "$TURBO_ROOT$/tools/go.mod",
+        "$TURBO_ROOT$/tools/go.sum",
+        "$TURBO_ROOT$/scripts/go-check.sh",
+        "$TURBO_ROOT$/scripts/go-tool.sh"
+      ]
+    },
+    "format": {
+      "command": ["bash", "../../scripts/go-tool.sh", "gofumpt", "-w", "."],
+      "cache": false
+    },
+    "test": {
+      "description": "go test with the race detector; the cluster tests of the executor run with KUBEN_TEST_KUBE=1 against the current kube context.",
+      "command": ["go", "test", "-race", "-shuffle=on", "./..."],
+      "env": ["KUBEN_TEST_*", "KUBEN_REQUIRE_*"],
+      "inputs": ["$TURBO_DEFAULT$", "!bin/**", "$TURBO_ROOT$/go.work", "$TURBO_ROOT$/go.work.sum"]
+    },
+    "dev": {
+      "extends": false
+    }
+  }
+}

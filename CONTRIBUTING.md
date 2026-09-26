@@ -20,22 +20,27 @@ the 18 invariants every change must keep.
 
 Every task runs through Turborepo (`turbo.json`). Root `package.json` scripts
 are the entry points: `bun run build | check | lint | format | test | gen`.
-The Go tasks are root tasks: `bun turbo run go:test`, `go:lint`, `go:build`. See
+The Go modules are Turborepo packages like the web ones (`kuben`,
+`kuben-agent`, `api`) with the same task names: `bun turbo run test
+--filter=kuben`, `lint --filter=api`, `build --filter=kuben-agent`. See
 ADR-024 (how the task graph is organised) and ADR-033 (the Go runtime) in the
 [architecture decisions](https://kuben.teamtem.com/docs/contributing/architecture-decisions/). Go code follows
-[`go/CONVENTIONS.md`](go/CONVENTIONS.md); [`ARCHITECTURE.md`](ARCHITECTURE.md)
-maps its packages and the dependency rules.
+[`apps/kuben/CONVENTIONS.md`](apps/kuben/CONVENTIONS.md);
+[`ARCHITECTURE.md`](ARCHITECTURE.md) maps the repository, its packages and
+the dependency rules.
 
 Repository rules:
 
-- **Dependencies:** Go versions live in the root `go.mod` (one module; the
-  pinned tools in `tools/go.mod`); JS versions only in `workspaces.catalog`
-  of the root `package.json` (packages say `catalog:`). A new Go dependency
-  needs a reason in the PR, and govulncheck must stay clean.
+- **Dependencies:** Go versions live in the `go.mod` of each module of
+  `go.work` (`apps/kuben`, `apps/kuben-agent`, `packages/api`; the pinned
+  tools in `tools/go.mod`, outside the workspace); JS versions only in
+  `workspaces.catalog` of the root `package.json` (packages say `catalog:`),
+  and the TypeScript settings in `@kuben/typescript-config`. A new Go
+  dependency needs a reason in the PR, and govulncheck must stay clean.
 - **The contracts are frozen:** `packages/api-client/openapi.json` (the REST
   API), `charts/kuben/crds/kuben.dev_all.yaml` (the CRDs) and the SQL schema
   are the ones 1.2 shipped. The Go server is generated from the spec (ogen,
-  `go generate ./internal/httpapi`) and the Go tests pin the embedded
+  `bun turbo run gen --filter=kuben`) and the Go tests pin the embedded
   CRDs to the manifest. Changing a contract is a deliberate change of that
   file, then `bun run gen` for the TypeScript types; CI fails on drift and on
   a breaking API change without the `breaking` label.
@@ -51,7 +56,7 @@ Repository rules:
 
 Each invariant closes a class of bugs found in the system Kuben replaces.
 Reviewers check the ones a change touches. Paths are Go packages under
-`internal/` unless they say otherwise.
+`apps/kuben/internal/` unless they say otherwise.
 
 | # | Invariant | Where it is enforced |
 |---|---|---|
@@ -71,7 +76,7 @@ Reviewers check the ones a change touches. Paths are Go packages under
 | I-14 | Informers and projections; never poll full lists on a timer. | `kube/projection` |
 | I-15 | Ready only after the informers synced; ordered graceful shutdown: readiness off → drain → cancel subsystems (the leader releases its Lease) → flush → checkpoint. | `server`, `kube/leader` |
 | I-16 | Embedded migrations under an advisory lock, with the checksums sqlx recorded; foreign keys always on. | `store/migrations`, `store/migrate` |
-| I-17 | One source of truth per datum: CRDs hold desired state, SQL holds identity and audit; SQL references CRDs only by `uid`. | `api/v1alpha1` (at the root), `store` |
+| I-17 | One source of truth per datum: CRDs hold desired state, SQL holds identity and audit; SQL references CRDs only by `uid`. | `packages/api/v1alpha1`, `store` |
 | I-18 | Controllers use typed builders, server-side apply (field manager `kuben`), kstatus conditions and `observedGeneration`. | `kube/render`, `kube/controller` |
 
 Also check:
@@ -84,12 +89,12 @@ Also check:
 - Work that must happen once per cluster (reconciling, applying CRDs) runs
   under the controller Lease, never on every replica (ADR-023).
 - Migrations are PostgreSQL only (ADR-025), in
-  `internal/store/migrations/`. An applied migration is never edited,
+  `apps/kuben/internal/store/migrations/`. An applied migration is never edited,
   not even a comment: the checksum of every file is recorded and existing
   databases would refuse to start. 2.0 adds no migration (rollback to 1.2 is
   an image change); the next one is `0035` in 2.1.
 - Pure logic (builders, validation, parsing) has unit tests; API behaviour has
-  HTTP tests in `internal/httpapi` (PostgreSQL, run in CI); cluster
+  HTTP tests in `apps/kuben/internal/httpapi` (PostgreSQL, run in CI); cluster
   behaviour is covered by envtest, the kind jobs and `scripts/e2e.sh`.
 
 ## Reporting security issues

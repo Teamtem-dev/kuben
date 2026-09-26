@@ -557,7 +557,7 @@ test('the skip link moves focus to the page content', async ({ page }) => {
 })
 
 // Kuben serves the console with a strict policy (no 'unsafe-inline'; see
-// internal/httpapi/web/web.go, which fixtures.ts reads): every page, and the
+// apps/kuben/internal/httpapi/web/web.go, which fixtures.ts reads): every page, and the
 // overlays that lock scrolling or bring their own styles, must pass it.
 test.describe('content security policy', () => {
   const pages = [
