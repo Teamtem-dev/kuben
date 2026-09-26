@@ -1,6 +1,6 @@
 ---
 title: The audit log
-description: Every change, every denial and every login is recorded with actor, action, target, outcome and client address. Read it from the console or page through it with the API.
+description: Every change, every refused change and every login is recorded with actor, action, target, outcome and client address. Read it from the console or page through it with the API.
 sidebar:
   order: 9
 ---
@@ -13,18 +13,18 @@ Every create, update, delete, restart, rollback, promotion, invitation and token
 
 | Field | Example |
 |---|---|
-| actor | a user, or an API token |
-| action | the OpenAPI operation id, e.g. `createApp`, `promoteApp`, `revokeToken` |
+| actor | the user, and whether they came through a session or an API token |
+| action | the OpenAPI operation id, e.g. `createApp`, `promoteApp`, `revokeToken`; some changes add a more specific record, e.g. `webhook.created`; sign-ins are `login` |
 | target | `shop/production/api` |
 | outcome | `success`, `denied`, `failure`, `throttled` or `error`, with the HTTP status |
 | client | the client IP and the request id |
 | when | a timestamp |
 
-**Request bodies are never recorded**, and therefore neither are secret values, passwords or tokens.
+`denied` means the request was refused with `401` or `403`; a wrong password is recorded as `failure`. **Request bodies are never recorded**, and therefore neither are secret values, passwords or tokens.
 
 ## Reading it
 
-- **Console:** *Audit* in the top bar. Owners and admins can read it.
+- **Console:** open **Audit** in the sidebar. The **Audit log** shows when, who, the action, the target, the outcome and the IP; **Load older events** pages back. Owners and admins can read it. The **Recent deployments** card on **Home** is built from it too.
 - **API:** newest first, paged with a cursor:
 
 ```bash
@@ -34,18 +34,18 @@ curl -fsS "$KUBEN_URL/api/v1/audit?limit=100&before=<next_before from the previo
   -H "Authorization: Bearer $KUBEN_TOKEN"
 ```
 
-Because the request id is recorded, you can correlate an audit record with Kuben's structured logs (`KUBEN_TELEMETRY__LOG_FORMAT=json`) and with your gateway's access log.
+The API also returns each record's request id, so you can correlate it with Kuben's logs (JSON by default) and with your gateway's access log.
 
 ## Properties
 
 - **Append-only through the API.** There is no endpoint that edits or deletes audit records.
-- **Written in the request path.** The record is part of handling the request, not a best-effort side channel. When a write fails, the failure is counted in the `kuben_audit_write_errors_total` metric so you can alert on it.
+- **Written before the answer.** Kuben writes the record while it handles the request, before it answers. If the write fails, the request still goes through; Kuben logs the failure and counts it in the `kuben_audit_write_errors_total` metric so you can alert on it.
 - **Shared by all replicas.** Every replica writes to the same log in PostgreSQL.
 
 <Aside type="note" title="Retention">
-Kuben does not delete audit records. The log lives in PostgreSQL; size it and back it up accordingly (see [Backup and restore](/docs/operations/backup-restore/)). Signed anchoring of the log is a planned extension.
+Kuben does not delete audit records. The log lives in PostgreSQL; size it and back it up accordingly (see [Backup and restore](/docs/operations/backup-restore/)). Signed anchoring of the log is on the [roadmap](/docs/roadmap/).
 </Aside>
 
 ## Client addresses behind a proxy
 
-By default Kuben records the address of the TCP peer. Behind a proxy that appends the client address, set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (the Helm chart does, because the Gateway sits in front). Kuben then uses the **last** `X-Forwarded-For` hop; earlier hops are client-controlled and ignored. See [Sign-in and throttling](/docs/guides/sign-in-security/).
+By default Kuben records the address of the TCP peer. Behind a proxy that appends the client address, set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (the Helm chart does, because the Gateway sits in front). Kuben then uses the **last** `X-Forwarded-For` hop; earlier hops are client-controlled and ignored. To believe the header only from your proxy, also set `KUBEN_SECURITY__TRUSTED_PROXIES` to its addresses (CIDRs). See [Sign-in and throttling](/docs/guides/sign-in-security/).

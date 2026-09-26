@@ -1,43 +1,76 @@
 ---
 title: Roadmap
-description: What Kuben 1.0 does, what comes next (Git builds, preview environments, scale-to-zero, SSO), and how to influence the order.
+description: What Kuben does today, how 2.0 reaches a stable release (alpha, beta, rc, 2.0.0), what is not built yet, and how to influence the order.
 ---
 
 import { Badge } from '@astrojs/starlight/components'
 
-Kuben 1.0 deploys images, isolates environments, serves custom domains over HTTPS, keeps release history with rollback and promotion, runs one-click templates, and gives teams roles, scoped tokens and an audit log. Several replicas run side by side on PostgreSQL. This page lists what is next, in the order we currently expect.
+Kuben 2.0 is Kuben rewritten in Go. It keeps what 1.2 does, with the same REST API, custom resources, configuration keys and command line, so 2.0 is about the engine, not new features. This page says what ships today, how 2.0 becomes the stable release, and what is not built yet.
 
-## Next
+## What ships today
 
-### Git builds <Badge text="phase 1" variant="tip" />
+Both 1.2 and the 2.0 pre-releases do all of this:
 
-Build from a repository without an external CI: a persistent BuildKit daemon plus a light `buildctl` Job per build, Dockerfile or buildpacks, pushed by digest to your registry. Build pods never get cluster credentials; the controller watches the `BuildRun` and creates the `Release` itself. The `BuildRun` type and the `git` source already exist in the CRDs so the schema is stable.
+- **Deploy** any container image, or build it from a GitHub repository in isolated BuildKit Jobs (Dockerfile or Railpack), with health checks, autoscaling, scheduled jobs, persistent volumes and write-only secrets sealed with a keyring.
+- **Deliver** through the cluster agent, a small process in the cluster that applies what Kuben sends it over mutual TLS.
+- **Isolate** every environment in its own namespace with quotas and a NetworkPolicy.
+- **Expose** apps on custom domains with automatic certificates through Gateway API and cert-manager, with domain claims, and with DNS records and wildcard certificates through Cloudflare (DNS-01).
+- **Release safely:** numbered releases, rollback, emergency rollback, promotion with a diff preview, approvals for production, change freezes, paused delivery, a vulnerability scan gate, and automatic image updates.
+- **Preview** every pull request in its own environment.
+- **Operate:** live logs, the Doctor with its evidence graph, CPU and memory usage, incidents with signed webhooks and alert silences, public status pages, owners with runbooks, a backup before every upgrade, `kuben doctor` and `kuben support-bundle`.
+- **Teams:** four roles, roles per project or environment, scoped API tokens, single sign-on with OpenID Connect, CI trust for GitHub Actions (no stored secret), and an append-only audit log.
+- **Install** with one command on a server (k3s included) or with Helm; several replicas run side by side on PostgreSQL.
 
-### Preview environments <Badge text="shipped in 1.2" variant="success" />
+2.0 adds a redesigned console: a home dashboard, the app page in tabs, and pages for settings, domains, incidents and webhooks, with the controls for owners, freezes, silences, paused delivery and emergency rollback.
 
-A short-lived environment per pull request, with its own namespace, a time-to-live, and no secrets for forks. See [Preview environments](/docs/guides/previews/).
+## The 2.0 release train
 
-### Scale to zero <Badge text="phase 2" variant="note" />
+2.0 becomes stable in four steps. Each one is a tag on GitHub, and nothing moves to the next step while a serious bug is open.
 
-Idle apps stop and the first request wakes them, through the `activator` role that is reserved in the binary today. No Knative and no service mesh required.
+| Stage | What it is for | What it promises |
+|---|---|---|
+| <Badge text="2.0.0-alpha.N" variant="caution" /> | Trying 2.0 early | A test cluster with a fresh database, or a copy of a 1.2 database. No upgrade guarantee. |
+| <Badge text="2.0.0-beta.N" variant="note" /> | Staging and volunteers | Feature-complete. Upgrading a 1.2.x installation in place, and going back, is tested. |
+| <Badge text="2.0.0-rc.N" variant="tip" /> | Rehearsing the switch | Bug fixes only. Seven days in a row without a serious bug; each fix starts a new rc. |
+| <Badge text="2.0.0" variant="success" /> | Everyone | The last rc's commit, tagged again, not rebuilt. |
 
-### Single sign-on <Badge text="phase 2" variant="note" />
+Until 2.0.0 is out:
 
-OIDC login for teams with an identity provider, alongside local accounts. Passkeys are under consideration.
+- **The default install stays on 1.2.x.** Pre-releases never become GitHub's `latest` release, the image's `latest` tag or Helm's default chart version, so `install.sh` and `helm install` without a version keep installing 1.2.x.
+- **You try 2.0 by naming it:** `--version v2.0.0-alpha.N` for [the installer](/docs/getting-started/binary/#try-the-20-pre-release), `--version 2.0.0-alpha.N` for [Helm](/docs/getting-started/quickstart/#try-the-20-pre-release).
+- **2.0.0 adds no database migration**, so going back from 2.0.0 to 1.2.x is swapping the image.
+- **1.2 is to get security fixes** for six months after 2.0.0.
 
-## Also planned
+## Not built yet
 
-- **Terminals** into a running pod, one session per tab and user, with an idle timeout; never logged.
-- **Log streaming** with a bounded, reference-counted hub per container (today logs are bounded REST reads).
-- **Four-eyes approval** for production promotions (`protection.requireApprovals` exists in the `Environment` resource).
+These are real gaps in the code today. The order in which they close depends on what users need most; see below.
+
+### In the console
+
+Some things work through the API but have no page yet: approving and rejecting deployments, environment approval policies, Git sources and builds, image scans and vulnerability exceptions, and roles for one project or environment.
+
+### In the Helm chart
+
+The chart has no values for single sign-on, CI trust or Git builds. A server installed with `kuben setup` sets them in `/etc/kuben/config.toml`.
+
+### Scale to zero <Badge text="planned" variant="note" />
+
+Idle apps stop and the first request wakes them, through the `activator` role. The role and the `idle` field of the `App` resource are reserved; the activator itself is not built, and selecting the role only logs a warning.
+
+### Also missing
+
+- **High availability with the cluster agent.** Several replicas work, but with the agent, one replica is best for now.
+- **Terminals** into a running pod.
+- **Two-factor sign-in or passkeys** of Kuben's own. Today, use single sign-on with your provider's MFA.
+- **More Git hosts and DNS providers.** Git sources are GitHub only; DNS-01 and DNS records are Cloudflare only.
 - **Separate service accounts** for the API and the controller roles, with narrower RBAC each.
 - **ListenerSet support** to go beyond 60 hostnames per Gateway.
 - **Signed anchoring** of the audit log.
-- **A formal threat model** document to accompany the security model.
+- **A formal threat model** to accompany the [security model](/docs/operations/security/).
 
 ## Non-goals
 
-- Replacing Kubernetes' own tooling. Everything Kuben creates stays visible and editable with `kubectl`.
+- Replacing Kubernetes' own tooling. Everything Kuben creates stays visible with `kubectl`, and an app can be exported and detached to be managed without Kuben.
 - Multi-cluster management in the near term. One Kuben installation manages one cluster.
 - A hostile-tenant sandbox. Environments isolate teams from each other's mistakes, not adversaries.
 

@@ -9,9 +9,9 @@ import { Aside } from '@astrojs/starlight/components'
 
 ## Every change is a release
 
-Each change to an app is recorded as a numbered **revision**: deploys, configuration changes, rollbacks, promotions and template deploys alike. A release snapshots the app's spec (image, processes, environment variables, health check, domains, volumes) and the names and versions of the secrets in effect, plus who or what created it (a user id, or a token).
+Each change to an app is recorded as a numbered **revision**: deploys, configuration changes, rollbacks, promotions, builds and template deploys alike. A release snapshots what the app runs; the list shows each revision's image, why it was made (`create`, `deploy`, `config`, `rollback`, `promote`, `restart`, `build`, …) and who made it.
 
-- **Console:** the *Releases* card on the app page.
+- **Console:** open the app, **Releases** tab. The **Deployments** tab shows how each revision went out, phase by phase.
 - **API:**
 
 ```bash
@@ -19,7 +19,7 @@ APP="$KUBEN_URL/api/v1/projects/shop/environments/production/apps/api"
 curl -fsS "$APP/releases" -H "Authorization: Bearer $KUBEN_TOKEN"
 ```
 
-On the cluster, releases are `Release` custom resources in the environment namespace, so `kubectl get releases -n shop-production` lists them too.
+The API lists the newest 50 revisions. Releases live in Kuben's database, not on the cluster.
 
 ## Roll back
 
@@ -31,14 +31,23 @@ curl -fsS -X POST "$APP/rollback" \
   -d '{"revision": 41}'
 ```
 
+From a terminal, `kuben rollback shop/production/api --to 41`; without `--to` it returns to the revision before the current one.
+
+A rollback is a new deployment like any other: a **change freeze** on the environment refuses it, and in a production environment it waits for approval. After a rollback, an app built from Git stops deploying new commits on its own, so a fix does not overwrite the rollback by surprise. [Automatic image updates](/docs/guides/image-updates/) are not held: press **Stop following** first, or the next check moves the app forward again.
+
+## Emergency rollback
+
+When it cannot wait, the **Emergency rollback** card on the **Releases** tab returns the app to the newest earlier release that ran successfully, right now: past approvals, a freeze, the vulnerability scan gate and a paused delivery. Press **Roll back now…**, say **Why this cannot wait**, and press **Roll back now**; the reason is kept on the deployment and in the audit log. It needs the right to approve deployments (`admin` or higher) and a signed-in person, never a token. The API is `POST …/emergency-rollback`.
+
 ### What is restored, what is kept
 
 | Restored from the revision | Kept as they are today |
 |---|---|
 | image | domains |
-| commands and ports | volumes and their contents |
+| commands, ports and schedules | volumes and their contents |
 | environment variables | |
 | health check | |
+| scaling (replicas and size) | |
 
 Data never moves backwards: a rollback changes what runs, never what is stored. The rollback itself becomes a **new** revision, so the history stays linear and every rollback is visible in the [audit log](/docs/guides/audit-log/).
 
@@ -58,4 +67,4 @@ Apps with a [volume](/docs/guides/volumes/) run a single pod and use the `Recrea
 
 ## Restart without a change
 
-**Restart** (`POST …/restart`) rolls the pods with the same revision, for example to pick up a rotated secret. It is audited but does not create a release.
+**Restart** on the app page (`POST …/restart`) rolls the pods with the same release and configuration, for example after a problem outside the app. It is audited. When the cluster agent delivers the app, the restart shows in the list as a `restart` revision of the same release.

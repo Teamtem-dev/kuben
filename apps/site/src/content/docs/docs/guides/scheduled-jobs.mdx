@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-Deploy an app with a **Schedule** such as `0 3 * * *` (or `@hourly`, `@daily`, `@weekly`, …) and, optionally, a `time_zone`. A scheduled app has no port: it runs as a Kubernetes `CronJob` instead of a `Deployment`.
+Deploy an app with a **Schedule** such as `0 3 * * *` (in the console, the **Schedule (cron)** field of the **Deploy app** form) (or `@hourly`, `@daily`, `@weekly`, …) and, optionally, a `time_zone`. A scheduled app has no port: it runs as a Kubernetes `CronJob` instead of a `Deployment`. The time zone can be set through the API only.
 
 ```bash
 curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/production/apps" \
@@ -22,22 +22,23 @@ curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/production/apps"
 
 ## Behaviour
 
-- **No overlaps.** A run never starts while the previous one is still running.
+- **No overlaps.** A scheduled run never starts while the previous one is still running. **Run now** starts a run even if one is.
+- **Limits.** A failed run is retried once, and a run is stopped after one hour.
 - **Missed starts.** A run that could not start within 5 minutes of its scheduled time (for example because the cluster was down) is skipped rather than run late.
 - **History.** The last three successful and the last three failed runs are kept for a day, so their logs stay readable from the console.
-- **Time zone.** `time_zone` takes an IANA name such as `America/New_York`. Without it, the schedule is UTC.
+- **Time zone.** `time_zone` takes an IANA name such as `America/New_York`. Without it, the schedule is UTC. A schedule or time zone Kuben cannot read is refused with `422`.
 
 ## Run now
 
-**Run now** (`POST …/run`) starts a run immediately from the same job template. It is useful after fixing a failed run, or to test a new schedule without waiting.
+**Run now**, at the top of the app page next to the schedule, starts a run immediately from the same job template (`POST …/run`). It is useful after fixing a failed run, or to test a new schedule without waiting. It needs the `developer` role or higher. The API body may name a `process`; without one, Kuben runs the app's first scheduled process.
 
 ```bash
 curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/production/apps/nightly-report/run" \
   -H "Authorization: Bearer $KUBEN_TOKEN" -H 'Content-Type: application/json' -d '{}'
 ```
 
-The request returns as soon as the run is created. Follow it under **Logs**.
+The request returns `202` with the job's name as soon as the run is created. Follow it on the app's **Logs** tab.
 
 ## Turning a schedule off
 
-Send `"schedule": ""` in a `PATCH` to remove the schedule; the app then needs a port to become a web process, or `command` alone to become a one-off worker.
+Send `"schedule": ""` in a `PATCH` to remove the schedule; the app then needs a port to become a web process; without one it becomes a worker that keeps running.

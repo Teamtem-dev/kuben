@@ -7,7 +7,7 @@ sidebar:
 
 ## CPU and memory
 
-When the cluster serves the Kubernetes Metrics API (metrics-server; k3s ships it), Kuben reads the usage of every app every 30 seconds.
+When the cluster serves the Kubernetes Metrics API (metrics-server; k3s ships it), Kuben reads the usage of every app every 30 seconds. The app's **Overview** tab shows it in the **Usage** card; pick the **Time window**, **1 hour** or **7 days**. The API gives the same numbers:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -15,7 +15,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 - **`window=1h`:** the samples of the last hour: CPU in millicores, memory in bytes, and the number of pods, summed over the app's pods.
-- **`window=7d`:** hourly averages and peaks for the last week.
+- **`window=7d`:** hourly averages and peaks for the last week. Any other window is refused with `400`.
 
 When there is nothing to show, the answer says `"available": false` and gives the `reason`. Usage is **never shown as zero** for lack of data. The reason may be:
 
@@ -23,16 +23,18 @@ When there is nothing to show, the answer says `"available": false` and gives th
 - the server replica started a moment ago;
 - the app runs no pods.
 
+The console then says "No usage to show." With several server replicas, the 1-hour view comes from whichever replica answers, since each keeps its own samples.
+
 Limits keep this light:
 
 | Data | Kept |
 |---|---|
 | Live samples | 1 hour per app, at most 5,000 apps per server replica (the least recently seen app goes first) |
-| Hourly usage | 7 days (`retention.usage_days`) |
+| Hourly usage | 7 days (`retention.usage_days`; the API always returns at most the last 7 days) |
 
 ## The Doctor's evidence graph
 
-An app's Doctor (`GET …/apps/{app}/doctor`, or **Open Doctor** in the console) still lists its checks. It also shows a **graph** of every layer between the app's source and a visitor, with what was observed at each one:
+An app's Doctor (**Open Doctor** at the top of the app page, or `GET …/apps/{app}/doctor`) lists its checks: Gateway class, Gateway, certificate issuer, ports 80 and 443, route, certificate, DNS, the cluster agent and, for custom domains, the domain claim, DNS delegation and CDN proxy. **Check again** runs them anew. It also shows a **graph** of every layer between the app's source and a visitor, with what was observed at each one:
 
 ```
 build → release → deployment → pods → endpoints ← service
@@ -41,15 +43,19 @@ build → release → deployment → pods → endpoints ← service
 dns, gateway → tls
 ```
 
-From the graph it draws **findings**, most important first:
+The console shows the graph as the **Evidence path**. From the graph Kuben draws **findings**, most important first; the console lists them under **Findings**:
 
 | Kind | Meaning | Confidence |
 |---|---|---|
-| `rootCause` | This layer fails and everything it depends on is fine. | high (medium without evidence) |
-| `possibleCause` | This layer fails, but a layer it depends on could not be observed. | low |
-| `symptom` | This layer fails because a layer it depends on fails. The finding names that layer. | medium |
-| `unknown` | Nothing fails, but some layer could not be observed. Unobserved is never "fine". | low |
+| `rootCause` (**Root cause**) | This layer fails or warns, and everything it depends on is fine. | high (medium without evidence) |
+| `possibleCause` (**Possible cause**) | This layer fails or warns, but a layer it depends on could not be observed. | low |
+| `symptom` (**Symptom**) | This layer fails because a layer it depends on fails. The finding names that layer. | medium |
+| `unknown` (**Not checked**) | Nothing fails, but some layer could not be observed. Unobserved is never "fine". | low |
 
 Each finding carries its evidence (what was seen), the related layers, and a suggested action.
 
 For example, a crash-looping pod shows up as a root cause at `pods`. The empty `endpoints` and the failing `route` are its symptoms, so you fix one thing, not three.
+
+## Doctor for the whole server
+
+`kuben doctor` checks the platform rather than one app: the database, the cluster connection, Gateway API, cert-manager and metrics-server, and says which are optional. Before an install, `kuben doctor --cluster` checks only the cluster and needs no database. See the [CLI reference](/docs/reference/cli/).

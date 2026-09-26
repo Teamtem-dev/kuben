@@ -7,11 +7,11 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components'
 
-Promotion takes what runs in one environment and applies it to the same app in another, typically `staging` → `production`. It is the "I tested this, now ship it" button.
+Promotion takes what runs in one environment and applies it to the same app in another, typically `staging` → `production`. It is the "I tested this, now ship it" button: the target runs the source's exact release, the same image digest, with nothing rebuilt.
 
 ## From the console
 
-On the app page, choose the target environment under **Promote**, press **Preview changes**, review the diff, then **Promote**.
+Open the app in the source environment, **Releases** tab. Under **Promote**, pick the **Target environment**, press **Preview changes**, review the diff, then **Promote**.
 
 ## From the API
 
@@ -30,11 +30,11 @@ Drop `dry_run` (or set it to `false`) to promote. The result lists every field t
 | Copied to the target | Kept on the target |
 |---|---|
 | image | its domains |
-| commands and ports | its scaling (replicas and size) |
-| health check | its volumes |
+| commands, ports and schedules | its scaling (replicas and size) |
+| health check | its volumes (if it has none, it gets the source's) |
 | environment variables | |
 
-Production usually has more replicas, a bigger size preset and its own domains; promotion never touches those. If the app does not exist in the target environment yet, it is created with the source's spec and default scaling.
+Production usually has more replicas, a bigger size preset and its own domains; promotion never touches those. If the app does not exist in the target environment yet, it is created with the source's spec and scaling, without domains.
 
 ## Secrets are never copied
 
@@ -50,6 +50,22 @@ curl -fsS -X PUT "$KUBEN_URL/api/v1/projects/shop/environments/production/secret
 Secret values are written through the API and never returned by it. That is by design: promotion cannot leak a staging credential into production, and production credentials never travel through a promotion.
 </Aside>
 
+## Approvals, freezes and pauses
+
+A promotion is a deployment in the target environment, so the target's rules apply:
+
+- A **production** environment starts out needing **one approval** per deployment, from someone other than the person who asked for it. The deployment waits in the phase **Awaiting approval** on the app's **Deployments** tab. The console shows the wait but cannot approve yet: an admin or owner, signed in, approves with the API, quoting the plan hash that `GET …/deployments/{run}/approval` shows:
+
+  ```bash
+  curl -fsS -X POST "$KUBEN_URL/api/v1/projects/shop/environments/production/apps/api/deployments/<run>/approve" \
+    -H 'Content-Type: application/json' -H 'X-Kuben-Client: curl' -b cookies.txt \
+    -d '{"planHash": "<plan hash>", "comment": "checked on staging"}'
+  ```
+
+  `…/reject` turns it down. An API token can never approve. The cookie comes from signing in; see [Teams and roles](/docs/guides/teams-and-roles/#inviting-someone).
+- A **change freeze** on the target (environment page, **Change freezes**) refuses the promotion with `409`.
+- **Pause delivery** on the target app accepts the promotion, and it waits until delivery resumes.
+
 ## Permissions
 
-Promotion needs the `release-promote` permission on the **target** environment, which admins and owners have. The usual split is: developers deploy to staging with their own or a scoped token; admins promote to production. A promotion creates a new [release](/docs/guides/rollbacks/) in the target and is recorded in the [audit log](/docs/guides/audit-log/) with both environments.
+Promotion needs the `release-promote` permission on the **target** environment, which admins and owners have. The usual split is: developers deploy to staging with their own or a scoped token; admins promote to production. A [CI trust policy](/docs/guides/deploy-from-ci/#github-actions-without-a-stored-secret) with the `admin` role can promote from CI. A promotion creates a new [release](/docs/guides/rollbacks/) in the target and is recorded in the [audit log](/docs/guides/audit-log/) with both environments.

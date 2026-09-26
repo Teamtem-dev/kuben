@@ -11,7 +11,7 @@ This guide assumes the platform is configured with a Gateway and a `clusterIssue
 
 <Steps>
 
-1. **Add the domain to the app.** On the app page, open the *Domains* card and add `api.shop.example.com`, or send the full list:
+1. **Add the domain to the app.** Open the app, **Settings** tab. Under **Domains**, add `api.shop.example.com` to **Custom domains** and press **Save**. Or send the full list:
 
    ```bash
    curl -fsS -X PATCH "$KUBEN_URL/api/v1/projects/shop/environments/production/apps/api" \
@@ -21,7 +21,7 @@ This guide assumes the platform is configured with a Gateway and a `clusterIssue
 
 2. **Point DNS at the gateway.** Create an `A`/`AAAA` record (or a `CNAME`) for the domain pointing at the Gateway's address. `kubectl -n kuben-system get gateway kuben` shows it.
 
-3. **Check it.** Press **Check DNS** (`GET …/apps/api/domains`). For every hostname it reports:
+3. **Check it.** Press **Check DNS** in the same **Domains** section (`GET …/apps/api/domains`). For every hostname it reports:
 
    | Status | Meaning |
    |---|---|
@@ -29,6 +29,8 @@ This guide assumes the platform is configured with a Gateway and a `clusterIssue
    | `mismatch` | resolves somewhere else |
    | `unresolved` | no record yet, or not propagated |
    | `unknown` | the gateway has no address to compare with |
+
+   In a production environment, the domain change is a deployment like any other and waits for its approval first.
 
 4. **Wait for the certificate.** Kuben adds an HTTPS listener for the hostname to its Gateway, and cert-manager issues the certificate through the HTTP-01 challenge. Plain HTTP requests are redirected to HTTPS. Within a minute or two `https://api.shop.example.com` answers.
 
@@ -45,6 +47,8 @@ An organization **claims** a domain before its apps use it. A claim on `example.
 - **Verified is exclusive.** Once a claim is verified, no other organization on the installation can verify an overlapping name or serve a host below it. Kuben checks this in one transaction, so two organizations can never both win.
 - **Optional by default.** Unclaimed domains still work. With `domains.require_claim = true`, an app can only use domains its organization has verified. Either way, a domain another organization verified is refused.
 
+In the console, open **Domains** in the sidebar and press **Claim** under **Claims**. Claims and DNS provider accounts belong to the organization, so only owners manage them. With the API:
+
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"domain":"example.com"}' https://kuben.example.com/api/v1/domains
@@ -52,7 +56,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/jso
 
 The answer names a TXT record, `_kuben-challenge.example.com`, and the value it must hold. There are two ways to prove the claim:
 
-- **With a TXT record.** Create that record, then verify:
+- **With a TXT record.** Create that record, then verify: in the console, **Verify with** **The TXT record I added** and press **Verify**, or
   ```bash
   curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{}' \
     https://kuben.example.com/api/v1/domains/<id>/verify
@@ -64,17 +68,17 @@ Revoking a claim (`DELETE /api/v1/domains/<id>`) removes the protection. Apps ke
 
 ## DNS records through Cloudflare
 
-Add a Cloudflare account once. Use an API token with **Zone → DNS → Edit** on your zones:
+Add a Cloudflare account once, with an API token that has **Zone:Read** and **DNS:Edit** on your zones. In the console: **Domains**, **DNS providers**, enter a **Name** and the **Cloudflare API token**, and press **Add provider**. Adding one needs a signed-in session; API tokens are refused. The API call, from such a session:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+curl -X POST -H 'X-Kuben-Client: curl' -b cookies.txt -H 'content-type: application/json' \
   -d '{"name":"cf","kind":"cloudflare","token":"<api token>"}' \
   https://kuben.example.com/api/v1/dns-providers
 ```
 
 Kuben checks the token before saving it, stores it encrypted, and never shows it again.
 
-Then write an app's records:
+Then write an app's records: on the app's **Settings** tab, under **DNS records**, pick the **Provider** and press **Write records**. Or:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
@@ -107,7 +111,7 @@ The command stores the token in a Secret next to cert-manager and creates the Cl
 
 ## Doctor
 
-For each custom domain, an app's Doctor also reports:
+For each custom domain, an app's Doctor (**Open Doctor** on the app page) also reports:
 
 - **claim:** whether your organization verified the domain.
 - **delegation:** the zone's public name servers.
@@ -115,7 +119,11 @@ For each custom domain, an app's Doctor also reports:
 
 ## Generated hostnames
 
-Every HTTP app also answers on `<app>-<environment>.<baseDomain>`, for example `api-production.apps.example.com`. With many apps, provide a **wildcard certificate** for `*.<baseDomain>` (a DNS-01 `Certificate`) as `wildcardTlsSecret`; all generated hostnames then share one listener instead of each taking one.
+Every HTTP app also answers on `<app>-<project>-<environment>.<baseDomain>`, for example `api-shop-production.apps.example.com`. With many apps, provide a **wildcard certificate** for `*.<baseDomain>` (a DNS-01 `Certificate`) and name its Secret in the `KubenConfig`; all generated hostnames then share one listener instead of each taking one:
+
+```bash
+kubectl patch kubenconfig kuben --type merge -p '{"spec":{"wildcardTlsSecret":"<secret>"}}'
+```
 
 ## Limits to know
 

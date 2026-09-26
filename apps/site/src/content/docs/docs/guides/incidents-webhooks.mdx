@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components'
 
 ## Incidents
 
-A failed deployment or build opens an **incident** for its app. If it fails again, Kuben adds to the same open incident instead of opening a new one. The next success resolves it. Stale database backups open an organization-wide incident, which Kuben resolves once a fresh backup exists.
+A failed deployment (severity *critical*) or build (*warning*) opens an **incident** for its app. If it fails again, Kuben adds to the same open incident instead of opening a new one. The next success resolves it. Stale database backups open an organization-wide incident, which Kuben resolves once a fresh backup exists; it shows on the Incidents page but sends no webhook.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" https://kuben.example.com/api/v1/incidents
@@ -17,11 +17,15 @@ curl -H "Authorization: Bearer $TOKEN" https://kuben.example.com/api/v1/incident
 - **Resolve** it by hand (`POST /api/v1/incidents/{id}/resolve`).
 - Add `?all=true` to the list request to include resolved incidents.
 
-A silence (`POST /api/v1/projects/{project}/environments/{env}/silences`) stops incident notifications for its environment or app. The incidents are still recorded.
+Every member can see incidents; acknowledging and resolving need the `developer` role or higher. Resolved incidents are deleted after 180 days (`retention.resolved_incident_days`).
+
+### Silences
+
+A silence mutes incident webhooks for an environment or one app, for up to 7 days; the incidents are still recorded, and `deployment.*` and `build.*` events are still sent. On the environment page, under **Alert silences**, press **Add a silence**, give a **Reason** and an end, and choose what it **Applies to**: the whole environment or one app. **Lift** ends it early. Silences need the `developer` role or higher; the API is `POST /api/v1/projects/{project}/environments/{env}/silences`.
 
 ## Webhooks
 
-Organization admins add endpoints under `POST /api/v1/webhooks` with a name, an `https://` URL and a list of events (`*` means all events):
+Owners add endpoints on the **Webhooks** page, or with `POST /api/v1/webhooks` from a signed-in session (API tokens are refused), with a name, an `https://` URL and a list of events (`*` means all events):
 
 | Event | When |
 |---|---|
@@ -34,16 +38,18 @@ The response shows the endpoint's signing secret (`whsec_…`). **This is the on
 
 ### Delivery rules
 
-- **Retries.** A delivery is retried with growing waits, up to 12 times within one day.
-- **Disabling.** An endpoint whose deliveries fail 20 times in a row is disabled.
+- **Retries.** Kuben tries a delivery up to 12 times, waiting longer each time (from one minute up to six hours), and gives up after a day. Any `2xx` answer within 10 seconds counts as delivered.
+- **Disabling.** An endpoint is disabled after 20 deliveries in a row have used up their attempts.
 - **Stale events.** Events more than an hour old when Kuben comes back from an outage are not sent.
 - **Deduplication.** Each event has a unique `Kuben-Delivery` id; use it to ignore repeats.
 
-To see recent deliveries, call `GET /api/v1/webhooks/{id}/deliveries`. To send a failed delivery again right away, call `POST /api/v1/webhooks/{id}/deliveries/{delivery}/retry`. Only failed deliveries of enabled endpoints can be retried, and the retry gets the full number of attempts again.
+To see recent deliveries, call `GET /api/v1/webhooks/{id}/deliveries`. To send a failed delivery again right away, call `POST /api/v1/webhooks/{id}/deliveries/{delivery}/retry`. Only failed deliveries of enabled endpoints can be retried; the retry gets the full number of attempts again, as long as the event is less than a day old. Deliveries are kept for 30 days (`retention.webhook_delivery_days`).
 
 ### In the console
 
-The **Incidents** page lists open incidents (tick **Show resolved** to include the rest) with their timeline and runbook, and has the acknowledge and resolve actions. The **Webhooks** page creates endpoints, shows each endpoint's deliveries with their HTTP status and error, sends test pings, retries failed deliveries and disables endpoints. Both pages are available in English and Persian.
+**Incidents** in the sidebar lists open incidents (tick **Show resolved** to include the rest) with their severity, a **Runbook** link, when they opened and were last seen, and **Acknowledge** and **Resolve** buttons. **Home** shows the open ones too.
+
+**Webhooks** in the sidebar adds endpoints (**Add a webhook**) and shows the signing secret once. For each endpoint, **Deliveries** lists what was sent with its HTTP status and error, **Retry** sends a failed one again, and **Send a test** sends a `ping`. **Delete webhook** disables an endpoint for good. Both pages are available in English and Persian.
 
 ### Verifying the signature
 

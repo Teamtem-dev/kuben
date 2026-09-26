@@ -9,13 +9,18 @@ A project can publish a **status page**. Anyone can open it without signing in, 
 
 ## Publish a page
 
+Open the project and find the **Public status page** card. Set the **Address** (the slug), the **Title** and the **Environments shown** (production is ticked to begin with), and press **Publish**. **Open page** opens it; **Take down** removes it. Publishing needs the `admin` role or higher.
+
+Or with the API:
+
 ```bash
 curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"slug":"shop","title":"Shop","environments":["production"]}' \
   https://kuben.example.com/api/v1/projects/shop/status-page
 ```
 
-- **`slug`** must be unique across the installation.
+- **`slug`** must be unique across the installation: 3 to 63 lowercase letters, digits and dashes.
+- **`title`** is 1 to 100 characters.
 - **`environments`** lists whose apps the page shows (1 to 20).
 - **`"enabled": false`** hides the page but keeps its settings.
 - **`DELETE`** on the same address takes the page down at once.
@@ -25,11 +30,11 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json
 - **The overall state:** operational, degraded or major outage. It is the state of the worst service.
 - **Each app** of the listed environments, by its display name, with its state:
   - **operational:** the app reports ready and all its pods are ready;
-  - **degraded:** some pods are not ready, an incident is open, or Kuben has no fresh report of the app;
-  - **major outage:** the app has pods and none of them is ready.
+  - **degraded:** some pods are not ready, a critical or warning incident is open, or Kuben has no report of the app yet;
+  - **major outage:** the app has pods and none of them is ready, or it reports not ready and has no pods.
 
   If Kuben has not observed an app, the page never calls it operational.
-- **Incidents** of those apps: the open ones and those resolved in the last 7 days, with their severity and times.
+- **Incidents** of those apps: the open ones and those resolved in the last 7 days (the newest 50), with their severity and times.
 
 It never shows:
 

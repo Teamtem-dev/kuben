@@ -1,15 +1,19 @@
 ---
 title: What is Kuben?
-description: Kuben is a Kubernetes PaaS in a single binary. Deploy container images into isolated environments from a web UI or a REST API; Kuben creates the Deployments, Services, autoscaling and HTTPS routes and keeps them in sync.
+description: Kuben is a Kubernetes PaaS in a single binary. Deploy container images, or build them from Git, into isolated environments from a web console, a CLI or a REST API; Kuben creates the Deployments, Services, autoscaling and HTTPS routes and keeps them in sync.
 sidebar:
   order: 0
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
-Kuben is a **platform as a service that runs on your own Kubernetes cluster**. You give it a container image; it gives your team an isolated environment with a public HTTPS address, zero-downtime rollouts, autoscaling, logs, release history with rollback, and an audit log of who changed what.
+Kuben is a **platform as a service that runs on your own Kubernetes cluster**. You give it a container image or a GitHub repository; it gives your team an isolated environment with a public HTTPS address, zero-downtime rollouts, autoscaling, live logs, release history with rollback, and an audit log of who changed what.
 
-It ships as **one binary** (or one Helm release). State that must survive a restart lives in PostgreSQL: the Helm chart runs its own by default, `kuben setup` installs it on a server, and you can point Kuben at an external one instead. Everything else, the desired state of every project, environment and app, is a Kubernetes custom resource, so `kubectl` and GitOps tools work alongside the UI.
+It ships as **one binary** (or one Helm release), plus a small cluster agent that the installers set up for you. Kuben keeps its state in PostgreSQL: the Helm chart runs its own by default, `kuben setup` installs it on a server, and you can point Kuben at an external one instead. From there Kuben writes every project, environment and app to the cluster as ordinary Kubernetes objects, labelled and visible to `kubectl`.
+
+<Aside type="note" title="Which version?">
+These pages describe Kuben 2.0, the Go rewrite, which is published as pre-releases until 2.0.0. The default install is still the stable 1.2.x, which does the same things with the previous console. See the [roadmap](/docs/roadmap/#the-20-release-train).
+</Aside>
 
 ## Who it is for
 
@@ -19,22 +23,24 @@ It ships as **one binary** (or one Helm release). State that must survive a rest
 
 ## What it does today
 
-| Area | Included in Kuben 1.0 |
+| Area | Included |
 |---|---|
-| Deploy | Any container image, with health checks, autoscaling, environment variables and write-only secrets |
-| Isolation | One namespace per environment, with resource quotas and a NetworkPolicy |
-| Networking | Custom domains, automatic certificates and HTTP → HTTPS redirects through Gateway API and cert-manager |
-| Day 2 | Logs, restarts, numbered releases with rollback, promotion between environments with a diff preview, persistent volumes, cron jobs |
+| Deploy | Any container image, or a build from a GitHub repository, with health checks, autoscaling, environment variables and write-only secrets |
+| Isolation | One namespace per environment, with resource quotas and a NetworkPolicy; preview environments per pull request |
+| Networking | Custom domains with claims, automatic certificates and HTTP → HTTPS redirects through Gateway API and cert-manager, DNS records and wildcard certificates through Cloudflare |
+| Releases | Numbered releases with rollback and emergency rollback, promotion with a diff preview, approvals for production, change freezes, paused delivery, a vulnerability scan gate, automatic image updates |
+| Day 2 | Live logs, restarts, persistent volumes, cron jobs, CPU and memory usage, the Doctor, incidents with signed webhooks, public status pages |
 | Templates | One-click PostgreSQL, Redis, MariaDB, n8n, Uptime Kuma, Vaultwarden, Gitea and more, with generated credentials |
-| Teams | Four roles, invitations, scoped API tokens, an append-only audit log |
-| Operations | Backups, upgrades, several replicas with leader election, Prometheus metrics, `kuben doctor` |
+| Teams | Four roles, per-project roles, invitations, scoped API tokens, single sign-on (OpenID Connect), CI trust for GitHub Actions, an append-only audit log |
+| Operations | Backups, upgrades, several replicas with leader election, Prometheus metrics, `kuben doctor`, support bundles |
 
-Git builds, preview environments per pull request, scale-to-zero and SSO are on the [roadmap](/docs/roadmap/).
+Scale to zero, terminals and what else is not built yet are on the [roadmap](/docs/roadmap/).
 
 ## Start here
 
 <CardGrid>
   <LinkCard title="Quickstart" description="Install Kuben with Helm and sign in, in about five minutes." href="/docs/getting-started/quickstart/" />
+  <LinkCard title="Install on a server" description="One command turns a fresh Linux server into a Kuben server, k3s included." href="/docs/getting-started/binary/" />
   <LinkCard title="Deploy your first app" description="A project, an environment and an app with a public HTTPS address." href="/docs/getting-started/first-app/" />
   <LinkCard title="Concepts" description="Projects, environments, apps, releases, and how Kuben maps them onto Kubernetes." href="/docs/getting-started/concepts/" />
   <LinkCard title="Production install" description="Prerequisites, domains and HTTPS, several replicas, backups and upgrades." href="/docs/operations/production-install/" />
@@ -44,10 +50,10 @@ Git builds, preview environments per pull request, scale-to-zero and SSO are on 
 
 <CardGrid stagger>
   <Card title="One process, several roles" icon="rocket">
-    `kuben serve` runs the REST API, the web console and the controllers in one process. You can run several replicas: every replica serves the API, and the holder of a Kubernetes Lease runs the controllers.
+    `kuben serve` runs the REST API, the web console and the controllers in one process. You can run several replicas: every replica serves the API, and the holder of a Kubernetes Lease runs the controllers. A small cluster agent applies what they decide.
   </Card>
-  <Card title="Kubernetes holds the desired state" icon="setting">
-    Projects, environments, apps and releases are custom resources in the `kuben.dev` API group. SQL holds identity, sessions, tokens and the audit log, and references cluster objects only by `uid`.
+  <Card title="PostgreSQL holds the desired state" icon="setting">
+    Projects, environments, apps, releases, sealed secrets, users and the audit log live in PostgreSQL. Kuben writes them to the cluster as `kuben.dev` resources and standard objects, and puts back what someone changed by hand.
   </Card>
   <Card title="Gateway API for the edge" icon="external">
     Kuben creates an `HTTPRoute` per app and manages the listeners of a dedicated Gateway. cert-manager issues a certificate for every listener. TLS terminates at your Gateway controller (Traefik, Envoy Gateway or Cilium).
