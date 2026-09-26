@@ -440,6 +440,11 @@ if [[ -n $pinned || -n $FROM ]]; then args+=(--version "${FROM:-$VERSION}"); fi
 if [[ -n $FROM && $(printf '%s\n' "$FROM" 1.0.3 | sort -V | head -n 1) == "$FROM" ]]; then
   args+=(--set platform.create=false)
 fi
+# Chart 1.2.0 has an unbound backup PVC under WaitForFirstConsumer (fixed in 1.2.1
+# with an init Job).
+if [[ "${FROM:-$VERSION}" == "1.2.0" ]]; then
+  args+=(--set backup.enabled=false)
+fi
 installed=1
 run "helm install" helm "${args[@]}"
 verify "${FROM:-$VERSION}"
