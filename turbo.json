@@ -1,9 +1,5 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
-  "futureFlags": {
-    "experimentalGoWorkspaces": true,
-    "experimentalTaskCommand": true
-  },
   "envMode": "loose",
   "cacheMaxAge": "14d",
   "cacheMaxSize": "5GB",
@@ -13,26 +9,15 @@
       "dependsOn": ["^transit"]
     },
     "build": {
-      "description": "The Go hub (hub#build, console embedded) and the web bundle.",
+      "description": "The web bundle (the Go binaries are the root task go:build).",
       "dependsOn": ["^build"]
     },
     "check": {
-      "description": "tsc (Go is type-checked by lint and test).",
+      "description": "tsc (Go is type-checked by go:lint and go:test).",
       "dependsOn": ["transit"]
     },
     "lint": {
-      "description": "Go static checks (scripts/go-check.sh). Biome is the root task biome:check.",
-      "command": { "go": ["bash", "../../scripts/go-check.sh"] }
-    },
-    "format": {
-      "description": "gofumpt (Biome is the root task biome:fix). `-- --check` only verifies.",
-      "cache": false,
-      "command": { "go": ["go", "tool", "gofumpt", "-w", "."] }
-    },
-    "test": {
-      "description": "bun test, and go test with the race detector.",
-      "dependsOn": ["transit"],
-      "command": { "go": ["go", "test", "-race", "-shuffle=on", "./..."] }
+      "description": "Per-package lint. Go static checks are the root task go:lint, Biome the root task biome:check."
     },
     "gen": {
       "description": "TS client types from packages/api-client/openapi.json. That spec and charts/kuben/crds/kuben.dev_all.yaml are frozen contracts: Rust generated them up to 1.2, nothing regenerates them now, and the Go tests pin the server and the embedded CRDs to them."
@@ -45,7 +30,6 @@
       "cache": false,
       "persistent": true
     },
-
     "//#biome:check": {
       "description": "Biome lint and format check over the whole repository.",
       "inputs": ["**/*.{js,jsx,mjs,cjs,ts,tsx,json,jsonc,css}", "biome.json"]
@@ -54,35 +38,91 @@
       "description": "Biome format, organize imports and safe fixes.",
       "cache": false
     },
-
-    "hub#build": {
-      "description": "The Go hub with the console embedded (scripts/go-build.sh).",
-      "command": ["bash", "../../scripts/go-build.sh", "bin/kuben"],
+    "//#go:build": {
+      "description": "The hub (bin/kuben) with the console embedded, and the agent (bin/kuben-agent): scripts/go-build.sh.",
       "dependsOn": ["@kuben/console#build"],
       "inputs": [
-        "$TURBO_DEFAULT$",
-        "!bin/**",
-        "!internal/api/web/dist/**",
-        "$TURBO_ROOT$/apps/console/dist/**"
+        "cmd/**",
+        "api/**",
+        "internal/**",
+        "test/**",
+        "testdata/**",
+        "go.mod",
+        "go.sum",
+        "tools/go.mod",
+        "tools/go.sum",
+        "packages/api-client/openapi.json",
+        "charts/kuben/crds/**",
+        "bundle.lock.json",
+        "scripts/go-build.sh",
+        "!internal/httpapi/web/dist/**",
+        "apps/console/dist/**"
       ],
-      "outputs": ["bin/kuben"]
+      "outputs": ["bin/kuben", "bin/kuben-agent"]
     },
-    "hub#dev": {
+    "//#go:lint": {
+      "description": "Go static checks (scripts/go-check.sh: gofumpt, vet, exhaustive, go-check-sumtype, NilAway).",
+      "inputs": [
+        "cmd/**",
+        "api/**",
+        "internal/**",
+        "test/**",
+        "testdata/**",
+        "go.mod",
+        "go.sum",
+        "tools/go.mod",
+        "tools/go.sum",
+        ".golangci.yml",
+        "scripts/go-check.sh",
+        "packages/api-client/openapi.json",
+        "charts/kuben/crds/**",
+        "bundle.lock.json"
+      ]
+    },
+    "//#go:test": {
+      "description": "go test with the race detector, over the whole module.",
+      "inputs": [
+        "cmd/**",
+        "api/**",
+        "internal/**",
+        "test/**",
+        "testdata/**",
+        "go.mod",
+        "go.sum",
+        "tools/go.mod",
+        "tools/go.sum",
+        ".golangci.yml",
+        "scripts/go-check.sh",
+        "packages/api-client/openapi.json",
+        "charts/kuben/crds/**",
+        "bundle.lock.json"
+      ]
+    },
+    "//#go:format": {
+      "description": "gofumpt over the module.",
+      "cache": false
+    },
+    "//#go:dev": {
       "description": "The API with every role, in dev mode (Vite proxies /api to it).",
-      "command": ["go", "run", "./cmd/kuben", "serve", "--roles=all", "--dev"],
       "cache": false,
       "persistent": true
     },
-    "hub#size": {
+    "//#go:size": {
       "description": "Binary size budget on the hub as it ships (static, console embedded).",
-      "command": ["bash", "../../scripts/check-budgets.sh", "binary", "bin/kuben"],
-      "dependsOn": ["build"],
+      "dependsOn": ["//#go:build"],
       "cache": false
     },
-    "hub#e2e": {
+    "//#go:e2e": {
       "description": "End-to-end suite against the current kube context (e.g. kind).",
-      "command": ["bash", "../../scripts/e2e.sh"],
-      "dependsOn": ["build"],
+      "dependsOn": ["//#go:build"],
+      "cache": false
+    },
+    "test": {
+      "description": "bun test (go test is the root task go:test).",
+      "dependsOn": ["transit"]
+    },
+    "format": {
+      "description": "Per-package formatting (gofumpt is the root task go:format, Biome biome:fix).",
       "cache": false
     }
   }

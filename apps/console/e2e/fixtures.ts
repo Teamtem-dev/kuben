@@ -6,7 +6,7 @@ const dist = join(import.meta.dirname, '..', 'dist')
 
 /** The content security policy Kuben serves the console with, from its source. */
 function kubenCsp(): string {
-  const file = '../../../go/hub/internal/api/web/web.go'
+  const file = '../../../internal/httpapi/web/web.go'
   const source = readFileSync(join(import.meta.dirname, file), 'utf8')
   // `const CSP = "…" +\n\t"…"`: the Go string literals, concatenated.
   const decl = /const CSP = ((?:"[^"]*"\s*\+\s*)*"[^"]*")/.exec(source)?.[1]

@@ -19,11 +19,11 @@ before:
     # apps/console/dist before goreleaser runs; embed it once, before the
     # parallel builds.
     - bash -c 'test -f apps/console/dist/index.html'
-    - bash -c 'find go/hub/internal/api/web/dist -mindepth 1 ! -name .gitkeep -delete && cp -R apps/console/dist/. go/hub/internal/api/web/dist/ && find go/hub/internal/api/web/dist -name "*.map" -delete'
+    - bash -c 'find internal/httpapi/web/dist -mindepth 1 ! -name .gitkeep -delete && cp -R apps/console/dist/. internal/httpapi/web/dist/ && find internal/httpapi/web/dist -name "*.map" -delete'
 
 builds:
   - id: kuben
-    dir: go/hub
+    dir: .
     main: ./cmd/kuben
     binary: kuben
     env:
@@ -31,7 +31,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X github.com/Teamtem-dev/kuben/go/hub/internal/version.Version={{ .Version }}
+      - -s -w -X github.com/Teamtem-dev/kuben/internal/version.Version={{ .Version }}
     mod_timestamp: "{{ .CommitTimestamp }}"
     # The five Rust targets: x86_64/aarch64 Linux (static), both macOS,
     # x86_64 Windows.
@@ -43,7 +43,7 @@ builds:
 
   # The cluster agent (M2.8) runs inside Linux clusters only.
   - id: kuben-agent
-    dir: go/agent
+    dir: .
     main: ./cmd/kuben-agent
     binary: kuben-agent
     env:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time setup: checks for Go (the version in go/hub/go.mod) and Bun,
-# installs the JS dependencies and downloads the Go modules of the workspace.
+# One-time setup: checks for Go (the version in go.mod) and Bun,
+# installs the JS dependencies and downloads the Go modules (the root module and tools/).
 #
 #   bun run setup
 set -euo pipefail
@@ -12,5 +12,5 @@ need bun https://bun.com/docs/installation
 
 go version
 bun install --frozen-lockfile
-for m in go/*/; do (cd "$m" && go mod download); done
+go mod download && (cd tools && go mod download)
 echo "ready: bun run dev (API on :8080, UI on :5173) · bun run ci (everything CI checks)"

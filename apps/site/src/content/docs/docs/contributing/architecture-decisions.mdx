@@ -5,35 +5,35 @@ sidebar:
   order: 3
 ---
 
-Code comments cite decisions as `ADR-NNN`. New decisions get their own file under `docs/adr/` in the repository, with Context, Decision and Consequences. This page is the index. Since 2.0 the code is Go (ADR-033); paths in the last column are Go packages under `go/hub/internal/` unless they say otherwise.
+Code comments cite decisions as `ADR-NNN`. New decisions get their own file under `docs/adr/` in the repository, with Context, Decision and Consequences. This page is the index. Since 2.0 the code is Go (ADR-033); paths in the last column are Go packages under `internal/` unless they say otherwise.
 
 | ADR | Decision | Status | Where it shows |
 |---|---|---|---|
 | 001 | Kubernetes holds desired state; SQL holds identity and audit | superseded by 015 | — |
 | 002 | One binary with roles (modular monolith) | decided | `kuben serve --roles`, `core/config` |
-| 003 | Two Tokio runtimes as a bulkhead, a supervisor, `panic = "unwind"` | superseded by 013 (supervisor and unwind kept) | `platform/supervise` |
-| 004 | Projections (small read models) instead of raw reflectors | decided | `platform/projection` |
-| 005 | Opaque cookie sessions and opaque API tokens; no JWT in the browser | decided | `api/auth` |
+| 003 | Two Tokio runtimes as a bulkhead, a supervisor, `panic = "unwind"` | superseded by 013 (supervisor and unwind kept) | `supervise` |
+| 004 | Projections (small read models) instead of raw reflectors | decided | `kube/projection` |
+| 005 | Opaque cookie sessions and opaque API tokens; no JWT in the browser | decided | `httpapi/auth` |
 | 006 | sqlx with two backends (SQLite, PostgreSQL) and a test matrix | superseded by 025 (PostgreSQL only) | — |
-| 007 | OpenAPI-first: the TypeScript client is generated, CI fails on drift | decided; since 033 the spec is the source of the Go server too | `packages/api-client`, `api/gen` |
-| 008 | Gateway API as the networking layer | decided | `platform/controller` (`gateway.go`) |
+| 007 | OpenAPI-first: the TypeScript client is generated, CI fails on drift | decided; since 033 the spec is the source of the Go server too | `packages/api-client`, `httpapi/gen` |
+| 008 | Gateway API as the networking layer | decided | `kube/controller` (`gateway.go`) |
 | 009 | BuildKit + Railpack/CNB, deploy by digest, immutable releases | superseded by 016 | — |
-| 010 | CEL and ValidatingAdmissionPolicy instead of admission webhooks | decided | CRD schemas in `charts/kuben/crds/`, `go/kubenapi` |
+| 010 | CEL and ValidatingAdmissionPolicy instead of admission webhooks | decided | CRD schemas in `charts/kuben/crds/`, `api/v1alpha1` |
 | 011 | React 19 + TanStack for the console | decided | `apps/console` |
 | 012 | Licensing and a clean-room boundary to the system being replaced | decided | — |
 | 013 | One runtime in phase 0; a second one only behind `runtime.bulkhead` | decided; moot since 033 (Go has one scheduler; `runtime.bulkhead` is accepted and has no effect) | `core/config` |
-| 014 | One SSE stream per browser tab; WebSocket only for terminals | decided | `api/stream` |
+| 014 | One SSE stream per browser tab; WebSocket only for terminals | decided | `httpapi/stream` |
 | 015 | Data ownership: SQL references CRDs only by `uid` | decided | `store`, invariant I-17 |
 | 016 | Persistent buildkitd plus a light `buildctl` Job; external registry in the MVP | decided, phase 1 | — |
-| 017 | The binary applies its CRDs at boot (server-side apply) | decided | `platform/controller` (`crds.go`) |
-| 018 | Environments are soft-deleted with a grace period | decided | `platform/controller` (`environment.go`) |
+| 017 | The binary applies its CRDs at boot (server-side apply) | decided | `kube/controller` (`crds.go`) |
+| 018 | Environments are soft-deleted with a grace period | decided | `kube/controller` (`environment.go`) |
 | 019 | Explicit bootstrap order; polling fallback for webhooks | decided | deployment docs |
-| 020 | Append-only audit in the core; signed anchoring later | decided | `api` (`audit.go`), `store` |
-| 021 | Six crates in phase 0, split only for a stated reason | superseded by 033 (Go modules) | `go.work` |
+| 020 | Append-only audit in the core; signed anchoring later | decided | `httpapi` (`audit.go`), `store` |
+| 021 | Six crates in phase 0, split only for a stated reason | superseded by 033 (Go) | `go.mod` |
 | 022 | Threat model; Kuben's service account is treated like cluster-admin | decided, threat model pending | `charts/kuben/templates/rbac.yaml` |
-| 023 | Lease-based leader election for the controllers | decided | `platform/leader` |
-| 024 | Turborepo runs every task; Bun replaces pnpm and Node; Cargo stays the Rust build graph | decided; amended by 033 (the Go workspace replaces Cargo) | `turbo.json`, `package.json`, `bunfig.toml` |
-| 033 | Go runtime: the hub and the agent are rewritten in Go; the API contract, the CRD manifest and the SQL schema stay frozen | decided | `go/`, `go.work` |
+| 023 | Lease-based leader election for the controllers | decided | `kube/leader` |
+| 024 | Turborepo runs every task; Bun replaces pnpm and Node; Cargo stays the Rust build graph | decided; amended by 033 (the Go module replaces Cargo) | `turbo.json`, `package.json`, `bunfig.toml` |
+| 033 | Go runtime: the hub and the agent are rewritten in Go; the API contract, the CRD manifest and the SQL schema stay frozen | decided | `go.mod`, `ARCHITECTURE.md` |
 
 ## ADR-023 in brief: leader election without trusting clocks
 
@@ -41,7 +41,7 @@ The chart allowed several replicas on PostgreSQL, but every replica ran the full
 
 ## ADR-024 in brief: one task runner for two languages
 
-Every package is a Turborepo package, whatever its language, and the cross-language edges are explicit tasks: `@kuben/console#build` → `hub#build`, which embeds the console into the Go binary. Up to 1.2 the Rust crates were packages of Turborepo's native Cargo workspace; since ADR-033 the Go modules of `go.work` take their place, and Go schedules and caches compilation. Bun 1.4 is the package manager, JS runtime and test runner; Node is not needed. Releases never reuse a cache.
+Every JS package is a Turborepo package and the Go module's tasks are root tasks (`go:build`, `go:test`, `go:lint`, …); the cross-language edges are explicit: `@kuben/console#build` → `//#go:build`, which embeds the console into the Go binary. Up to 1.2 the Rust crates were packages of Turborepo's native Cargo workspace; since ADR-033 the Go code took their place, first as a `go.work` workspace, now as one module at the root, and Go schedules and caches compilation. Bun 1.4 is the package manager, JS runtime and test runner; Node is not needed. Releases never reuse a cache.
 
 ## ADR-033 in brief: the Go runtime
 

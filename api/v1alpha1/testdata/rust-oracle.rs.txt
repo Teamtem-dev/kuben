@@ -1,0 +1,52 @@
+// The Rust oracle that wrote testdata/objects/*.rust.json and *.rust.err.
+//
+// Not compiled by any build: it is kept so the goldens can be regenerated
+// while the Rust crate exists. Put it at src/main.rs of a scratch crate
+// outside the workspace, with Cargo.lock copied from the repository root:
+//
+//   [dependencies]
+//   kuben-crd = { path = "<repo>/crates/kuben-crd" }
+//   serde_json = "1"
+//   serde = "1"
+//
+// then run `cargo run --offline -- <repo>/api/v1alpha1/testdata/objects`.
+// For every <kind>-<name>.in.json it decodes the object with the Rust type
+// and writes what serde_json encodes back (<name>.rust.json), or the decode
+// error (<name>.rust.err).
+
+use std::{fs, path::Path};
+use kuben_crd::*;
+use serde::{de::DeserializeOwned, Serialize};
+
+fn run<T: DeserializeOwned + Serialize>(text: &str) -> Result<String, String> {
+    let v: T = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let mut s = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+    s.push('\n');
+    Ok(s)
+}
+
+fn main() {
+    let dir = std::env::args().nth(1).expect("dir");
+    let mut names: Vec<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+    names.sort();
+    for name in names {
+        let Some(stem) = name.strip_suffix(".in.json") else { continue };
+        let text = fs::read_to_string(Path::new(&dir).join(&name)).unwrap();
+        let kind = stem.split('-').next().unwrap();
+        let out = match kind {
+            "kubenconfig" => run::<KubenConfig>(&text),
+            "project" => run::<Project>(&text),
+            "environment" => run::<Environment>(&text),
+            "app" => run::<App>(&text),
+            "release" => run::<Release>(&text),
+            "buildrun" => run::<BuildRun>(&text),
+            "applicationruntime" => run::<ApplicationRuntime>(&text),
+            "executiontask" => run::<ExecutionTask>(&text),
+            other => panic!("kind {other}"),
+        };
+        match out {
+            Ok(s) => fs::write(Path::new(&dir).join(format!("{stem}.rust.json")), s).unwrap(),
+            Err(e) => { println!("{stem}: REJECTED: {e}"); let _ = fs::write(Path::new(&dir).join(format!("{stem}.rust.err")), e + "\n"); }
+        }
+    }
+}

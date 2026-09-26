@@ -1,5 +1,8 @@
-# Go build output (go/hub/.gitignore covers the hub's bin/)
-/go/agent/bin/
+# Go build output (scripts/go-build.sh) and the console build copied in
+# before `go build` (turbo task //#go:build)
+/bin/
+/internal/httpapi/web/dist/*
+!/internal/httpapi/web/dist/.gitkeep
 
 # JS / Bun / Turborepo
 node_modules
@@ -18,6 +21,7 @@ apps/site/.wrangler
 
 # Local dev state
 /.dev
+/.cargo-home
 *.db
 *.db-wal
 *.db-shm

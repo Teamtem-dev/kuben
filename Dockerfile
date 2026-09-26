@@ -19,27 +19,28 @@ COPY packages/api-client packages/api-client
 COPY apps/console apps/console
 RUN cd apps/console && bun run build
 
-# The Go version follows go/hub/go.mod.
+# The Go version follows go.mod.
 FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
 WORKDIR /src
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
 ENV CGO_ENABLED=0
-# The whole workspace (go.work), as scripts/go-build.sh and goreleaser build it.
-COPY go.work go.work.sum ./
-COPY go go
-# The console is embedded from internal/api/web/dist (scripts/go-build.sh).
-COPY --from=web /src/apps/console/dist go/hub/internal/api/web/dist
-RUN find go/hub/internal/api/web/dist -name '*.map' -delete
+# The Go module (go.mod at the root), as scripts/go-build.sh and goreleaser
+# build it.
+COPY go.mod go.sum ./
+COPY api api
+COPY cmd cmd
+COPY internal internal
+# The console is embedded from internal/httpapi/web/dist (scripts/go-build.sh).
+COPY --from=web /src/apps/console/dist internal/httpapi/web/dist
+RUN find internal/httpapi/web/dist -name '*.map' -delete
 # The flags of scripts/go-build.sh and .goreleaser.yaml.
 RUN --mount=type=cache,id=go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=go-build,target=/root/.cache/go-build \
-    cd go/hub \
- && GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath \
-      -ldflags "-s -w -X github.com/Teamtem-dev/kuben/go/hub/internal/version.Version=$VERSION" \
+    GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath \
+      -ldflags "-s -w -X github.com/Teamtem-dev/kuben/internal/version.Version=$VERSION" \
       -o /kuben ./cmd/kuben \
- && cd ../agent \
  && GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath \
       -ldflags "-s -w -X main.version=$VERSION" \
       -o /kuben-agent ./cmd/kuben-agent

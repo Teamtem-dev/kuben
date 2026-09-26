@@ -80,15 +80,15 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go/hub/go.mod
+          go-version-file: go.mod
           cache: false
-      - run: for m in go/*/; do (cd "$m" && go mod verify); done
+      - run: go mod verify && (cd tools && go mod verify)
       - name: Kubernetes API server binaries (envtest)
         run: |
           assets=$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.1 use 1.37.x -p path --bin-dir "$RUNNER_TEMP/envtest")
           echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
-      - run: for m in go/hub go/agent go/kubenapi; do (cd "$m" && go test -race ./...); done
-      - run: for m in go/hub go/agent go/kubenapi; do (cd "$m" && go tool govulncheck ./...); done
+      - run: go test -race ./...
+      - run: go tool -modfile=tools/go.mod govulncheck ./...
 
   web:
     name: Web UI
@@ -128,7 +128,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go/hub/go.mod
+          go-version-file: go.mod
           # No build cache in release jobs: a poisoned cache can never reach
           # a published artifact.
           cache: false

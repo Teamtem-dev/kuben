@@ -1,7 +1,6 @@
-go/hub/bin
-go/agent/bin
-go/hub/internal/api/web/dist/*
-!go/hub/internal/api/web/dist/.gitkeep
+bin
+internal/httpapi/web/dist/*
+!internal/httpapi/web/dist/.gitkeep
 **/node_modules
 **/.turbo
 apps/console/dist
