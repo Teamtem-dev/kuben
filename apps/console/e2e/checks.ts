@@ -23,6 +23,12 @@ export async function watchCsp(page: Page): Promise<string[]> {
       )
     })
   })
+  // Chromium also logs each refusal; catch any the event misses.
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
+      violations.push(message.text())
+    }
+  })
   return violations
 }
 

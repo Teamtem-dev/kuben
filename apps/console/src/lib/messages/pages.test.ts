@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { fill, pagesEn, pagesFa } from './pages'
+import { en, fa, type MessageKey } from '../messages'
+import { fill } from './pages'
 
 describe('fill', () => {
   test('replaces every placeholder with its value', () => {
@@ -15,10 +16,10 @@ describe('fill', () => {
     expect(fill('{toString}', {})).toBe('{toString}')
   })
 
-  test('Persian messages keep the placeholders of the English ones', () => {
+  test('Persian messages keep the placeholders of the English ones (every catalog)', () => {
     const names = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort()
-    for (const key of Object.keys(pagesEn) as (keyof typeof pagesEn)[]) {
-      expect([key, names(pagesFa[key])]).toEqual([key, names(pagesEn[key])])
+    for (const key of Object.keys(en) as MessageKey[]) {
+      expect([key, names(fa[key])]).toEqual([key, names(en[key])])
     }
   })
 })

@@ -35,6 +35,7 @@ export type InvitedMember = Schemas['InvitedMember']
 export type AuditEvent = Schemas['AuditEventDto']
 export type AuditPage = Schemas['AuditPage']
 export type PublicStatus = Schemas['PublicStatus']
+export type HealthDetails = Schemas['HealthDetails']
 
 interface Outcome<T> {
   data?: T
@@ -433,6 +434,24 @@ export const removeMember = (member: string) =>
 
 export const auditPage = (before?: number) =>
   unwrap(api.GET('/api/v1/audit', { params: { query: { limit: 50, before } } }))
+
+/** The newest audit events, as many as one page holds (the home page reads deployments from them). */
+export const recentAuditQuery = queryOptions({
+  queryKey: ['audit', 'recent'],
+  queryFn: () => unwrap(api.GET('/api/v1/audit', { params: { query: { limit: 200 } } })),
+  retry: false,
+  staleTime: 30_000,
+})
+
+// ---- platform health ----
+
+/** How Kuben's own subsystems are doing (any signed-in user). */
+export const healthQuery = queryOptions({
+  queryKey: ['health'],
+  queryFn: () => unwrap(api.GET('/api/v1/healthz/details')),
+  refetchInterval: 30_000,
+  retry: false,
+})
 
 // ---- public status (M5.3) ----
 

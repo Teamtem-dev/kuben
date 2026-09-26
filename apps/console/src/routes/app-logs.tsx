@@ -1,13 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
+import { EraserIcon, PauseIcon, PlayIcon } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
-import { Button, Card, ErrorNote } from '../components/ui'
-import { followLogsUrl, type LogOptions, logsQuery } from '../lib/api'
-import { appendLines, endFrom, lineFrom, type ShownLine, splitTimestamp } from '../lib/logStream'
-import { usePrefs } from '../lib/prefs'
+import { ErrorAlert, Section } from '@/components/kit'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { followLogsUrl, type LogOptions, logsQuery } from '@/lib/api'
+import { appendLines, endFrom, lineFrom, type ShownLine, splitTimestamp } from '@/lib/logStream'
+import { usePrefs } from '@/lib/prefs'
+import { cn } from '@/lib/utils'
 
 type Where = { project: string; environment: string; app: string }
-
-const select = 'rounded-md border border-line bg-canvas px-2 py-1 text-xs'
+type Mode = 'follow' | 'recent' | 'previous'
 
 /** A followed log: lines as they come, bounded, with pause. */
 function useFollow(url: string, enabled: boolean, paused: boolean) {
@@ -81,16 +86,16 @@ function Lines({ lines, emptyText }: { lines: readonly ShownLine[]; emptyText: s
         const el = e.currentTarget
         pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
       }}
-      className="h-96 overflow-auto rounded-lg bg-inset p-3 font-mono text-fg-soft text-xs leading-relaxed"
+      className="h-[28rem] overflow-auto rounded-lg border bg-muted/50 p-3 text-start font-mono text-xs leading-relaxed"
     >
       {lines.length === 0
         ? emptyText
         : lines.map((l) => {
             const { time, text } = l.time ? { time: l.time, text: l.text } : splitTimestamp(l.text)
             return (
-              <div key={l.id} className={l.note ? 'text-warn' : undefined}>
-                {pods.size > 1 && <span className="text-subtle">[{l.pod}] </span>}
-                {time && <span className="text-subtle">{time.slice(11, 19)} </span>}
+              <div key={l.id} className={cn('whitespace-pre-wrap break-all', l.note && 'text-warning')}>
+                {pods.size > 1 && <span className="text-muted-foreground">[{l.pod}] </span>}
+                {time && <span className="text-muted-foreground">{time.slice(11, 19)} </span>}
                 {text}
               </div>
             )
@@ -103,7 +108,7 @@ export function LiveLogs({ project, environment, app, processes }: Where & { pro
   const { t } = usePrefs()
   const [tail, setTail] = useState(200)
   const [process, setProcess] = useState('')
-  const [mode, setMode] = useState<'follow' | 'recent' | 'previous'>('follow')
+  const [mode, setMode] = useState<Mode>('follow')
   const [paused, setPaused] = useState(false)
   const tailId = useId()
   const processId = useId()
@@ -127,94 +132,95 @@ export function LiveLogs({ project, environment, app, processes }: Where & { pro
       : paused
         ? t('logs.paused')
         : t(`logs.${follow.state === 'live' ? 'live' : follow.state}`)
+  const live = mode === 'follow' && !paused && follow.state === 'live'
 
   return (
-    <Card
+    <Section
       title={
         <span className="flex items-center gap-2">
           {t('logs.title')}
           {status && (
-            <span role="status" className="rounded bg-hover px-1.5 py-0.5 font-normal text-muted text-xs">
+            <Badge role="status" variant="outline" className="font-normal text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'size-1.5 rounded-full',
+                  live ? 'animate-pulse bg-success' : 'bg-muted-foreground',
+                )}
+              />
               {status}
-            </span>
+            </Badge>
           )}
         </span>
       }
-      actions={
-        <div className="flex flex-wrap items-center gap-2 text-muted text-xs">
-          <fieldset className="flex overflow-hidden rounded-md border border-line">
-            <legend className="sr-only">{t('logs.title')}</legend>
-            {(['follow', 'recent', 'previous'] as const).map((m) => (
-              <label key={m} className={`cursor-pointer px-2 py-1 ${mode === m ? 'bg-hover text-fg' : ''}`}>
-                <input
-                  type="radio"
-                  name={`${app}-log-mode`}
-                  value={m}
-                  checked={mode === m}
-                  onChange={() => setMode(m)}
-                  className="sr-only"
-                />
-                {m === 'follow' ? t('logs.follow') : m === 'previous' ? t('logs.previous') : t('logs.lines')}
-              </label>
-            ))}
-          </fieldset>
-          {processes.length > 1 && (
-            <>
-              <label htmlFor={processId} className="sr-only">
-                {t('logs.process')}
-              </label>
-              <select
-                id={processId}
-                value={process}
-                onChange={(e) => setProcess(e.target.value)}
-                className={select}
-              >
-                <option value="">{t('logs.allProcesses')}</option>
-                {processes.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          <label htmlFor={tailId} className="sr-only">
-            {t('logs.lines')}
-          </label>
-          <select
-            id={tailId}
-            value={tail}
-            onChange={(e) => setTail(Number(e.target.value))}
-            className={select}
-          >
-            {[50, 200, 500, 1000].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          {mode === 'follow' && (
-            <>
-              <Button variant="ghost" onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
-                {paused ? t('logs.resume') : t('logs.pause')}
-              </Button>
-              <Button variant="ghost" onClick={follow.clear}>
-                {t('logs.clear')}
-              </Button>
-            </>
-          )}
-        </div>
-      }
     >
+      <div className="flex flex-wrap items-center gap-2">
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={mode}
+          onValueChange={(value) => value && setMode(value as Mode)}
+          aria-label={t('logs.mode')}
+        >
+          {(['follow', 'recent', 'previous'] as const).map((m) => (
+            <ToggleGroupItem key={m} value={m} className="px-3">
+              {m === 'follow' ? t('logs.follow') : m === 'previous' ? t('logs.previous') : t('logs.lines')}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        {processes.length > 1 && (
+          <>
+            <label htmlFor={processId} className="sr-only">
+              {t('logs.process')}
+            </label>
+            <NativeSelect
+              id={processId}
+              size="sm"
+              value={process}
+              onChange={(e) => setProcess(e.target.value)}
+            >
+              <NativeSelectOption value="">{t('logs.allProcesses')}</NativeSelectOption>
+              {processes.map((p) => (
+                <NativeSelectOption key={p} value={p}>
+                  {p}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </>
+        )}
+        <label htmlFor={tailId} className="sr-only">
+          {t('logs.lines')}
+        </label>
+        <NativeSelect id={tailId} size="sm" value={tail} onChange={(e) => setTail(Number(e.target.value))}>
+          {[50, 200, 500, 1000].map((n) => (
+            <NativeSelectOption key={n} value={n}>
+              {n}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        {mode === 'follow' && (
+          <div className="ms-auto flex gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setPaused((p) => !p)} aria-pressed={paused}>
+              {paused ? <PlayIcon aria-hidden="true" /> : <PauseIcon aria-hidden="true" />}
+              {paused ? t('logs.resume') : t('logs.pause')}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={follow.clear}>
+              <EraserIcon aria-hidden="true" />
+              {t('logs.clear')}
+            </Button>
+          </div>
+        )}
+      </div>
       {mode === 'follow' ? (
         <Lines lines={follow.lines} emptyText={t('logs.empty')} />
       ) : once.isError ? (
-        <ErrorNote error={once.error} />
+        <ErrorAlert error={once.error} />
       ) : once.data && once.data.length === 0 ? (
-        <p className="text-subtle text-sm">{t('logs.noPods')}</p>
+        <p className="text-muted-foreground text-sm">{t('logs.noPods')}</p>
       ) : (
         <Lines lines={onceLines} emptyText={once.isLoading ? t('common.loading') : t('logs.empty')} />
       )}
-    </Card>
+    </Section>
   )
 }

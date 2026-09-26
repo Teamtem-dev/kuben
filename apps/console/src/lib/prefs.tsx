@@ -1,6 +1,6 @@
 /**
  * The viewer's language and theme: kept in this browser, applied to <html>
- * (`lang`, `dir`, `data-theme`) before the first paint and whenever they
+ * (`lang`, `dir`, `data-theme` and the `dark` class) before the first paint and whenever they
  * change. `system` follows the operating system's light or dark setting.
  */
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
@@ -66,7 +66,10 @@ export function applyPrefs({ locale, theme }: Prefs) {
   const root = document.documentElement
   root.lang = locale
   root.dir = direction(locale)
-  root.dataset.theme = resolveTheme(theme, darkQuery().matches)
+  const resolved = resolveTheme(theme, darkQuery().matches)
+  root.dataset.theme = resolved
+  // shadcn/ui's dark variant and src/styles/theme.css key on this class.
+  root.classList.toggle('dark', resolved === 'dark')
 }
 
 interface PrefsValue extends Prefs {

@@ -56,11 +56,11 @@ async function open(page: Page, locale: 'en' | 'fa', theme: 'dark' | 'light') {
   return { csp, errors }
 }
 
-/** The card (a section with an h2) titled `name`. */
+/** The card (a section with an h2 or a data-slot="card") titled `name`. */
 function card(page: Page, name: string | RegExp): Locator {
   return page
     .getByRole('heading', typeof name === 'string' ? { name, exact: true } : { name })
-    .locator('xpath=ancestor::section[1]')
+    .locator('xpath=ancestor::*[@data-slot="card" or self::section][1]')
 }
 
 async function signIn(page: Page, m: Messages) {
@@ -69,7 +69,12 @@ async function signIn(page: Page, m: Messages) {
   await page.getByLabel(m['login.email'], { exact: true }).fill(ADMIN.email)
   await page.getByLabel(m['login.password'], { exact: true }).fill(ADMIN.password)
   await page.getByRole('button', { name: m['login.submit'], exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: m['projects.title'] })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: m['nav.home'] })).toBeVisible()
+}
+
+async function signOut(page: Page, m: Messages) {
+  await page.getByRole('button', { name: m['shell.userMenu'] }).click()
+  await page.getByRole('menuitem', { name: m['shell.signOut'] }).click()
 }
 
 function nav(page: Page, m: Messages) {
@@ -111,11 +116,11 @@ test('first run: the admin account is created on /setup, then signs out and in',
   await page.getByLabel(en['login.password'], { exact: true }).fill(ADMIN.password)
   await page.getByRole('button', { name: en['setup.submit'] }).click()
 
-  await expect(page.getByRole('heading', { level: 1, name: en['projects.title'] })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: en['nav.home'] })).toBeVisible()
   await expect(page.getByText(en['projects.empty'])).toBeVisible()
   await expectAccessible(page)
 
-  await page.getByRole('button', { name: en['shell.signOut'] }).click()
+  await signOut(page, en)
   await expect(page.getByRole('heading', { name: en['login.title'] })).toBeVisible()
   // Setup happens once; afterwards its page leads to the sign-in.
   await page.goto('/setup')
@@ -170,16 +175,22 @@ test('a project, an environment and an image app, without a cluster', async ({ p
   // come from the cluster, which the API says is not there.
   await app.click()
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(APP) })).toBeVisible()
+  await expect(card(page, fill(en['app.pods'], { count: 0 }))).toContainText(en['app.noPods'])
+
+  await page.getByRole('tab', { name: en['deployments.title'] }).click()
   const deployments = card(page, en['deployments.title'])
   await expect(deployments).toContainText(new RegExp(`${en['deployments.revision']} \\d+`))
   await expect(deployments).toContainText(en['deployments.reason.deploy'])
+
+  await page.getByRole('tab', { name: en['app.releases'] }).click()
   await expect(card(page, en['app.releases'])).toContainText(en['app.current'])
-  await expect(card(page, fill(en['app.pods'], { count: 0 }))).toContainText(en['app.noPods'])
+
+  await page.getByRole('tab', { name: en['logs.title'] }).click()
   const logs = card(page, new RegExp(`^${en['logs.title']}`))
   // Following needs the cluster: the stream is refused (503) and ends.
   await expect(logs.getByRole('status')).toHaveText(en['logs.ended'])
   await expectAccessible(page)
-  await logs.getByText(en['logs.previous'], { exact: true }).click()
+  await logs.getByRole('radio', { name: en['logs.previous'] }).click()
   await expect(logs.getByRole('alert')).toContainText(NO_CLUSTER)
 
   expect(csp).toEqual([])
@@ -200,11 +211,12 @@ test('team, API tokens, audit log and sign out', async ({ page }) => {
   await expect(ownRole).toBeDisabled()
   await expectAccessible(page)
 
-  const invite = card(page, en['team.invite'])
-  await invite.getByLabel(en['login.email'], { exact: true }).fill(MEMBER)
-  await invite.getByLabel(en['team.role'], { exact: true }).selectOption('developer')
-  await invite.getByRole('button', { name: en['team.inviteButton'], exact: true }).click()
-  await expect(invite.getByRole('status')).toContainText(`${en['team.tempPasswordFor']} ${MEMBER}`)
+  await page.getByRole('button', { name: en['team.invite'] }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(en['login.email'], { exact: true }).fill(MEMBER)
+  await dialog.getByLabel(en['team.role'], { exact: true }).selectOption('developer')
+  await dialog.getByRole('button', { name: en['team.inviteButton'], exact: true }).click()
+  await expect(page.getByRole('status')).toContainText(`${en['team.tempPasswordFor']} ${MEMBER}`)
   await expect(card(page, fill(en['team.members'], { count: 2 }))).toContainText(en['team.invitationPending'])
 
   await nav(page, en).getByRole('link', { name: en['nav.tokens'] }).click()
@@ -228,7 +240,7 @@ test('team, API tokens, audit log and sign out', async ({ page }) => {
   }
   await expectAccessible(page)
 
-  await page.getByRole('button', { name: en['shell.signOut'] }).click()
+  await signOut(page, en)
   await expect(page.getByRole('heading', { name: en['login.title'] })).toBeVisible()
   // The session is gone: a page that needs one leads to the sign-in.
   await page.goto('/team')
@@ -248,10 +260,10 @@ test('Persian (RTL): sign in and the project list', async ({ page }) => {
   await expectAccessible(page)
 
   await signIn(page, fa)
-  await expect(page.getByText(fa['projects.countOne'], { exact: true })).toBeVisible()
   const project = page.getByRole('link', { name: new RegExp(PROJECT.title) })
+  await expect(project).toBeVisible()
   await expect(project).toContainText(fa['projects.environmentsOne'])
-  await expect(nav(page, fa).getByRole('link', { name: fa['nav.projects'] })).toHaveAttribute(
+  await expect(nav(page, fa).getByRole('link', { name: fa['nav.home'] })).toHaveAttribute(
     'aria-current',
     'page',
   )

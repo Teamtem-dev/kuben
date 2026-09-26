@@ -1,61 +1,336 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi, Link, Outlet, useRouter, useRouterState } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { Icon, Logo } from '../components/brand'
-import { Preferences } from '../components/preferences'
-import { logout } from '../lib/api'
-import { useLiveUpdates } from '../lib/live'
-import type { MessageKey } from '../lib/messages'
-import { usePrefs } from '../lib/prefs'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getRouteApi, Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
+import {
+  ChevronRightIcon,
+  FolderKanbanIcon,
+  GlobeIcon,
+  KeyRoundIcon,
+  LayoutDashboardIcon,
+  LogOutIcon,
+  type LucideIcon,
+  ScrollTextIcon,
+  SearchIcon,
+  SettingsIcon,
+  SirenIcon,
+  UserRoundIcon,
+  UsersIcon,
+  WebhookIcon,
+} from 'lucide-react'
+import { Fragment, useEffect, useState } from 'react'
+import { Logo } from '@/components/brand'
+import { LanguageMenu, ThemeMenu } from '@/components/pref-menus'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Kbd } from '@/components/ui/kbd'
+import { Separator } from '@/components/ui/separator'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar'
+import { logout, projectsQuery } from '@/lib/api'
+import { type Crumb, crumbsFor } from '@/lib/breadcrumbs'
+import { initials } from '@/lib/initials'
+import { useLiveUpdates } from '@/lib/live'
+import type { MessageKey } from '@/lib/messages'
+import { usePrefs } from '@/lib/prefs'
 
 const route = getRouteApi('/_authed')
 
 const NAV = [
-  { to: '/', label: 'nav.projects', icon: 'projects', exact: true },
-  { to: '/team', label: 'nav.team', icon: 'team', exact: false },
-  { to: '/tokens', label: 'nav.tokens', icon: 'tokens', exact: false },
-  { to: '/incidents', label: 'nav.incidents', icon: 'incidents', exact: false },
-  { to: '/webhooks', label: 'nav.webhooks', icon: 'webhooks', exact: false },
-  { to: '/domains', label: 'nav.domains', icon: 'domains', exact: false },
-  { to: '/audit', label: 'nav.audit', icon: 'audit', exact: false },
-] as const satisfies readonly {
-  to: string
-  label: MessageKey
-  icon: Parameters<typeof Icon>[0]['name']
-  exact: boolean
-}[]
+  { to: '/', label: 'nav.home', icon: LayoutDashboardIcon, exact: true },
+  { to: '/team', label: 'nav.team', icon: UsersIcon, exact: false },
+  { to: '/tokens', label: 'nav.tokens', icon: KeyRoundIcon, exact: false },
+  { to: '/incidents', label: 'nav.incidents', icon: SirenIcon, exact: false },
+  { to: '/webhooks', label: 'nav.webhooks', icon: WebhookIcon, exact: false },
+  { to: '/domains', label: 'nav.domains', icon: GlobeIcon, exact: false },
+  { to: '/audit', label: 'nav.audit', icon: ScrollTextIcon, exact: false },
+  { to: '/settings', label: 'nav.settings', icon: SettingsIcon, exact: false },
+] as const satisfies readonly { to: string; label: MessageKey; icon: LucideIcon; exact: boolean }[]
 
-function Navigation() {
+/** The sidebar remembers being collapsed (shadcn keeps it in a cookie). */
+const sidebarOpenAtStart = () => !document.cookie.split('; ').includes('sidebar_state=false')
+
+const isApple = () => /Mac|iPhone|iPad/.test(navigator.userAgent)
+
+function AppSidebar() {
   const { t } = usePrefs()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const { setOpenMobile } = useSidebar()
+
+  // A page opened from the phone drawer closes it.
+  useEffect(() => setOpenMobile(false), [pathname, setOpenMobile])
+
   return (
-    <nav aria-label={t('nav.label')} className="space-y-1">
-      {NAV.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          activeOptions={{ exact: item.exact }}
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted text-sm transition hover:bg-hover hover:text-fg"
-          activeProps={{ className: 'bg-hover text-fg', 'aria-current': 'page' }}
-        >
-          <Icon name={item.icon} />
-          {t(item.label)}
-        </Link>
-      ))}
-    </nav>
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <Link to="/">
+                <Logo label={t('app.name')} />
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <nav aria-label={t('nav.label')}>
+              <SidebarMenu>
+                {NAV.map((item) => (
+                  <SidebarMenuItem key={item.to}>
+                    <SidebarMenuButton asChild tooltip={t(item.label)}>
+                      <Link
+                        to={item.to}
+                        activeOptions={{ exact: item.exact }}
+                        activeProps={{ 'data-active': true, 'aria-current': 'page' }}
+                      >
+                        <item.icon aria-hidden="true" />
+                        <span>{t(item.label)}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </nav>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarRail aria-label={t('shell.toggleSidebar')} title={t('shell.toggleSidebar')} />
+    </Sidebar>
   )
 }
 
-export function AppShell() {
+/**
+ * Router links are "active" (and get aria-current="page") on every path below
+ * theirs; a crumb is an ancestor of the current page, never the page itself,
+ * so it is active only on an exact match — which the trail never renders as a
+ * link. The current page is the last crumb, a BreadcrumbPage.
+ */
+const crumbActive = { exact: true } as const
+
+/** A link to an earlier step of the trail. */
+function CrumbLink({ crumb }: { crumb: Crumb }) {
+  const { t } = usePrefs()
+  const link = (() => {
+    switch (crumb.kind) {
+      case 'page':
+        return (
+          <Link to="/" activeOptions={crumbActive}>
+            {t(crumb.label)}
+          </Link>
+        )
+      case 'project':
+        return (
+          <Link to="/projects/$project" params={{ project: crumb.project }} activeOptions={crumbActive}>
+            {crumb.project}
+          </Link>
+        )
+      case 'environment':
+        return (
+          <Link
+            to="/projects/$project/$environment"
+            params={{ project: crumb.project, environment: crumb.environment }}
+            activeOptions={crumbActive}
+          >
+            {crumb.environment}
+          </Link>
+        )
+      case 'app':
+        return (
+          <Link
+            to="/projects/$project/$environment/$app"
+            params={{ project: crumb.project, environment: crumb.environment, app: crumb.app }}
+            activeOptions={crumbActive}
+          >
+            {crumb.app}
+          </Link>
+        )
+    }
+  })()
+  return <BreadcrumbLink asChild>{link}</BreadcrumbLink>
+}
+
+function crumbText(crumb: Crumb, t: (key: MessageKey) => string): string {
+  switch (crumb.kind) {
+    case 'page':
+      return t(crumb.label)
+    case 'project':
+      return crumb.project
+    case 'environment':
+      return crumb.environment
+    case 'app':
+      return crumb.app
+  }
+}
+
+function Breadcrumbs() {
+  const { t } = usePrefs()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const crumbs = crumbsFor(pathname)
+  if (crumbs.length === 0) return null
+  return (
+    <Breadcrumb aria-label={t('shell.breadcrumb')} className="min-w-0">
+      <BreadcrumbList className="flex-nowrap">
+        {crumbs.map((crumb, i) => {
+          const last = i === crumbs.length - 1
+          return (
+            <Fragment key={i}>
+              {i > 0 && (
+                <BreadcrumbSeparator className="hidden md:block">
+                  <ChevronRightIcon className="rtl:rotate-180" />
+                </BreadcrumbSeparator>
+              )}
+              <BreadcrumbItem className={last ? 'min-w-0' : 'hidden md:inline-flex'}>
+                {last || (crumb.kind === 'page' && !crumb.to) ? (
+                  <BreadcrumbPage className="truncate">{crumbText(crumb, t)}</BreadcrumbPage>
+                ) : (
+                  <CrumbLink crumb={crumb} />
+                )}
+              </BreadcrumbItem>
+            </Fragment>
+          )
+        })}
+      </BreadcrumbList>
+    </Breadcrumb>
+  )
+}
+
+/** ⌘K / Ctrl+K: jump to a page or a project. */
+function CommandPalette() {
+  const { t } = usePrefs()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const projects = useQuery({ ...projectsQuery, enabled: open })
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault()
+        setOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const go = (to: () => Promise<void>) => {
+    setOpen(false)
+    void to()
+  }
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="text-muted-foreground md:w-56 md:justify-between"
+        onClick={() => setOpen(true)}
+        aria-keyshortcuts={isApple() ? 'Meta+K' : 'Control+K'}
+      >
+        <span className="inline-flex items-center gap-2">
+          <SearchIcon aria-hidden="true" />
+          <span className="sr-only md:not-sr-only">{t('shell.search')}</span>
+        </span>
+        <Kbd className="hidden md:inline-flex" aria-hidden="true">
+          {isApple() ? '⌘K' : 'Ctrl K'}
+        </Kbd>
+      </Button>
+      <CommandDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t('command.title')}
+        description={t('command.description')}
+        showCloseButton={false}
+      >
+        <CommandInput placeholder={t('command.placeholder')} />
+        <CommandList>
+          <CommandEmpty>{t('command.empty')}</CommandEmpty>
+          <CommandGroup heading={t('command.pages')}>
+            {NAV.map((item) => (
+              <CommandItem
+                key={item.to}
+                value={`${t(item.label)} ${item.to}`}
+                onSelect={() => go(() => navigate({ to: item.to }))}
+              >
+                <item.icon aria-hidden="true" />
+                {t(item.label)}
+              </CommandItem>
+            ))}
+            <CommandItem
+              value={`${t('shell.account')} /account`}
+              onSelect={() => go(() => navigate({ to: '/account' }))}
+            >
+              <UserRoundIcon aria-hidden="true" />
+              {t('shell.account')}
+            </CommandItem>
+          </CommandGroup>
+          {projects.data && projects.data.length > 0 && (
+            <CommandGroup heading={t('command.projects')}>
+              {projects.data.map((p) => (
+                <CommandItem
+                  key={p.name}
+                  value={`${p.display_name} ${p.name}`}
+                  onSelect={() =>
+                    go(() => navigate({ to: '/projects/$project', params: { project: p.name } }))
+                  }
+                >
+                  <FolderKanbanIcon aria-hidden="true" />
+                  <span className="truncate">{p.display_name}</span>
+                  <span className="ms-auto text-muted-foreground text-xs" dir="ltr">
+                    {p.name}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+        </CommandList>
+      </CommandDialog>
+    </>
+  )
+}
+
+function UserMenu() {
   const { me } = route.useRouteContext()
   const router = useRouter()
   const queryClient = useQueryClient()
   const { t } = usePrefs()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  useLiveUpdates()
-
-  // A page opened from the menu closes it.
-  useEffect(() => setMenuOpen(false), [pathname])
+  const name = me.display_name ?? me.email
 
   const signOut = useMutation({
     mutationFn: logout,
@@ -65,76 +340,79 @@ export function AppShell() {
     },
   })
 
+  // Non-modal like the other top-bar menus: see components/pref-menus.tsx.
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="gap-2 px-1.5" aria-label={t('shell.userMenu')}>
+          <Avatar className="size-7">
+            <AvatarFallback className="text-xs">{initials(name)}</AvatarFallback>
+          </Avatar>
+          <span className="hidden max-w-40 truncate text-sm lg:inline">{name}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuLabel className="font-normal">
+          <div className="truncate font-medium text-sm">{name}</div>
+          {me.display_name && (
+            <div className="truncate text-muted-foreground text-xs" dir="ltr">
+              {me.email}
+            </div>
+          )}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/account">
+            <UserRoundIcon aria-hidden="true" />
+            {t('shell.account')}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={signOut.isPending} onSelect={() => signOut.mutate()}>
+          <LogOutIcon className="rtl:-scale-x-100" aria-hidden="true" />
+          {t('shell.signOut')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+export function AppShell() {
+  const { t } = usePrefs()
+  const [sidebarOpen] = useState(sidebarOpenAtStart)
+  useLiveUpdates()
+
+  return (
+    <>
       <a
         href="#content"
-        className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-30 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-on-accent"
+        className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
       >
         {t('shell.skip')}
       </a>
-      <aside
-        className={`${menuOpen ? 'fixed inset-y-0 start-0 z-20 flex w-64' : 'hidden'} flex-col gap-6 border-line border-e bg-canvas p-4 md:sticky md:top-0 md:flex md:h-dvh md:w-auto`}
-      >
-        <div className="flex items-center justify-between">
-          <Link to="/" className="rounded-md">
-            <Logo label={t('app.name')} />
-          </Link>
-          <button
-            type="button"
-            onClick={() => setMenuOpen(false)}
-            className="rounded-md p-1.5 text-muted hover:bg-hover md:hidden"
-            aria-label={t('shell.closeMenu')}
-          >
-            <Icon name="close" />
-          </button>
-        </div>
-        <Navigation />
-      </aside>
-      {menuOpen && (
-        <button
-          type="button"
-          aria-label={t('shell.closeMenu')}
-          onClick={() => setMenuOpen(false)}
-          className="fixed inset-0 z-10 bg-inset md:hidden"
-        />
-      )}
-      <div className="min-w-0">
-        <header className="sticky top-0 z-10 border-line border-b bg-canvas/80 backdrop-blur">
-          <div className="flex h-14 items-center gap-3 px-4 md:px-6">
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              className="rounded-md p-1.5 text-muted hover:bg-hover md:hidden"
-              aria-label={t('shell.menu')}
-              aria-expanded={menuOpen}
-            >
-              <Icon name="menu" />
-            </button>
-            <div className="ms-auto flex items-center gap-3 text-sm">
-              <Preferences />
-              <Link
-                to="/account"
-                className="max-w-48 truncate text-muted hover:text-fg"
-                title={t('shell.account')}
-              >
-                {me.display_name ?? me.email}
-              </Link>
-              <button
-                type="button"
-                onClick={() => signOut.mutate()}
-                disabled={signOut.isPending}
-                className="rounded-md border border-line px-2.5 py-1 transition hover:bg-hover"
-              >
-                {t('shell.signOut')}
-              </button>
+      <SidebarProvider defaultOpen={sidebarOpen}>
+        <AppSidebar />
+        <div className="relative flex min-w-0 flex-1 flex-col bg-background">
+          <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
+            <SidebarTrigger className="-ms-1" aria-label={t('shell.toggleSidebar')} />
+            <Separator orientation="vertical" className="me-2 data-[orientation=vertical]:h-4" />
+            <Breadcrumbs />
+            <div className="ms-auto flex items-center gap-1">
+              <CommandPalette />
+              <LanguageMenu />
+              <ThemeMenu />
+              <UserMenu />
             </div>
-          </div>
-        </header>
-        <main id="content" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-8 outline-none md:px-6">
-          <Outlet />
-        </main>
-      </div>
-    </div>
+          </header>
+          <main
+            id="content"
+            tabIndex={-1}
+            className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 outline-none md:px-6"
+          >
+            <Outlet />
+          </main>
+        </div>
+      </SidebarProvider>
+    </>
   )
 }

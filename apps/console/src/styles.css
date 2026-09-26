@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+/* Colours, radius and chart colours: edit src/styles/theme.css to restyle. */
+@import "./styles/theme.css";
+
+/* shadcn/ui's dark variant: the `.dark` class on <html>, set from the theme preference. */
+@custom-variant dark (&:is(.dark *));
 
 /* Inter (SIL OFL 1.1, assets/fonts/Inter-OFL.txt), served by Kuben itself:
    only the Latin subsets, fetched when a page uses them. Persian text falls
@@ -25,86 +31,20 @@
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Design tokens. Pages use these names only (bg-canvas, text-muted, …), so a
-   theme is one block of values; logical utilities (ms-/pe-/start-) keep the
-   layout right under dir="rtl". */
 @theme inline {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Vazirmatn, Tahoma, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-
-  --color-canvas: var(--k-canvas);
-  --color-surface: var(--k-surface);
-  --color-inset: var(--k-inset);
-  --color-hover: var(--k-hover);
-  --color-fg: var(--k-fg);
-  --color-fg-soft: var(--k-fg-soft);
-  --color-muted: var(--k-muted);
-  --color-subtle: var(--k-subtle);
-  --color-line: var(--k-line);
-  --color-line-soft: var(--k-line-soft);
-  --color-line-strong: var(--k-line-strong);
-  --color-accent: var(--k-accent);
-  --color-accent-hover: var(--k-accent-hover);
-  --color-on-accent: var(--k-on-accent);
-  --color-link: var(--k-link);
-  --color-ok: var(--k-ok);
-  --color-warn: var(--k-warn);
-  --color-danger: var(--k-danger);
-  --color-danger-solid: var(--k-danger-solid);
 }
 
-/* Dark, the default; every text colour keeps 4.5:1 on the canvas. */
-:root {
-  color-scheme: dark;
-  --k-canvas: #020617;
-  --k-surface: rgb(15 23 42 / 0.55);
-  --k-inset: rgb(0 0 0 / 0.4);
-  --k-hover: rgb(255 255 255 / 0.05);
-  --k-fg: #f1f5f9;
-  --k-fg-soft: #cbd5e1;
-  --k-muted: #94a3b8;
-  --k-subtle: #8190a6;
-  --k-line: rgb(255 255 255 / 0.1);
-  --k-line-soft: rgb(255 255 255 / 0.05);
-  --k-line-strong: rgb(255 255 255 / 0.15);
-  --k-accent: #0ea5e9;
-  --k-accent-hover: #38bdf8;
-  --k-on-accent: #020617;
-  --k-link: #7dd3fc;
-  --k-ok: #6ee7b7;
-  --k-warn: #fcd34d;
-  --k-danger: #fca5a5;
-  --k-danger-solid: #dc2626;
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
-  --k-canvas: #f8fafc;
-  --k-surface: #ffffff;
-  --k-inset: #eef2f7;
-  --k-hover: rgb(15 23 42 / 0.05);
-  --k-fg: #0f172a;
-  --k-fg-soft: #334155;
-  --k-muted: #475569;
-  --k-subtle: #5b6b80;
-  --k-line: rgb(15 23 42 / 0.12);
-  --k-line-soft: rgb(15 23 42 / 0.06);
-  --k-line-strong: rgb(15 23 42 / 0.2);
-  --k-accent: #0369a1;
-  --k-accent-hover: #075985;
-  --k-on-accent: #ffffff;
-  --k-link: #0369a1;
-  --k-ok: #047857;
-  --k-warn: #92400e;
-  --k-danger: #b91c1c;
-  --k-danger-solid: #dc2626;
-}
-
-body {
-  background-color: var(--color-canvas);
-  color: var(--color-fg);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
 /* Persian reads better a little taller. */
@@ -113,6 +53,6 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }

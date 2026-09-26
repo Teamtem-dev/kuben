@@ -5,8 +5,10 @@ import {
   createRouter,
   type ErrorComponentProps,
   Link,
+  lazyRouteComponent,
   redirect,
 } from '@tanstack/react-router'
+import { Skeleton } from './components/ui/skeleton'
 import {
   appQuery,
   appsQuery,
@@ -19,24 +21,33 @@ import {
   setupQuery,
   tokensQuery,
 } from './lib/api'
+import { type AppTab, appTabFrom } from './lib/app-tabs'
 import { usePrefs } from './lib/prefs'
 import { problemMessage } from './lib/problem'
-import { AccountPage } from './routes/account'
-import { AppPage } from './routes/app'
-import { AuditPage } from './routes/audit'
-import { DoctorPage } from './routes/doctor'
-import { DomainsPage } from './routes/domains'
-import { EnvironmentPage } from './routes/environment'
-import { IncidentsPage } from './routes/incidents'
-import { LoginPage } from './routes/login'
-import { ProjectPage } from './routes/project'
-import { ProjectsPage } from './routes/projects'
-import { SetupPage } from './routes/setup'
 import { AppShell } from './routes/shell'
-import { StatusPage } from './routes/status'
-import { TeamPage } from './routes/team'
-import { TokensPage } from './routes/tokens'
-import { WebhooksPage } from './routes/webhooks'
+
+/**
+ * Pages load on demand (each its own chunk, preloaded on hover or focus of a
+ * link); the shell, the router and the data layer are in the entry chunk.
+ */
+const page = {
+  AccountPage: lazyRouteComponent(() => import('./routes/account'), 'AccountPage'),
+  AppPage: lazyRouteComponent(() => import('./routes/app'), 'AppPage'),
+  AuditPage: lazyRouteComponent(() => import('./routes/audit'), 'AuditPage'),
+  DoctorPage: lazyRouteComponent(() => import('./routes/doctor'), 'DoctorPage'),
+  DomainsPage: lazyRouteComponent(() => import('./routes/domains'), 'DomainsPage'),
+  EnvironmentPage: lazyRouteComponent(() => import('./routes/environment'), 'EnvironmentPage'),
+  HomePage: lazyRouteComponent(() => import('./routes/home'), 'HomePage'),
+  IncidentsPage: lazyRouteComponent(() => import('./routes/incidents'), 'IncidentsPage'),
+  LoginPage: lazyRouteComponent(() => import('./routes/login'), 'LoginPage'),
+  ProjectPage: lazyRouteComponent(() => import('./routes/project'), 'ProjectPage'),
+  SettingsPage: lazyRouteComponent(() => import('./routes/settings'), 'SettingsPage'),
+  SetupPage: lazyRouteComponent(() => import('./routes/setup'), 'SetupPage'),
+  StatusPage: lazyRouteComponent(() => import('./routes/status'), 'StatusPage'),
+  TeamPage: lazyRouteComponent(() => import('./routes/team'), 'TeamPage'),
+  TokensPage: lazyRouteComponent(() => import('./routes/tokens'), 'TokensPage'),
+  WebhooksPage: lazyRouteComponent(() => import('./routes/webhooks'), 'WebhooksPage'),
+}
 
 interface RouterContext {
   queryClient: QueryClient
@@ -50,7 +61,7 @@ export function safeRedirect(value: unknown): string | undefined {
 function RouteError({ error }: ErrorComponentProps) {
   const { t } = usePrefs()
   return (
-    <div role="alert" className="space-y-3 rounded-xl border border-danger/30 bg-danger/5 p-6">
+    <div role="alert" className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-6">
       <p className="font-medium">{problemMessage(error)}</p>
       <Link to="/" className="text-link text-sm hover:underline">
         {t('common.backToProjects')}
@@ -59,9 +70,23 @@ function RouteError({ error }: ErrorComponentProps) {
   )
 }
 
+/** A page loading: its shape in grey (kept in the entry chunk, no kit needed). */
 function Pending() {
   const { t } = usePrefs()
-  return <p className="text-subtle text-sm">{t('common.loading')}</p>
+  return (
+    <div role="status" className="space-y-6">
+      <span className="sr-only">{t('common.loading')}</span>
+      <div aria-hidden="true" className="space-y-2">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-4 w-80 max-w-full" />
+      </div>
+      <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-24 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 const rootRoute = createRootRouteWithContext<RouterContext>()()
@@ -81,7 +106,7 @@ const setupRoute = createRoute({
   beforeLoad: async ({ context }) => {
     if (!(await setupNeeded(context.queryClient))) throw redirect({ to: '/login' })
   },
-  component: SetupPage,
+  component: page.SetupPage,
 })
 
 const loginRoute = createRoute({
@@ -94,14 +119,14 @@ const loginRoute = createRoute({
   beforeLoad: async ({ context }) => {
     if (await setupNeeded(context.queryClient)) throw redirect({ to: '/setup' })
   },
-  component: LoginPage,
+  component: page.LoginPage,
 })
 
 /** A project's public status page: no session needed (M5.3). */
 const statusRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/status/$slug',
-  component: StatusPage,
+  component: page.StatusPage,
 })
 
 /** Pathless layout: everything below it requires a session. */
@@ -122,11 +147,12 @@ const authedRoute = createRoute({
   component: AppShell,
 })
 
-const projectsRoute = createRoute({
+/** Home: the summary, open incidents, recent deployments and every project. */
+const homeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/',
   loader: ({ context }) => context.queryClient.ensureQueryData(projectsQuery),
-  component: ProjectsPage,
+  component: page.HomePage,
 })
 
 const projectRoute = createRoute({
@@ -137,7 +163,7 @@ const projectRoute = createRoute({
       context.queryClient.ensureQueryData(projectQuery(params.project)),
       context.queryClient.ensureQueryData(environmentsQuery(params.project)),
     ]),
-  component: ProjectPage,
+  component: page.ProjectPage,
 })
 
 const environmentRoute = createRoute({
@@ -149,65 +175,76 @@ const environmentRoute = createRoute({
       context.queryClient.ensureQueryData(environmentQuery(params.project, params.environment)),
       context.queryClient.ensureQueryData(appsQuery(params.project, params.environment)),
     ]),
-  component: EnvironmentPage,
+  component: page.EnvironmentPage,
 })
 
 const appRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/projects/$project/$environment/$app',
+  // The open tab; the overview has none, so the plain app URL stays as it was.
+  validateSearch: (search: Record<string, unknown>): { tab?: Exclude<AppTab, 'overview'> } => ({
+    tab: appTabFrom(search.tab),
+  }),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(appQuery(params.project, params.environment, params.app)),
-  component: AppPage,
+  component: page.AppPage,
 })
 
 const doctorRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/projects/$project/$environment/$app/doctor',
-  component: DoctorPage,
+  component: page.DoctorPage,
 })
 
 const teamRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/team',
   loader: ({ context }) => context.queryClient.ensureQueryData(membersQuery),
-  component: TeamPage,
+  component: page.TeamPage,
 })
 
 const tokensRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/tokens',
   loader: ({ context }) => context.queryClient.ensureQueryData(tokensQuery),
-  component: TokensPage,
+  component: page.TokensPage,
 })
 
 const auditRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/audit',
-  component: AuditPage,
+  component: page.AuditPage,
 })
 
 const incidentsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/incidents',
-  component: IncidentsPage,
+  component: page.IncidentsPage,
 })
 
 const webhooksRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/webhooks',
-  component: WebhooksPage,
+  component: page.WebhooksPage,
 })
 
 const domainsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/domains',
-  component: DomainsPage,
+  component: page.DomainsPage,
+})
+
+/** Organization settings: single sign-on and CI trust policies. */
+const settingsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/settings',
+  component: page.SettingsPage,
 })
 
 const accountRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/account',
-  component: AccountPage,
+  component: page.AccountPage,
 })
 
 const routeTree = rootRoute.addChildren([
@@ -215,7 +252,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   statusRoute,
   authedRoute.addChildren([
-    projectsRoute,
+    homeRoute,
     projectRoute,
     environmentRoute,
     appRoute,
@@ -226,6 +263,7 @@ const routeTree = rootRoute.addChildren([
     incidentsRoute,
     webhooksRoute,
     domainsRoute,
+    settingsRoute,
     accountRoute,
   ]),
 ])

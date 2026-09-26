@@ -1,9 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { type FormEvent, useState } from 'react'
-import { Pill, Sparkline } from '../../components/ops'
-import { Badge, Button, Card, ErrorNote, Select, TextField } from '../../components/ui'
-import { bytes, cpu, when } from '../../lib/ops'
+import {
+  CheckboxField,
+  ErrorAlert,
+  Loading,
+  Section,
+  SelectInput,
+  Sparkline,
+  Tag,
+  TextInput,
+  ToneBadge,
+} from '@/components/kit'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { bytes, cpu, when } from '@/lib/ops'
 import {
   deleteImagePolicy,
   detachApp,
@@ -12,8 +33,8 @@ import {
   metricsQuery,
   putImagePolicy,
   syncAppDns,
-} from '../../lib/ops-api'
-import { usePrefs } from '../../lib/prefs'
+} from '@/lib/ops-api'
+import { usePrefs } from '@/lib/prefs'
 
 interface AppRef {
   project: string
@@ -29,52 +50,58 @@ export function UsageCard({ project, environment, app }: AppRef) {
   const points = metrics.data?.points ?? []
   const last = points.at(-1)
   return (
-    <Card
+    <Section
       title={t('usage.title')}
       actions={
-        <fieldset className="flex gap-1">
-          <legend className="sr-only">{t('usage.window')}</legend>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={window}
+          onValueChange={(value) => value && setWindow(value as '1h' | '7d')}
+          aria-label={t('usage.window')}
+        >
           {(['1h', '7d'] as const).map((w) => (
-            <Button
-              key={w}
-              variant={w === window ? 'primary' : 'ghost'}
-              aria-pressed={w === window}
-              onClick={() => setWindow(w)}
-            >
+            <ToggleGroupItem key={w} value={w} className="px-3">
               {t(`usage.window.${w}`)}
-            </Button>
+            </ToggleGroupItem>
           ))}
-        </fieldset>
+        </ToggleGroup>
       }
     >
-      <ErrorNote error={metrics.error} />
+      <ErrorAlert error={metrics.error} />
+      {metrics.isPending && <Loading lines={2} />}
       {metrics.data && !metrics.data.available && (
-        <p role="status" dir="auto" className="text-muted text-sm">
+        <p role="status" dir="auto" className="text-muted-foreground text-sm">
           {t('usage.unavailable')} {metrics.data.reason}
         </p>
       )}
       {metrics.data?.available && last && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="space-y-2">
             <p className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="font-medium">{t('usage.cpu')}</span>
-              <span dir="ltr">{cpu(last.cpuMillis, locale, t('usage.cores'))}</span>
+              <span className="text-muted-foreground">{t('usage.cpu')}</span>
+              <span dir="ltr" className="font-semibold text-lg tabular-nums">
+                {cpu(last.cpuMillis, locale, t('usage.cores'))}
+              </span>
             </p>
             <Sparkline values={points.map((p) => p.cpuMillis)} label={t('usage.cpuChart')} />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-2">
             <p className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="font-medium">{t('usage.memory')}</span>
-              <span dir="ltr">{bytes(last.memoryBytes, locale)}</span>
+              <span className="text-muted-foreground">{t('usage.memory')}</span>
+              <span dir="ltr" className="font-semibold text-lg tabular-nums">
+                {bytes(last.memoryBytes, locale)}
+              </span>
             </p>
             <Sparkline values={points.map((p) => p.memoryBytes)} label={t('usage.memoryChart')} />
           </div>
-          <p className="text-subtle text-xs sm:col-span-2">
+          <p className="text-muted-foreground text-xs sm:col-span-2">
             {t('usage.since')} {when(points[0]?.at, locale)} · {points.length} {t('usage.points')}
           </p>
         </div>
       )}
-    </Card>
+    </Section>
   )
 }
 
@@ -106,10 +133,10 @@ export function ImagePolicyCard({ project, environment, app }: AppRef) {
     save.mutate(new FormData(e.currentTarget))
   }
   return (
-    <Card title={t('imagePolicy.title')}>
-      <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <TextField
+    <Section title={t('imagePolicy.title')} description={t('imagePolicy.approvalHint')}>
+      <form onSubmit={submit} className="grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <TextInput
             label={t('imagePolicy.pattern')}
             name="pattern"
             required
@@ -117,14 +144,14 @@ export function ImagePolicyCard({ project, environment, app }: AppRef) {
             defaultValue={p?.pattern ?? 'semver:^1'}
             hint={t('imagePolicy.patternHint')}
           />
-          <TextField
+          <TextInput
             label={t('imagePolicy.repository')}
             name="repository"
             dir="ltr"
             defaultValue={p?.repository ?? ''}
             placeholder={t('imagePolicy.repositoryHint')}
           />
-          <TextField
+          <TextInput
             label={t('imagePolicy.interval')}
             name="interval"
             type="number"
@@ -133,44 +160,43 @@ export function ImagePolicyCard({ project, environment, app }: AppRef) {
             defaultValue={Math.round((p?.intervalSecs ?? 300) / 60)}
           />
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="enabled" defaultChecked={p?.enabled ?? true} />
-          {t('imagePolicy.enabled')}
-        </label>
-        <p className="text-subtle text-xs">{t('imagePolicy.approvalHint')}</p>
+        <CheckboxField label={t('imagePolicy.enabled')} name="enabled" defaultChecked={p?.enabled ?? true} />
         {p && (
-          <dl className="grid gap-1 text-sm sm:grid-cols-[auto_1fr]">
-            <dt className="text-muted">{t('imagePolicy.lastTag')}</dt>
-            <dd dir="ltr" className="text-start font-mono">
-              {p.lastTag ?? '—'} {p.lastDigest && <Badge>{p.lastDigest.slice(7, 19)}</Badge>}
+          <dl className="grid gap-x-4 gap-y-1 rounded-md bg-muted/50 p-3 text-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">{t('imagePolicy.lastTag')}</dt>
+            <dd dir="ltr" className="flex flex-wrap items-center gap-2 text-start font-mono">
+              {p.lastTag ?? '—'} {p.lastDigest && <Tag>{p.lastDigest.slice(7, 19)}</Tag>}
             </dd>
-            <dt className="text-muted">{t('imagePolicy.nextCheck')}</dt>
+            <dt className="text-muted-foreground">{t('imagePolicy.nextCheck')}</dt>
             <dd>{when(p.nextCheckAt, locale)}</dd>
             {p.lastError && (
               <>
-                <dt className="text-muted">{t('imagePolicy.lastError')}</dt>
-                <dd dir="auto" className="text-danger">
-                  {p.lastError} {p.failures > 0 && <Pill tone="warning">{p.failures}</Pill>}
+                <dt className="text-muted-foreground">{t('imagePolicy.lastError')}</dt>
+                <dd dir="auto" className="flex flex-wrap items-center gap-2 text-destructive">
+                  {p.lastError} {p.failures > 0 && <ToneBadge tone="warning">{p.failures}</ToneBadge>}
                 </dd>
               </>
             )}
           </dl>
         )}
-        <ErrorNote error={save.error ?? remove.error} />
+        <ErrorAlert error={save.error ?? remove.error} />
         <div className="flex gap-2">
-          <Button type="submit" disabled={save.isPending}>
+          <Button type="submit" variant={p ? 'secondary' : 'default'} disabled={save.isPending}>
             {p ? t('ops.save') : t('imagePolicy.follow')}
           </Button>
           {p && (
-            <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate()}>
+            <Button type="button" variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate()}>
               {t('imagePolicy.stop')}
             </Button>
           )}
         </div>
       </form>
-    </Card>
+    </Section>
   )
 }
+
+const dnsTone = (action: string) =>
+  action === 'conflict' || action === 'failed' ? 'danger' : action === 'skipped' ? 'warning' : 'success'
 
 /** Write the app's DNS records through a provider account (M5.2). */
 export function DnsCard({ project, environment, app, domains }: AppRef & { domains: readonly string[] }) {
@@ -181,45 +207,37 @@ export function DnsCard({ project, environment, app, domains }: AppRef & { domai
   const sync = useMutation({ mutationFn: () => syncAppDns(project, environment, app, provider) })
   if (domains.length === 0 || !providers.data || providers.data.length === 0) return null
   return (
-    <Card title={t('dns.title')}>
+    <Section title={t('dns.title')} description={t('dns.hint')}>
       <div className="flex flex-wrap items-end gap-2">
-        <div className="w-56">
-          <Select label={t('dns.provider')} value={provider} onChange={(e) => setPicked(e.target.value)}>
-            {providers.data.map((p) => (
-              <option key={p.id} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <SelectInput
+          label={t('dns.provider')}
+          value={provider}
+          className="w-56"
+          onChange={(e) => setPicked(e.target.value)}
+        >
+          {providers.data.map((p) => (
+            <option key={p.id} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+        </SelectInput>
         <Button disabled={sync.isPending || !provider} onClick={() => sync.mutate()}>
           {t('dns.sync')}
         </Button>
       </div>
-      <p className="mt-2 text-subtle text-xs">{t('dns.hint')}</p>
-      <ErrorNote error={sync.error} />
+      <ErrorAlert error={sync.error} />
       {sync.data && (
-        <ul className="mt-3 divide-y divide-line-soft text-sm">
+        <ul className="divide-y text-sm">
           {sync.data.map((c) => (
             <li key={`${c.host}-${c.recordType}-${c.content}-${c.action}`} className="space-y-0.5 py-2">
               <p className="flex flex-wrap items-center gap-2">
-                <Pill
-                  tone={
-                    c.action === 'conflict' || c.action === 'failed'
-                      ? 'failed'
-                      : c.action === 'skipped'
-                        ? 'pending'
-                        : 'active'
-                  }
-                >
-                  {tOr(`dns.action.${c.action}`, c.action)}
-                </Pill>
+                <ToneBadge tone={dnsTone(c.action)}>{tOr(`dns.action.${c.action}`, c.action)}</ToneBadge>
                 <span dir="ltr" className="font-mono text-xs">
                   {c.recordType} {c.host} {c.content && `→ ${c.content}`}
                 </span>
               </p>
               {c.detail && (
-                <p dir="auto" className="text-muted text-xs">
+                <p dir="auto" className="text-muted-foreground text-xs">
                   {c.detail}
                 </p>
               )}
@@ -227,7 +245,7 @@ export function DnsCard({ project, environment, app, domains }: AppRef & { domai
           ))}
         </ul>
       )}
-    </Card>
+    </Section>
   )
 }
 
@@ -235,47 +253,64 @@ export function DnsCard({ project, environment, app, domains }: AppRef & { domai
 export function DetachCard({ project, environment, app }: AppRef) {
   const { t } = usePrefs()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
   const [typed, setTyped] = useState('')
   const [reason, setReason] = useState('')
   const detach = useMutation({
     mutationFn: () => detachApp(project, environment, app, reason),
     onSuccess: () => navigate({ to: '/projects/$project/$environment', params: { project, environment } }),
   })
-  if (!open) {
-    return (
-      <div>
-        <Button variant="ghost" onClick={() => setOpen(true)}>
-          {t('detach.open')}
-        </Button>
-      </div>
-    )
-  }
+  const ready = typed === app && reason.trim() !== ''
   return (
-    <Card title={t('detach.title')}>
-      <div className="space-y-3">
-        <p className="text-fg-soft text-sm">{t('detach.lead')}</p>
-        <TextField label={t('detach.reason')} value={reason} onChange={(e) => setReason(e.target.value)} />
-        <TextField
-          label={`${t('detach.confirm')} ${app}`}
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          autoComplete="off"
-        />
-        <ErrorNote error={detach.error} />
-        <div className="flex gap-2">
-          <Button
-            variant="danger"
-            disabled={typed !== app || reason.trim() === '' || detach.isPending}
-            onClick={() => detach.mutate()}
-          >
-            {t('detach.submit')}
-          </Button>
-          <Button variant="secondary" onClick={() => setOpen(false)}>
-            {t('ops.cancel')}
-          </Button>
-        </div>
-      </div>
-    </Card>
+    <Section
+      title={t('detach.title')}
+      description={t('detach.lead')}
+      actions={
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open) {
+              setTyped('')
+              setReason('')
+            }
+          }}
+        >
+          <AlertDialogTrigger asChild>
+            <Button variant="outline">{t('detach.open')}</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (ready) detach.mutate()
+              }}
+            >
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('detach.title')}</AlertDialogTitle>
+                <AlertDialogDescription>{t('detach.lead')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <TextInput
+                label={t('detach.reason')}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              <TextInput
+                label={`${t('detach.confirm')} ${app}`}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                dir="auto"
+              />
+              <ErrorAlert error={detach.error} />
+              <AlertDialogFooter>
+                <AlertDialogCancel type="button">{t('ops.cancel')}</AlertDialogCancel>
+                <Button type="submit" variant="destructive" disabled={!ready || detach.isPending}>
+                  {t('detach.submit')}
+                </Button>
+              </AlertDialogFooter>
+            </form>
+          </AlertDialogContent>
+        </AlertDialog>
+      }
+    />
   )
 }

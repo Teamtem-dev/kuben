@@ -1,10 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { getRouteApi, useRouter } from '@tanstack/react-router'
+import { getRouteApi, Link, useRouter } from '@tanstack/react-router'
+import { KeyRoundIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Button, Card, ErrorNote, PageHeader, TextField } from '../components/ui'
-import { changePassword, meQuery } from '../lib/api'
-import { fill } from '../lib/messages/pages'
-import { usePrefs } from '../lib/prefs'
+import { ErrorAlert, Notice, PageHeader, Section, TextInput } from '@/components/kit'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { changePassword, meQuery } from '@/lib/api'
+import { initials } from '@/lib/initials'
+import { fill } from '@/lib/messages/pages'
+import { usePrefs } from '@/lib/prefs'
 
 const route = getRouteApi('/_authed')
 const MIN_LENGTH = 12
@@ -16,6 +20,7 @@ export function AccountPage() {
   const router = useRouter()
   const [mismatch, setMismatch] = useState(false)
   const [done, setDone] = useState(false)
+  const name = me.display_name ?? me.email
 
   const save = useMutation({
     mutationFn: ({ current, next }: { current: string; next: string }) => changePassword(current, next),
@@ -35,6 +40,7 @@ export function AccountPage() {
     const next = String(form.get('next') ?? '')
     const repeat = String(form.get('repeat') ?? '')
     setMismatch(next !== repeat)
+    setDone(false)
     if (next !== repeat) return
     save.mutate(
       { current: String(form.get('current') ?? ''), next },
@@ -43,48 +49,84 @@ export function AccountPage() {
   }
 
   return (
-    <section className="max-w-xl space-y-6">
-      <PageHeader title={t('shell.account')} subtitle={<span dir="ltr">{me.email}</span>} />
+    <div className="max-w-2xl space-y-6">
+      <PageHeader title={t('shell.account')} />
+
       {me.must_change_password && (
-        <p role="alert" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
+        <Notice tone="warning" role="alert">
           {t('account.temporary')}
-        </p>
+        </Notice>
       )}
-      <Card title={t('account.changePassword')}>
-        <form onSubmit={onSubmit} className="space-y-3">
-          <TextField
+
+      <Section title={t('account.profile')}>
+        <div className="flex items-center gap-4">
+          <Avatar className="size-12">
+            <AvatarFallback>{initials(name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p dir="auto" className="truncate font-medium">
+              {name}
+            </p>
+            <p dir="ltr" className="truncate text-start text-muted-foreground text-sm">
+              {me.email}
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      <Section title={t('account.changePassword')}>
+        <form onSubmit={onSubmit} className="grid gap-4">
+          <TextInput
             label={t('account.current')}
             name="current"
             type="password"
             autoComplete="current-password"
+            dir="ltr"
             required
           />
-          <TextField
+          <TextInput
             label={t('account.new')}
             name="next"
             type="password"
             autoComplete="new-password"
+            dir="ltr"
             minLength={MIN_LENGTH}
             required
             hint={fill(t('account.newHint'), { count: MIN_LENGTH })}
           />
-          <TextField
+          <TextInput
             label={t('account.repeat')}
             name="repeat"
             type="password"
             autoComplete="new-password"
+            dir="ltr"
             required
           />
-          <div className="flex items-center gap-3">
+          {mismatch && <ErrorAlert error={new Error(t('account.mismatch'))} />}
+          <ErrorAlert error={save.error} />
+          {done && !save.isPending && <Notice tone="success">{t('account.changed')}</Notice>}
+          <div>
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? t('ui.saving') : t('account.changePassword')}
             </Button>
-            {mismatch && <ErrorNote error={new Error(t('account.mismatch'))} />}
-            <ErrorNote error={save.error} />
-            {done && !save.isPending && <span className="text-ok text-sm">{t('account.changed')}</span>}
           </div>
         </form>
-      </Card>
-    </section>
+      </Section>
+
+      {!me.must_change_password && (
+        <Section
+          title={t('nav.tokens')}
+          description={t('tokens.lead')}
+          actions={
+            <Button variant="outline" asChild>
+              <Link to="/tokens">
+                <KeyRoundIcon aria-hidden="true" />
+                {t('account.manageTokens')}
+              </Link>
+            </Button>
+          }
+        />
+      )}
+    </div>
   )
 }

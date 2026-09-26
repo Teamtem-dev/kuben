@@ -1,18 +1,25 @@
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
-import { type FormEvent, useState } from 'react'
+import { ExternalLinkIcon, PlayIcon, RotateCwIcon, StethoscopeIcon } from 'lucide-react'
+import { type FormEvent, useId, useState } from 'react'
+import { type Column, DataTable } from '@/components/data-table'
 import {
-  Badge,
-  Button,
-  Card,
   ConfirmDelete,
-  ErrorNote,
+  ErrorAlert,
+  Notice,
   PageHeader,
-  Select,
-  Status,
-  TextArea,
-  TextField,
-} from '../components/ui'
+  Section,
+  SelectInput,
+  StatusBadge,
+  Tag,
+  TextareaInput,
+  TextInput,
+} from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   appQuery,
   checkDomains,
@@ -20,6 +27,7 @@ import {
   environmentsQuery,
   type PromoteResult,
   promoteApp,
+  type Release,
   releasesQuery,
   restartApp,
   rollbackApp,
@@ -27,18 +35,30 @@ import {
   type UpdateApp,
   updateApp,
   type Volume,
-} from '../lib/api'
-import { formatEnvLines, parseEnvLines } from '../lib/env'
-import { fill } from '../lib/messages/pages'
-import { usePrefs } from '../lib/prefs'
+} from '@/lib/api'
+import { APP_TABS, type AppTab } from '@/lib/app-tabs'
+import { formatEnvLines, parseEnvLines } from '@/lib/env'
+import type { MessageKey } from '@/lib/messages'
+import { fill } from '@/lib/messages/pages'
+import { usePrefs } from '@/lib/prefs'
 import { DeploymentsCard } from './app-deployments'
 import { LiveLogs } from './app-logs'
 import { DetachCard, DnsCard, ImagePolicyCard, UsageCard } from './ops/app-ops'
+import { DeliveryCard, EmergencyRollbackCard, OwnerCard } from './ops/controls'
 
 const route = getRouteApi('/_authed/projects/$project/$environment/$app')
 
+const TAB_LABELS: Record<AppTab, MessageKey> = {
+  overview: 'app.tab.overview',
+  deployments: 'deployments.title',
+  releases: 'app.releases',
+  logs: 'logs.title',
+  settings: 'app.tab.settings',
+}
+
 export function AppPage() {
   const { project, environment, app } = route.useParams()
+  const { tab = 'overview' } = route.useSearch()
   const { data } = useSuspenseQuery(appQuery(project, environment, app))
   const a = data.app
   const web = a.processes[0]
@@ -54,6 +74,7 @@ export function AppPage() {
   const restart = useMutation({ mutationFn: () => restartApp(project, environment, app), onSuccess: refresh })
   const run = useMutation({ mutationFn: () => runApp(project, environment, app) })
   const [deleteVolumes, setDeleteVolumes] = useState(false)
+  const deleteVolumesId = useId()
   const scheduled = a.processes.find((p) => p.schedule)
   const remove = useMutation({
     mutationFn: () => deleteApp(project, environment, app, deleteVolumes),
@@ -63,37 +84,33 @@ export function AppPage() {
     },
   })
 
+  const openTab = (value: string) =>
+    navigate({
+      to: '/projects/$project/$environment/$app',
+      params: { project, environment, app },
+      search: value === 'overview' ? {} : { tab: value as Exclude<AppTab, 'overview'> },
+      replace: true,
+    })
+
   return (
-    <section className="space-y-6">
+    <div className="space-y-6">
       <PageHeader
-        crumbs={
+        title={
           <>
-            <Link to="/" className="hover:text-fg">
-              {t('nav.projects')}
-            </Link>
-            <span>/</span>
-            <Link to="/projects/$project" params={{ project }} className="hover:text-fg">
-              {project}
-            </Link>
-            <span>/</span>
-            <Link
-              to="/projects/$project/$environment"
-              params={{ project, environment }}
-              className="hover:text-fg"
-            >
-              {environment}
-            </Link>
+            <span dir="auto">{a.name}</span> <StatusBadge ready={a.ready} label={a.reason} />
           </>
         }
-        title={
-          <span className="flex items-center gap-3">
-            <span dir="auto">{a.name}</span> <Status ready={a.ready} label={a.reason} />
-          </span>
-        }
-        subtitle={
+        description={
           a.url ? (
-            <a href={a.url} target="_blank" rel="noreferrer" dir="ltr" className="text-link hover:underline">
+            <a
+              href={a.url}
+              target="_blank"
+              rel="noreferrer"
+              dir="ltr"
+              className="inline-flex items-center gap-1 text-link hover:underline"
+            >
               {a.url}
+              <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
             </a>
           ) : (
             t('app.notExposed')
@@ -102,144 +119,191 @@ export function AppPage() {
         actions={
           <>
             {scheduled && (
-              <Button variant="secondary" disabled={run.isPending} onClick={() => run.mutate()}>
+              <Button variant="outline" disabled={run.isPending} onClick={() => run.mutate()}>
+                <PlayIcon aria-hidden="true" />
                 {run.isPending ? t('app.starting') : t('app.runNow')}
               </Button>
             )}
-            <Link
-              to="/projects/$project/$environment/$app/doctor"
-              params={{ project, environment, app }}
-              className="inline-flex items-center rounded-lg border border-line px-3 py-1.5 font-medium text-sm transition hover:bg-hover"
-            >
-              {t('doctor.open')}
-            </Link>
-            <Button variant="secondary" disabled={restart.isPending} onClick={() => restart.mutate()}>
+            <Button variant="outline" asChild>
+              <Link to="/projects/$project/$environment/$app/doctor" params={{ project, environment, app }}>
+                <StethoscopeIcon aria-hidden="true" />
+                {t('doctor.open')}
+              </Link>
+            </Button>
+            <Button variant="outline" disabled={restart.isPending} onClick={() => restart.mutate()}>
+              <RotateCwIcon aria-hidden="true" />
               {restart.isPending ? t('app.restarting') : t('app.restart')}
             </Button>
           </>
         }
       />
       {scheduled && (
-        <p className="text-muted text-sm">
+        <p className="text-muted-foreground text-sm">
           {t('app.scheduledJob')}{' '}
           <code dir="ltr" className="font-mono">
             {scheduled.schedule}
           </code>
-          {run.data && <span className="text-ok"> · {fill(t('app.started'), { job: run.data.job })}</span>}
+          {run.data && (
+            <span className="text-success"> · {fill(t('app.started'), { job: run.data.job })}</span>
+          )}
         </p>
       )}
-      <ErrorNote error={run.error} />
+      <ErrorAlert error={run.error} />
+      {a.paused != null && (
+        <Notice tone="warning">
+          {t('delivery.pausedNotice')}{' '}
+          <span dir="auto" className="font-medium">
+            {a.paused}
+          </span>
+        </Notice>
+      )}
       {!a.ready && a.message && (
-        <p dir="auto" className="rounded-lg bg-warn/10 px-3 py-2 text-warn text-sm">
-          {a.message}
-        </p>
+        <Notice tone="warning">
+          <span dir="auto">{a.message}</span>
+        </Notice>
       )}
-      <ErrorNote error={restart.error} />
+      <ErrorAlert error={restart.error} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DeployCard
-          image={a.image ?? ''}
-          pending={update.isPending}
-          error={update.error}
-          onDeploy={(image) => update.mutate({ image })}
-        />
-        <ScaleCard
-          min={web?.min_replicas ?? 1}
-          max={web?.max_replicas ?? 1}
-          size={web?.size ?? 'small'}
-          pending={update.isPending}
-          onSave={(body) => update.mutate(body)}
-        />
-      </div>
+      <Tabs value={tab} onValueChange={(value) => void openTab(value)} className="gap-6">
+        <div className="-mx-1 overflow-x-auto px-1">
+          <TabsList variant="line" aria-label={t('app.sections')}>
+            {APP_TABS.map((value) => (
+              <TabsTrigger key={value} value={value}>
+                {t(TAB_LABELS[value])}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
-      <DeploymentsCard project={project} environment={environment} app={app} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ReleasesCard project={project} environment={environment} app={app} />
-        <PromoteCard project={project} environment={environment} app={app} />
-      </div>
-
-      <Card title={fill(t('app.pods'), { count: data.pods.length })}>
-        {data.pods.length === 0 ? (
-          <p className="text-subtle text-sm">{t('app.noPods')}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-start text-sm">
-              <thead className="text-subtle text-xs">
-                <tr>
-                  <th className="pb-2 font-medium">{t('app.pod')}</th>
-                  <th className="pb-2 font-medium">{t('app.status')}</th>
-                  <th className="pb-2 font-medium">{t('app.restarts')}</th>
-                  <th className="pb-2 font-medium">{t('app.node')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-soft">
-                {data.pods.map((pod) => (
-                  <tr key={pod.name}>
-                    <td className="py-2 pe-4 font-mono text-xs">{pod.name}</td>
-                    <td className="py-2 pe-4">
-                      <Status ready={pod.ready} label={pod.reason ?? pod.phase} />
-                    </td>
-                    <td className="py-2 pe-4">{pod.restarts}</td>
-                    <td className="py-2 font-mono text-subtle text-xs">{pod.node ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <DeployCard
+              image={a.image ?? ''}
+              pending={update.isPending}
+              error={update.error}
+              onDeploy={(image) => update.mutate({ image })}
+            />
+            <ScaleCard
+              min={web?.min_replicas ?? 1}
+              max={web?.max_replicas ?? 1}
+              size={web?.size ?? 'small'}
+              pending={update.isPending}
+              onSave={(body) => update.mutate(body)}
+            />
           </div>
-        )}
-      </Card>
 
-      <EnvCard
-        text={formatEnvLines(a.env)}
-        pending={update.isPending}
-        error={update.error}
-        onSave={(env) => update.mutate({ env })}
-      />
+          <Section title={fill(t('app.pods'), { count: data.pods.length })}>
+            {data.pods.length === 0 ? (
+              <p className="text-muted-foreground text-sm">{t('app.noPods')}</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('app.pod')}</TableHead>
+                    <TableHead>{t('app.status')}</TableHead>
+                    <TableHead>{t('app.restarts')}</TableHead>
+                    <TableHead>{t('app.node')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.pods.map((pod) => (
+                    <TableRow key={pod.name}>
+                      <TableCell dir="ltr" className="text-start font-mono text-xs">
+                        {pod.name}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge ready={pod.ready} label={pod.reason ?? pod.phase} />
+                      </TableCell>
+                      <TableCell>{pod.restarts}</TableCell>
+                      <TableCell dir="ltr" className="text-start font-mono text-muted-foreground text-xs">
+                        {pod.node ?? '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Section>
 
-      <LiveLogs
-        project={project}
-        environment={environment}
-        app={app}
-        processes={a.processes.filter((p) => !p.schedule).map((p) => p.name)}
-      />
+          <UsageCard project={project} environment={environment} app={app} />
 
-      <DomainsCard
-        project={project}
-        environment={environment}
-        app={app}
-        domains={a.domains}
-        pending={update.isPending}
-        onSave={(domains) => update.mutate({ domains })}
-      />
+          {a.volumes.length > 0 && <VolumesCard volumes={a.volumes} />}
+        </TabsContent>
 
-      <DnsCard project={project} environment={environment} app={app} domains={a.domains} />
+        <TabsContent value="deployments">
+          <DeploymentsCard project={project} environment={environment} app={app} />
+        </TabsContent>
 
-      <UsageCard project={project} environment={environment} app={app} />
+        <TabsContent value="releases" className="space-y-6">
+          <ReleasesCard project={project} environment={environment} app={app} />
+          <PromoteCard project={project} environment={environment} app={app} />
+          <EmergencyRollbackCard project={project} environment={environment} app={app} />
+        </TabsContent>
 
-      <ImagePolicyCard project={project} environment={environment} app={app} />
-
-      {a.volumes.length > 0 && <VolumesCard volumes={a.volumes} />}
-
-      {a.volumes.length > 0 && (
-        <label className="flex items-center gap-2 text-muted text-sm">
-          <input
-            type="checkbox"
-            checked={deleteVolumes}
-            onChange={(e) => setDeleteVolumes(e.target.checked)}
+        <TabsContent value="logs">
+          <LiveLogs
+            project={project}
+            environment={environment}
+            app={app}
+            processes={a.processes.filter((p) => !p.schedule).map((p) => p.name)}
           />
-          {t('app.deleteVolumes')}
-        </label>
-      )}
-      <DetachCard project={project} environment={environment} app={app} />
-      <ConfirmDelete
-        name={a.name}
-        what={t('app.what')}
-        pending={remove.isPending}
-        error={remove.error}
-        onConfirm={() => remove.mutate()}
-      />
-    </section>
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-6">
+          <EnvCard
+            text={formatEnvLines(a.env)}
+            pending={update.isPending}
+            error={update.error}
+            onSave={(env) => update.mutate({ env })}
+          />
+
+          <DomainsCard
+            project={project}
+            environment={environment}
+            app={app}
+            domains={a.domains}
+            pending={update.isPending}
+            onSave={(domains) => update.mutate({ domains })}
+          />
+
+          <DnsCard project={project} environment={environment} app={app} domains={a.domains} />
+
+          <ImagePolicyCard project={project} environment={environment} app={app} />
+
+          <DeliveryCard project={project} environment={environment} app={app} paused={a.paused} />
+
+          <OwnerCard project={project} app={app} />
+
+          <DetachCard project={project} environment={environment} app={app} />
+
+          <Section tone="danger" title={t('ui.dangerZone')}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              {a.volumes.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={deleteVolumesId}
+                    checked={deleteVolumes}
+                    onCheckedChange={(checked) => setDeleteVolumes(checked === true)}
+                  />
+                  <Label htmlFor={deleteVolumesId} className="font-normal text-muted-foreground">
+                    {t('app.deleteVolumes')}
+                  </Label>
+                </div>
+              ) : (
+                <span />
+              )}
+              <ConfirmDelete
+                name={a.name}
+                what={t('app.what')}
+                pending={remove.isPending}
+                error={remove.error}
+                onConfirm={() => remove.mutate()}
+              />
+            </div>
+          </Section>
+        </TabsContent>
+      </Tabs>
+    </div>
   )
 }
 
@@ -261,17 +325,24 @@ function DeployCard({
     if (next) onDeploy(next)
   }
   return (
-    <Card title={t('environment.image')}>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <TextField key={image} label={t('app.deployImage')} name="image" defaultValue={image} required />
-        <div className="flex items-center gap-3">
+    <Section title={t('environment.image')}>
+      <form onSubmit={onSubmit} className="grid gap-4">
+        <TextInput
+          key={image}
+          label={t('app.deployImage')}
+          name="image"
+          dir="ltr"
+          defaultValue={image}
+          required
+        />
+        <ErrorAlert error={error} />
+        <div>
           <Button type="submit" disabled={pending}>
             {t('ui.deploy')}
           </Button>
-          <ErrorNote error={error} />
         </div>
       </form>
-    </Card>
+    </Section>
   )
 }
 
@@ -297,9 +368,15 @@ function ScaleCard({
     onSave({ replicas, max_replicas: Math.max(replicas, maxReplicas) })
   }
   return (
-    <Card title={`${t('app.scale')} · ${size}`}>
-      <form onSubmit={onSubmit} key={`${min}-${max}`} className="grid grid-cols-2 gap-3">
-        <TextField
+    <Section
+      title={
+        <span className="flex items-center gap-2">
+          {t('app.scale')} <Tag>{size}</Tag>
+        </span>
+      }
+    >
+      <form onSubmit={onSubmit} key={`${min}-${max}`} className="grid grid-cols-2 gap-4">
+        <TextInput
           label={t('environment.replicas')}
           name="replicas"
           type="number"
@@ -307,7 +384,7 @@ function ScaleCard({
           max={50}
           defaultValue={min}
         />
-        <TextField
+        <TextInput
           label={t('environment.autoscale')}
           name="max_replicas"
           type="number"
@@ -322,7 +399,7 @@ function ScaleCard({
           </Button>
         </div>
       </form>
-    </Card>
+    </Section>
   )
 }
 
@@ -346,24 +423,25 @@ function EnvCard({
     if (!errors.length) onSave(vars)
   }
   return (
-    <Card title={t('environment.envVars')}>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <TextArea
+    <Section title={t('environment.envVars')}>
+      <form onSubmit={onSubmit} className="grid gap-4">
+        <TextareaInput
           key={text}
           label={t('app.variables')}
           name="env"
+          dir="ltr"
           defaultValue={text}
           hint={t('app.variablesHint')}
         />
-        <div className="flex items-center gap-3">
+        {parseError && <ErrorAlert error={new Error(parseError)} />}
+        <ErrorAlert error={error} />
+        <div>
           <Button type="submit" variant="secondary" disabled={pending}>
             {t('app.saveAndRollOut')}
           </Button>
-          {parseError && <ErrorNote error={new Error(parseError)} />}
-          <ErrorNote error={error} />
         </div>
       </form>
-    </Card>
+    </Section>
   )
 }
 
@@ -375,53 +453,100 @@ function ReleasesCard({ project, environment, app }: { project: string; environm
     mutationFn: (revision: number) => rollbackApp(project, environment, app, revision),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['app', project, environment, app] }),
   })
+  const columns: Column<Release>[] = [
+    {
+      id: 'revision',
+      header: t('deployments.revision'),
+      sortValue: (r) => r.revision,
+      filterValue: (r) => `#${r.revision}`,
+      cell: (r) => <span className="font-medium font-mono">#{r.revision}</span>,
+    },
+    {
+      id: 'reason',
+      header: t('releases.reason'),
+      sortValue: (r) => r.reason,
+      filterValue: (r) => `${r.reason} ${r.note ?? ''}`,
+      className: 'whitespace-normal',
+      cell: (r) => (
+        <div className="space-y-1">
+          <Tag>{r.reason}</Tag>
+          {r.note && (
+            <p dir="auto" className="text-muted-foreground text-xs">
+              {r.note}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'image',
+      header: t('environment.image'),
+      filterValue: (r) => r.image,
+      className: 'max-w-72',
+      cell: (r) => (
+        <span dir="ltr" className="block truncate font-mono text-muted-foreground text-xs">
+          {r.image ?? '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'when',
+      header: t('audit.when'),
+      sortValue: (r) => r.created_at,
+      filterValue: (r) => r.actor,
+      className: 'text-muted-foreground text-xs',
+      cell: (r) => (
+        <>
+          <time dateTime={new Date(r.created_at).toISOString()}>
+            {new Date(r.created_at).toLocaleString(locale)}
+          </time>
+          {r.actor && (
+            <span dir="ltr" className="block">
+              {r.actor}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'action',
+      header: t('app.rollBack'),
+      hideHeader: true,
+      className: 'text-end',
+      cell: (r) =>
+        r.current ? (
+          <Tag className="border-success/30 bg-success/10 text-success">{t('app.current')}</Tag>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={rollback.isPending}
+            onClick={() => rollback.mutate(r.revision)}
+          >
+            {t('app.rollBack')}
+          </Button>
+        ),
+    },
+  ]
+
   return (
-    <Card title={t('app.releases')}>
+    <Section title={t('app.releases')}>
+      <ErrorAlert error={rollback.error} />
       {releases.isError ? (
-        <ErrorNote error={releases.error} />
-      ) : !releases.data?.length ? (
-        <p className="text-subtle text-sm">{t('app.noReleases')}</p>
+        <ErrorAlert error={releases.error} />
       ) : (
-        <ul className="max-h-80 divide-y divide-line-soft overflow-y-auto">
-          {releases.data.map((r) => (
-            <li key={r.revision} className="flex items-center justify-between gap-3 py-2 text-sm">
-              <div className="min-w-0">
-                <p className="truncate">
-                  <span className="font-mono">#{r.revision}</span> <Badge>{r.reason}</Badge>{' '}
-                  <span dir="ltr" className="font-mono text-muted text-xs">
-                    {r.image ?? '—'}
-                  </span>
-                </p>
-                <p className="truncate text-subtle text-xs">
-                  {new Date(r.created_at).toLocaleString(locale)}
-                  {r.actor ? ` · ${r.actor}` : ''}
-                  {r.note ? (
-                    <>
-                      {' · '}
-                      <span dir="auto">{r.note}</span>
-                    </>
-                  ) : (
-                    ''
-                  )}
-                </p>
-              </div>
-              {r.current ? (
-                <span className="text-ok text-xs">{t('app.current')}</span>
-              ) : (
-                <Button
-                  variant="secondary"
-                  disabled={rollback.isPending}
-                  onClick={() => rollback.mutate(r.revision)}
-                >
-                  {t('app.rollBack')}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          label={t('app.releases')}
+          columns={columns}
+          rows={releases.data}
+          rowKey={(r) => String(r.revision)}
+          loading={releases.isLoading}
+          empty={t('app.noReleases')}
+          initialSort={{ id: 'revision', desc: true }}
+          pageSize={10}
+        />
       )}
-      <ErrorNote error={rollback.error} />
-    </Card>
+    </Section>
   )
 }
 
@@ -438,11 +563,12 @@ function PromoteCard({ project, environment, app }: { project: string; environme
   if (targets.length === 0) return null
   const previewed = result?.dry_run === true
   return (
-    <Card title={t('app.promote')}>
+    <Section title={t('app.promote')} description={t('app.promoteHint')}>
       <div className="flex flex-wrap items-end gap-3">
-        <Select
+        <SelectInput
           label={t('app.targetEnvironment')}
           value={target}
+          className="w-auto min-w-56"
           onChange={(e) => {
             setTarget(e.target.value)
             setResult(null)
@@ -454,9 +580,9 @@ function PromoteCard({ project, environment, app }: { project: string; environme
               {e.name} ({e.env_type})
             </option>
           ))}
-        </Select>
+        </SelectInput>
         <Button
-          variant="secondary"
+          variant="outline"
           disabled={!target || promote.isPending}
           onClick={() => promote.mutate(true)}
         >
@@ -466,43 +592,47 @@ function PromoteCard({ project, environment, app }: { project: string; environme
           {t('app.promote')}
         </Button>
       </div>
-      <p className="mt-2 text-subtle text-xs">{t('app.promoteHint')}</p>
       {result && (
-        <div className="mt-3 space-y-2 text-sm">
+        <div className="space-y-2 text-sm">
           {result.dry_run ? (
-            <p className="text-fg-soft">
+            <p>
               {result.changes.length
                 ? fill(t('app.changesIn'), { target })
                 : fill(t('app.upToDate'), { target })}
             </p>
           ) : (
-            <p className="text-ok">
+            <Notice tone="success">
               {fill(t('app.promoted'), { target })}
               {result.created ? ` (${t('app.appCreated')})` : ''}.
-            </p>
+            </Notice>
           )}
-          <ul dir="ltr" className="list-disc space-y-0.5 ps-5 text-start font-mono text-xs">
-            {result.changes.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
+          {result.changes.length > 0 && (
+            <ul
+              dir="ltr"
+              className="list-disc space-y-0.5 rounded-md bg-muted/50 py-2 ps-7 pe-3 text-start font-mono text-xs"
+            >
+              {result.changes.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          )}
           {result.warnings.map((w) => (
-            <p key={w} dir="auto" className="text-warn text-xs">
+            <p key={w} dir="auto" className="text-warning text-xs">
               {w}
             </p>
           ))}
         </div>
       )}
-      <ErrorNote error={promote.error} />
-    </Card>
+      <ErrorAlert error={promote.error} />
+    </Section>
   )
 }
 
 const dnsColor: Record<string, string> = {
-  ok: 'text-ok',
-  mismatch: 'text-danger',
-  unresolved: 'text-warn',
-  unknown: 'text-muted',
+  ok: 'text-success',
+  mismatch: 'text-destructive',
+  unresolved: 'text-warning',
+  unknown: 'text-muted-foreground',
 }
 
 function DomainsCard({
@@ -528,66 +658,66 @@ function DomainsCard({
     onSave(text.split(/[\s,]+/).filter(Boolean))
   }
   return (
-    <Card
+    <Section
       title={t('environment.domains')}
       actions={
-        <Button variant="secondary" disabled={check.isPending} onClick={() => check.mutate()}>
+        <Button variant="outline" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
           {check.isPending ? t('app.checking') : t('app.checkDns')}
         </Button>
       }
     >
-      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-3">
-        <div className="min-w-64 flex-1">
-          <TextField
-            key={domains.join(' ')}
-            label={t('app.customDomains')}
-            name="domains"
-            defaultValue={domains.join(' ')}
-            placeholder="api.example.com www.example.com"
-            hint={t('app.customDomainsHint')}
-          />
-        </div>
-        <Button type="submit" variant="secondary" disabled={pending}>
+      <form onSubmit={onSubmit} className="flex flex-wrap items-start gap-3">
+        <TextInput
+          key={domains.join(' ')}
+          label={t('app.customDomains')}
+          name="domains"
+          dir="ltr"
+          defaultValue={domains.join(' ')}
+          placeholder="api.example.com www.example.com"
+          hint={t('app.customDomainsHint')}
+          className="min-w-64 flex-1"
+        />
+        <Button type="submit" variant="secondary" disabled={pending} className="mt-[1.625rem]">
           {t('ui.save')}
         </Button>
       </form>
       {check.data && (
-        <ul className="mt-3 space-y-1 text-sm">
+        <ul className="space-y-1 text-sm">
           {check.data.map((d) => (
             <li key={d.host} className="flex flex-wrap items-center gap-2">
               <span dir="ltr" className="font-mono">
                 {d.host}
               </span>
               <span className={dnsColor[d.status] ?? ''}>{tOr(`app.dns.${d.status}`, d.status)}</span>
-              <span dir="auto" className="text-subtle text-xs">
+              <span dir="auto" className="text-muted-foreground text-xs">
                 {d.message}
               </span>
             </li>
           ))}
         </ul>
       )}
-      <ErrorNote error={check.error} />
-    </Card>
+      <ErrorAlert error={check.error} />
+    </Section>
   )
 }
 
 function VolumesCard({ volumes }: { volumes: readonly Volume[] }) {
   const { t } = usePrefs()
   return (
-    <Card title={t('app.volumes')}>
-      <ul className="space-y-1 text-sm">
+    <Section title={t('app.volumes')}>
+      <ul className="space-y-2 text-sm">
         {volumes.map((v) => (
-          <li key={v.name}>
+          <li key={v.name} className="flex flex-wrap items-center gap-2">
             <span dir="ltr" className="font-mono">
               {v.mount_path}
-            </span>{' '}
-            <Badge>{v.size}</Badge>{' '}
-            <span className="text-subtle text-xs">
+            </span>
+            <Tag>{v.size}</Tag>
+            <span className="text-muted-foreground text-xs">
               {v.name} · {t('app.volumeKept')}
             </span>
           </li>
         ))}
       </ul>
-    </Card>
+    </Section>
   )
 }

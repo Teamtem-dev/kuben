@@ -1,8 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronDownIcon, PlusIcon, SendIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Copyable, Pill } from '../components/ops'
-import { Badge, Button, Card, ConfirmDelete, Empty, ErrorNote, PageHeader, TextField } from '../components/ui'
-import { WEBHOOK_EVENTS, when } from '../lib/ops'
+import {
+  CheckboxField,
+  ConfirmDelete,
+  Copyable,
+  EmptyState,
+  ErrorAlert,
+  FormDialog,
+  Loading,
+  Notice,
+  PageHeader,
+  Section,
+  Tag,
+  TextInput,
+  ToneBadge,
+} from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { DialogClose, DialogFooter } from '@/components/ui/dialog'
+import { WEBHOOK_EVENTS, when } from '@/lib/ops'
 import {
   createWebhook,
   type Delivery,
@@ -12,17 +29,22 @@ import {
   retryDelivery,
   type Webhook,
   webhooksQuery,
-} from '../lib/ops-api'
-import { usePrefs } from '../lib/prefs'
+} from '@/lib/ops-api'
+import { usePrefs } from '@/lib/prefs'
+import { cn } from '@/lib/utils'
 
-function CreateWebhook() {
+/** The new webhook's form; hands the signing secret (shown once) to the page. */
+function CreateWebhookForm({ onCreated }: { onCreated: (secret: string | null) => void }) {
   const { t } = usePrefs()
   const queryClient = useQueryClient()
   const [events, setEvents] = useState<string[]>(['*'])
   const create = useMutation({
     mutationFn: (form: FormData) =>
       createWebhook(String(form.get('name') ?? ''), String(form.get('url') ?? ''), events),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['webhooks'] }),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ['webhooks'] })
+      onCreated(created.secret ?? null)
+    },
   })
   const toggle = (event: string) =>
     setEvents((current) => {
@@ -34,48 +56,52 @@ function CreateWebhook() {
     create.mutate(new FormData(e.currentTarget))
   }
   return (
-    <Card title={t('webhooks.add')}>
-      <form onSubmit={submit} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label={t('webhooks.name')} name="name" required placeholder="ops-pager" />
-          <TextField
-            label={t('webhooks.url')}
-            name="url"
-            type="url"
-            required
-            dir="ltr"
-            placeholder="https://"
-          />
-        </div>
-        <fieldset className="space-y-2">
-          <legend className="font-medium text-sm">{t('webhooks.events')}</legend>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={events.includes('*')} onChange={() => setEvents(['*'])} />
-            {t('webhooks.allEvents')}
-          </label>
-          <div className="grid gap-1 sm:grid-cols-2">
-            {WEBHOOK_EVENTS.map((event) => (
-              <label key={event} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={events.includes(event)} onChange={() => toggle(event)} />
+    <form onSubmit={submit} className="grid gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextInput label={t('webhooks.name')} name="name" required placeholder="ops-pager" />
+        <TextInput
+          label={t('webhooks.url')}
+          name="url"
+          type="url"
+          required
+          dir="ltr"
+          placeholder="https://"
+        />
+      </div>
+      <fieldset className="space-y-3">
+        <legend className="mb-3 font-medium text-sm">{t('webhooks.events')}</legend>
+        <CheckboxField
+          label={t('webhooks.allEvents')}
+          checked={events.includes('*')}
+          onCheckedChange={() => setEvents(['*'])}
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
+          {WEBHOOK_EVENTS.map((event) => (
+            <CheckboxField
+              key={event}
+              label={
                 <span dir="ltr" className="font-mono text-xs">
                   {event}
                 </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <ErrorNote error={create.error} />
-        {create.data?.secret && (
-          <div role="status" className="space-y-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm">
-            <p>{t('webhooks.secretOnce')}</p>
-            <Copyable value={create.data.secret} label={t('ops.copy')} />
-          </div>
-        )}
+              }
+              checked={events.includes(event)}
+              onCheckedChange={() => toggle(event)}
+            />
+          ))}
+        </div>
+      </fieldset>
+      <ErrorAlert error={create.error} />
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            {t('ui.cancel')}
+          </Button>
+        </DialogClose>
         <Button type="submit" disabled={create.isPending}>
-          {t('webhooks.create')}
+          {create.isPending ? t('ui.creating') : t('webhooks.create')}
         </Button>
-      </form>
-    </Card>
+      </DialogFooter>
+    </form>
   )
 }
 
@@ -87,30 +113,34 @@ function DeliveryRow({ webhook, delivery }: { webhook: string; delivery: Deliver
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['webhooks', webhook, 'deliveries'] }),
   })
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-      <div className="min-w-0 space-y-0.5">
-        <p className="flex flex-wrap items-center gap-2">
-          <Pill tone={delivery.status}>{tOr(`webhooks.status.${delivery.status}`, delivery.status)}</Pill>
-          <span dir="ltr" className="font-mono text-xs">
-            {delivery.event}
-          </span>
-          {delivery.lastStatus != null && <Badge>HTTP {delivery.lastStatus}</Badge>}
-        </p>
-        <p className="text-subtle text-xs">
-          {when(delivery.createdAt, locale)} · {t('webhooks.attempts')} {delivery.attempts}
-        </p>
-        {delivery.lastError && (
-          <p dir="ltr" className="break-all text-danger text-xs">
-            {delivery.lastError}
+    <li className="space-y-2 py-2 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 space-y-0.5">
+          <p className="flex flex-wrap items-center gap-2">
+            <ToneBadge tone={delivery.status}>
+              {tOr(`webhooks.status.${delivery.status}`, delivery.status)}
+            </ToneBadge>
+            <span dir="ltr" className="font-mono text-xs">
+              {delivery.event}
+            </span>
+            {delivery.lastStatus != null && <Tag>HTTP {delivery.lastStatus}</Tag>}
           </p>
+          <p className="text-muted-foreground text-xs">
+            {when(delivery.createdAt, locale)} · {t('webhooks.attempts')} {delivery.attempts}
+          </p>
+          {delivery.lastError && (
+            <p dir="ltr" className="break-all text-start text-destructive text-xs">
+              {delivery.lastError}
+            </p>
+          )}
+        </div>
+        {delivery.status === 'failed' && (
+          <Button variant="outline" size="sm" disabled={retry.isPending} onClick={() => retry.mutate()}>
+            {t('webhooks.retry')}
+          </Button>
         )}
       </div>
-      {delivery.status === 'failed' && (
-        <Button variant="secondary" disabled={retry.isPending} onClick={() => retry.mutate()}>
-          {t('webhooks.retry')}
-        </Button>
-      )}
-      <ErrorNote error={retry.error} />
+      <ErrorAlert error={retry.error} />
     </li>
   )
 }
@@ -118,11 +148,12 @@ function DeliveryRow({ webhook, delivery }: { webhook: string; delivery: Deliver
 function Deliveries({ id }: { id: string }) {
   const { t } = usePrefs()
   const deliveries = useQuery({ ...deliveriesQuery(id), refetchInterval: 10_000 })
-  if (deliveries.error) return <ErrorNote error={deliveries.error} />
-  if (!deliveries.data) return <p className="text-subtle text-sm">{t('common.loading')}</p>
-  if (deliveries.data.length === 0) return <p className="text-muted text-sm">{t('webhooks.noDeliveries')}</p>
+  if (deliveries.error) return <ErrorAlert error={deliveries.error} />
+  if (!deliveries.data) return <Loading />
+  if (deliveries.data.length === 0)
+    return <p className="text-muted-foreground text-sm">{t('webhooks.noDeliveries')}</p>
   return (
-    <ul className="divide-y divide-line-soft">
+    <ul className="divide-y rounded-md border px-3">
       {deliveries.data.map((d) => (
         <DeliveryRow key={d.id} webhook={id} delivery={d} />
       ))}
@@ -139,56 +170,67 @@ function WebhookRow({ webhook }: { webhook: Webhook }) {
   const disable = useMutation({ mutationFn: () => disableWebhook(webhook.id), onSuccess: refresh })
   const enabled = !webhook.disabledAt
   return (
-    <li className="space-y-3 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="flex flex-wrap items-center gap-2">
-            <span dir="auto" className="font-medium">
-              {webhook.name}
-            </span>
-            <Pill tone={enabled ? 'active' : 'closed'}>
-              {enabled ? t('webhooks.enabled') : t('webhooks.disabled')}
-            </Pill>
-            {webhook.failures > 0 && (
-              <Pill tone="warning">{`${t('webhooks.failures')} ${webhook.failures}`}</Pill>
-            )}
-          </p>
-          <p dir="ltr" className="break-all text-start font-mono text-muted text-xs">
-            {webhook.url}
-          </p>
-          <p className="flex flex-wrap gap-1">
-            {webhook.events.map((e) => (
-              <Badge key={e}>{e === '*' ? t('webhooks.allEvents') : e}</Badge>
-            ))}
-          </p>
-          {webhook.disabledAt && (
-            <p className="text-subtle text-xs">
-              {t('webhooks.disabledAt')} {when(webhook.disabledAt, locale)}
+    <li className="py-4 first:pt-0 last:pb-0">
+      <Collapsible open={open} onOpenChange={setOpen} className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <p className="flex flex-wrap items-center gap-2">
+              <span dir="auto" className="font-medium">
+                {webhook.name}
+              </span>
+              <ToneBadge tone={enabled ? 'active' : 'closed'}>
+                {enabled ? t('webhooks.enabled') : t('webhooks.disabled')}
+              </ToneBadge>
+              {webhook.failures > 0 && (
+                <ToneBadge tone="warning">{`${t('webhooks.failures')} ${webhook.failures}`}</ToneBadge>
+              )}
             </p>
-          )}
+            <p dir="ltr" className="break-all text-start font-mono text-muted-foreground text-xs">
+              {webhook.url}
+            </p>
+            <p className="flex flex-wrap gap-1">
+              {webhook.events.map((e) => (
+                <Tag key={e}>{e === '*' ? t('webhooks.allEvents') : e}</Tag>
+              ))}
+            </p>
+            {webhook.disabledAt && (
+              <p className="text-muted-foreground text-xs">
+                {t('webhooks.disabledAt')} {when(webhook.disabledAt, locale)}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm">
+                <ChevronDownIcon
+                  aria-hidden="true"
+                  className={cn('transition-transform', open && 'rotate-180')}
+                />
+                {open ? t('webhooks.hideDeliveries') : t('webhooks.showDeliveries')}
+              </Button>
+            </CollapsibleTrigger>
+            {enabled && (
+              <Button variant="outline" size="sm" disabled={ping.isPending} onClick={() => ping.mutate()}>
+                <SendIcon aria-hidden="true" />
+                {t('webhooks.ping')}
+              </Button>
+            )}
+            {enabled && (
+              <ConfirmDelete
+                name={webhook.name}
+                what={t('webhooks.what')}
+                pending={disable.isPending}
+                error={disable.error}
+                onConfirm={() => disable.mutate()}
+              />
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-            {open ? t('webhooks.hideDeliveries') : t('webhooks.showDeliveries')}
-          </Button>
-          {enabled && (
-            <Button variant="secondary" disabled={ping.isPending} onClick={() => ping.mutate()}>
-              {t('webhooks.ping')}
-            </Button>
-          )}
-        </div>
-      </div>
-      <ErrorNote error={ping.error} />
-      {open && <Deliveries id={webhook.id} />}
-      {enabled && (
-        <ConfirmDelete
-          name={webhook.name}
-          what={t('webhooks.what')}
-          pending={disable.isPending}
-          error={disable.error}
-          onConfirm={() => disable.mutate()}
-        />
-      )}
+        <ErrorAlert error={ping.error} />
+        <CollapsibleContent>
+          <Deliveries id={webhook.id} />
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   )
 }
@@ -197,21 +239,53 @@ function WebhookRow({ webhook }: { webhook: Webhook }) {
 export function WebhooksPage() {
   const { t } = usePrefs()
   const webhooks = useQuery(webhooksQuery)
+  const [adding, setAdding] = useState(false)
+  const [secret, setSecret] = useState<string | null>(null)
   return (
-    <section className="space-y-6">
-      <PageHeader title={t('webhooks.title')} subtitle={t('webhooks.lead')} />
-      <CreateWebhook />
-      <ErrorNote error={webhooks.error} />
-      {webhooks.data && webhooks.data.length === 0 && <Empty>{t('webhooks.empty')}</Empty>}
+    <div className="space-y-6">
+      <PageHeader
+        title={t('webhooks.title')}
+        description={t('webhooks.lead')}
+        actions={
+          <FormDialog
+            open={adding}
+            onOpenChange={setAdding}
+            title={t('webhooks.add')}
+            className="sm:max-w-2xl"
+            trigger={
+              <Button>
+                <PlusIcon aria-hidden="true" />
+                {t('webhooks.add')}
+              </Button>
+            }
+          >
+            <CreateWebhookForm
+              onCreated={(created) => {
+                setSecret(created)
+                setAdding(false)
+              }}
+            />
+          </FormDialog>
+        }
+      />
+      {secret && (
+        <Notice tone="warning">
+          <span className="mb-2 block">{t('webhooks.secretOnce')}</span>
+          <Copyable value={secret} />
+        </Notice>
+      )}
+      <ErrorAlert error={webhooks.error} />
+      {webhooks.isPending && <Loading />}
+      {webhooks.data && webhooks.data.length === 0 && <EmptyState>{t('webhooks.empty')}</EmptyState>}
       {webhooks.data && webhooks.data.length > 0 && (
-        <Card title={t('webhooks.endpoints')}>
-          <ul className="divide-y divide-line-soft">
+        <Section title={t('webhooks.endpoints')}>
+          <ul className="divide-y">
             {webhooks.data.map((w) => (
               <WebhookRow key={w.id} webhook={w} />
             ))}
           </ul>
-        </Card>
+        </Section>
       )}
-    </section>
+    </div>
   )
 }

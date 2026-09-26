@@ -6,21 +6,33 @@
  */
 import { opsEn, opsFa } from './messages/ops'
 import { pagesEn, pagesFa } from './messages/pages'
+import { viewsEn, viewsFa } from './messages/views'
 
 const coreEn = {
   'app.name': 'Kuben',
   'common.loading': 'Loading…',
   'common.backToProjects': 'Back to projects',
   'nav.label': 'Main',
+  'nav.home': 'Home',
   'nav.projects': 'Projects',
   'nav.team': 'Team',
   'nav.tokens': 'API tokens',
   'nav.audit': 'Audit',
+  'nav.settings': 'Settings',
   'shell.skip': 'Skip to content',
-  'shell.menu': 'Menu',
-  'shell.closeMenu': 'Close menu',
   'shell.signOut': 'Sign out',
   'shell.account': 'Account',
+  'shell.toggleSidebar': 'Toggle sidebar',
+  'shell.breadcrumb': 'Breadcrumb',
+  'shell.search': 'Search…',
+  'shell.userMenu': 'Account menu',
+  'shell.notifications': 'Notifications',
+  'command.title': 'Command palette',
+  'command.description': 'Go to a page or a project.',
+  'command.placeholder': 'Type a page or project name…',
+  'command.empty': 'Nothing found.',
+  'command.pages': 'Pages',
+  'command.projects': 'Projects',
   'login.title': 'Sign in to Kuben',
   'login.lead': 'Enter your email and password.',
   'login.email': 'Email',
@@ -114,6 +126,15 @@ const coreEn = {
   'theme.system': 'System',
   'theme.light': 'Light',
   'theme.dark': 'Dark',
+  'account.profile': 'Profile',
+  'account.manageTokens': 'Manage API tokens',
+  'ui.copy': 'Copy',
+  'ui.copied': 'Copied',
+  'ui.dangerZone': 'Danger zone',
+  'app.sections': 'App sections',
+  'app.tab.overview': 'Overview',
+  'app.tab.settings': 'Settings',
+  'logs.mode': 'Which logs',
 } as const
 
 const coreFa: Record<keyof typeof coreEn, string> = {
@@ -121,15 +142,26 @@ const coreFa: Record<keyof typeof coreEn, string> = {
   'common.loading': 'در حال بارگذاری…',
   'common.backToProjects': 'بازگشت به پروژه‌ها',
   'nav.label': 'اصلی',
+  'nav.home': 'خانه',
   'nav.projects': 'پروژه‌ها',
   'nav.team': 'تیم',
   'nav.tokens': 'توکن‌های API',
   'nav.audit': 'رویدادنگاری',
+  'nav.settings': 'تنظیمات',
   'shell.skip': 'رفتن به محتوا',
-  'shell.menu': 'منو',
-  'shell.closeMenu': 'بستن منو',
   'shell.signOut': 'خروج',
   'shell.account': 'حساب کاربری',
+  'shell.toggleSidebar': 'باز و بسته کردن نوار کناری',
+  'shell.breadcrumb': 'مسیر صفحه',
+  'shell.search': 'جستجو…',
+  'shell.userMenu': 'منوی حساب کاربری',
+  'shell.notifications': 'اعلان‌ها',
+  'command.title': 'پالت فرمان',
+  'command.description': 'به یک صفحه یا پروژه بروید.',
+  'command.placeholder': 'نام صفحه یا پروژه را بنویسید…',
+  'command.empty': 'چیزی پیدا نشد.',
+  'command.pages': 'صفحه‌ها',
+  'command.projects': 'پروژه‌ها',
   'login.title': 'ورود به کوبن',
   'login.lead': 'ایمیل و رمز عبور خود را وارد کنید.',
   'login.email': 'ایمیل',
@@ -223,12 +255,21 @@ const coreFa: Record<keyof typeof coreEn, string> = {
   'theme.system': 'سیستم',
   'theme.light': 'روشن',
   'theme.dark': 'تیره',
+  'account.profile': 'نمایه',
+  'account.manageTokens': 'مدیریت توکن‌های API',
+  'ui.copy': 'کپی',
+  'ui.copied': 'کپی شد',
+  'ui.dangerZone': 'ناحیهٔ خطر',
+  'app.sections': 'بخش‌های اپ',
+  'app.tab.overview': 'نمای کلی',
+  'app.tab.settings': 'تنظیمات',
+  'logs.mode': 'کدام لاگ‌ها',
 }
 
-export const en = { ...coreEn, ...opsEn, ...pagesEn } as const
+export const en = { ...coreEn, ...opsEn, ...pagesEn, ...viewsEn } as const
 
 export type MessageKey = keyof typeof en
 
-export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa }
+export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa, ...viewsFa }
 
 export const locales = { en, fa } as const

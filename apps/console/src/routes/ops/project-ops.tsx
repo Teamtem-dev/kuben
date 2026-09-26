@@ -1,10 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { ExternalLinkIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Pill } from '../../components/ops'
-import { Badge, Button, Card, ErrorNote, Select, TextField } from '../../components/ui'
-import { environmentsQuery } from '../../lib/api'
-import { duration, when } from '../../lib/ops'
+import {
+  CheckboxField,
+  ConfirmAction,
+  EmptyState,
+  ErrorAlert,
+  Loading,
+  Section,
+  SelectInput,
+  SwitchField,
+  Tag,
+  TextInput,
+  ToneBadge,
+} from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { environmentsQuery } from '@/lib/api'
+import { fill } from '@/lib/messages/pages'
+import { duration, when } from '@/lib/ops'
 import {
   deleteStatusPage,
   destroyPreview,
@@ -15,8 +29,8 @@ import {
   putPreviewPolicy,
   putStatusPage,
   statusPageQuery,
-} from '../../lib/ops-api'
-import { usePrefs } from '../../lib/prefs'
+} from '@/lib/ops-api'
+import { usePrefs } from '@/lib/prefs'
 
 function PolicyForm({ project }: { project: string }) {
   const { t } = usePrefs()
@@ -34,7 +48,7 @@ function PolicyForm({ project }: { project: string }) {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['previews', project] }),
   })
-  if (!policy.data || !environments.data) return <ErrorNote error={policy.error ?? environments.error} />
+  if (!policy.data || !environments.data) return <ErrorAlert error={policy.error ?? environments.error} />
   const p = policy.data
   const sources = environments.data.filter((e) => e.env_type !== 'preview')
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -42,9 +56,9 @@ function PolicyForm({ project }: { project: string }) {
     save.mutate(new FormData(e.currentTarget))
   }
   return (
-    <form onSubmit={submit} className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Select
+    <form onSubmit={submit} className="grid gap-4">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SelectInput
           label={t('previews.source')}
           name="source"
           defaultValue={p.sourceEnvironment ?? sources[0]?.name}
@@ -54,8 +68,8 @@ function PolicyForm({ project }: { project: string }) {
               {e.name}
             </option>
           ))}
-        </Select>
-        <TextField
+        </SelectInput>
+        <TextInput
           label={t('previews.ttl')}
           name="ttl"
           type="number"
@@ -63,7 +77,7 @@ function PolicyForm({ project }: { project: string }) {
           max={720}
           defaultValue={p.ttlHours}
         />
-        <TextField
+        <TextInput
           label={t('previews.max')}
           name="max"
           type="number"
@@ -72,21 +86,19 @@ function PolicyForm({ project }: { project: string }) {
           defaultValue={p.maxActive}
         />
       </div>
-      <div className="flex flex-wrap gap-4 text-sm">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" name="enabled" defaultChecked={p.enabled} />
-          {t('previews.enabled')}
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" name="forks" defaultChecked={p.allowForks} />
-          {t('previews.allowForks')}
-        </label>
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <CheckboxField label={t('previews.enabled')} name="enabled" defaultChecked={p.enabled} />
+          <CheckboxField label={t('previews.allowForks')} name="forks" defaultChecked={p.allowForks} />
+        </div>
+        <p className="text-muted-foreground text-xs">{t('previews.forksHint')}</p>
       </div>
-      <p className="text-subtle text-xs">{t('previews.forksHint')}</p>
-      <ErrorNote error={save.error} />
-      <Button type="submit" disabled={save.isPending || sources.length === 0}>
-        {t('ops.save')}
-      </Button>
+      <ErrorAlert error={save.error} />
+      <div>
+        <Button type="submit" variant="secondary" disabled={save.isPending || sources.length === 0}>
+          {t('ops.save')}
+        </Button>
+      </div>
     </form>
   )
 }
@@ -105,48 +117,68 @@ function PreviewRow({ project, preview }: { project: string; preview: Preview })
   })
   const active = preview.state === 'active'
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 py-3">
-      <div className="min-w-0 space-y-1 text-sm">
-        <p className="flex flex-wrap items-center gap-2">
-          {active ? (
-            <Link
-              to="/projects/$project/$environment"
-              params={{ project, environment: preview.environment }}
-              className="font-medium text-link hover:underline"
-            >
-              {preview.environment}
-            </Link>
-          ) : (
-            <span className="font-medium">{preview.environment}</span>
-          )}
-          <Pill tone={preview.state}>{tOr(`previews.state.${preview.state}`, preview.state)}</Pill>
-          {!preview.trusted && <Pill tone="warning">{t('previews.fork')}</Pill>}
-        </p>
-        <p dir="ltr" className="text-start font-mono text-muted text-xs">
-          {preview.repository}#{preview.pullRequest} · {preview.branch} · {preview.commit.slice(0, 12)}
-        </p>
-        <p className="text-subtle text-xs">
-          {active
-            ? preview.autoDelete
-              ? `${t('previews.remaining')} ${duration(preview.remainingSeconds, locale)}`
-              : t('previews.kept')
-            : `${tOr(`previews.reason.${preview.closeReason}`, preview.closeReason ?? '')} · ${when(preview.closedAt, locale)}`}
-        </p>
-      </div>
-      {active && (
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" disabled={extend.isPending} onClick={() => extend.mutate(false)}>
-            {t('previews.extend')}
-          </Button>
-          <Button variant="secondary" disabled={extend.isPending} onClick={() => extend.mutate(true)}>
-            {t('previews.keep')}
-          </Button>
-          <Button variant="danger" disabled={destroy.isPending} onClick={() => destroy.mutate()}>
-            {t('previews.destroy')}
-          </Button>
+    <li className="space-y-2 py-3 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1 text-sm">
+          <p className="flex flex-wrap items-center gap-2">
+            {active ? (
+              <Link
+                to="/projects/$project/$environment"
+                params={{ project, environment: preview.environment }}
+                className="font-medium text-link hover:underline"
+              >
+                {preview.environment}
+              </Link>
+            ) : (
+              <span className="font-medium">{preview.environment}</span>
+            )}
+            <ToneBadge tone={preview.state}>
+              {tOr(`previews.state.${preview.state}`, preview.state)}
+            </ToneBadge>
+            {!preview.trusted && <ToneBadge tone="warning">{t('previews.fork')}</ToneBadge>}
+          </p>
+          <p dir="ltr" className="text-start font-mono text-muted-foreground text-xs">
+            {preview.repository}#{preview.pullRequest} · {preview.branch} · {preview.commit.slice(0, 12)}
+          </p>
+          <p className="text-muted-foreground text-xs">
+            {active
+              ? preview.autoDelete
+                ? `${t('previews.remaining')} ${duration(preview.remainingSeconds, locale)}`
+                : t('previews.kept')
+              : `${tOr(`previews.reason.${preview.closeReason}`, preview.closeReason ?? '')} · ${when(preview.closedAt, locale)}`}
+          </p>
         </div>
-      )}
-      <ErrorNote error={extend.error ?? destroy.error} />
+        {active && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={extend.isPending}
+              onClick={() => extend.mutate(false)}
+            >
+              {t('previews.extend')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={extend.isPending}
+              onClick={() => extend.mutate(true)}
+            >
+              {t('previews.keep')}
+            </Button>
+            <ConfirmAction
+              size="sm"
+              label={t('previews.destroy')}
+              title={t('previews.destroy')}
+              description={fill(t('previews.destroyConfirm'), { name: preview.environment })}
+              pending={destroy.isPending}
+              error={destroy.error}
+              onConfirm={() => destroy.mutateAsync()}
+            />
+          </div>
+        )}
+      </div>
+      <ErrorAlert error={extend.error} />
     </li>
   )
 }
@@ -157,26 +189,22 @@ export function PreviewsCard({ project }: { project: string }) {
   const [all, setAll] = useState(false)
   const previews = useQuery({ ...previewsQuery(project, all), refetchInterval: 60_000 })
   return (
-    <Card
+    <Section
       title={t('previews.title')}
-      actions={
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
-          {t('previews.showClosed')}
-        </label>
-      }
+      actions={<SwitchField label={t('previews.showClosed')} checked={all} onCheckedChange={setAll} />}
     >
-      <div className="space-y-4">
-        <PolicyForm project={project} />
-        <ErrorNote error={previews.error} />
-        {previews.data?.length === 0 && <p className="text-muted text-sm">{t('previews.empty')}</p>}
-        <ul className="divide-y divide-line-soft">
-          {previews.data?.map((p) => (
-            <PreviewRow key={`${p.environment}`} project={project} preview={p} />
+      <PolicyForm project={project} />
+      <ErrorAlert error={previews.error} />
+      {previews.isPending && <Loading />}
+      {previews.data?.length === 0 && <EmptyState>{t('previews.empty')}</EmptyState>}
+      {previews.data && previews.data.length > 0 && (
+        <ul className="divide-y border-t pt-4">
+          {previews.data.map((p) => (
+            <PreviewRow key={p.environment} project={project} preview={p} />
           ))}
         </ul>
-      </div>
-    </Card>
+      )}
+    </Section>
   )
 }
 
@@ -205,73 +233,86 @@ export function StatusPageCard({ project }: { project: string }) {
     save.mutate(new FormData(e.currentTarget))
   }
   return (
-    <Card title={t('statusPage.title')}>
-      <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <TextField
+    <Section
+      title={t('statusPage.title')}
+      description={t('statusPage.privacy')}
+      actions={
+        current && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={current.path} target="_blank" rel="noopener noreferrer">
+              {t('statusPage.open')}
+              <ExternalLinkIcon aria-hidden="true" />
+            </a>
+          </Button>
+        )
+      }
+    >
+      <form onSubmit={submit} key={current?.updatedAt ?? 'new'} className="grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextInput
             label={t('statusPage.slug')}
             name="slug"
             required
             dir="ltr"
             defaultValue={current?.slug ?? project}
           />
-          <TextField
+          <TextInput
             label={t('statusPage.pageTitle')}
             name="title"
             required
             defaultValue={current?.title ?? project}
           />
         </div>
-        <fieldset className="space-y-1">
-          <legend className="font-medium text-sm">{t('statusPage.environments')}</legend>
-          <div className="flex flex-wrap gap-3">
+        <fieldset className="space-y-3">
+          <legend className="mb-3 font-medium text-sm">{t('statusPage.environments')}</legend>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
             {environments.data
               .filter((e) => e.env_type !== 'preview')
               .map((e) => (
-                <label key={e.name} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="environments"
-                    value={e.name}
-                    defaultChecked={
-                      current ? current.environments.includes(e.name) : e.env_type === 'production'
-                    }
-                  />
-                  {e.name} <Badge>{e.env_type}</Badge>
-                </label>
+                <CheckboxField
+                  key={e.name}
+                  name="environments"
+                  value={e.name}
+                  defaultChecked={
+                    current ? current.environments.includes(e.name) : e.env_type === 'production'
+                  }
+                  label={
+                    <>
+                      {e.name} <Tag>{e.env_type}</Tag>
+                    </>
+                  }
+                />
               ))}
           </div>
         </fieldset>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="enabled" defaultChecked={current?.enabled ?? true} />
-          {t('statusPage.published')}
-        </label>
-        <p className="text-subtle text-xs">{t('statusPage.privacy')}</p>
-        <ErrorNote error={save.error ?? remove.error} />
+        <CheckboxField
+          label={t('statusPage.published')}
+          name="enabled"
+          defaultChecked={current?.enabled ?? true}
+        />
+        <ErrorAlert error={save.error} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" disabled={save.isPending}>
+          <Button type="submit" variant={current ? 'secondary' : 'default'} disabled={save.isPending}>
             {current ? t('ops.save') : t('statusPage.publish')}
           </Button>
           {current && (
             <>
-              <a
-                href={current.path}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-link text-sm hover:underline"
-              >
-                {t('statusPage.open')}
-              </a>
-              <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate()}>
-                {t('statusPage.takeDown')}
-              </Button>
-              <span className="text-subtle text-xs">
+              <ConfirmAction
+                variant="ghost"
+                label={t('statusPage.takeDown')}
+                title={t('statusPage.takeDown')}
+                description={t('statusPage.takeDownConfirm')}
+                pending={remove.isPending}
+                error={remove.error}
+                onConfirm={() => remove.mutateAsync()}
+              />
+              <span className="text-muted-foreground text-xs">
                 {t('ops.updated')} {when(current.updatedAt, locale)}
               </span>
             </>
           )}
         </div>
       </form>
-    </Card>
+    </Section>
   )
 }

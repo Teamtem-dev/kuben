@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronDownIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Pill } from '../../components/ops'
-import { Badge, Button, Card, ErrorNote } from '../../components/ui'
-import { when } from '../../lib/ops'
-import { type Detached, detachedAppQuery, detachedQuery, releaseDetached } from '../../lib/ops-api'
-import { usePrefs } from '../../lib/prefs'
+import { ErrorAlert, Loading, Section, Tag, ToneBadge } from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { when } from '@/lib/ops'
+import { type Detached, detachedAppQuery, detachedQuery, releaseDetached } from '@/lib/ops-api'
+import { usePrefs } from '@/lib/prefs'
+import { cn } from '@/lib/utils'
 
 interface InventoryItem {
   apiVersion?: string
@@ -16,16 +19,16 @@ interface InventoryItem {
 function Retained({ project, environment, id }: { project: string; environment: string; id: string }) {
   const { t } = usePrefs()
   const detail = useQuery(detachedAppQuery(project, environment, id))
-  if (detail.error) return <ErrorNote error={detail.error} />
-  if (!detail.data) return <p className="text-subtle text-sm">{t('common.loading')}</p>
+  if (detail.error) return <ErrorAlert error={detail.error} />
+  if (!detail.data) return <Loading />
   const exported = (detail.data.export ?? {}) as { inventory?: InventoryItem[]; runbook?: string[] }
   return (
-    <div className="space-y-3 rounded-lg bg-inset p-3 text-sm">
+    <div className="space-y-3 rounded-md bg-muted/50 p-3 text-sm">
       <h3 className="font-medium">{t('detached.retained')}</h3>
       <ul className="space-y-1">
         {(exported.inventory ?? []).map((item) => (
           <li key={`${item.kind}/${item.name}`} className="flex items-center gap-2">
-            <Badge>{item.kind}</Badge>
+            <Tag>{item.kind}</Tag>
             <span dir="ltr" className="font-mono text-xs">
               {item.name}
             </span>
@@ -35,9 +38,9 @@ function Retained({ project, environment, id }: { project: string; environment: 
       {exported.runbook && exported.runbook.length > 0 && (
         <>
           <h3 className="font-medium">{t('detached.runbook')}</h3>
-          <ol className="list-decimal space-y-1 ps-5 text-fg-soft">
+          <ol className="list-decimal space-y-1 ps-5">
             {exported.runbook.map((step) => (
-              <li key={step} dir="ltr" className="text-start">
+              <li key={step} dir="ltr" className="text-start font-mono text-xs">
                 {step}
               </li>
             ))}
@@ -58,37 +61,49 @@ function DetachedRow({ project, environment, app }: { project: string; environme
   })
   const state = app.releasedAt ? 'released' : app.completedAt ? 'detached' : 'detaching'
   return (
-    <li className="space-y-3 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1 text-sm">
-          <p className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{app.app}</span>
-            <Pill tone={state === 'detaching' ? 'pending' : state === 'released' ? 'closed' : 'active'}>
-              {t(`detached.state.${state}`)}
-            </Pill>
-          </p>
-          <p dir="auto" className="text-fg-soft">
-            {app.reason}
-          </p>
-          <p className="text-subtle text-xs">
-            {when(app.requestedAt, locale)} · <span dir="ltr">{app.requestedBy}</span>
-            {app.releasedAt && ` · ${t('detached.releasedAt')} ${when(app.releasedAt, locale)}`}
-          </p>
+    <li className="py-3 first:pt-0 last:pb-0">
+      <Collapsible open={open} onOpenChange={setOpen} className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1 text-sm">
+            <p className="flex flex-wrap items-center gap-2">
+              <span dir="auto" className="font-medium">
+                {app.app}
+              </span>
+              <ToneBadge
+                tone={state === 'detaching' ? 'pending' : state === 'released' ? 'closed' : 'active'}
+              >
+                {t(`detached.state.${state}`)}
+              </ToneBadge>
+            </p>
+            <p dir="auto">{app.reason}</p>
+            <p className="text-muted-foreground text-xs">
+              {when(app.requestedAt, locale)} · <span dir="ltr">{app.requestedBy}</span>
+              {app.releasedAt && ` · ${t('detached.releasedAt')} ${when(app.releasedAt, locale)}`}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm">
+                <ChevronDownIcon
+                  aria-hidden="true"
+                  className={cn('transition-transform', open && 'rotate-180')}
+                />
+                {open ? t('detached.hide') : t('detached.show')}
+              </Button>
+            </CollapsibleTrigger>
+            {state === 'detached' && (
+              <Button size="sm" disabled={release.isPending} onClick={() => release.mutate()}>
+                {t('detached.release')}
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-            {open ? t('detached.hide') : t('detached.show')}
-          </Button>
-          {state === 'detached' && (
-            <Button disabled={release.isPending} onClick={() => release.mutate()}>
-              {t('detached.release')}
-            </Button>
-          )}
-        </div>
-      </div>
-      {state === 'detached' && <p className="text-subtle text-xs">{t('detached.releaseHint')}</p>}
-      <ErrorNote error={release.error} />
-      {open && <Retained project={project} environment={environment} id={app.id} />}
+        {state === 'detached' && <p className="text-muted-foreground text-xs">{t('detached.releaseHint')}</p>}
+        <ErrorAlert error={release.error} />
+        <CollapsibleContent>
+          <Retained project={project} environment={environment} id={app.id} />
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   )
 }
@@ -97,14 +112,14 @@ function DetachedRow({ project, environment, app }: { project: string; environme
 export function DetachedCard({ project, environment }: { project: string; environment: string }) {
   const { t } = usePrefs()
   const detached = useQuery(detachedQuery(project, environment))
-  if (!detached.data || detached.data.length === 0) return <ErrorNote error={detached.error} />
+  if (!detached.data || detached.data.length === 0) return <ErrorAlert error={detached.error} />
   return (
-    <Card title={t('detached.title')}>
-      <ul className="divide-y divide-line-soft">
+    <Section title={t('detached.title')}>
+      <ul className="divide-y">
         {detached.data.map((d) => (
           <DetachedRow key={d.id} project={project} environment={environment} app={d} />
         ))}
       </ul>
-    </Card>
+    </Section>
   )
 }

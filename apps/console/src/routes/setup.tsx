@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useRouter } from '@tanstack/react-router'
-import { type FormEvent, useEffect, useId, useState } from 'react'
-import { AuthLayout, control } from '../components/ui'
-import { completeSetup, meQuery, setupQuery } from '../lib/api'
-import { usePrefs } from '../lib/prefs'
-import { ApiError, problemMessage } from '../lib/problem'
-import { setupTokenFrom, tunnelFor } from '../lib/setupToken'
+import { type FormEvent, useEffect, useState } from 'react'
+import { AuthShell, ErrorAlert, TextInput } from '@/components/kit'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
+import { completeSetup, meQuery, setupQuery } from '@/lib/api'
+import { usePrefs } from '@/lib/prefs'
+import { ApiError } from '@/lib/problem'
+import { setupTokenFrom, tunnelFor } from '@/lib/setupToken'
 
 const route = getRouteApi('/setup')
+
+const code = 'rounded bg-muted px-1 py-0.5 font-mono text-xs'
 
 /**
  * First run: create the organization and its admin account. On a public
@@ -26,10 +31,6 @@ export function SetupPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const status = useQuery(setupQuery)
-  const orgId = useId()
-  const emailId = useId()
-  const passwordId = useId()
-  const tokenId = useId()
 
   const mutation = useMutation({
     mutationFn: completeSetup,
@@ -56,142 +57,128 @@ export function SetupPage() {
   const error = mutation.error
   const insecure =
     status.data?.secure === false || (error instanceof ApiError && error.code === 'insecure_transport')
-  const message =
+  const failure =
     error instanceof ApiError && error.status === 403 && !insecure
-      ? t('setup.expired')
+      ? new Error(t('setup.expired'))
       : error && !insecure
-        ? problemMessage(error)
+        ? error
         : null
 
   if (insecure) {
     const tunnel = tunnelFor(window.location.hostname, window.location.port, token)
     return (
-      <AuthLayout>
-        <section className="w-full max-w-lg space-y-4 rounded-2xl border border-line bg-surface p-8 shadow-2xl shadow-black/40">
-          <h1 className="font-semibold text-2xl tracking-tight">{t('setup.secureTitle')}</h1>
-          <p className="text-fg-soft text-sm">{t('setup.secureLead')}</p>
-          <ol className="list-decimal space-y-3 ps-5 text-fg-soft text-sm">
-            <li>
-              {t('setup.viaTunnel')}
-              <code className="mt-1 block rounded-lg bg-canvas px-3 py-2 font-mono text-xs" dir="ltr">
-                {tunnel.command}
-              </code>
-              {t('setup.thenOpen')}{' '}
-              <code className="rounded bg-canvas px-1 font-mono text-xs" dir="ltr">
-                {tunnel.link}
-              </code>
-            </li>
-            <li>
-              {t('setup.viaHttps')}{' '}
-              <code dir="ltr" className="font-mono text-xs">
-                kuben setup --domain apps.example.com --acme-email you@example.com
-              </code>{' '}
-              {t('setup.onServerOpen')}{' '}
-              <code dir="ltr" className="font-mono text-xs">
-                https://kuben.apps.example.com
-              </code>
-              .
-            </li>
-            <li>
-              {t('setup.viaHttp')}{' '}
-              <code dir="ltr" className="font-mono text-xs">
-                kuben setup --allow-http-setup
-              </code>{' '}
-              ({t('setup.or')}{' '}
-              <code dir="ltr" className="font-mono text-xs">
-                security.insecure_setup = true
-              </code>
-              ).
-            </li>
-          </ol>
-        </section>
-      </AuthLayout>
+      <AuthShell>
+        <Card className="w-full max-w-lg shadow-lg">
+          <CardHeader>
+            <CardTitle>
+              <h1 className="text-2xl tracking-tight">{t('setup.secureTitle')}</h1>
+            </CardTitle>
+            <CardDescription>{t('setup.secureLead')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ol className="list-decimal space-y-3 ps-5 text-sm">
+              <li>
+                {t('setup.viaTunnel')}
+                <code className="mt-1 block rounded-md bg-muted px-3 py-2 font-mono text-xs" dir="ltr">
+                  {tunnel.command}
+                </code>
+                {t('setup.thenOpen')}{' '}
+                <code className={code} dir="ltr">
+                  {tunnel.link}
+                </code>
+              </li>
+              <li>
+                {t('setup.viaHttps')}{' '}
+                <code dir="ltr" className={code}>
+                  kuben setup --domain apps.example.com --acme-email you@example.com
+                </code>{' '}
+                {t('setup.onServerOpen')}{' '}
+                <code dir="ltr" className={code}>
+                  https://kuben.apps.example.com
+                </code>
+                .
+              </li>
+              <li>
+                {t('setup.viaHttp')}{' '}
+                <code dir="ltr" className={code}>
+                  kuben setup --allow-http-setup
+                </code>{' '}
+                ({t('setup.or')}{' '}
+                <code dir="ltr" className={code}>
+                  security.insecure_setup = true
+                </code>
+                ).
+              </li>
+            </ol>
+          </CardContent>
+        </Card>
+      </AuthShell>
     )
   }
 
   return (
-    <AuthLayout>
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-5 rounded-2xl border border-line bg-surface p-8 shadow-2xl shadow-black/40"
-      >
-        <header className="space-y-1">
-          <h1 className="font-semibold text-2xl tracking-tight">{t('setup.title')}</h1>
-          <p className="text-muted text-sm">{t('setup.lead')}</p>
-        </header>
+    <AuthShell>
+      <Card className="w-full max-w-sm shadow-lg">
+        <CardHeader>
+          <CardTitle>
+            <h1 className="text-2xl tracking-tight">{t('setup.title')}</h1>
+          </CardTitle>
+          <CardDescription>{t('setup.lead')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="grid gap-5">
+            <TextInput
+              label={t('setup.organization')}
+              name="org_name"
+              type="text"
+              autoComplete="organization"
+              required
+              placeholder="ACME"
+            />
+            <TextInput
+              label={t('login.email')}
+              name="email"
+              type="email"
+              autoComplete="username"
+              dir="ltr"
+              required
+            />
+            <TextInput
+              label={t('login.password')}
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              dir="ltr"
+              minLength={12}
+              required
+              hint={t('setup.passwordHint')}
+            />
+            {askForToken && (
+              <TextInput
+                label={t('setup.token')}
+                name="token"
+                type="text"
+                autoComplete="off"
+                dir="ltr"
+                required
+                hint={
+                  <>
+                    {t('setup.tokenHintBefore')} <code dir="ltr">kuben setup-token</code>{' '}
+                    {t('setup.tokenHintAfter')}
+                  </>
+                }
+              />
+            )}
 
-        <div className="space-y-1.5">
-          <label htmlFor={orgId} className="font-medium text-sm">
-            {t('setup.organization')}
-          </label>
-          <input
-            id={orgId}
-            name="org_name"
-            type="text"
-            autoComplete="organization"
-            required
-            placeholder="ACME"
-            className={control}
-          />
-        </div>
+            <ErrorAlert error={failure} />
 
-        <div className="space-y-1.5">
-          <label htmlFor={emailId} className="font-medium text-sm">
-            {t('login.email')}
-          </label>
-          <input
-            id={emailId}
-            name="email"
-            type="email"
-            autoComplete="username"
-            required
-            className={control}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor={passwordId} className="font-medium text-sm">
-            {t('login.password')}
-          </label>
-          <input
-            id={passwordId}
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            minLength={12}
-            required
-            className={control}
-          />
-          <p className="text-subtle text-xs">{t('setup.passwordHint')}</p>
-        </div>
-
-        {askForToken && (
-          <div className="space-y-1.5">
-            <label htmlFor={tokenId} className="font-medium text-sm">
-              {t('setup.token')}
-            </label>
-            <input id={tokenId} name="token" type="text" autoComplete="off" required className={control} />
-            <p className="text-subtle text-xs">
-              {t('setup.tokenHintBefore')} <code dir="ltr">kuben setup-token</code>{' '}
-              {t('setup.tokenHintAfter')}
-            </p>
-          </div>
-        )}
-
-        {message && (
-          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-danger text-sm">
-            {message}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={mutation.isPending || status.isPending}
-          className="w-full rounded-lg bg-accent px-3 py-2 font-medium text-sm text-on-accent transition hover:bg-accent-hover disabled:opacity-60"
-        >
-          {mutation.isPending ? t('ui.creating') : t('setup.submit')}
-        </button>
-      </form>
-    </AuthLayout>
+            <Button type="submit" className="w-full" disabled={mutation.isPending || status.isPending}>
+              {mutation.isPending && <Spinner role="presentation" aria-hidden="true" />}
+              {mutation.isPending ? t('ui.creating') : t('setup.submit')}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   )
 }

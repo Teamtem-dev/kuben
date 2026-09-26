@@ -40,7 +40,8 @@ async function serveConsole(route: Route) {
   })
 }
 
-const now = Date.UTC(2026, 8, 16, 10, 0, 0)
+/** The mocked data's "now"; visual tests pin the page's clock to it. */
+export const now = Date.UTC(2026, 8, 16, 10, 0, 0)
 
 export const user = {
   id: '0190f3c6-0000-7000-8000-000000000001',
@@ -49,6 +50,49 @@ export const user = {
   via: 'session',
   must_change_password: false,
 }
+
+export const projects = [
+  {
+    name: 'shop',
+    uid: '0190f3c6-0000-7000-8000-0000000000p1',
+    display_name: 'Shop',
+    description: null,
+    org: null,
+    environments: 1,
+    ready: true,
+    deleting: false,
+    created_at: '2026-09-16T08:00:00Z',
+  },
+]
+
+export const environment = {
+  name: 'prod',
+  resource_name: 'shop-prod',
+  project: 'shop',
+  env_type: 'production',
+  namespace: 'kb-shop-prod',
+  phase: 'Active',
+  ready: true,
+  message: null,
+  deleting: false,
+  deletion_scheduled_at: null,
+  created_at: '2026-09-16T08:30:00Z',
+}
+
+export const tokens = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000c1',
+    name: 'github-actions',
+    prefix: 'kbn_pat_0190f3c6',
+    role: 'developer',
+    project: 'shop',
+    environment: null,
+    expires_at: now + 90 * 86_400_000,
+    last_used_at: now - 3_600_000,
+    revoked: false,
+    created_at: now - 86_400_000,
+  },
+]
 
 const process = (name: string, schedule: string | null = null) => ({
   name,
@@ -166,7 +210,37 @@ export const doctor = {
       hint: 'point the record at the Gateway',
     },
   ],
-  graph: { nodes: [], edges: [] },
+  graph: {
+    nodes: [
+      {
+        layer: 'pods',
+        status: 'ok',
+        subject: 'Deployment web-web',
+        evidence: ['2/2 ready'],
+        observedAt: now,
+        action: null,
+      },
+      { layer: 'gateway', status: 'ok', subject: 'kuben-system/kuben', evidence: [], action: null },
+      {
+        layer: 'dns',
+        status: 'fail',
+        subject: 'web.apps.example.com',
+        evidence: ['web.apps.example.com: NXDOMAIN'],
+        action: 'point the record at the Gateway',
+      },
+      {
+        layer: 'tls',
+        status: 'warn',
+        subject: 'web.apps.example.com',
+        evidence: ['no certificate yet'],
+        action: null,
+      },
+    ],
+    edges: [
+      { from: 'dns', to: 'tls' },
+      { from: 'gateway', to: 'tls' },
+    ],
+  },
   findings: [
     {
       kind: 'rootCause',
@@ -193,20 +267,271 @@ const metrics = {
   })),
 }
 
+const iso = (ms: number) => new Date(ms).toISOString()
+
+export const members = [
+  {
+    id: user.id,
+    email: user.email,
+    display_name: 'Owner',
+    role: 'owner',
+    must_change_password: false,
+    active: true,
+  },
+  {
+    id: '0190f3c6-0000-7000-8000-000000000002',
+    email: 'carol@example.com',
+    display_name: null,
+    role: 'developer',
+    must_change_password: true,
+    active: true,
+  },
+]
+
+export const incidents = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000e1',
+    kind: 'deployment.failed',
+    severity: 'critical',
+    title: 'web in shop/prod failed to deploy',
+    detail: 'the new pods never became ready',
+    project: 'shop',
+    environment: 'prod',
+    app: 'web',
+    openedAt: iso(now - 3_600_000),
+    lastSeenAt: iso(now - 600_000),
+    occurrences: 3,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    resolvedAt: null,
+    resolvedBy: null,
+    runbook: 'https://runbooks.example.com/deploy-failed',
+  },
+]
+
+export const webhooks = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000w1',
+    name: 'ops-pager',
+    url: 'https://hooks.example.com/kuben',
+    events: ['deployment.failed', 'incident.opened'],
+    createdBy: user.email,
+    createdAt: iso(now - 86_400_000),
+    disabledAt: null,
+    failures: 1,
+    secret: null,
+  },
+]
+
+export const deliveries = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000d1',
+    event: 'deployment.failed',
+    status: 'failed',
+    attempts: 3,
+    lastStatus: 502,
+    lastError: 'bad gateway',
+    createdAt: iso(now - 600_000),
+    finishedAt: iso(now - 500_000),
+  },
+]
+
+export const claims = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000f1',
+    domain: 'example.com',
+    status: 'pending',
+    challengeName: '_kuben-challenge.example.com',
+    challengeValue: 'kuben-verify=4f1d2c',
+    method: null,
+    createdBy: user.email,
+    createdAt: iso(now - 86_400_000),
+    verifiedAt: null,
+    lastCheckedAt: null,
+    lastError: null,
+  },
+]
+
+export const audit = {
+  events: [
+    {
+      seq: 2,
+      id: '0190f3c6-0000-7000-8000-0000000000a2',
+      at: now - 60_000,
+      actor_kind: 'user',
+      actor: user.email,
+      action: 'app.update',
+      target_kind: 'app',
+      target: 'shop/prod/web',
+      outcome: 'success',
+      status: 200,
+      ip: '203.0.113.9',
+      request_id: null,
+    },
+    {
+      seq: 1,
+      id: '0190f3c6-0000-7000-8000-0000000000a1',
+      at: now - 120_000,
+      actor_kind: 'user',
+      actor: user.email,
+      action: 'startDeployment',
+      target_kind: 'app',
+      target: 'shop/prod/web',
+      outcome: 'accepted',
+      status: null,
+      ip: '203.0.113.9',
+      request_id: null,
+    },
+  ],
+  next_before: null,
+}
+
+export const owner = {
+  owner: 'shop-team',
+  contact: '#shop-oncall',
+  runbookUrl: 'https://runbooks.example.com/shop',
+}
+
+export const freezes = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000f9',
+    reason: 'end-of-quarter close',
+    app: null,
+    createdBy: user.email,
+    startsAt: iso(now - 3_600_000),
+    endsAt: iso(now + 86_400_000),
+    liftedAt: null,
+    active: true,
+  },
+]
+
+export const ciPolicies = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000c9',
+    name: 'shop-deploy',
+    project: '0190f3c6-0000-7000-8000-0000000000p1',
+    environment: null,
+    repository: 'acme/shop',
+    repositoryId: 123456,
+    repositoryOwnerId: 7890,
+    refs: ['refs/heads/main'],
+    environments: [],
+    events: [],
+    role: 'developer',
+    tokenTtlSecs: 900,
+    createdBy: user.id,
+    createdAt: now - 86_400_000,
+    revokedAt: null,
+  },
+]
+
+export const health = {
+  ready: true,
+  database: 'postgres',
+  cluster: true,
+  seq: 42,
+  pods: 2,
+  subsystems: {
+    agentlink: { state: 'ok', updated_at_ms: now },
+    projections: { state: 'ok', updated_at_ms: now },
+    webhooks: { state: 'degraded', last_error: 'hooks.example.com: 502', updated_at_ms: now },
+  },
+}
+
+export const previews = [
+  {
+    environment: 'pr-42',
+    repository: 'acme/shop',
+    pullRequest: 42,
+    epoch: 1,
+    headRepository: 'acme/shop',
+    branch: 'feature/cart',
+    commit: '0123456789abcdef0123',
+    trusted: true,
+    state: 'active',
+    autoDelete: true,
+    expiresAt: iso(now + 20 * 3_600_000),
+    remainingSeconds: 20 * 3_600,
+    createdAt: iso(now - 4 * 3_600_000),
+    closedAt: null,
+    closeReason: null,
+  },
+]
+
+const previewPolicy = {
+  enabled: true,
+  sourceEnvironment: 'prod',
+  ttlHours: 24,
+  maxActive: 5,
+  allowForks: false,
+  updatedBy: user.email,
+  updatedAt: iso(now - 86_400_000),
+}
+
+const statusPage = {
+  slug: 'shop',
+  title: 'Shop status',
+  enabled: true,
+  environments: ['prod'],
+  path: '/status/shop',
+  updatedBy: user.email,
+  updatedAt: iso(now - 86_400_000),
+}
+
+export const publicStatus = {
+  title: 'Shop status',
+  status: 'degraded',
+  components: [
+    { name: 'web', status: 'operational' },
+    { name: 'worker', status: 'degraded' },
+  ],
+  incidents: [
+    { component: 'worker', severity: 'warning', startedAt: iso(now - 3_600_000), resolvedAt: null },
+  ],
+  updatedAt: iso(now),
+}
+
+export const detached = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000b1',
+    app: 'legacy',
+    namespace: 'kb-shop-prod',
+    reason: 'moved to Helm',
+    requestedBy: user.email,
+    requestedAt: iso(now - 86_400_000),
+    completedAt: iso(now - 86_000_000),
+    releasedAt: null,
+    releasedBy: null,
+  },
+]
+
 const sse = (events: [string, unknown][]) =>
   events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('')
+
+/** Preferences as the console keeps them, set before it loads. */
+export async function prefer(page: Page, locale: string, theme: string) {
+  await page.addInitScript(
+    (prefs) => window.localStorage.setItem('kuben.prefs', prefs),
+    JSON.stringify({ locale, theme }),
+  )
+}
 
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 
-/** Answer the console's API calls; `signedIn: false` shows the sign-in page. */
-export async function mockApi(page: Page, { signedIn = true } = {}) {
+/**
+ * Answer the console's API calls; `signedIn: false` shows the sign-in page,
+ * `setupNeeded: true` the first-run setup.
+ */
+export async function mockApi(page: Page, { signedIn = true, setupNeeded = false } = {}) {
   const appPath = '/api/v1/projects/shop/environments/prod/apps/web'
   await page.route('http://kuben.test/**', serveConsole)
   await page.route('http://kuben.test/api/**', async (route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
-    if (path === '/api/v1/setup') return json(route, { needed: false, token_required: false, secure: true })
+    if (path === '/api/v1/setup') {
+      return json(route, { needed: setupNeeded, token_required: false, secure: true })
+    }
     if (path === '/api/v1/me') {
       return signedIn
         ? json(route, user)
@@ -269,7 +594,39 @@ export async function mockApi(page: Page, { signedIn = true } = {}) {
         },
       ])
     }
-    if (path === '/api/v1/projects/shop/environments') return json(route, [])
+    if (path === '/api/v1/projects') return json(route, projects)
+    if (path === '/api/v1/projects/shop') return json(route, projects[0])
+    if (path === '/api/v1/projects/shop/environments') return json(route, [environment])
+    if (path === '/api/v1/projects/shop/environments/prod') return json(route, environment)
+    if (path === '/api/v1/projects/shop/environments/prod/apps') return json(route, [app])
+    if (path === '/api/v1/tokens') return json(route, tokens)
+    if (path === '/api/v1/members') return json(route, members)
+    if (path === '/api/v1/incidents') return json(route, incidents)
+    if (path === '/api/v1/webhooks') return json(route, webhooks)
+    if (path === `/api/v1/webhooks/${webhooks[0]?.id}/deliveries`) return json(route, deliveries)
+    if (path === '/api/v1/domains') return json(route, claims)
+    if (path === '/api/v1/audit') return json(route, audit)
+    if (path === '/api/v1/healthz/details') return json(route, health)
+    if (path === '/api/v1/ci/trust-policies') return json(route, ciPolicies)
+    if (path === '/api/v1/auth/sso') {
+      return json(route, { enabled: true, displayName: 'Acme SSO', startUrl: '/api/v1/auth/sso/start' })
+    }
+    if (path === '/api/v1/projects/shop/owner') return json(route, owner)
+    if (path === '/api/v1/projects/shop/applications/web/owner') return json(route, null)
+    if (path === '/api/v1/projects/shop/environments/prod/freezes') return json(route, freezes)
+    if (path === '/api/v1/projects/shop/environments/prod/silences') return json(route, [])
+    if (path === '/api/v1/projects/shop/previews') return json(route, previews)
+    if (path === '/api/v1/projects/shop/previews/policy') return json(route, previewPolicy)
+    if (path === '/api/v1/projects/shop/status-page') return json(route, statusPage)
+    if (path === '/api/v1/public/status/shop') return json(route, publicStatus)
+    if (path === '/api/v1/projects/shop/environments/prod/detached') return json(route, detached)
+    if (
+      path === '/api/v1/templates' ||
+      path === '/api/v1/projects/shop/environments/prod/secrets' ||
+      path === '/api/v1/projects/shop/environments/prod/registries'
+    ) {
+      return json(route, [])
+    }
     return json(
       route,
       { code: 'not_found', title: 'Not Found', status: 404, detail: `no mock for ${path}` },
