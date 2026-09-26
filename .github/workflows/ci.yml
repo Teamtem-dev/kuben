@@ -403,7 +403,7 @@ jobs:
           helm template kuben charts/kuben --kube-version 1.32.0 \
             --set route.enabled=true --set route.hostname=kuben.example.com \
             --set route.gateway.name=gw --set platform.gateway=infra/gw >/dev/null
-      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
+      - uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
         with:
           tool: trivy@0.74.0
       # RBAC and pod security of what users install; exceptions are justified
@@ -623,7 +623,7 @@ jobs:
       - run: bun turbo run size --filter=kuben
       - name: Smoke test
         run: apps/kuben/bin/kuben --version
-      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
+      - uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
         with:
           tool: trivy@0.74.0
       # The module list Go embeds must be present and free of fixed
@@ -642,7 +642,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
+      - uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
         with:
           tool: zizmor@1.30.1
       # The token enables the online audits (impostor commits, known-vulnerable
