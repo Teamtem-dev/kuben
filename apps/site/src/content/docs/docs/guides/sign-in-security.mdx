@@ -1,9 +1,41 @@
 ---
 title: Sign-in and login throttling
-description: How Kuben slows down password guessing with three counters, what a blocked attempt looks like, and how to tune the limits or run behind a proxy.
+description: Single sign-on with OpenID Connect, how Kuben slows down password guessing with three counters, how to tune the limits or run behind a proxy, and how sessions and passwords work.
 sidebar:
   order: 10
 ---
+
+## Single sign-on
+
+Kuben signs people in through an OpenID Connect provider (Keycloak, Authentik, Okta, Microsoft Entra ID, Google, …) next to local passwords. The sign-in page then shows **Continue with** and the provider's name.
+
+Set it in the server's configuration, `/etc/kuben/config.toml` on a server installed with `kuben setup`:
+
+```toml
+[server]
+public_url = "https://kuben.example.com"   # must be https
+
+[sso]
+enabled = true
+issuer = "https://id.example.com/realms/main"
+client_id = "kuben"
+client_secret_file = "/etc/kuben/sso-client-secret"
+display_name = "Example ID"
+groups = { "platform-admins" = "admin", "developers" = "developer" }
+# default_role = "viewer"          # for people in no mapped group; unset refuses them
+# allowed_domains = ["example.com"]
+```
+
+Register `https://kuben.example.com/api/v1/auth/sso/callback` as the redirect URI at the provider. Every key, with its `KUBEN_SSO__*` variable, is in [Configuration](/docs/reference/configuration/#sso). The Helm chart has no values for single sign-on yet.
+
+How it behaves:
+
+- The provider must have verified the email address (`require_verified_email`, on by default). Kuben links the person to the account with that email, or creates one.
+- The groups in the ID token (`group_claim`, `groups` by default) set the organisation role **again at every sign-in**. Someone moved out of a group loses the role at their next sign-in; someone in no mapped group, without a `default_role`, cannot sign in.
+- Local passwords keep working, so an owner still has a way in while the provider is down. `disable_password_for_linked = true` turns off passwords for linked accounts.
+- **Settings** in the sidebar shows whether single sign-on is on, the button label and where it starts. It is read-only: the configuration decides.
+
+Kuben has no two-factor sign-in of its own; use single sign-on and your provider's MFA.
 
 ## Three counters
 
@@ -30,15 +62,17 @@ The counters live in the database, keyed by SHA-256 hashes rather than by emails
 
 ## Behind a proxy
 
-Per-IP throttling is only as good as the address Kuben sees. Set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` **only** when a proxy in front of Kuben appends the client address to `X-Forwarded-For`; the Helm chart sets it, because Kuben sits behind the Gateway there. Kuben then uses the **last** hop of the header. The first hops are written by the client and ignored, so a client cannot spoof its way past the per-IP limit.
+Per-IP throttling is only as good as the address Kuben sees. Set `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` **only** when a proxy in front of Kuben appends the client address to `X-Forwarded-For`; the Helm chart sets it, because Kuben sits behind the Gateway there. Kuben then uses the **last** hop of the header. The first hops are written by the client and ignored, so a client cannot spoof its way past the per-IP limit. To believe the header only from your proxy, set `KUBEN_SECURITY__TRUSTED_PROXIES` to its addresses, for example `10.42.0.0/16`.
 
 If you enable it without such a proxy, every client can choose its own address and the per-IP counter becomes meaningless. Leave it off for the plain binary unless you have put a reverse proxy in front.
 
 ## Sessions and passwords
 
-- The session cookie is `__Host-`, `HttpOnly`, `Secure` and `SameSite`. Sessions expire after `KUBEN_SECURITY__SESSION_TTL_HOURS` (12 by default).
+- The session cookie is `HttpOnly` and `SameSite=Lax`. Over HTTPS it is `__Host-kuben_session` and `Secure`: `KUBEN_SECURITY__COOKIE_SECURE` is `auto` by default and follows `server.public_url`; the Helm chart sets it to `true`.
+- Sessions end `KUBEN_SECURITY__SESSION_TTL_HOURS` after you sign in (12 by default), active or not. **Sign out** is in the account menu at the top right.
 - A revoked session stops working on the replica that revoked it immediately, and on other replicas within `KUBEN_SECURITY__SESSION_CACHE_TTL_SECS` (5 seconds).
 - Passwords are hashed with Argon2id and must be at least `KUBEN_SECURITY__PASSWORD_MIN_LENGTH` characters (12).
-- Changing your password signs out your other sessions. Being removed from the team revokes all sessions and tokens.
+- Change your password under the account menu → **Account** → **Change password**; it signs out your other sessions. An invited member signs in with a temporary password and must replace it first. Being removed from the team revokes all sessions and tokens.
+- If the first admin's password is lost, `kuben reset-admin` sets a new one from the server; see [Teams and roles](/docs/guides/teams-and-roles/#lost-admin-password).
 
 See [Configuration](/docs/reference/configuration/) for every setting and [Security model](/docs/operations/security/) for the wider picture.
