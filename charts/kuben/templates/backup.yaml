@@ -30,6 +30,61 @@ spec:
     requests:
       storage: {{ .Values.backup.persistence.size }}
 ---
+{{- $pvcExists := lookup "v1" "PersistentVolumeClaim" .Release.Namespace $name }}
+{{- if or .Release.IsInstall (not $pvcExists) }}
+# Storage classes with volumeBindingMode: WaitForFirstConsumer (the default on
+# k3s and many cloud providers) keep a PVC Pending until a pod that mounts it
+# is scheduled. An init job touches the volume on install so `helm install --wait`
+# succeeds instead of timing out waiting for the CronJob's first scheduled run.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-init-volume
+  labels:
+    {{- include "kuben.labels" . | nindent 4 }}
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        {{- include "kuben.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backup-init
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: init-volume
+          image: {{ .Values.backup.image | default (include "kuben.postgresql.image" .) }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command: ["sh", "-c", "mkdir -p /backups"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ $name }}
+---
+{{- end }}
 {{- end }}
 apiVersion: batch/v1
 kind: CronJob
