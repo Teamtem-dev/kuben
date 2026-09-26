@@ -62,7 +62,18 @@ type testNS struct {
 // runtimeCRD is the ApplicationRuntime CRD of the frozen manifest.
 func runtimeCRD(t *testing.T) *unstructured.Unstructured {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "..", "..", "charts", "kuben", "crds", "kuben.dev_all.yaml"))
+	var f *os.File
+	var err error
+	for _, p := range []string{
+		filepath.Join("..", "..", "..", "..", "charts", "kuben", "crds", "kuben.dev_all.yaml"),
+		filepath.Join("..", "..", "charts", "kuben", "crds", "kuben.dev_all.yaml"),
+		filepath.Join("charts", "kuben", "crds", "kuben.dev_all.yaml"),
+	} {
+		f, err = os.Open(p)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

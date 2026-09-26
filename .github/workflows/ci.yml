@@ -115,7 +115,8 @@ jobs:
         run: |
           assets=$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.1 use 1.37.x -p path --bin-dir "$RUNNER_TEMP/envtest")
           echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
-      - run: bun turbo run lint test --filter=kuben --filter=kuben-agent --filter=api
+      - run: bun turbo run lint --filter=kuben --filter=kuben-agent --filter=api
+      - run: bun turbo run test --filter=kuben --filter=kuben-agent --filter=api
       # genspec, Kuben's own tool in the tools module.
       - run: cd tools && GOWORK=off go test ./genspec/
       - name: Vulnerabilities (govulncheck, per module)
