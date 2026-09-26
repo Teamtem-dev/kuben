@@ -44,7 +44,7 @@ and commit `apps/console/e2e/__screenshots__/`. Snapshots are per platform (`-li
 Details that matter:
 
 - Every action is pinned to a **commit SHA**; Dependabot keeps them current with a 7-day cooldown.
-- Go is installed by `actions/setup-go` at the version in `go.mod`; third-party tools are installed at exact versions by a checksum-verifying installer, and the Go tools are pinned in `tools/go.mod`. Trivy's own GitHub Actions are deliberately not used after their tags were hijacked in March 2026.
+- Go is installed by `actions/setup-go` at the version in `go.work`; third-party tools are installed at exact versions by a checksum-verifying installer, and the Go tools are pinned in `tools/go.mod`. Trivy's own GitHub Actions are deliberately not used after their tags were hijacked in March 2026.
 - `permissions: contents: read` is the default; each job asks for what it needs; `persist-credentials: false` on every checkout.
 - The Turborepo remote cache is **read** by pull requests and **written** only on `main`, so a pull request cannot plant a poisoned cache. Release jobs use no cache at all.
 

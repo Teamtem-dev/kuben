@@ -81,6 +81,7 @@ require (
 )
 
 tool (
+	github.com/Teamtem-dev/kuben/tools/genspec
 	github.com/alecthomas/go-check-sumtype/cmd/go-check-sumtype
 	github.com/kisielk/errcheck
 	github.com/nishanths/exhaustive/cmd/exhaustive

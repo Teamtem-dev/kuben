@@ -7,13 +7,13 @@
       "outputs": ["dist/**"]
     },
     "check": {
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+      "inputs": ["$TURBO_DEFAULT$"]
     },
     "size": {
       "dependsOn": ["build"]
     },
     "dev": {
-      "with": ["//#go:dev"]
+      "with": ["kuben#dev"]
     }
   }
 }

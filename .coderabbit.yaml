@@ -21,16 +21,17 @@ reviews:
   # Generated and lock files are reviewed through their sources.
   path_filters:
     - "!bun.lock"
-    - "!go.sum"
-    - "!tools/go.sum"
-    - "!internal/httpapi/gen/**"
+    - "!**/go.sum"
+    - "!go.work.sum"
+    - "!apps/kuben/internal/httpapi/gen/**"
+    - "!packages/api/v1alpha1/zz_generated.deepcopy.go"
     - "!packages/api-client/openapi.json"
     - "!packages/api-client/src/schema.d.ts"
     - "!charts/kuben/crds/**"
   path_instructions:
-    - path: "go/**/*.go"
+    - path: "**/*.go"
       instructions: >-
-        Check the invariants in CONTRIBUTING.md and go/CONVENTIONS.md that the
+        Check the invariants in CONTRIBUTING.md and apps/kuben/docs/CONVENTIONS.md that the
         change touches, in particular: mutations need an authorization proof
         (I-1); errors returned to clients carry no internal details; objects
         in another org answer 404, not 403; channels and streams stay
@@ -38,7 +39,7 @@ reviews:
         manager. The API contract (packages/api-client/openapi.json) is
         frozen: JSON member names, null versus omitted and error texts do not
         change.
-    - path: "internal/store/**"
+    - path: "apps/kuben/internal/store/**"
       instructions: >-
         Migrations are PostgreSQL only (ADR-025), and an applied migration
         file is never edited (its checksum is recorded). The schema is frozen

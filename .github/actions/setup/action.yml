@@ -2,7 +2,7 @@ name: Setup
 description: >-
   Bun (version from package.json `packageManager`) and the JS dependencies.
   Jobs that build or test Go install it first with actions/setup-go, pinned
-  to the version in go.mod.
+  to the version in go.work.
 
 runs:
   using: composite

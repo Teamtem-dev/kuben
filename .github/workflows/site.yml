@@ -17,11 +17,13 @@ on:
     paths:
       - apps/site/**
       - packages/api-client/openapi.json
+      - packages/typescript-config/**
       - .github/workflows/site.yml
   pull_request:
     paths:
       - apps/site/**
       - packages/api-client/openapi.json
+      - packages/typescript-config/**
       - .github/workflows/site.yml
   workflow_dispatch:
 

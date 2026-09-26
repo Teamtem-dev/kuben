@@ -1,0 +1,8 @@
+# ogen generates the server side of the frozen API contract
+# (packages/api-client/openapi.json); see apps/kuben/docs/history/SPIKES.md for the choice.
+generator:
+  features:
+    disable_all: true
+    enable:
+      - "paths/server"
+      - "ogen/unimplemented"

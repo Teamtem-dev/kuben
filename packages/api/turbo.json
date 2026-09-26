@@ -1,0 +1,56 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "description": "Compiles the shared API module. A library has no output to restore, so it is not cached.",
+      "command": ["go", "build", "./..."],
+      "cache": false,
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/go.work", "$TURBO_ROOT$/go.work.sum"]
+    },
+    "check": {
+      "command": ["go", "vet", "./..."],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/go.work", "$TURBO_ROOT$/go.work.sum"]
+    },
+    "lint": {
+      "command": ["bash", "../../scripts/go-check.sh", "."],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/.golangci.yml",
+        "$TURBO_ROOT$/tools/go.mod",
+        "$TURBO_ROOT$/tools/go.sum",
+        "$TURBO_ROOT$/scripts/go-check.sh",
+        "$TURBO_ROOT$/scripts/go-tool.sh"
+      ]
+    },
+    "format": {
+      "command": ["bash", "../../scripts/go-tool.sh", "gofumpt", "-w", "."],
+      "cache": false
+    },
+    "test": {
+      "description": "go test with the race detector; the CRD types are pinned to charts/kuben/crds/kuben.dev_all.yaml.",
+      "command": ["go", "test", "-race", "-shuffle=on", "./..."],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/go.work",
+        "$TURBO_ROOT$/go.work.sum",
+        "$TURBO_ROOT$/charts/kuben/crds/**"
+      ]
+    },
+    "gen": {
+      "description": "DeepCopy of the CRD types (controller-gen).",
+      "command": ["go", "generate", "./v1alpha1"],
+      "inputs": [
+        "v1alpha1/*.go",
+        "!v1alpha1/*_test.go",
+        "!v1alpha1/zz_generated.deepcopy.go",
+        "$TURBO_ROOT$/tools/go.mod",
+        "$TURBO_ROOT$/tools/go.sum",
+        "$TURBO_ROOT$/scripts/go-tool.sh"
+      ],
+      "outputs": ["v1alpha1/zz_generated.deepcopy.go"]
+    }
+  }
+}

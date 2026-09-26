@@ -3,7 +3,9 @@
 # and compares against the files as they were before, so no git is needed and
 # a fresh `bun run gen` in the working tree passes.
 #
-# Only the TS client types are generated now. The OpenAPI spec
+# Generated: the TS client types and the Go API server (ogen, with the API
+# reference's copy of the spec) from the OpenAPI spec, and the DeepCopy of
+# the CRD types (controller-gen). The OpenAPI spec
 # (packages/api-client/openapi.json) and the CRD manifest
 # (charts/kuben/crds/kuben.dev_all.yaml) are frozen contracts: the Rust code
 # generated them up to 1.2, and the Go tests pin the server and the embedded
@@ -13,7 +15,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-files=(packages/api-client/src/schema.d.ts)
+files=(
+  packages/api-client/src/schema.d.ts
+  apps/kuben/internal/httpapi/apidocs/openapi.json
+  packages/api/v1alpha1/zz_generated.deepcopy.go
+)
+while IFS= read -r f; do files+=("$f"); done < <(find apps/kuben/internal/httpapi/gen -type f | sort)
 # An explicit template: BSD mktemp ignores $TMPDIR without one.
 snap=$(mktemp -d "${TMPDIR:-/tmp}/kuben-drift.XXXXXX")
 trap 'rm -rf "$snap"' EXIT

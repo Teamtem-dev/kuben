@@ -14,6 +14,7 @@
     "openapi-fetch": "catalog:"
   },
   "devDependencies": {
+    "@kuben/typescript-config": "workspace:*",
     "openapi-typescript": "catalog:",
     "typescript": "catalog:"
   }

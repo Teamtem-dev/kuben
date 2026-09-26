@@ -27,12 +27,15 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: go.work
           # A scheduled check reads the module proxy fresh; no cache to trust.
           cache: false
       # govulncheck is pinned in tools/go.mod; it reports only
-      # vulnerabilities in code the binaries can reach.
-      - run: go tool -modfile=tools/go.mod govulncheck ./...
+      # vulnerabilities in code the binaries can reach. Once per Go module.
+      - run: |
+          for module in apps/kuben apps/kuben-agent packages/api; do
+            (cd "$module" && ../../scripts/go-tool.sh govulncheck ./...)
+          done
 
   image:
     name: Published image (Trivy)

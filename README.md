@@ -86,7 +86,7 @@ Visit [kuben.teamtem.com/docs](https://kuben.teamtem.com/docs/) for the full doc
 | [Contributing](https://kuben.teamtem.com/docs/contributing/development/) | development setup, CI and releases, [architecture decisions](https://kuben.teamtem.com/docs/contributing/architecture-decisions/) |
 | [Changelog](https://kuben.teamtem.com/changelog/) | every release |
 
-In this repository, [ARCHITECTURE.md](ARCHITECTURE.md) maps the Go packages and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules every change is reviewed against.
+In this repository, [ARCHITECTURE.md](ARCHITECTURE.md) maps the apps, the packages and the Go code, and [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules every change is reviewed against.
 
 ## Roadmap
 
@@ -102,7 +102,7 @@ Our [Code of Conduct](CODE_OF_CONDUCT.md) applies to every Kuben community space
 
 Contributions are welcome. Before you open a pull request, read the [contribution guidelines](CONTRIBUTING.md): they cover the workflow and the invariants every change is reviewed against.
 
-You need [Go](https://go.dev) (the version in `go.mod`), [Bun](https://bun.com) 1.4 or later, and a PostgreSQL for the server. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph:
+You need [Go](https://go.dev) (the version in `go.work`), [Bun](https://bun.com) 1.4 or later, and a PostgreSQL for the server. [Turborepo](https://turborepo.dev) runs every task in both languages from one graph:
 
 ```bash
 bun run setup   # checks for Go and Bun, installs the JS dependencies, downloads the Go modules
