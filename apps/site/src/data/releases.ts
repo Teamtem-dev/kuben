@@ -9,6 +9,26 @@ export type Release = {
 }
 
 export const releases: Release[] = [
+  // ─── NOT LIVE: goes live with the v2.0.0-alpha.1 tag ────────────────────
+  // This file has no "unreleased" state: an entry in the array is on the
+  // site as soon as it is merged. Uncomment the entry below in the commit
+  // that is tagged v2.0.0-alpha.1, and set `date` to the tag's date.
+  //
+  // {
+  //   version: 'v2.0.0-alpha.1',
+  //   date: 'YYYY-MM-DD',
+  //   title: 'Kuben in Go: the first 2.0 pre-release',
+  //   prerelease: true,
+  //   highlights: [
+  //     'The server, the kuben CLI and the cluster agent are rewritten in Go. It is not a performance rewrite: it brings the maintained Kubernetes libraries (client-go, controller-runtime, envtest), builds in seconds and code more people can read.',
+  //     'Same contracts as 1.2: the REST API is generated from the same OpenAPI document, and an oracle test compares its answers with the released 1.2.0 binary; the CRD manifest, the database schema, the configuration keys, the Helm values and the AgentLink protocol are unchanged. 2.0.0 adds no migration, so going back to 1.2.x is a change of binary or image.',
+  //     'CLI parity: every kuben command and flag of 1.2, with the same output of --version and exit status 2 for a command line that does not parse.',
+  //     'A new console on shadcn/ui: a home dashboard, tables with filters and pages, the Doctor with its evidence graph, and settings for single sign-on and CI trust, in English and Persian, light and dark, under the same strict content security policy.',
+  //     'Release files keep their 1.x names and signatures: install.sh and the Helm chart work unchanged. Pre-releases are never latest: name the version (install.sh --version v2.0.0-alpha.1, helm --version 2.0.0-alpha.1), run kuben upgrade-check --major first, and see Upgrading from 1.2 to 2.0 for the Helm pre-upgrade check.',
+  //     'Not in yet: scale-to-zero (the activator role is ignored with a warning), terminals, and a console view for builds. [runtime] settings are accepted and have no effect. 1.2.x remains the stable line.',
+  //   ],
+  // },
+  // ────────────────────────────────────────────────────────────────────────
   // Ships with the v1.2.1 tag: the type has no "not yet released" state, so
   // this entry is live on the site as soon as it is merged.
   {

@@ -63,13 +63,16 @@ Every mutation, denial, throttled attempt and login is recorded with actor, acti
 
 - Distroless image, non-root user (UID 65532), read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp.
 - Static binary (Go with cgo disabled; 1.x: musl with mimalloc); no shell, no package manager in the image.
-- The image is built from the very binaries that were checksummed and attested, and scanned for HIGH and CRITICAL vulnerabilities before it is pushed. Every binary embeds its dependency list (Go's module list, `go version -m`; 1.x: `cargo auditable`), so `trivy`, `grype`, `osv-scanner` or `govulncheck -mode=binary` can audit a deployed binary in place.
+- Every binary embeds its dependency list (Go's module list, `go version -m`; 1.x: `cargo auditable`), so `trivy`, `grype`, `osv-scanner` or `govulncheck -mode=binary` can audit a deployed binary in place.
 
 ## Supply chain
 
 - Every GitHub Action is pinned to a commit SHA; workflows are audited with zizmor on every pull request.
-- Releases are signed keyless with Sigstore (checksums, image, chart) and carry build provenance; the installer verifies the signature when cosign is present. See [Download, verify, then run](/docs/getting-started/binary/#download-verify-then-run).
-- What setup installs from others (k3s, Gateway API CRDs, cert-manager and its images, PostgreSQL) is pinned by digest in the release's bundle lock and checked before use.
+- Releases are signed keyless with Sigstore, so there is no signing key to lose: `checksums.txt` (as the bundle `checksums.txt.sigstore.json`), the image and the Helm chart. The certificate names the release workflow and the tag, and `install.sh` verifies the signature whenever cosign is installed (`--require-signature` makes it mandatory). See [Download, verify, then run](/docs/getting-started/binary/#download-verify-then-run).
+- `checksums.txt` lists every archive, a CycloneDX SBOM of each archive (`kuben-<target>.cdx.json`), `install.sh` and `bundle.lock.json`, so the signature covers them all.
+- The archives and the image carry GitHub build provenance attestations (`gh attestation verify`); the image also carries BuildKit's SBOM and provenance attestations.
+- The image is built from the very binaries that were checksummed and attested, and is scanned by Trivy for fixable HIGH and CRITICAL vulnerabilities before it is pushed.
+- What setup installs from others (k3s, Gateway API CRDs, cert-manager and its images, PostgreSQL) is pinned in the release's bundle lock (`kuben version --bundle`) and checked before use.
 - Releases build without a cache, so a poisoned cache can never reach an artifact.
 - govulncheck checks the Go modules on every change; the modules of `main` and the published image are re-checked daily.
 - Dependabot updates run with a 7-day cooldown against freshly published malicious packages.
@@ -79,7 +82,7 @@ Every mutation, denial, throttled attempt and login is recorded with actor, acti
 - **Kuben is not a sandbox for hostile tenants.** Environments isolate teams that trust each other from each other's mistakes. Untrusted code needs a stronger boundary (separate clusters, gVisor, Kata).
 - **TLS terminates at your Gateway controller.** Kuben configures it and never sees app traffic.
 - **The Gateway holds at most 64 listeners**; Kuben uses at most 60.
-- **No SSO yet.** Every member has a local password; OIDC is on the [roadmap](/docs/roadmap/).
+- **Local passwords stay possible.** With [single sign-on](/docs/reference/configuration/#sso) (OpenID Connect), accounts linked to the provider can still sign in with a password unless `sso.disable_password_for_linked` is set.
 - **A formal threat model is pending.** The decisions above are recorded as ADRs; the threat model document will join them.
 
 ## Reporting a vulnerability

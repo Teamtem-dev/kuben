@@ -13,7 +13,7 @@ import { Aside } from '@astrojs/starlight/components'
 helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values
 ```
 
-Add `--version 1.2.0` to pin a chart version; the chart's `appVersion` selects the image tag.
+Without `--version`, Helm takes the newest stable chart; pre-releases are only installed when you name them. Add `--version 1.2.1` to pin a chart version; the chart's `appVersion` selects the image tag.
 
 Two things that usually need care with operators are automatic here:
 
@@ -47,19 +47,87 @@ forward on the next start: each migration is a transaction of its own and is
 never applied twice. A binary older than the database's schema refuses to
 start instead of running against it.
 
-## From 1.x
+## From 1.0 and 1.1
 
-Kuben 1.x kept its data in SQLite. Kuben now keeps it in PostgreSQL only and does not open SQLite, and 1.x data is not carried over: a 1.x install starts again with an empty database.
+Kuben 1.0 and 1.1 kept their data in SQLite. Since 1.2, Kuben keeps it in PostgreSQL only and does not open SQLite, and the data of an earlier install is not carried over: a 1.0 or 1.1 install starts again with an empty database.
 
 - **Helm.** The `persistence.*` values and the SQLite volume `<fullname>-data` are gone from the chart; it runs its own PostgreSQL unless `database.url` or `database.existingSecret` is set. An upgrade of a release that still has the volume `<fullname>-data` (`kuben-data` for a release named `kuben`) stops with a message. Set `legacy.sqliteVolumeAcknowledged=true` to start with a new, empty database instead; the old volume stays untouched.
 - **Server.** `kuben setup` stops when `/etc/kuben/config.toml` still names a SQLite database. Delete that file and run it again: setup then writes one for the server's own PostgreSQL.
 
-## Binary
+## Upgrading from 1.2 to 2.0
 
-Re-run the installer, optionally pinned:
+<Aside type="caution" title="Pre-release">
+2.0 is in pre-release (`2.0.0-alpha.N`, then beta and rc). Try it on a test installation, or on one you can roll back, and report what you find. 1.2.x stays the stable line.
+</Aside>
+
+### What changes
+
+Kuben 2.0 is the same product with its server, CLI and cluster agent rewritten in Go. What an installation relies on stays as 1.2 left it:
+
+- **The database schema.** 2.0.0 adds no migration: it runs on the database 1.2 migrated, and 1.2.x runs on it again after a rollback. The first new migration comes with 2.1.
+- **The REST API** (`/api/v1`, the same OpenAPI document), **the custom resources** (the same CRD manifest), **the Helm values**, **the configuration keys** and `KUBEN_*` variables, and **the commands and flags** of `kuben`.
+- **The release files:** the archive names, `checksums.txt` and its signature, the image and the chart, so `install.sh` and your automation keep working.
+- **`[runtime]` keys** (`worker_threads`, `max_blocking_threads`, `bulkhead`) sized the Tokio thread pools of 1.x. They are still accepted and have no effect; see [Configuration](/docs/reference/configuration/#runtime).
+- **Output scripts read:** `kuben --version` prints `kuben <version>` as before, for example `kuben 2.0.0-alpha.1`; `kuben version` adds the platform, `kuben 2.0.0-alpha.1 (linux x86_64)`. A command line that does not parse still exits with `2`, a failed command with `1`.
+
+Upgrade the hub first and its cluster agents after it: the hub speaks its own AgentLink protocol version and the one before it.
+
+### Check first
+
+2.0 is a major step, so `kuben upgrade-check` of the 2.0 binary refuses it without `--major`. Read the release notes, download the 2.0 archive for your platform from the [releases page](https://github.com/Teamtem-dev/kuben/releases), and run its binary against your installation before it takes over. On a server set up by `kuben setup`, run it as the service user so it can reach the database:
 
 ```bash
-curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v1.0.2
+tar -xzf kuben-x86_64-unknown-linux-musl.tar.gz kuben
+sudo install -m 0755 kuben /tmp/kuben-2.0
+sudo -u kuben /tmp/kuben-2.0 upgrade-check --major
+```
+
+It also fails when migrations are pending without a recent backup, when the database is ahead or half-migrated, or when a linked agent speaks a protocol 2.0 no longer does ([What an upgrade checks](#what-an-upgrade-checks)).
+
+### Try it on a server
+
+`install.sh` takes the version as `--version` or `KUBEN_VERSION`:
+
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v2.0.0-alpha.1
+# or
+curl -fsSL https://kuben.teamtem.com/install.sh | KUBEN_VERSION=v2.0.0-alpha.1 sh
+```
+
+It downloads the archive, checks it against `checksums.txt` (and its signature when cosign is installed) and runs `kuben setup`, which replaces the binary and restarts `kuben.service`. Take a backup first with `kuben backup`.
+
+### Try it with Helm
+
+Name the chart version: Helm does not pick a pre-release on its own. The chart's pre-upgrade hook runs `kuben upgrade-check` without `--major`, so a plain `helm upgrade --version 2.0.0-alpha.1` stops at the hook before anything changes. Run the check yourself against the database (for the chart's own PostgreSQL, through a port-forward), take a backup, then upgrade with the hook turned off for this one step:
+
+```bash
+kubectl -n kuben-system port-forward svc/kuben-postgresql 5432:5432 &
+export KUBEN_DATABASE__URL="postgres://kuben:$(kubectl -n kuben-system get secret kuben-postgresql \
+  -o jsonpath='{.data.password}' | base64 -d)@localhost:5432/kuben"
+./kuben upgrade-check --major      # the 2.0 binary from its archive
+
+kubectl -n kuben-system create job --from=cronjob/kuben-backup kuben-backup-before-2-0
+helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values \
+  --version 2.0.0-alpha.1 --set backup.beforeUpgrade=false
+```
+
+Set `backup.beforeUpgrade=true` again on the next upgrade within 2.x.
+
+### Roll back to 1.2
+
+Because 2.0.0 changed neither the schema nor the resources, a rollback is a change of binary or image:
+
+- **Helm:** `helm rollback kuben <revision>` (`helm history kuben -n kuben-system` lists them). A rollback runs no pre-upgrade hook. An `helm upgrade --version 1.2.1` instead needs `--set backup.beforeUpgrade=false`, because 1.2's check refuses to go back from a version it has seen run.
+- **Server:** `curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v1.2.1`.
+
+Kuben records every version that started against the database, so after a rollback `kuben upgrade-check` of 1.2.x reports the step from 2.0 as going back. That is expected; the server starts regardless.
+
+## Binary
+
+Re-run the installer, optionally pinned. It runs `kuben setup`, which replaces the binary and restarts the service. To check before the new version takes over, install the binary only, check, then restart:
+
+```bash
+curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v1.2.1 --binary-only
 sudo -u kuben kuben upgrade-check
 sudo systemctl restart kuben
 ```
@@ -75,6 +143,6 @@ Take a [backup](/docs/operations/backup-restore/) with `kuben backup` and check 
 
 ## Versioning
 
-Kuben follows semantic versioning. The Helm chart version, the image tag and the binary version are the same number. Pre-releases (`v1.1.0-rc.1`) are published as GitHub pre-releases and never move the `latest` image tag.
+Kuben follows semantic versioning. The Helm chart version, the image tag and the binary version are the same number. Pre-releases (`v2.0.0-alpha.1`, `-beta.N`, `-rc.N`) are published as GitHub pre-releases: they never move the `latest` image tag, `install.sh` and Helm skip them unless you name the version, and the image gets only its exact tag.
 
 Every release ships with checksums, build attestations and an image scanned before it is pushed; see [CI/CD and releases](/docs/contributing/ci-cd/).

@@ -13,9 +13,16 @@ credit reporters in the advisory unless you ask us not to.
 
 ## Supported versions
 
-Only the latest release receives security fixes. A fix that cannot wait for
-the next release ships as a patch release of the latest minor version, with an
-advisory naming the affected versions and the upgrade path.
+| Version | Status | Receives |
+|---|---|---|
+| 2.x pre-releases (`2.0.0-alpha.N`, `-beta.N`, `-rc.N`) | testing, from `main` | fixes in the next pre-release; no patch releases of a pre-release |
+| 1.2.x | stable | security and critical fixes as 1.2.N patch releases from the [`release/1.2`](https://github.com/Teamtem-dev/kuben/tree/release/1.2) branch, until six months after 2.0.0 is released; then none |
+| 1.1 and older | unsupported | nothing: upgrade to 1.2.x |
+
+Once 2.0.0 is out, the newest 2.x minor receives security fixes as patch
+releases. A fix that cannot wait for the next release ships as a patch
+release of each supported line, with an advisory naming the affected
+versions and the upgrade path.
 
 ## Handling a report
 
@@ -27,9 +34,9 @@ exception never outlives 90 days without a new review.
 
 ## Software bill of materials
 
-Every release publishes a CycloneDX SBOM of its binaries
+Every release publishes a CycloneDX SBOM of each archive
 (`kuben-<target>.cdx.json`, listed in the signed `checksums.txt`), and the
-container image carries its SBOM attestation.
+container image carries its SBOM and provenance attestations.
 
 Kuben itself scans what it builds: every built image gets an SBOM and a
 vulnerability scan by digest, running images are rescanned daily with a fresh
@@ -39,13 +46,24 @@ or block a deployment. A scan that could not run is recorded as
 
 ## Verifying releases
 
-Release archives and container images carry GitHub build provenance
-attestations, and every archive is listed in `checksums.txt`:
+Every archive, SBOM, `install.sh` and `bundle.lock.json` of a release is
+listed in `checksums.txt`, which is signed keyless with Sigstore
+(`checksums.txt.sigstore.json`; the certificate names the release workflow
+and the tag). The image and the Helm chart are signed the same way, and the
+archives and the image carry GitHub build provenance attestations:
 
 ```bash
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github[.]com/Teamtem-dev/kuben/[.]github/workflows/release[.]yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+
 gh attestation verify kuben-x86_64-unknown-linux-musl.tar.gz --repo Teamtem-dev/kuben
 gh attestation verify oci://ghcr.io/teamtem-dev/kuben:<version> --repo Teamtem-dev/kuben
 ```
+
+`install.sh` runs the same signature check whenever cosign is installed
+(`--require-signature` makes it mandatory).
 
 ## What is inside a binary
 
@@ -69,4 +87,4 @@ The 1.x binaries (Rust) embed their crate list with cargo-auditable instead;
 - **Every release:** Trivy on the image before it is pushed; nothing is
   published while a HIGH or CRITICAL vulnerability with a fix remains.
 - **Every day:** govulncheck on `main` and Trivy on the published
-  image. See [docs/ci-cd.md](docs/ci-cd.md#4-daily-security-checks).
+  image. See [CI/CD and releases](https://kuben.teamtem.com/docs/contributing/ci-cd/#every-day).

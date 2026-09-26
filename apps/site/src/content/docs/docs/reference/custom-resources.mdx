@@ -1,22 +1,26 @@
 ---
 title: Custom resources
-description: The kuben.dev API group. KubenConfig, Project, Environment, App, Release and BuildRun, with their spec fields, status conditions and full examples for kubectl and GitOps.
+description: The kuben.dev API group. KubenConfig, Project, Environment, App, BuildRun, Release and the agent's ApplicationRuntime and ExecutionTask, with their spec fields, status conditions, who writes each, and examples.
 ---
 
-import { Aside } from '@astrojs/starlight/components'
+Kuben's custom resources are in the `kuben.dev/v1alpha1` API group. The manifests ship in the Helm chart (`charts/kuben/crds/kuben.dev_all.yaml`); the binary embeds the same file and server-side-applies it at every start. Validation is done with the schemas and CEL rules inside the CRDs, so there is no admission webhook to run.
 
-Kuben stores desired state as custom resources in the `kuben.dev/v1alpha1` API group. The console and the API write them; the controllers reconcile them; you can read and write them with `kubectl` or a GitOps tool. Validation is done with CEL rules inside the CRD schemas, so there is no admission webhook to run.
+## Who writes them
 
-The manifests ship in the Helm chart (`charts/kuben/crds/kuben.dev_all.yaml`), and the binary embeds the same file and applies it at every start.
+Kuben's database is the source of desired state (ADR-032). The console, the API and the CLI write to the database; the **materializer** writes the `Project`, `Environment` and `App` objects from it with server-side apply (field manager `kuben-materializer`), or, for an app the cluster's agent delivers, an `ApplicationRuntime`. The controllers turn those objects into Deployments, Services, CronJobs, volumes and HTTPRoutes.
 
-| Kind | Scope | Purpose |
-|---|---|---|
-| `KubenConfig` | cluster | platform-wide settings (singleton) |
-| `Project` | cluster | a group of environments |
-| `Environment` | cluster | one namespace with quota, policy and protection |
-| `App` | namespaced (the environment) | a deployable unit |
-| `Release` | namespaced | an immutable snapshot of an app |
-| `BuildRun` | namespaced | a build from git (roadmap) |
+Read them with `kubectl` as much as you like. A change made with `kubectl` or a GitOps tool to an object the materializer wrote is **drift**: it is recorded on the app, and the object is written again from the database. Change apps through the console, the API or the CLI. `KubenConfig` is the exception: it belongs to the operator, and is written by the Helm chart from `platform.*`, by `kuben setup`, or by hand.
+
+| Kind | Short name | Scope | Written by | Purpose |
+|---|---|---|---|---|
+| `KubenConfig` | `kcfg` | cluster | the operator | platform-wide settings (the singleton `kuben`) |
+| `Project` | `kproj` | cluster | the materializer | a group of environments |
+| `Environment` | `kenv` | cluster | the materializer | one namespace with quota, network policy and protection |
+| `App` | `kapp` | namespaced (the environment's) | the materializer | a deployable unit, reconciled by the App controller |
+| `BuildRun` | `kbr` | namespaced (the build namespace) | the build worker | one build attempt; owns its Job and source Secret |
+| `Release` | `krel` | namespaced | nobody | kept in the schema for compatibility; releases are rows in the database |
+| `ApplicationRuntime` | `kbrt` | namespaced | the hub, over AgentLink | the execution envelope an agent applies (internal) |
+| `ExecutionTask` | `kbet` | namespaced | nobody yet | reserved for tasks an agent runs (internal) |
 
 ## KubenConfig
 
@@ -27,12 +31,14 @@ metadata:
   name: kuben
 spec:
   baseDomain: apps.example.com
-  gateway: kuben-system/kuben
+  gatewayClassName: traefik                 # Kuben creates and owns kuben-system/kuben
+  gateway: kuben-system/kuben               # or a Gateway you dedicate (label kuben.dev/gateway-owner=kuben)
+  gatewayPorts: { http: 8000, https: 8443 } # default 80 and 443; Traefik matches its entry points
   clusterIssuer: letsencrypt
-  wildcardTlsSecret: apps-wildcard          # optional
-  registry:                                 # for builds (roadmap)
+  wildcardTlsSecret: apps-wildcard          # optional: one listener for *.<baseDomain>
+  registry:                                 # optional
     prefix: ghcr.io/acme
-    credentialsSecret: registry-credentials # in kuben-system
+    credentialsSecret: registry-credentials
   sizes:                                    # compute presets; these are the defaults
     - { name: nano,   cpuRequest: 50m,  memoryRequest: 64Mi,  memoryLimit: 128Mi }
     - { name: small,  cpuRequest: 100m, memoryRequest: 128Mi, memoryLimit: 256Mi }
@@ -40,7 +46,9 @@ spec:
     - { name: large,  cpuRequest: 1,    memoryRequest: 2Gi,   memoryLimit: 4Gi }
 ```
 
-Size presets have no CPU limit by default (`cpuLimit` is optional), which avoids throttling latency-sensitive apps. Add your own presets or change the defaults; apps reference them by name.
+Size presets have no CPU limit by default (`cpuLimit` is optional), which avoids throttling latency-sensitive apps. Add your own presets or change the defaults; apps reference them by name. The status has a `Gateway` condition that says whether Kuben can use its Gateway; see [Exposing apps and HTTPS](/docs/operations/exposing-apps/#the-gateway).
+
+The Helm chart sets `baseDomain`, `gateway`, `gatewayClassName`, `gatewayPorts` and `clusterIssuer`; set the other fields on the resource itself.
 
 ## Project
 
@@ -52,11 +60,15 @@ metadata:
 spec:
   displayName: Online Shop
   description: Storefront and its services
+  previews:
+    max: 10                   # the default
+status:
+  environments: 2
 ```
 
 ## Environment
 
-Named `<project>-<name>`; the namespace has the same name.
+Named `<project>-<environment>`. It owns one namespace, `kb-<project>-<environment>`, with Pod Security Admission (`baseline` enforced, `restricted` warned), a NetworkPolicy and, with `quota`, a ResourceQuota.
 
 ```yaml
 apiVersion: kuben.dev/v1alpha1
@@ -66,20 +78,20 @@ metadata:
 spec:
   project: shop
   type: production            # standard | production | preview
-  deletionPolicy: Retain      # Retain | Delete (the namespace, after the grace period)
+  deletionPolicy: Delete      # Retain | Delete; the materializer writes Delete
   protection:
-    requireApprovals: 0       # distinct approvers to promote here (roadmap)
-    deletionGrace: 168h       # soft-delete grace period
+    requireApprovals: 0
+    deletionGrace: 168h       # soft-delete grace period (production environments)
   quota:
     cpu: "8"
     memory: 16Gi
     pods: 50
 status:
-  namespace: shop-production
+  namespace: kb-shop-production
   phase: Ready                # Pending | Ready | Terminating | Degraded
 ```
 
-`type: production` marks the environment as protected: deleting it needs the `env-delete-protected` permission (owners). `type: preview` environments accept a `ttl` (`idle`, `max`) and are the basis for pull-request previews on the roadmap.
+`type: production` marks the environment as protected: deleting it needs the `env-delete-protected` permission (owners), and the namespace goes only after the grace period. `type: preview` environments are the [preview environments](/docs/guides/previews/) of pull requests; `ttl` (`idle`, `max`) is part of the schema.
 
 ## App
 
@@ -88,11 +100,11 @@ apiVersion: kuben.dev/v1alpha1
 kind: App
 metadata:
   name: api
-  namespace: shop-production
+  namespace: kb-shop-production
 spec:
   source:
-    image: ghcr.io/acme/shop-api:1.4.2
-    # git: { repo, branch, path, build: { strategy, dockerfile } }   # roadmap
+    image: ghcr.io/acme/shop-api@sha256:…
+    # or git: { repo, branch: main, path, build: { strategy: auto, dockerfile } }
   runtime:
     processes:
       web:
@@ -114,16 +126,16 @@ spec:
       value: info
     - name: DATABASE_URL
       fromSecret: { name: db-credentials, key: url }
+  imagePullSecrets: [registry-login]
   domains:
     - host: api.shop.example.com
-      tls: auto
+      tls: auto                     # auto | none | the name of a Secret
   volumes:
     - name: data
       mountPath: /data
       size: 5Gi
       storageClass: ""              # cluster default
 status:
-  currentRelease: api-42
   url: https://api.shop.example.com
   conditions:
     - type: Ready
@@ -136,36 +148,38 @@ status:
 
 Notes:
 
-- `source` is a one-of: exactly one of `image` or `git` (CEL-validated).
+- `source` names exactly one of `image` or `git` (otherwise `Ready` is false with `InvalidSource`). A `git` source runs once a build has produced an image (`AwaitingBuild` until then).
+- `git.build.strategy` is `dockerfile`, `railpack` or `auto` (the default).
+- An environment variable takes one of `value`, `fromSecret` or `fromService`.
+- At most one process may have a `port`, and a process with `schedule` may not have one.
 - An app with `volumes` runs one process with at most one replica, and rolls with `Recreate`.
-- A process with `schedule` may not have a `port`.
-- `idle` (`mode`, `after`) is reserved for scale-to-zero.
+- `idle` (`mode: off | zero | throttle`, `after`; defaults `off` and `15m`) is reserved for scale-to-zero and has no effect yet.
+- An App with the annotation `kuben.dev/handover` has been handed to the cluster's agent; the App controller leaves it alone.
 
-## Release
-
-Created by the controller for every change; not meant to be written by hand.
-
-```yaml
-apiVersion: kuben.dev/v1alpha1
-kind: Release
-metadata:
-  name: api-42
-  namespace: shop-production
-spec:
-  app: api
-  imageDigest: ghcr.io/acme/shop-api@sha256:…
-  appSpec: { … }               # snapshot of the App spec
-  secretRefs:                  # secret names and resourceVersions in effect
-    - { name: db-credentials, resourceVersion: "18231" }
-  createdBy: user:01J…         # or token:…
-```
-
-Releases are immutable. A rollback creates a new release whose `appSpec` is copied from the chosen one.
+The `Ready` and `Exposed` reasons are listed under [Troubleshooting](/docs/operations/troubleshooting/#conditions).
 
 ## BuildRun
 
-The build resource for git sources. The controller watches for completion and creates the `Release` itself, so build pods never need cluster credentials. Part of the [roadmap](/docs/roadmap/); the type ships today so the schema is stable.
+One per build attempt, named `kbuild-<attempt>` in the build namespace (`build.namespace`). It owns the attempt's Job and the Secret with its repository-scoped fetch token, so deleting it removes both. The build worker creates it and follows the Job; the attempt's state and history are in the database, behind `GET …/apps/{app}/builds`.
 
-<Aside type="tip" title="GitOps">
-Commit `Project`, `Environment` and `App` manifests to a repository and let Argo CD or Flux apply them. The console keeps showing status, logs and releases, and its own writes go through the same objects. Keep secrets out of git: write them through the API or with your secret manager into the environment namespace, and reference them by name.
-</Aside>
+```yaml
+apiVersion: kuben.dev/v1alpha1
+kind: BuildRun
+metadata:
+  name: kbuild-0190f3c2-…
+spec:
+  app: 0190f3a8-…                  # the application target's id
+  repo: https://github.com/acme/shop-api
+  gitRef: 3f9c1e…                  # the commit
+  path: ""                         # the build context in the repository
+  strategy: auto                   # dockerfile | railpack | auto
+  image: ghcr.io/acme/shop-api     # where the image is pushed
+```
+
+## Release
+
+The schema is kept so existing manifests and tools keep validating. Kuben does not create `Release` objects: releases (the image digest, the configuration revision and the secret revisions an app runs with) are rows in the database, and each deployment run renders from them. See [Rollbacks](/docs/guides/rollbacks/).
+
+## ApplicationRuntime and ExecutionTask
+
+Internal resources of the cluster agent (ADR-027). The hub writes one `ApplicationRuntime` per application target that an agent delivers; it holds the frozen render plan with its generation and input hash, and the agent reports what it applied (`effectiveGeneration`, `inventory`) in the status. CEL rules keep the envelope ordered: `generation` and `controlEpoch` never decrease, and the same generation always carries the same plan. `ExecutionTask` (builds, backups, restores, migrations and platform changes run by an agent) is defined but not written by this version. Do not edit either by hand.
