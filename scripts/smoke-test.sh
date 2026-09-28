@@ -422,7 +422,11 @@ fi
 # ones in PostgreSQL and do not carry 1.x data over. An upgrade from a SQLite
 # chart is therefore not part of this test: the release under test is
 # installed directly.
-sqlite_chart() { helm show values "$CHART" --version "$1" 2>/dev/null | grep -qi sqlite; }
+sqlite_chart() {
+  local vals
+  vals=$(helm show values "$CHART" ${1:+--version "$1"} 2>/dev/null) || return 1
+  echo "$vals" | grep -q "^persistence:" && ! echo "$vals" | grep -q "^postgresql:"
+}
 if [[ -n $FROM ]] && sqlite_chart "$FROM"; then
   echo "chart ${FROM} keeps its data in SQLite, which ${VERSION} does not carry over; installing ${VERSION} directly"
   FROM=
