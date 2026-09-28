@@ -47,11 +47,7 @@ These are real gaps in the code today. The order in which they close depends on 
 
 ### In the console
 
-Some things work through the API but have no page yet: approving and rejecting deployments, environment approval policies, Git sources and builds, image scans and vulnerability exceptions, and roles for one project or environment.
-
-### In the Helm chart
-
-The chart has no values for single sign-on, CI trust or Git builds. A server installed with `kuben setup` sets them in `/etc/kuben/config.toml`.
+Some things work through the API but have no page yet: environment approval policies, setting an app's Git source, vulnerability exceptions, and roles for one project or environment. Deployments waiting for approval are approved or rejected on the app's Deployments tab, and Git-built apps list their builds on a Builds tab; build logs have no API yet.
 
 ### Scale to zero <Badge text="planned" variant="note" />
 

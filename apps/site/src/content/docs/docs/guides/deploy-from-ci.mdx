@@ -119,7 +119,7 @@ A **CI trust policy** lets a GitHub Actions workflow exchange the OIDC token Git
 
 <Steps>
 
-1. Turn it on in the server's configuration: `[ci] github_actions = true` (`KUBEN_CI__GITHUB_ACTIONS=true`), with `server.public_url` set; see [Configuration](/docs/reference/configuration/). The Helm chart has no value for it yet.
+1. Turn it on in the server's configuration: `[ci] github_actions = true` (`KUBEN_CI__GITHUB_ACTIONS=true`), with `server.public_url` set; see [Configuration](/docs/reference/configuration/). With Helm: `--set ci.githubActions.enabled=true` (see [Helm values](/docs/reference/helm-values/#ci-trust)).
 
 2. Open **Settings** in the sidebar. Under **CI trust policies**, press **Add a policy** and fill in:
 

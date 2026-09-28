@@ -98,20 +98,14 @@ It downloads the archive, checks it against `checksums.txt` (and its signature w
 
 ### Try it with Helm
 
-Name the chart version: Helm does not pick a pre-release on its own. The chart's pre-upgrade hook runs `kuben upgrade-check` without `--major`, so a plain `helm upgrade --version 2.0.0-alpha.1` stops at the hook before anything changes. Run the check yourself against the database (for the chart's own PostgreSQL, through a port-forward), take a backup, then upgrade with the hook turned off for this one step:
+Name the chart version: Helm does not pick a pre-release on its own. The chart's pre-upgrade hook takes a backup and runs the 2.0 binary's `kuben upgrade-check`, which refuses a major step unless told the release notes were read: set `backup.upgradeCheckMajor=true` for this one upgrade.
 
 ```bash
-kubectl -n kuben-system port-forward svc/kuben-postgresql 5432:5432 &
-export KUBEN_DATABASE__URL="postgres://kuben:$(kubectl -n kuben-system get secret kuben-postgresql \
-  -o jsonpath='{.data.password}' | base64 -d)@localhost:5432/kuben"
-./kuben upgrade-check --major      # the 2.0 binary from its archive
-
-kubectl -n kuben-system create job --from=cronjob/kuben-backup kuben-backup-before-2-0
 helm upgrade kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --reuse-values \
-  --version 2.0.0-alpha.1 --set backup.beforeUpgrade=false
+  --version 2.0.0-alpha.1 --set backup.upgradeCheckMajor=true
 ```
 
-Set `backup.beforeUpgrade=true` again on the next upgrade within 2.x.
+If the check fails, Helm stops before anything changed and the hook Job's log says why (`kubectl -n kuben-system logs job/kuben-backup-pre-upgrade`). Set `backup.upgradeCheckMajor=false` again on the next upgrade within 2.x.
 
 ### Roll back to 1.2
 
