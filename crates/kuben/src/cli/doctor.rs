@@ -13,7 +13,7 @@ use crate::cli::DoctorOpts;
 use kuben_platform::{
     discovery::{self, ClusterFacts, Readiness},
     doctor,
-    registry::{ClusterRegistry, redact_credentials},
+    registry::{ClusterRegistry, own_namespace, redact_credentials},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,7 +233,9 @@ async fn check_cluster(r: &mut Report, cfg: &Config, installed: bool) {
             let facts = discovery::discover(&client).await;
             check_capabilities(r, &facts);
             check_features(r, &facts);
-            check_permissions(r, &client).await;
+            let namespace =
+                own_namespace(cfg.kube.namespace.as_deref()).unwrap_or_else(|| "kuben-system".into());
+            check_permissions(r, &client, &namespace).await;
             if installed {
                 check_exposure(r, &client, &facts).await;
             }
@@ -434,39 +436,61 @@ fn check_features(r: &mut Report, facts: &ClusterFacts) {
     }
 }
 
-/// Kuben's own permissions: what the chart's ClusterRole grants, checked
-/// for whoever runs this.
-async fn check_permissions(r: &mut Report, client: &kube::Client) {
+/// What the chart grants Kuben: verb, group, resource, and whether it is
+/// granted in Kuben's own namespace only (the chart's Role, for the
+/// leader-election Lease) rather than cluster-wide (its ClusterRole).
+const NEEDED: [(&str, &str, &str, bool); 8] = [
+    ("create", "", "namespaces", false),
+    ("patch", "apps", "deployments", false),
+    ("create", "", "secrets", false),
+    ("create", "gateway.networking.k8s.io", "httproutes", false),
+    ("create", "gateway.networking.k8s.io", "gateways", false),
+    ("list", "cert-manager.io", "clusterissuers", false),
+    (
+        "create",
+        "apiextensions.k8s.io",
+        "customresourcedefinitions",
+        false,
+    ),
+    ("update", "coordination.k8s.io", "leases", true),
+];
+
+/// Whether whoever runs this may do one of [`NEEDED`]; a namespaced
+/// permission is asked in `namespace`.
+fn access_review(
+    (verb, group, resource, namespaced): (&str, &str, &str, bool),
+    namespace: &str,
+) -> k8s_openapi::api::authorization::v1::SelfSubjectAccessReview {
     use k8s_openapi::api::authorization::v1::{
         ResourceAttributes, SelfSubjectAccessReview, SelfSubjectAccessReviewSpec,
     };
-    const NEEDED: [(&str, &str, &str); 8] = [
-        ("create", "", "namespaces"),
-        ("patch", "apps", "deployments"),
-        ("create", "", "secrets"),
-        ("create", "gateway.networking.k8s.io", "httproutes"),
-        ("create", "gateway.networking.k8s.io", "gateways"),
-        ("list", "cert-manager.io", "clusterissuers"),
-        ("create", "apiextensions.k8s.io", "customresourcedefinitions"),
-        ("update", "coordination.k8s.io", "leases"),
-    ];
+    SelfSubjectAccessReview {
+        spec: SelfSubjectAccessReviewSpec {
+            resource_attributes: Some(ResourceAttributes {
+                verb: Some(verb.into()),
+                group: Some(group.into()),
+                resource: Some(resource.into()),
+                namespace: namespaced.then(|| namespace.into()),
+                ..ResourceAttributes::default()
+            }),
+            ..SelfSubjectAccessReviewSpec::default()
+        },
+        ..SelfSubjectAccessReview::default()
+    }
+}
+
+/// Kuben's own permissions: what the chart's ClusterRole and Role grant,
+/// checked for whoever runs this.
+async fn check_permissions(r: &mut Report, client: &kube::Client, namespace: &str) {
+    use k8s_openapi::api::authorization::v1::SelfSubjectAccessReview;
     let api = kube::Api::<SelfSubjectAccessReview>::all(client.clone());
     let mut denied = Vec::new();
-    for (verb, group, resource) in NEEDED {
-        let review = SelfSubjectAccessReview {
-            spec: SelfSubjectAccessReviewSpec {
-                resource_attributes: Some(ResourceAttributes {
-                    verb: Some(verb.into()),
-                    group: Some(group.into()),
-                    resource: Some(resource.into()),
-                    ..ResourceAttributes::default()
-                }),
-                ..SelfSubjectAccessReviewSpec::default()
-            },
-            ..SelfSubjectAccessReview::default()
-        };
+    for needed in NEEDED {
+        let (verb, _, resource, namespaced) = needed;
+        let review = access_review(needed, namespace);
         match api.create(&kube::api::PostParams::default(), &review).await {
             Ok(answer) if answer.status.as_ref().is_some_and(|s| s.allowed) => {}
+            Ok(_) if namespaced => denied.push(format!("{verb} {resource} in {namespace}")),
             Ok(_) => denied.push(format!("{verb} {resource}")),
             Err(e) => {
                 r.line(Level::Warn, "permissions", format!("cannot check them: {e}"));
@@ -481,7 +505,7 @@ async fn check_permissions(r: &mut Report, client: &kube::Client) {
             Level::Fail,
             "permissions",
             format!(
-                "denied: {} (the Helm chart's ClusterRole grants them)",
+                "denied: {} (the Helm chart's ClusterRole and Role grant them)",
                 denied.join(", ")
             ),
         );
@@ -512,6 +536,20 @@ fn readiness_line(r: &mut Report, name: &str, list: &[Readiness], none: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The leader-election Lease is granted by the chart's Role in Kuben's
+    /// own namespace, never cluster-wide: asking cluster-wide is denied.
+    #[test]
+    fn only_the_lease_is_checked_in_kubens_own_namespace() {
+        for needed in NEEDED {
+            let namespace = access_review(needed, "kuben-system")
+                .spec
+                .resource_attributes
+                .and_then(|attrs| attrs.namespace);
+            let want = (needed.2 == "leases").then(|| "kuben-system".to_owned());
+            assert_eq!(namespace, want, "{} {}", needed.0, needed.2);
+        }
+    }
 
     #[test]
     fn a_missing_feature_warns_and_never_fails_the_check() {
