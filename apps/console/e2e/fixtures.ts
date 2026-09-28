@@ -168,6 +168,130 @@ export const deployments = [
   },
 ]
 
+/** A run waiting for two approvals (the `approval` option of `mockApi`). */
+export const awaitingRun = {
+  run: '0190f3c6-0000-7000-8000-00000000000c',
+  generation: 4,
+  reason: 'deploy',
+  phase: 'awaitingApproval',
+  outcome: null,
+  requested_by: 'carol@example.com',
+  created_at: now - 10_000,
+  image: 'ghcr.io/acme/web@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+  timeline: phases(['planned', 'awaitingApproval']),
+}
+
+export const planHash = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
+
+export const approval = {
+  run: awaitingRun.run,
+  phase: 'awaitingApproval',
+  requestedBy: 'carol@example.com',
+  required: 2,
+  approved: 1,
+  expiresAt: now + 86_400_000,
+  planHash,
+  canDecide: true,
+  decisions: [
+    {
+      approver: 'alice@example.com',
+      decision: 'approved',
+      comment: 'checked the migration',
+      decidedAt: now - 5_000,
+    },
+  ],
+}
+
+const deploymentRun = {
+  run: awaitingRun.run,
+  operation: '0190f3c6-0000-7000-8000-0000000000o1',
+  generation: 4,
+  phase: 'awaitingApproval',
+  approvals_required: 2,
+  approval_expires_at: approval.expiresAt,
+  plan_hash: planHash,
+  warnings: ['the pods may not fit on the nodes'],
+}
+
+/** The Git source of the app with the `gitSource` option. */
+export const gitRepo = 'https://github.com/acme/web'
+
+const build = (id: string, fields: Record<string, unknown>) => ({
+  id,
+  attempt: 1,
+  repository: 'acme/web',
+  branch: 'main',
+  commit: '0123456789abcdef0123456789abcdef01234567',
+  strategy: 'railpack',
+  phase: 'succeeded',
+  blockedReason: null,
+  failure: null,
+  failureDetail: null,
+  image: null,
+  release: null,
+  deployment: null,
+  deployDecision: null,
+  cancelRequested: false,
+  createdAt: now - 600_000,
+  startedAt: now - 590_000,
+  finishedAt: now - 500_000,
+  ...fields,
+})
+
+export const builtDigest = 'sha256:1111111111111111111111111111111111111111111111111111111111111111'
+
+export const builds = [
+  build('0190f3c6-0000-7000-8000-0000000000d3', {
+    commit: 'aaaaaaa89abcdef0123456789abcdef01234567',
+    phase: 'running',
+    createdAt: now - 60_000,
+    startedAt: now - 50_000,
+    finishedAt: null,
+  }),
+  build('0190f3c6-0000-7000-8000-0000000000d2', {
+    commit: 'bbbbbbb89abcdef0123456789abcdef01234567',
+    phase: 'failed',
+    failure: 'OutOfMemory',
+    failureDetail: 'the build used more than 4 GiB',
+    createdAt: now - 3_600_000,
+    startedAt: now - 3_590_000,
+    finishedAt: now - 3_500_000,
+  }),
+  build('0190f3c6-0000-7000-8000-0000000000d1', {
+    image: `ghcr.io/acme/web@${builtDigest}`,
+    release: '0190f3c6-0000-7000-8000-0000000000r1',
+    deployment: deployments[0]?.run,
+    deployDecision: 'deployed',
+    createdAt: now - 86_400_000,
+    startedAt: now - 86_390_000,
+    finishedAt: now - 86_300_000,
+  }),
+]
+
+const scans = {
+  release: '0190f3c6-0000-7000-8000-0000000000r1',
+  gate: 'pass',
+  reasons: [],
+  images: [
+    {
+      digest: builtDigest,
+      sbom: true,
+      scan: {
+        status: 'ok',
+        scanner: 'trivy',
+        databaseUpdatedAt: new Date(now - 86_400_000).toISOString(),
+        scannedAt: new Date(now - 3_600_000).toISOString(),
+        critical: 0,
+        high: 1,
+        medium: 3,
+        low: 7,
+        unknown: 0,
+        findings: ['high:CVE-2026-0001'],
+      },
+    },
+  ],
+}
+
 export const doctor = {
   status: 'fail',
   checks: [
@@ -521,10 +645,22 @@ const json = (route: Route, body: unknown, status = 200) =>
 
 /**
  * Answer the console's API calls; `signedIn: false` shows the sign-in page,
- * `setupNeeded: true` the first-run setup.
+ * `setupNeeded: true` the first-run setup. `approval` adds a run waiting for
+ * approval (`decide`: the caller may decide; `watch`: they may not);
+ * `gitSource` makes the app built from Git, with builds.
  */
-export async function mockApi(page: Page, { signedIn = true, setupNeeded = false } = {}) {
+export async function mockApi(
+  page: Page,
+  {
+    signedIn = true,
+    setupNeeded = false,
+    approval: approvalMode,
+    gitSource = false,
+  }: { signedIn?: boolean; setupNeeded?: boolean; approval?: 'decide' | 'watch'; gitSource?: boolean } = {},
+) {
   const appPath = '/api/v1/projects/shop/environments/prod/apps/web'
+  const runPath = `${appPath}/deployments/${awaitingRun.run}`
+  const shownApproval = { ...approval, canDecide: approvalMode === 'decide' }
   await page.route('http://kuben.test/**', serveConsole)
   await page.route('http://kuben.test/api/**', async (route) => {
     const url = new URL(route.request().url())
@@ -542,10 +678,49 @@ export async function mockApi(page: Page, { signedIn = true, setupNeeded = false
     }
     if (path === appPath)
       return json(route, {
-        app,
+        app: gitSource ? { ...app, git_repo: gitRepo } : app,
         pods: [pod('web-web-7d9c-x2x9q', 'web'), pod('web-worker-5f6b-q8w2e', 'worker')],
       })
-    if (path === `${appPath}/deployments`) return json(route, deployments)
+    if (path === `${appPath}/deployments`) {
+      return json(route, approvalMode ? [awaitingRun, ...deployments] : deployments)
+    }
+    if (approvalMode && path === runPath) return json(route, deploymentRun)
+    if (approvalMode && path === `${runPath}/approval`) return json(route, shownApproval)
+    if (approvalMode && path === `${runPath}/approve`) {
+      const body = route.request().postDataJSON() as { planHash?: string; comment?: string | null }
+      if (body.planHash !== planHash) {
+        return json(
+          route,
+          { code: 'conflict', title: 'Conflict', status: 409, detail: 'the plan changed; review it again' },
+          409,
+        )
+      }
+      return json(route, {
+        ...shownApproval,
+        approved: 2,
+        canDecide: false,
+        decisions: [
+          ...approval.decisions,
+          { approver: user.email, decision: 'approved', comment: body.comment ?? null, decidedAt: now },
+        ],
+      })
+    }
+    if (approvalMode && path === `${runPath}/reject`) {
+      return json(
+        route,
+        { code: 'conflict', title: 'Conflict', status: 409, detail: 'the deployment was already decided' },
+        409,
+      )
+    }
+    if (gitSource && path === `${appPath}/builds`) return json(route, builds)
+    if (gitSource && path === `${appPath}/scans`) return json(route, scans)
+    const buildMatch = gitSource ? new RegExp(`^${appPath}/builds/([^/]+)(/cancel)?$`).exec(path) : null
+    const found = buildMatch && builds.find((b) => b.id === buildMatch[1])
+    if (buildMatch && found) {
+      return buildMatch[2]
+        ? json(route, { ...found, cancelRequested: true, phase: 'cancelRequested' }, 202)
+        : json(route, found)
+    }
     if (path === `${appPath}/doctor`) return json(route, doctor)
     if (path === `${appPath}/metrics`) return json(route, metrics)
     if (path === '/api/v1/dns-providers') return json(route, [])

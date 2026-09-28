@@ -36,11 +36,12 @@ import {
   updateApp,
   type Volume,
 } from '@/lib/api'
-import { APP_TABS, type AppTab } from '@/lib/app-tabs'
+import { type AppTab, appTabs, shownAppTab } from '@/lib/app-tabs'
 import { formatEnvLines, parseEnvLines } from '@/lib/env'
 import type { MessageKey } from '@/lib/messages'
 import { fill } from '@/lib/messages/pages'
 import { usePrefs } from '@/lib/prefs'
+import { BuildsCard } from './app-builds'
 import { DeploymentsCard } from './app-deployments'
 import { LiveLogs } from './app-logs'
 import { DetachCard, DnsCard, ImagePolicyCard, UsageCard } from './ops/app-ops'
@@ -51,6 +52,7 @@ const route = getRouteApi('/_authed/projects/$project/$environment/$app')
 const TAB_LABELS: Record<AppTab, MessageKey> = {
   overview: 'app.tab.overview',
   deployments: 'deployments.title',
+  builds: 'builds.title',
   releases: 'app.releases',
   logs: 'logs.title',
   settings: 'app.tab.settings',
@@ -58,9 +60,12 @@ const TAB_LABELS: Record<AppTab, MessageKey> = {
 
 export function AppPage() {
   const { project, environment, app } = route.useParams()
-  const { tab = 'overview' } = route.useSearch()
+  const search = route.useSearch()
   const { data } = useSuspenseQuery(appQuery(project, environment, app))
   const a = data.app
+  // Builds are a tab of apps built from a Git source only.
+  const gitRepo = a.git_repo ?? null
+  const tab = shownAppTab(search.tab, gitRepo != null)
   const web = a.processes[0]
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -167,7 +172,7 @@ export function AppPage() {
       <Tabs value={tab} onValueChange={(value) => void openTab(value)} className="gap-6">
         <div className="-mx-1 overflow-x-auto px-1">
           <TabsList variant="line" aria-label={t('app.sections')}>
-            {APP_TABS.map((value) => (
+            {appTabs(gitRepo != null).map((value) => (
               <TabsTrigger key={value} value={value}>
                 {t(TAB_LABELS[value])}
               </TabsTrigger>
@@ -233,6 +238,18 @@ export function AppPage() {
         <TabsContent value="deployments">
           <DeploymentsCard project={project} environment={environment} app={app} />
         </TabsContent>
+
+        {gitRepo != null && (
+          <TabsContent value="builds">
+            <BuildsCard
+              project={project}
+              environment={environment}
+              app={app}
+              repository={gitRepo}
+              build={search.build}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="releases" className="space-y-6">
           <ReleasesCard project={project} environment={environment} app={app} />

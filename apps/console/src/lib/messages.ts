@@ -4,6 +4,7 @@
  * Pages move their strings here as they are translated. The operational
  * views (M5.6) and the older pages keep theirs in `messages/`.
  */
+import { deliveryEn, deliveryFa } from './messages/delivery'
 import { opsEn, opsFa } from './messages/ops'
 import { pagesEn, pagesFa } from './messages/pages'
 import { viewsEn, viewsFa } from './messages/views'
@@ -266,10 +267,10 @@ const coreFa: Record<keyof typeof coreEn, string> = {
   'logs.mode': 'کدام لاگ‌ها',
 }
 
-export const en = { ...coreEn, ...opsEn, ...pagesEn, ...viewsEn } as const
+export const en = { ...coreEn, ...opsEn, ...pagesEn, ...viewsEn, ...deliveryEn } as const
 
 export type MessageKey = keyof typeof en
 
-export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa, ...viewsFa }
+export const fa: Record<MessageKey, string> = { ...coreFa, ...opsFa, ...pagesFa, ...viewsFa, ...deliveryFa }
 
 export const locales = { en, fa } as const

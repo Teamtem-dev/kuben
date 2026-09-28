@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { expectAccessible, watchCsp } from './checks'
-import { audit, mockApi, prefer } from './fixtures'
+import { audit, awaitingRun, builds, builtDigest, mockApi, planHash, prefer } from './fixtures'
 
 const locales = [
   {
@@ -449,6 +449,118 @@ test('app page: usage window and detaching behind a dialog', async ({ page }) =>
   await dialog.getByLabel('Reason').fill('moving to Helm')
   await dialog.getByLabel(/Type the app name/).fill('web')
   await expect(submit).toBeEnabled()
+  await expectAccessible(page)
+})
+
+test('deployments: a run waiting for approval is decided with the plan hash it shows', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page, { approval: 'decide' })
+  await page.goto('/projects/shop/prod/web?tab=deployments')
+  await expect(page.getByText('Deployments waiting for approval: 1')).toBeVisible()
+  const panel = page.getByRole('region', { name: 'Waiting for approval' })
+  await expect(panel.getByText('1 of 2 approvals')).toBeVisible()
+  await expect(panel.getByText('carol@example.com', { exact: true })).toBeVisible()
+  await expect(panel.getByText(planHash, { exact: true })).toBeVisible()
+  await expect(panel.getByText('the pods may not fit on the nodes')).toBeVisible()
+  await expect(panel.getByText('checked the migration')).toBeVisible()
+  await expectAccessible(page)
+
+  // A refusal keeps the dialog open with the API's problem text.
+  await panel.getByRole('button', { name: 'Reject' }).click()
+  const reject = page.getByRole('alertdialog', { name: `Reject revision ${awaitingRun.generation}` })
+  await reject.getByRole('button', { name: 'Reject' }).click()
+  await expect(reject.getByText('the deployment was already decided')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(reject).toBeHidden()
+
+  await panel.getByRole('button', { name: 'Approve' }).click()
+  const approve = page.getByRole('alertdialog', { name: `Approve revision ${awaitingRun.generation}` })
+  await expect(approve.getByText(planHash, { exact: true })).toBeVisible()
+  await approve.getByLabel('Comment (optional)').fill('ship it')
+  await expectAccessible(page)
+  const sent = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith(`/deployments/${awaitingRun.run}/approve`),
+  )
+  await approve.getByRole('button', { name: 'Approve' }).click()
+  expect((await sent).postDataJSON()).toEqual({ planHash, comment: 'ship it' })
+  await expect(approve).toBeHidden()
+  await expect(panel.getByText('Your decision was recorded.')).toBeVisible()
+  expect(csp).toEqual([])
+})
+
+test('deployments: someone who cannot decide sees the approval without the buttons', async ({ page }) => {
+  await mockApi(page, { approval: 'watch' })
+  await page.goto('/projects/shop/prod/web?tab=deployments')
+  const panel = page.getByRole('region', { name: 'Waiting for approval' })
+  await expect(panel.getByText('1 of 2 approvals')).toBeVisible()
+  await expect(panel.getByText(/You cannot decide on this deployment/)).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Approve' })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: 'Reject' })).toHaveCount(0)
+})
+
+test('builds: a Git-sourced app lists its builds, cancels a running one and shows one in detail', async ({
+  page,
+}) => {
+  const csp = await watchCsp(page)
+  await mockApi(page, { gitSource: true })
+  await page.goto('/projects/shop/prod/web')
+  await page.getByRole('tab', { name: 'Builds' }).click()
+  await expect(page).toHaveURL(/\?tab=builds$/)
+  const table = page.getByRole('table', { name: 'Builds' })
+  const failed = table.getByRole('row', { name: /bbbbbbb/ })
+  await expect(failed.getByText('Out of memory')).toBeVisible()
+  await expect(failed.getByText('the build used more than 4 GiB')).toBeVisible()
+  await expect(failed.getByRole('button', { name: 'Cancel build' })).toHaveCount(0)
+  await expectAccessible(page)
+
+  const running = table.getByRole('row', { name: /aaaaaaa/ })
+  await expect(running.getByText('Building')).toBeVisible()
+  await running.getByRole('button', { name: 'Cancel build' }).click()
+  const confirm = page.getByRole('alertdialog', { name: 'Cancel build 0190f3c6' })
+  await expectAccessible(page)
+  const cancelled = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith(`/builds/${builds[0]?.id}/cancel`),
+  )
+  await confirm.getByRole('button', { name: 'Cancel build' }).click()
+  await cancelled
+  await expect(confirm).toBeHidden()
+
+  const done = builds[2]
+  await table.getByRole('link', { name: `Details of build ${done?.id}` }).click()
+  await expect(page).toHaveURL(new RegExp(`tab=builds&build=${done?.id}`))
+  await expect(page.getByRole('heading', { name: 'Build 0190f3c6' })).toBeVisible()
+  await expect(page.getByText(done?.commit ?? '', { exact: true })).toBeVisible()
+  await expect(page.getByText('Scan gate: pass')).toBeVisible()
+  await expect(page.getByText('0 critical, 1 high, 3 medium, 7 low')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Download SBOM' })).toHaveAttribute(
+    'href',
+    `/api/v1/projects/shop/environments/prod/apps/web/sbom/${encodeURIComponent(builtDigest)}`,
+  )
+  await expectAccessible(page)
+  await page.getByRole('link', { name: 'All builds' }).click()
+  await expect(page).toHaveURL(/\?tab=builds$/)
+  expect(csp).toEqual([])
+})
+
+test('builds: only a Git-sourced app has the tab', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web?tab=builds')
+  await expect(page.getByRole('tab', { name: 'Overview', selected: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Builds' })).toHaveCount(0)
+})
+
+test('builds and approvals in Persian, right to left', async ({ page }) => {
+  await prefer(page, 'fa', 'light')
+  await mockApi(page, { gitSource: true, approval: 'decide' })
+  await page.goto('/projects/shop/prod/web?tab=builds')
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+  await expect(page.getByRole('tab', { name: 'ساخت‌ها', selected: true })).toBeVisible()
+  await expect(page.getByRole('table', { name: 'ساخت‌ها' }).getByText('کمبود حافظه')).toBeVisible()
+  await expectAccessible(page)
+  await page.getByRole('tab', { name: 'استقرارها' }).click()
+  const panel = page.getByRole('region', { name: 'در انتظار تأیید' })
+  await expect(panel.getByRole('button', { name: 'تأیید' })).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'رد' })).toBeVisible()
   await expectAccessible(page)
 })
 
