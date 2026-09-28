@@ -846,7 +846,9 @@ export async function mockApi(
   const appPath = '/api/v1/projects/shop/environments/prod/apps/web'
   const runPath = `${appPath}/deployments/${awaitingRun.run}`
   const shownApproval = { ...approval, canDecide: approvalMode === 'decide' }
-  let currentSource: Record<string, unknown> | null = gitSource ? (appSource as Record<string, unknown>) : null
+  let currentSource: Record<string, unknown> | null = gitSource
+    ? (appSource as Record<string, unknown>)
+    : null
   await page.route('http://kuben.test/**', serveConsole)
   await page.route('http://kuben.test/api/**', async (route) => {
     const url = new URL(route.request().url())
