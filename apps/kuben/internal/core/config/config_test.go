@@ -369,3 +369,15 @@ func TestCookieSecureAutoFollowsThePublicURL(t *testing.T) {
 		t.Error("an explicit value wins")
 	}
 }
+
+func TestTheBuildLogTailIsKeptWithinItsBounds(t *testing.T) {
+	build := config.DefaultBuildCfg()
+	for kib, want := range map[uint32]int{
+		256: 256 << 10, 0: 1 << 10, 1: 1 << 10, 1024: 1 << 20, 1025: 1 << 20, 1 << 31: 1 << 20,
+	} {
+		build.LogTailKiB = kib
+		if got := build.LogTailBytes(); got != want {
+			t.Errorf("%d KiB: %d bytes, want %d", kib, got, want)
+		}
+	}
+}

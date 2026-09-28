@@ -39,8 +39,10 @@ const page = {
   EnvironmentPage: lazyRouteComponent(() => import('./routes/environment'), 'EnvironmentPage'),
   HomePage: lazyRouteComponent(() => import('./routes/home'), 'HomePage'),
   IncidentsPage: lazyRouteComponent(() => import('./routes/incidents'), 'IncidentsPage'),
+  IntegrationsPage: lazyRouteComponent(() => import('./routes/integrations'), 'IntegrationsPage'),
   LoginPage: lazyRouteComponent(() => import('./routes/login'), 'LoginPage'),
   ProjectPage: lazyRouteComponent(() => import('./routes/project'), 'ProjectPage'),
+  RegistriesPage: lazyRouteComponent(() => import('./routes/registries'), 'RegistriesPage'),
   SettingsPage: lazyRouteComponent(() => import('./routes/settings'), 'SettingsPage'),
   SetupPage: lazyRouteComponent(() => import('./routes/setup'), 'SetupPage'),
   StatusPage: lazyRouteComponent(() => import('./routes/status'), 'StatusPage'),
@@ -246,6 +248,20 @@ const settingsRoute = createRoute({
   component: page.SettingsPage,
 })
 
+/** Organization settings: Git providers and the GitHub App. */
+const integrationsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/settings/integrations',
+  component: page.IntegrationsPage,
+})
+
+/** Organization settings: registry logins every environment pulls with. */
+const registriesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/settings/registries',
+  component: page.RegistriesPage,
+})
+
 const accountRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/account',
@@ -269,6 +285,8 @@ const routeTree = rootRoute.addChildren([
     webhooksRoute,
     domainsRoute,
     settingsRoute,
+    integrationsRoute,
+    registriesRoute,
     accountRoute,
   ]),
 ])

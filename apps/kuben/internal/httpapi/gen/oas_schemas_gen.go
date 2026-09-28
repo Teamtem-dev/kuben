@@ -3,6 +3,8 @@
 package gen
 
 import (
+	"io"
+
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
 	"github.com/google/uuid"
@@ -722,7 +724,9 @@ type BuildDto struct {
 	Phase      string       `json:"phase"`
 	Release    OptNilString `json:"release"`
 	Repository string       `json:"repository"`
-	StartedAt  OptNilInt64  `json:"startedAt"`
+	// The stages in order, once the build reported them.
+	Stages    []BuildStageDto `json:"stages"`
+	StartedAt OptNilInt64     `json:"startedAt"`
 	// `auto`, `dockerfile` or `railpack`, as configured.
 	Strategy string `json:"strategy"`
 }
@@ -805,6 +809,11 @@ func (s *BuildDto) GetRelease() OptNilString {
 // GetRepository returns the value of Repository.
 func (s *BuildDto) GetRepository() string {
 	return s.Repository
+}
+
+// GetStages returns the value of Stages.
+func (s *BuildDto) GetStages() []BuildStageDto {
+	return s.Stages
 }
 
 // GetStartedAt returns the value of StartedAt.
@@ -897,6 +906,11 @@ func (s *BuildDto) SetRepository(val string) {
 	s.Repository = val
 }
 
+// SetStages sets the value of Stages.
+func (s *BuildDto) SetStages(val []BuildStageDto) {
+	s.Stages = val
+}
+
 // SetStartedAt sets the value of StartedAt.
 func (s *BuildDto) SetStartedAt(val OptNilInt64) {
 	s.StartedAt = val
@@ -909,6 +923,196 @@ func (s *BuildDto) SetStrategy(val string) {
 
 func (*BuildDto) cancelBuildRes() {}
 func (*BuildDto) getBuildRes()    {}
+
+// Ref: #/components/schemas/BuildStageDto
+type BuildStageDto struct {
+	Detail     OptNilString        `json:"detail"`
+	FinishedAt OptNilInt64         `json:"finishedAt"`
+	Name       BuildStageDtoName   `json:"name"`
+	StartedAt  OptNilInt64         `json:"startedAt"`
+	Status     BuildStageDtoStatus `json:"status"`
+}
+
+// GetDetail returns the value of Detail.
+func (s *BuildStageDto) GetDetail() OptNilString {
+	return s.Detail
+}
+
+// GetFinishedAt returns the value of FinishedAt.
+func (s *BuildStageDto) GetFinishedAt() OptNilInt64 {
+	return s.FinishedAt
+}
+
+// GetName returns the value of Name.
+func (s *BuildStageDto) GetName() BuildStageDtoName {
+	return s.Name
+}
+
+// GetStartedAt returns the value of StartedAt.
+func (s *BuildStageDto) GetStartedAt() OptNilInt64 {
+	return s.StartedAt
+}
+
+// GetStatus returns the value of Status.
+func (s *BuildStageDto) GetStatus() BuildStageDtoStatus {
+	return s.Status
+}
+
+// SetDetail sets the value of Detail.
+func (s *BuildStageDto) SetDetail(val OptNilString) {
+	s.Detail = val
+}
+
+// SetFinishedAt sets the value of FinishedAt.
+func (s *BuildStageDto) SetFinishedAt(val OptNilInt64) {
+	s.FinishedAt = val
+}
+
+// SetName sets the value of Name.
+func (s *BuildStageDto) SetName(val BuildStageDtoName) {
+	s.Name = val
+}
+
+// SetStartedAt sets the value of StartedAt.
+func (s *BuildStageDto) SetStartedAt(val OptNilInt64) {
+	s.StartedAt = val
+}
+
+// SetStatus sets the value of Status.
+func (s *BuildStageDto) SetStatus(val BuildStageDtoStatus) {
+	s.Status = val
+}
+
+type BuildStageDtoName string
+
+const (
+	BuildStageDtoNameClone  BuildStageDtoName = "clone"
+	BuildStageDtoNamePlan   BuildStageDtoName = "plan"
+	BuildStageDtoNameBuild  BuildStageDtoName = "build"
+	BuildStageDtoNameScan   BuildStageDtoName = "scan"
+	BuildStageDtoNamePush   BuildStageDtoName = "push"
+	BuildStageDtoNameDeploy BuildStageDtoName = "deploy"
+)
+
+// AllValues returns all BuildStageDtoName values.
+func (BuildStageDtoName) AllValues() []BuildStageDtoName {
+	return []BuildStageDtoName{
+		BuildStageDtoNameClone,
+		BuildStageDtoNamePlan,
+		BuildStageDtoNameBuild,
+		BuildStageDtoNameScan,
+		BuildStageDtoNamePush,
+		BuildStageDtoNameDeploy,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s BuildStageDtoName) MarshalText() ([]byte, error) {
+	switch s {
+	case BuildStageDtoNameClone:
+		return []byte(s), nil
+	case BuildStageDtoNamePlan:
+		return []byte(s), nil
+	case BuildStageDtoNameBuild:
+		return []byte(s), nil
+	case BuildStageDtoNameScan:
+		return []byte(s), nil
+	case BuildStageDtoNamePush:
+		return []byte(s), nil
+	case BuildStageDtoNameDeploy:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *BuildStageDtoName) UnmarshalText(data []byte) error {
+	switch BuildStageDtoName(data) {
+	case BuildStageDtoNameClone:
+		*s = BuildStageDtoNameClone
+		return nil
+	case BuildStageDtoNamePlan:
+		*s = BuildStageDtoNamePlan
+		return nil
+	case BuildStageDtoNameBuild:
+		*s = BuildStageDtoNameBuild
+		return nil
+	case BuildStageDtoNameScan:
+		*s = BuildStageDtoNameScan
+		return nil
+	case BuildStageDtoNamePush:
+		*s = BuildStageDtoNamePush
+		return nil
+	case BuildStageDtoNameDeploy:
+		*s = BuildStageDtoNameDeploy
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type BuildStageDtoStatus string
+
+const (
+	BuildStageDtoStatusPending   BuildStageDtoStatus = "pending"
+	BuildStageDtoStatusRunning   BuildStageDtoStatus = "running"
+	BuildStageDtoStatusSucceeded BuildStageDtoStatus = "succeeded"
+	BuildStageDtoStatusFailed    BuildStageDtoStatus = "failed"
+	BuildStageDtoStatusSkipped   BuildStageDtoStatus = "skipped"
+)
+
+// AllValues returns all BuildStageDtoStatus values.
+func (BuildStageDtoStatus) AllValues() []BuildStageDtoStatus {
+	return []BuildStageDtoStatus{
+		BuildStageDtoStatusPending,
+		BuildStageDtoStatusRunning,
+		BuildStageDtoStatusSucceeded,
+		BuildStageDtoStatusFailed,
+		BuildStageDtoStatusSkipped,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s BuildStageDtoStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case BuildStageDtoStatusPending:
+		return []byte(s), nil
+	case BuildStageDtoStatusRunning:
+		return []byte(s), nil
+	case BuildStageDtoStatusSucceeded:
+		return []byte(s), nil
+	case BuildStageDtoStatusFailed:
+		return []byte(s), nil
+	case BuildStageDtoStatusSkipped:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *BuildStageDtoStatus) UnmarshalText(data []byte) error {
+	switch BuildStageDtoStatus(data) {
+	case BuildStageDtoStatusPending:
+		*s = BuildStageDtoStatusPending
+		return nil
+	case BuildStageDtoStatusRunning:
+		*s = BuildStageDtoStatusRunning
+		return nil
+	case BuildStageDtoStatusSucceeded:
+		*s = BuildStageDtoStatusSucceeded
+		return nil
+	case BuildStageDtoStatusFailed:
+		*s = BuildStageDtoStatusFailed
+		return nil
+	case BuildStageDtoStatusSkipped:
+		*s = BuildStageDtoStatusSkipped
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 type CancelBuildConflict Problem
 
@@ -1850,6 +2054,163 @@ type CreateFreezeUnprocessableEntity Problem
 
 func (*CreateFreezeUnprocessableEntity) createFreezeRes() {}
 
+// Ref: #/components/schemas/CreateGitConnection
+type CreateGitConnection struct {
+	// The provider's URL; the provider's public service when empty (`https://api.github.com`,
+	// `https://gitlab.com`). Required for Gitea.
+	BaseUrl       OptString    `json:"baseUrl"`
+	DefaultBranch OptNilString `json:"defaultBranch"`
+	// Unique in the organization: lowercase letters, digits and `-`.
+	Name     string         `json:"name"`
+	Provider GitProviderDto `json:"provider"`
+	// A personal, project or group access token; write-only.
+	Token string `json:"token"`
+}
+
+// GetBaseUrl returns the value of BaseUrl.
+func (s *CreateGitConnection) GetBaseUrl() OptString {
+	return s.BaseUrl
+}
+
+// GetDefaultBranch returns the value of DefaultBranch.
+func (s *CreateGitConnection) GetDefaultBranch() OptNilString {
+	return s.DefaultBranch
+}
+
+// GetName returns the value of Name.
+func (s *CreateGitConnection) GetName() string {
+	return s.Name
+}
+
+// GetProvider returns the value of Provider.
+func (s *CreateGitConnection) GetProvider() GitProviderDto {
+	return s.Provider
+}
+
+// GetToken returns the value of Token.
+func (s *CreateGitConnection) GetToken() string {
+	return s.Token
+}
+
+// SetBaseUrl sets the value of BaseUrl.
+func (s *CreateGitConnection) SetBaseUrl(val OptString) {
+	s.BaseUrl = val
+}
+
+// SetDefaultBranch sets the value of DefaultBranch.
+func (s *CreateGitConnection) SetDefaultBranch(val OptNilString) {
+	s.DefaultBranch = val
+}
+
+// SetName sets the value of Name.
+func (s *CreateGitConnection) SetName(val string) {
+	s.Name = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *CreateGitConnection) SetProvider(val GitProviderDto) {
+	s.Provider = val
+}
+
+// SetToken sets the value of Token.
+func (s *CreateGitConnection) SetToken(val string) {
+	s.Token = val
+}
+
+type CreateGitConnectionConflict Problem
+
+func (*CreateGitConnectionConflict) createGitConnectionRes() {}
+
+type CreateGitConnectionForbidden Problem
+
+func (*CreateGitConnectionForbidden) createGitConnectionRes() {}
+
+type CreateGitConnectionServiceUnavailable Problem
+
+func (*CreateGitConnectionServiceUnavailable) createGitConnectionRes() {}
+
+type CreateGitConnectionUnprocessableEntity Problem
+
+func (*CreateGitConnectionUnprocessableEntity) createGitConnectionRes() {}
+
+// Ref: #/components/schemas/CreateOrgRegistry
+type CreateOrgRegistry struct {
+	// Unique in the organization: lowercase letters, digits and `-`.
+	Name string `json:"name"`
+	// A password or access token; write-only.
+	Password string              `json:"password"`
+	Preset   RegistryPresetIdDto `json:"preset"`
+	// Required unless the preset names its server.
+	Server   OptString `json:"server"`
+	Username string    `json:"username"`
+}
+
+// GetName returns the value of Name.
+func (s *CreateOrgRegistry) GetName() string {
+	return s.Name
+}
+
+// GetPassword returns the value of Password.
+func (s *CreateOrgRegistry) GetPassword() string {
+	return s.Password
+}
+
+// GetPreset returns the value of Preset.
+func (s *CreateOrgRegistry) GetPreset() RegistryPresetIdDto {
+	return s.Preset
+}
+
+// GetServer returns the value of Server.
+func (s *CreateOrgRegistry) GetServer() OptString {
+	return s.Server
+}
+
+// GetUsername returns the value of Username.
+func (s *CreateOrgRegistry) GetUsername() string {
+	return s.Username
+}
+
+// SetName sets the value of Name.
+func (s *CreateOrgRegistry) SetName(val string) {
+	s.Name = val
+}
+
+// SetPassword sets the value of Password.
+func (s *CreateOrgRegistry) SetPassword(val string) {
+	s.Password = val
+}
+
+// SetPreset sets the value of Preset.
+func (s *CreateOrgRegistry) SetPreset(val RegistryPresetIdDto) {
+	s.Preset = val
+}
+
+// SetServer sets the value of Server.
+func (s *CreateOrgRegistry) SetServer(val OptString) {
+	s.Server = val
+}
+
+// SetUsername sets the value of Username.
+func (s *CreateOrgRegistry) SetUsername(val string) {
+	s.Username = val
+}
+
+type CreateOrgRegistryConflict Problem
+
+func (*CreateOrgRegistryConflict) createOrgRegistryRes() {}
+
+type CreateOrgRegistryForbidden Problem
+
+func (*CreateOrgRegistryForbidden) createOrgRegistryRes() {}
+
+type CreateOrgRegistryServiceUnavailable Problem
+
+func (*CreateOrgRegistryServiceUnavailable) createOrgRegistryRes() {}
+
+type CreateOrgRegistryUnprocessableEntity Problem
+
+func (*CreateOrgRegistryUnprocessableEntity) createOrgRegistryRes() {}
+
 // Ref: #/components/schemas/CreateProject
 type CreateProject struct {
 	Description OptNilString `json:"description"`
@@ -2196,10 +2557,40 @@ type DeleteEnvironmentNotFound Problem
 
 func (*DeleteEnvironmentNotFound) deleteEnvironmentRes() {}
 
+type DeleteGitConnectionConflict Problem
+
+func (*DeleteGitConnectionConflict) deleteGitConnectionRes() {}
+
+type DeleteGitConnectionForbidden Problem
+
+func (*DeleteGitConnectionForbidden) deleteGitConnectionRes() {}
+
+// DeleteGitConnectionNoContent is response for DeleteGitConnection operation.
+type DeleteGitConnectionNoContent struct{}
+
+func (*DeleteGitConnectionNoContent) deleteGitConnectionRes() {}
+
+type DeleteGitConnectionNotFound Problem
+
+func (*DeleteGitConnectionNotFound) deleteGitConnectionRes() {}
+
 // DeleteImagePolicyNoContent is response for DeleteImagePolicy operation.
 type DeleteImagePolicyNoContent struct{}
 
 func (*DeleteImagePolicyNoContent) deleteImagePolicyRes() {}
+
+type DeleteOrgRegistryForbidden Problem
+
+func (*DeleteOrgRegistryForbidden) deleteOrgRegistryRes() {}
+
+// DeleteOrgRegistryNoContent is response for DeleteOrgRegistry operation.
+type DeleteOrgRegistryNoContent struct{}
+
+func (*DeleteOrgRegistryNoContent) deleteOrgRegistryRes() {}
+
+type DeleteOrgRegistryNotFound Problem
+
+func (*DeleteOrgRegistryNotFound) deleteOrgRegistryRes() {}
 
 type DeleteProjectConflict Problem
 
@@ -3783,6 +4174,38 @@ type GetBuildForbidden Problem
 
 func (*GetBuildForbidden) getBuildRes() {}
 
+type GetBuildLogsForbidden Problem
+
+func (*GetBuildLogsForbidden) getBuildLogsRes() {}
+
+type GetBuildLogsNotFound Problem
+
+func (*GetBuildLogsNotFound) getBuildLogsRes() {}
+
+type GetBuildLogsOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetBuildLogsOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*GetBuildLogsOK) getBuildLogsRes() {}
+
+type GetBuildLogsServiceUnavailable Problem
+
+func (*GetBuildLogsServiceUnavailable) getBuildLogsRes() {}
+
+type GetBuildLogsTooManyRequests Problem
+
+func (*GetBuildLogsTooManyRequests) getBuildLogsRes() {}
+
 type GetBuildNotFound Problem
 
 func (*GetBuildNotFound) getBuildRes() {}
@@ -3810,6 +4233,538 @@ func (*GetEnvironmentPolicyForbidden) getEnvironmentPolicyRes() {}
 type GetEnvironmentPolicyNotFound Problem
 
 func (*GetEnvironmentPolicyNotFound) getEnvironmentPolicyRes() {}
+
+type GetGitConnectionForbidden Problem
+
+func (*GetGitConnectionForbidden) getGitConnectionRes() {}
+
+type GetGitConnectionNotFound Problem
+
+func (*GetGitConnectionNotFound) getGitConnectionRes() {}
+
+type GetOrgRegistryForbidden Problem
+
+func (*GetOrgRegistryForbidden) getOrgRegistryRes() {}
+
+type GetOrgRegistryNotFound Problem
+
+func (*GetOrgRegistryNotFound) getOrgRegistryRes() {}
+
+// Ref: #/components/schemas/GitBranchDto
+type GitBranchDto struct {
+	// The head commit.
+	Commit    OptNilString `json:"commit"`
+	Default   bool         `json:"default"`
+	Name      string       `json:"name"`
+	Protected bool         `json:"protected"`
+}
+
+// GetCommit returns the value of Commit.
+func (s *GitBranchDto) GetCommit() OptNilString {
+	return s.Commit
+}
+
+// GetDefault returns the value of Default.
+func (s *GitBranchDto) GetDefault() bool {
+	return s.Default
+}
+
+// GetName returns the value of Name.
+func (s *GitBranchDto) GetName() string {
+	return s.Name
+}
+
+// GetProtected returns the value of Protected.
+func (s *GitBranchDto) GetProtected() bool {
+	return s.Protected
+}
+
+// SetCommit sets the value of Commit.
+func (s *GitBranchDto) SetCommit(val OptNilString) {
+	s.Commit = val
+}
+
+// SetDefault sets the value of Default.
+func (s *GitBranchDto) SetDefault(val bool) {
+	s.Default = val
+}
+
+// SetName sets the value of Name.
+func (s *GitBranchDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetProtected sets the value of Protected.
+func (s *GitBranchDto) SetProtected(val bool) {
+	s.Protected = val
+}
+
+// What the provider said about a token.
+// Ref: #/components/schemas/GitConnectionCheckDto
+type GitConnectionCheckDto struct {
+	CheckedAt int64        `json:"checkedAt"`
+	Error     OptNilString `json:"error"`
+	// Scopes Kuben needs that the token lacks.
+	MissingScopes []string `json:"missingScopes"`
+	Ok            bool     `json:"ok"`
+	// The token's scopes, when the provider tells them.
+	Scopes []string `json:"scopes"`
+	// The account the token belongs to.
+	Username OptNilString `json:"username"`
+}
+
+// GetCheckedAt returns the value of CheckedAt.
+func (s *GitConnectionCheckDto) GetCheckedAt() int64 {
+	return s.CheckedAt
+}
+
+// GetError returns the value of Error.
+func (s *GitConnectionCheckDto) GetError() OptNilString {
+	return s.Error
+}
+
+// GetMissingScopes returns the value of MissingScopes.
+func (s *GitConnectionCheckDto) GetMissingScopes() []string {
+	return s.MissingScopes
+}
+
+// GetOk returns the value of Ok.
+func (s *GitConnectionCheckDto) GetOk() bool {
+	return s.Ok
+}
+
+// GetScopes returns the value of Scopes.
+func (s *GitConnectionCheckDto) GetScopes() []string {
+	return s.Scopes
+}
+
+// GetUsername returns the value of Username.
+func (s *GitConnectionCheckDto) GetUsername() OptNilString {
+	return s.Username
+}
+
+// SetCheckedAt sets the value of CheckedAt.
+func (s *GitConnectionCheckDto) SetCheckedAt(val int64) {
+	s.CheckedAt = val
+}
+
+// SetError sets the value of Error.
+func (s *GitConnectionCheckDto) SetError(val OptNilString) {
+	s.Error = val
+}
+
+// SetMissingScopes sets the value of MissingScopes.
+func (s *GitConnectionCheckDto) SetMissingScopes(val []string) {
+	s.MissingScopes = val
+}
+
+// SetOk sets the value of Ok.
+func (s *GitConnectionCheckDto) SetOk(val bool) {
+	s.Ok = val
+}
+
+// SetScopes sets the value of Scopes.
+func (s *GitConnectionCheckDto) SetScopes(val []string) {
+	s.Scopes = val
+}
+
+// SetUsername sets the value of Username.
+func (s *GitConnectionCheckDto) SetUsername(val OptNilString) {
+	s.Username = val
+}
+
+func (*GitConnectionCheckDto) testGitConnectionRes()    {}
+func (*GitConnectionCheckDto) testNewGitConnectionRes() {}
+
+// An organization's token connection to a Git provider. The token is never returned.
+// Ref: #/components/schemas/GitConnectionDto
+type GitConnectionDto struct {
+	// `token`.
+	AuthKind string `json:"authKind"`
+	// The provider's API root: `https://api.github.com`, `https://gitlab.com`, a self-hosted URL.
+	BaseUrl   string `json:"baseUrl"`
+	CreatedAt int64  `json:"createdAt"`
+	// The branch new sources suggest when the repository names none.
+	DefaultBranch OptNilString `json:"defaultBranch"`
+	HasToken      bool         `json:"hasToken"`
+	ID            string       `json:"id"`
+	LastCheckedAt OptNilInt64  `json:"lastCheckedAt"`
+	// Why the last check failed.
+	LastError OptNilString   `json:"lastError"`
+	Name      string         `json:"name"`
+	Provider  GitProviderDto `json:"provider"`
+	// The last four characters of the token.
+	TokenHint string `json:"tokenHint"`
+	UpdatedAt int64  `json:"updatedAt"`
+	// The account the token belongs to, as the provider named it at the last check.
+	Username OptNilString `json:"username"`
+	// The secret the provider's push webhooks carry (GitLab: the webhook's Secret token; Gitea/Forgejo:
+	// its Secret, which signs the body). Present only in the answer of createGitConnection, never again:
+	// rotate it with `POST /api/v1/git/connections/{connection}/webhook-secret`.
+	WebhookSecret OptString `json:"webhookSecret"`
+	// Where the provider sends push events for this connection (`/api/v1/webhooks/gitlab/{id}` or
+	// `/api/v1/webhooks/gitea/{id}`); none for GitHub.
+	WebhookUrl OptNilString `json:"webhookUrl"`
+}
+
+// GetAuthKind returns the value of AuthKind.
+func (s *GitConnectionDto) GetAuthKind() string {
+	return s.AuthKind
+}
+
+// GetBaseUrl returns the value of BaseUrl.
+func (s *GitConnectionDto) GetBaseUrl() string {
+	return s.BaseUrl
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *GitConnectionDto) GetCreatedAt() int64 {
+	return s.CreatedAt
+}
+
+// GetDefaultBranch returns the value of DefaultBranch.
+func (s *GitConnectionDto) GetDefaultBranch() OptNilString {
+	return s.DefaultBranch
+}
+
+// GetHasToken returns the value of HasToken.
+func (s *GitConnectionDto) GetHasToken() bool {
+	return s.HasToken
+}
+
+// GetID returns the value of ID.
+func (s *GitConnectionDto) GetID() string {
+	return s.ID
+}
+
+// GetLastCheckedAt returns the value of LastCheckedAt.
+func (s *GitConnectionDto) GetLastCheckedAt() OptNilInt64 {
+	return s.LastCheckedAt
+}
+
+// GetLastError returns the value of LastError.
+func (s *GitConnectionDto) GetLastError() OptNilString {
+	return s.LastError
+}
+
+// GetName returns the value of Name.
+func (s *GitConnectionDto) GetName() string {
+	return s.Name
+}
+
+// GetProvider returns the value of Provider.
+func (s *GitConnectionDto) GetProvider() GitProviderDto {
+	return s.Provider
+}
+
+// GetTokenHint returns the value of TokenHint.
+func (s *GitConnectionDto) GetTokenHint() string {
+	return s.TokenHint
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *GitConnectionDto) GetUpdatedAt() int64 {
+	return s.UpdatedAt
+}
+
+// GetUsername returns the value of Username.
+func (s *GitConnectionDto) GetUsername() OptNilString {
+	return s.Username
+}
+
+// GetWebhookSecret returns the value of WebhookSecret.
+func (s *GitConnectionDto) GetWebhookSecret() OptString {
+	return s.WebhookSecret
+}
+
+// GetWebhookUrl returns the value of WebhookUrl.
+func (s *GitConnectionDto) GetWebhookUrl() OptNilString {
+	return s.WebhookUrl
+}
+
+// SetAuthKind sets the value of AuthKind.
+func (s *GitConnectionDto) SetAuthKind(val string) {
+	s.AuthKind = val
+}
+
+// SetBaseUrl sets the value of BaseUrl.
+func (s *GitConnectionDto) SetBaseUrl(val string) {
+	s.BaseUrl = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *GitConnectionDto) SetCreatedAt(val int64) {
+	s.CreatedAt = val
+}
+
+// SetDefaultBranch sets the value of DefaultBranch.
+func (s *GitConnectionDto) SetDefaultBranch(val OptNilString) {
+	s.DefaultBranch = val
+}
+
+// SetHasToken sets the value of HasToken.
+func (s *GitConnectionDto) SetHasToken(val bool) {
+	s.HasToken = val
+}
+
+// SetID sets the value of ID.
+func (s *GitConnectionDto) SetID(val string) {
+	s.ID = val
+}
+
+// SetLastCheckedAt sets the value of LastCheckedAt.
+func (s *GitConnectionDto) SetLastCheckedAt(val OptNilInt64) {
+	s.LastCheckedAt = val
+}
+
+// SetLastError sets the value of LastError.
+func (s *GitConnectionDto) SetLastError(val OptNilString) {
+	s.LastError = val
+}
+
+// SetName sets the value of Name.
+func (s *GitConnectionDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *GitConnectionDto) SetProvider(val GitProviderDto) {
+	s.Provider = val
+}
+
+// SetTokenHint sets the value of TokenHint.
+func (s *GitConnectionDto) SetTokenHint(val string) {
+	s.TokenHint = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *GitConnectionDto) SetUpdatedAt(val int64) {
+	s.UpdatedAt = val
+}
+
+// SetUsername sets the value of Username.
+func (s *GitConnectionDto) SetUsername(val OptNilString) {
+	s.Username = val
+}
+
+// SetWebhookSecret sets the value of WebhookSecret.
+func (s *GitConnectionDto) SetWebhookSecret(val OptString) {
+	s.WebhookSecret = val
+}
+
+// SetWebhookUrl sets the value of WebhookUrl.
+func (s *GitConnectionDto) SetWebhookUrl(val OptNilString) {
+	s.WebhookUrl = val
+}
+
+func (*GitConnectionDto) createGitConnectionRes() {}
+func (*GitConnectionDto) getGitConnectionRes()    {}
+func (*GitConnectionDto) updateGitConnectionRes() {}
+
+// `github` (a personal or fine-grained token; the GitHub App has its installations), `gitlab`, or
+// `gitea` (Gitea and Forgejo).
+// Ref: #/components/schemas/GitProviderDto
+type GitProviderDto string
+
+const (
+	GitProviderDtoGithub GitProviderDto = "github"
+	GitProviderDtoGitlab GitProviderDto = "gitlab"
+	GitProviderDtoGitea  GitProviderDto = "gitea"
+)
+
+// AllValues returns all GitProviderDto values.
+func (GitProviderDto) AllValues() []GitProviderDto {
+	return []GitProviderDto{
+		GitProviderDtoGithub,
+		GitProviderDtoGitlab,
+		GitProviderDtoGitea,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s GitProviderDto) MarshalText() ([]byte, error) {
+	switch s {
+	case GitProviderDtoGithub:
+		return []byte(s), nil
+	case GitProviderDtoGitlab:
+		return []byte(s), nil
+	case GitProviderDtoGitea:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *GitProviderDto) UnmarshalText(data []byte) error {
+	switch GitProviderDto(data) {
+	case GitProviderDtoGithub:
+		*s = GitProviderDtoGithub
+		return nil
+	case GitProviderDtoGitlab:
+		*s = GitProviderDtoGitlab
+		return nil
+	case GitProviderDtoGitea:
+		*s = GitProviderDtoGitea
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/GitRepositoryDto
+type GitRepositoryDto struct {
+	DefaultBranch OptNilString `json:"defaultBranch"`
+	Description   OptNilString `json:"description"`
+	// `owner/name` (GitLab: `group/subgroup/name`).
+	FullName string `json:"fullName"`
+	// The provider's id.
+	ID        OptNilString `json:"id"`
+	Private   bool         `json:"private"`
+	UpdatedAt OptNilInt64  `json:"updatedAt"`
+	WebUrl    OptNilString `json:"webUrl"`
+}
+
+// GetDefaultBranch returns the value of DefaultBranch.
+func (s *GitRepositoryDto) GetDefaultBranch() OptNilString {
+	return s.DefaultBranch
+}
+
+// GetDescription returns the value of Description.
+func (s *GitRepositoryDto) GetDescription() OptNilString {
+	return s.Description
+}
+
+// GetFullName returns the value of FullName.
+func (s *GitRepositoryDto) GetFullName() string {
+	return s.FullName
+}
+
+// GetID returns the value of ID.
+func (s *GitRepositoryDto) GetID() OptNilString {
+	return s.ID
+}
+
+// GetPrivate returns the value of Private.
+func (s *GitRepositoryDto) GetPrivate() bool {
+	return s.Private
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *GitRepositoryDto) GetUpdatedAt() OptNilInt64 {
+	return s.UpdatedAt
+}
+
+// GetWebUrl returns the value of WebUrl.
+func (s *GitRepositoryDto) GetWebUrl() OptNilString {
+	return s.WebUrl
+}
+
+// SetDefaultBranch sets the value of DefaultBranch.
+func (s *GitRepositoryDto) SetDefaultBranch(val OptNilString) {
+	s.DefaultBranch = val
+}
+
+// SetDescription sets the value of Description.
+func (s *GitRepositoryDto) SetDescription(val OptNilString) {
+	s.Description = val
+}
+
+// SetFullName sets the value of FullName.
+func (s *GitRepositoryDto) SetFullName(val string) {
+	s.FullName = val
+}
+
+// SetID sets the value of ID.
+func (s *GitRepositoryDto) SetID(val OptNilString) {
+	s.ID = val
+}
+
+// SetPrivate sets the value of Private.
+func (s *GitRepositoryDto) SetPrivate(val bool) {
+	s.Private = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *GitRepositoryDto) SetUpdatedAt(val OptNilInt64) {
+	s.UpdatedAt = val
+}
+
+// SetWebUrl sets the value of WebUrl.
+func (s *GitRepositoryDto) SetWebUrl(val OptNilString) {
+	s.WebUrl = val
+}
+
+// Ref: #/components/schemas/GitRepositoryListDto
+type GitRepositoryListDto struct {
+	HasMore bool `json:"hasMore"`
+	// This page, from 1.
+	Page         int64              `json:"page"`
+	Repositories []GitRepositoryDto `json:"repositories"`
+}
+
+// GetHasMore returns the value of HasMore.
+func (s *GitRepositoryListDto) GetHasMore() bool {
+	return s.HasMore
+}
+
+// GetPage returns the value of Page.
+func (s *GitRepositoryListDto) GetPage() int64 {
+	return s.Page
+}
+
+// GetRepositories returns the value of Repositories.
+func (s *GitRepositoryListDto) GetRepositories() []GitRepositoryDto {
+	return s.Repositories
+}
+
+// SetHasMore sets the value of HasMore.
+func (s *GitRepositoryListDto) SetHasMore(val bool) {
+	s.HasMore = val
+}
+
+// SetPage sets the value of Page.
+func (s *GitRepositoryListDto) SetPage(val int64) {
+	s.Page = val
+}
+
+// SetRepositories sets the value of Repositories.
+func (s *GitRepositoryListDto) SetRepositories(val []GitRepositoryDto) {
+	s.Repositories = val
+}
+
+func (*GitRepositoryListDto) listGitConnectionRepositoriesRes() {}
+
+// A Git connection's new webhook secret, shown once.
+// Ref: #/components/schemas/GitWebhookSecretDto
+type GitWebhookSecretDto struct {
+	// Paste it into the provider's webhook settings; the previous secret stops working now.
+	WebhookSecret string `json:"webhookSecret"`
+	// Where the provider sends push events for this connection; none for GitHub.
+	WebhookUrl OptNilString `json:"webhookUrl"`
+}
+
+// GetWebhookSecret returns the value of WebhookSecret.
+func (s *GitWebhookSecretDto) GetWebhookSecret() string {
+	return s.WebhookSecret
+}
+
+// GetWebhookUrl returns the value of WebhookUrl.
+func (s *GitWebhookSecretDto) GetWebhookUrl() OptNilString {
+	return s.WebhookUrl
+}
+
+// SetWebhookSecret sets the value of WebhookSecret.
+func (s *GitWebhookSecretDto) SetWebhookSecret(val string) {
+	s.WebhookSecret = val
+}
+
+// SetWebhookUrl sets the value of WebhookUrl.
+func (s *GitWebhookSecretDto) SetWebhookUrl(val OptNilString) {
+	s.WebhookUrl = val
+}
+
+func (*GitWebhookSecretDto) rotateGitConnectionWebhookSecretRes() {}
 
 // HandOverAppAccepted is response for HandOverApp operation.
 type HandOverAppAccepted struct{}
@@ -4539,6 +5494,50 @@ type ListEnvironmentsOKApplicationJSON []EnvironmentDto
 
 func (*ListEnvironmentsOKApplicationJSON) listEnvironmentsRes() {}
 
+type ListGitConnectionBranchesBadGateway Problem
+
+func (*ListGitConnectionBranchesBadGateway) listGitConnectionBranchesRes() {}
+
+type ListGitConnectionBranchesForbidden Problem
+
+func (*ListGitConnectionBranchesForbidden) listGitConnectionBranchesRes() {}
+
+type ListGitConnectionBranchesNotFound Problem
+
+func (*ListGitConnectionBranchesNotFound) listGitConnectionBranchesRes() {}
+
+type ListGitConnectionBranchesOKApplicationJSON []GitBranchDto
+
+func (*ListGitConnectionBranchesOKApplicationJSON) listGitConnectionBranchesRes() {}
+
+type ListGitConnectionBranchesServiceUnavailable Problem
+
+func (*ListGitConnectionBranchesServiceUnavailable) listGitConnectionBranchesRes() {}
+
+type ListGitConnectionBranchesUnprocessableEntity Problem
+
+func (*ListGitConnectionBranchesUnprocessableEntity) listGitConnectionBranchesRes() {}
+
+type ListGitConnectionRepositoriesBadGateway Problem
+
+func (*ListGitConnectionRepositoriesBadGateway) listGitConnectionRepositoriesRes() {}
+
+type ListGitConnectionRepositoriesForbidden Problem
+
+func (*ListGitConnectionRepositoriesForbidden) listGitConnectionRepositoriesRes() {}
+
+type ListGitConnectionRepositoriesNotFound Problem
+
+func (*ListGitConnectionRepositoriesNotFound) listGitConnectionRepositoriesRes() {}
+
+type ListGitConnectionRepositoriesServiceUnavailable Problem
+
+func (*ListGitConnectionRepositoriesServiceUnavailable) listGitConnectionRepositoriesRes() {}
+
+type ListGitConnectionsOKApplicationJSON []GitConnectionDto
+
+func (*ListGitConnectionsOKApplicationJSON) listGitConnectionsRes() {}
+
 type ListGitInstallationsOKApplicationJSON []InstallationDto
 
 func (*ListGitInstallationsOKApplicationJSON) listGitInstallationsRes() {}
@@ -4546,6 +5545,10 @@ func (*ListGitInstallationsOKApplicationJSON) listGitInstallationsRes() {}
 type ListMembersOKApplicationJSON []MemberDto
 
 func (*ListMembersOKApplicationJSON) listMembersRes() {}
+
+type ListOrgRegistriesOKApplicationJSON []OrgRegistryDto
+
+func (*ListOrgRegistriesOKApplicationJSON) listOrgRegistriesRes() {}
 
 type ListPreviewsOKApplicationJSON []PreviewDto
 
@@ -4562,6 +5565,10 @@ func (*ListProjectMembersNotFound) listProjectMembersRes() {}
 type ListProjectMembersOKApplicationJSON []MemberDto
 
 func (*ListProjectMembersOKApplicationJSON) listProjectMembersRes() {}
+
+type ListRegistryPresetsOKApplicationJSON []RegistryPresetDto
+
+func (*ListRegistryPresetsOKApplicationJSON) listRegistryPresetsRes() {}
 
 type ListReleasesOKApplicationJSON []ReleaseDto
 
@@ -5224,6 +6231,74 @@ func (o OptNilBool) Get() (v bool, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptNilBool) Or(d bool) bool {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilBuildDto returns new OptNilBuildDto with value set to v.
+func NewOptNilBuildDto(v BuildDto) OptNilBuildDto {
+	return OptNilBuildDto{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilBuildDto is optional nullable BuildDto.
+type OptNilBuildDto struct {
+	Value BuildDto
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilBuildDto was set.
+func (o OptNilBuildDto) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilBuildDto) Reset() {
+	var v BuildDto
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilBuildDto) SetTo(v BuildDto) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilBuildDto) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilBuildDto) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v BuildDto
+	o.Value = v
+}
+
+// IsEmpty returns true if the field was omitted from the payload (not Set and not Null).
+func (o OptNilBuildDto) IsEmpty() bool {
+	return !o.Set && !o.Null
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilBuildDto) Get() (v BuildDto, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilBuildDto) Or(d BuildDto) BuildDto {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -6456,6 +7531,127 @@ func (o OptString) Or(d string) string {
 	return d
 }
 
+// An organization's login for one registry, used by every environment without a login of its own for
+// that registry. The password is never returned.
+// Ref: #/components/schemas/OrgRegistryDto
+type OrgRegistryDto struct {
+	CreatedAt     int64               `json:"createdAt"`
+	HasPassword   bool                `json:"hasPassword"`
+	ID            string              `json:"id"`
+	LastCheckedAt OptNilInt64         `json:"lastCheckedAt"`
+	LastError     OptNilString        `json:"lastError"`
+	Name          string              `json:"name"`
+	Preset        RegistryPresetIdDto `json:"preset"`
+	// The registry as image references name it (`ghcr.io`, `docker.io`, `registry.example.com:5000`).
+	Server    string `json:"server"`
+	UpdatedAt int64  `json:"updatedAt"`
+	Username  string `json:"username"`
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *OrgRegistryDto) GetCreatedAt() int64 {
+	return s.CreatedAt
+}
+
+// GetHasPassword returns the value of HasPassword.
+func (s *OrgRegistryDto) GetHasPassword() bool {
+	return s.HasPassword
+}
+
+// GetID returns the value of ID.
+func (s *OrgRegistryDto) GetID() string {
+	return s.ID
+}
+
+// GetLastCheckedAt returns the value of LastCheckedAt.
+func (s *OrgRegistryDto) GetLastCheckedAt() OptNilInt64 {
+	return s.LastCheckedAt
+}
+
+// GetLastError returns the value of LastError.
+func (s *OrgRegistryDto) GetLastError() OptNilString {
+	return s.LastError
+}
+
+// GetName returns the value of Name.
+func (s *OrgRegistryDto) GetName() string {
+	return s.Name
+}
+
+// GetPreset returns the value of Preset.
+func (s *OrgRegistryDto) GetPreset() RegistryPresetIdDto {
+	return s.Preset
+}
+
+// GetServer returns the value of Server.
+func (s *OrgRegistryDto) GetServer() string {
+	return s.Server
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *OrgRegistryDto) GetUpdatedAt() int64 {
+	return s.UpdatedAt
+}
+
+// GetUsername returns the value of Username.
+func (s *OrgRegistryDto) GetUsername() string {
+	return s.Username
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *OrgRegistryDto) SetCreatedAt(val int64) {
+	s.CreatedAt = val
+}
+
+// SetHasPassword sets the value of HasPassword.
+func (s *OrgRegistryDto) SetHasPassword(val bool) {
+	s.HasPassword = val
+}
+
+// SetID sets the value of ID.
+func (s *OrgRegistryDto) SetID(val string) {
+	s.ID = val
+}
+
+// SetLastCheckedAt sets the value of LastCheckedAt.
+func (s *OrgRegistryDto) SetLastCheckedAt(val OptNilInt64) {
+	s.LastCheckedAt = val
+}
+
+// SetLastError sets the value of LastError.
+func (s *OrgRegistryDto) SetLastError(val OptNilString) {
+	s.LastError = val
+}
+
+// SetName sets the value of Name.
+func (s *OrgRegistryDto) SetName(val string) {
+	s.Name = val
+}
+
+// SetPreset sets the value of Preset.
+func (s *OrgRegistryDto) SetPreset(val RegistryPresetIdDto) {
+	s.Preset = val
+}
+
+// SetServer sets the value of Server.
+func (s *OrgRegistryDto) SetServer(val string) {
+	s.Server = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *OrgRegistryDto) SetUpdatedAt(val int64) {
+	s.UpdatedAt = val
+}
+
+// SetUsername sets the value of Username.
+func (s *OrgRegistryDto) SetUsername(val string) {
+	s.Username = val
+}
+
+func (*OrgRegistryDto) createOrgRegistryRes() {}
+func (*OrgRegistryDto) getOrgRegistryRes()    {}
+func (*OrgRegistryDto) updateOrgRegistryRes() {}
+
 // Ref: #/components/schemas/OwnerDto
 type OwnerDto struct {
 	// How to reach them: an email, a chat channel, an on-call rotation.
@@ -7120,9 +8316,12 @@ func (*Problem) listAuditRes()                   {}
 func (*Problem) listCiTrustPoliciesRes()         {}
 func (*Problem) listDetachedAppsRes()            {}
 func (*Problem) listEnvironmentsRes()            {}
+func (*Problem) listGitConnectionsRes()          {}
 func (*Problem) listGitInstallationsRes()        {}
 func (*Problem) listMembersRes()                 {}
+func (*Problem) listOrgRegistriesRes()           {}
 func (*Problem) listPreviewsRes()                {}
+func (*Problem) listRegistryPresetsRes()         {}
 func (*Problem) listReleasesRes()                {}
 func (*Problem) listSecretRevisionsRes()         {}
 func (*Problem) listVulnerabilityExceptionsRes() {}
@@ -8019,14 +9218,17 @@ func (*PutSecretUnprocessableEntity) putSecretRes() {}
 // Ref: #/components/schemas/PutSource
 type PutSource struct {
 	Branch string `json:"branch"`
+	// A Git connection of this organization (its id), instead of an installation: GitLab, Gitea or a
+	// GitHub token.
+	Connection OptString `json:"connection"`
 	// Build context inside the repository; the root when empty.
 	Context OptString `json:"context"`
 	// Dockerfile relative to the context; `Dockerfile` when unset.
 	Dockerfile OptNilString `json:"dockerfile"`
 	// Where builds push, without tag or digest.
 	ImageRepository string `json:"imageRepository"`
-	// A GitHub App installation linked to this organization.
-	InstallationId int64          `json:"installationId"`
+	// A GitHub App installation linked to this organization. Required unless `connection` is given.
+	InstallationId OptInt64       `json:"installationId"`
 	Repository     string         `json:"repository"`
 	Strategy       OptStrategyDto `json:"strategy"`
 }
@@ -8034,6 +9236,11 @@ type PutSource struct {
 // GetBranch returns the value of Branch.
 func (s *PutSource) GetBranch() string {
 	return s.Branch
+}
+
+// GetConnection returns the value of Connection.
+func (s *PutSource) GetConnection() OptString {
+	return s.Connection
 }
 
 // GetContext returns the value of Context.
@@ -8052,7 +9259,7 @@ func (s *PutSource) GetImageRepository() string {
 }
 
 // GetInstallationId returns the value of InstallationId.
-func (s *PutSource) GetInstallationId() int64 {
+func (s *PutSource) GetInstallationId() OptInt64 {
 	return s.InstallationId
 }
 
@@ -8071,6 +9278,11 @@ func (s *PutSource) SetBranch(val string) {
 	s.Branch = val
 }
 
+// SetConnection sets the value of Connection.
+func (s *PutSource) SetConnection(val OptString) {
+	s.Connection = val
+}
+
 // SetContext sets the value of Context.
 func (s *PutSource) SetContext(val OptString) {
 	s.Context = val
@@ -8087,7 +9299,7 @@ func (s *PutSource) SetImageRepository(val string) {
 }
 
 // SetInstallationId sets the value of InstallationId.
-func (s *PutSource) SetInstallationId(val int64) {
+func (s *PutSource) SetInstallationId(val OptInt64) {
 	s.InstallationId = val
 }
 
@@ -8210,6 +9422,46 @@ func (s *Reason) SetReason(val string) {
 	s.Reason = val
 }
 
+// Ref: #/components/schemas/RegistryCheckDto
+type RegistryCheckDto struct {
+	CheckedAt int64        `json:"checkedAt"`
+	Error     OptNilString `json:"error"`
+	Ok        bool         `json:"ok"`
+}
+
+// GetCheckedAt returns the value of CheckedAt.
+func (s *RegistryCheckDto) GetCheckedAt() int64 {
+	return s.CheckedAt
+}
+
+// GetError returns the value of Error.
+func (s *RegistryCheckDto) GetError() OptNilString {
+	return s.Error
+}
+
+// GetOk returns the value of Ok.
+func (s *RegistryCheckDto) GetOk() bool {
+	return s.Ok
+}
+
+// SetCheckedAt sets the value of CheckedAt.
+func (s *RegistryCheckDto) SetCheckedAt(val int64) {
+	s.CheckedAt = val
+}
+
+// SetError sets the value of Error.
+func (s *RegistryCheckDto) SetError(val OptNilString) {
+	s.Error = val
+}
+
+// SetOk sets the value of Ok.
+func (s *RegistryCheckDto) SetOk(val bool) {
+	s.Ok = val
+}
+
+func (*RegistryCheckDto) testNewOrgRegistryRes() {}
+func (*RegistryCheckDto) testOrgRegistryRes()    {}
+
 // Ref: #/components/schemas/RegistryLoginDto
 type RegistryLoginDto struct {
 	Name string `json:"name"`
@@ -8272,6 +9524,147 @@ func (s *RegistryLoginDto) SetUpdatedAt(val string) {
 }
 
 func (*RegistryLoginDto) putRegistryLoginRes() {}
+
+// Ref: #/components/schemas/RegistryPresetDto
+type RegistryPresetDto struct {
+	DocsUrl      OptNilString        `json:"docsUrl"`
+	ID           RegistryPresetIdDto `json:"id"`
+	Label        string              `json:"label"`
+	PasswordHint string              `json:"passwordHint"`
+	// The registry host; none when the user names it (Harbor, custom).
+	Server       OptNilString `json:"server"`
+	UsernameHint string       `json:"usernameHint"`
+}
+
+// GetDocsUrl returns the value of DocsUrl.
+func (s *RegistryPresetDto) GetDocsUrl() OptNilString {
+	return s.DocsUrl
+}
+
+// GetID returns the value of ID.
+func (s *RegistryPresetDto) GetID() RegistryPresetIdDto {
+	return s.ID
+}
+
+// GetLabel returns the value of Label.
+func (s *RegistryPresetDto) GetLabel() string {
+	return s.Label
+}
+
+// GetPasswordHint returns the value of PasswordHint.
+func (s *RegistryPresetDto) GetPasswordHint() string {
+	return s.PasswordHint
+}
+
+// GetServer returns the value of Server.
+func (s *RegistryPresetDto) GetServer() OptNilString {
+	return s.Server
+}
+
+// GetUsernameHint returns the value of UsernameHint.
+func (s *RegistryPresetDto) GetUsernameHint() string {
+	return s.UsernameHint
+}
+
+// SetDocsUrl sets the value of DocsUrl.
+func (s *RegistryPresetDto) SetDocsUrl(val OptNilString) {
+	s.DocsUrl = val
+}
+
+// SetID sets the value of ID.
+func (s *RegistryPresetDto) SetID(val RegistryPresetIdDto) {
+	s.ID = val
+}
+
+// SetLabel sets the value of Label.
+func (s *RegistryPresetDto) SetLabel(val string) {
+	s.Label = val
+}
+
+// SetPasswordHint sets the value of PasswordHint.
+func (s *RegistryPresetDto) SetPasswordHint(val string) {
+	s.PasswordHint = val
+}
+
+// SetServer sets the value of Server.
+func (s *RegistryPresetDto) SetServer(val OptNilString) {
+	s.Server = val
+}
+
+// SetUsernameHint sets the value of UsernameHint.
+func (s *RegistryPresetDto) SetUsernameHint(val string) {
+	s.UsernameHint = val
+}
+
+// Ref: #/components/schemas/RegistryPresetIdDto
+type RegistryPresetIdDto string
+
+const (
+	RegistryPresetIdDtoDockerhub RegistryPresetIdDto = "dockerhub"
+	RegistryPresetIdDtoGhcr      RegistryPresetIdDto = "ghcr"
+	RegistryPresetIdDtoGitlab    RegistryPresetIdDto = "gitlab"
+	RegistryPresetIdDtoQuay      RegistryPresetIdDto = "quay"
+	RegistryPresetIdDtoHarbor    RegistryPresetIdDto = "harbor"
+	RegistryPresetIdDtoCustom    RegistryPresetIdDto = "custom"
+)
+
+// AllValues returns all RegistryPresetIdDto values.
+func (RegistryPresetIdDto) AllValues() []RegistryPresetIdDto {
+	return []RegistryPresetIdDto{
+		RegistryPresetIdDtoDockerhub,
+		RegistryPresetIdDtoGhcr,
+		RegistryPresetIdDtoGitlab,
+		RegistryPresetIdDtoQuay,
+		RegistryPresetIdDtoHarbor,
+		RegistryPresetIdDtoCustom,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s RegistryPresetIdDto) MarshalText() ([]byte, error) {
+	switch s {
+	case RegistryPresetIdDtoDockerhub:
+		return []byte(s), nil
+	case RegistryPresetIdDtoGhcr:
+		return []byte(s), nil
+	case RegistryPresetIdDtoGitlab:
+		return []byte(s), nil
+	case RegistryPresetIdDtoQuay:
+		return []byte(s), nil
+	case RegistryPresetIdDtoHarbor:
+		return []byte(s), nil
+	case RegistryPresetIdDtoCustom:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *RegistryPresetIdDto) UnmarshalText(data []byte) error {
+	switch RegistryPresetIdDto(data) {
+	case RegistryPresetIdDtoDockerhub:
+		*s = RegistryPresetIdDtoDockerhub
+		return nil
+	case RegistryPresetIdDtoGhcr:
+		*s = RegistryPresetIdDtoGhcr
+		return nil
+	case RegistryPresetIdDtoGitlab:
+		*s = RegistryPresetIdDtoGitlab
+		return nil
+	case RegistryPresetIdDtoQuay:
+		*s = RegistryPresetIdDtoQuay
+		return nil
+	case RegistryPresetIdDtoHarbor:
+		*s = RegistryPresetIdDtoHarbor
+		return nil
+	case RegistryPresetIdDtoCustom:
+		*s = RegistryPresetIdDtoCustom
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
 
 type RejectDeploymentConflict Problem
 
@@ -8584,6 +9977,18 @@ func (s *RolloutDto) SetRun(val OptNilUUID) {
 func (s *RolloutDto) SetSkipped(val OptNilString) {
 	s.Skipped = val
 }
+
+type RotateGitConnectionWebhookSecretForbidden Problem
+
+func (*RotateGitConnectionWebhookSecretForbidden) rotateGitConnectionWebhookSecretRes() {}
+
+type RotateGitConnectionWebhookSecretNotFound Problem
+
+func (*RotateGitConnectionWebhookSecretNotFound) rotateGitConnectionWebhookSecretRes() {}
+
+type RotateGitConnectionWebhookSecretServiceUnavailable Problem
+
+func (*RotateGitConnectionWebhookSecretServiceUnavailable) rotateGitConnectionWebhookSecretRes() {}
 
 type RunAppNotFound Problem
 
@@ -9131,15 +10536,19 @@ func (*SetupUnprocessableEntity) setupRes() {}
 
 // Ref: #/components/schemas/SourceDto
 type SourceDto struct {
-	Branch     string       `json:"branch"`
+	Branch string `json:"branch"`
+	// The Git connection the source reads through; none for a GitHub App installation.
+	Connection OptNilString `json:"connection"`
 	Context    string       `json:"context"`
 	Dockerfile OptNilString `json:"dockerfile"`
 	// The last head read from GitHub.
 	Head            OptNilString `json:"head"`
 	ImageRepository string       `json:"imageRepository"`
-	InstallationId  int64        `json:"installationId"`
-	Repository      string       `json:"repository"`
-	Strategy        StrategyDto  `json:"strategy"`
+	// The GitHub App installation; 0 when the source reads through a connection.
+	InstallationId int64          `json:"installationId"`
+	Provider       GitProviderDto `json:"provider"`
+	Repository     string         `json:"repository"`
+	Strategy       StrategyDto    `json:"strategy"`
 	// The sync this change or request queued, if any.
 	SyncOperation OptNilString `json:"syncOperation"`
 }
@@ -9147,6 +10556,11 @@ type SourceDto struct {
 // GetBranch returns the value of Branch.
 func (s *SourceDto) GetBranch() string {
 	return s.Branch
+}
+
+// GetConnection returns the value of Connection.
+func (s *SourceDto) GetConnection() OptNilString {
+	return s.Connection
 }
 
 // GetContext returns the value of Context.
@@ -9174,6 +10588,11 @@ func (s *SourceDto) GetInstallationId() int64 {
 	return s.InstallationId
 }
 
+// GetProvider returns the value of Provider.
+func (s *SourceDto) GetProvider() GitProviderDto {
+	return s.Provider
+}
+
 // GetRepository returns the value of Repository.
 func (s *SourceDto) GetRepository() string {
 	return s.Repository
@@ -9192,6 +10611,11 @@ func (s *SourceDto) GetSyncOperation() OptNilString {
 // SetBranch sets the value of Branch.
 func (s *SourceDto) SetBranch(val string) {
 	s.Branch = val
+}
+
+// SetConnection sets the value of Connection.
+func (s *SourceDto) SetConnection(val OptNilString) {
+	s.Connection = val
 }
 
 // SetContext sets the value of Context.
@@ -9217,6 +10641,11 @@ func (s *SourceDto) SetImageRepository(val string) {
 // SetInstallationId sets the value of InstallationId.
 func (s *SourceDto) SetInstallationId(val int64) {
 	s.InstallationId = val
+}
+
+// SetProvider sets the value of Provider.
+func (s *SourceDto) SetProvider(val GitProviderDto) {
+	s.Provider = val
 }
 
 // SetRepository sets the value of Repository.
@@ -9652,6 +11081,46 @@ func (s *TemplateDto) SetVolumes(val []string) {
 	s.Volumes = val
 }
 
+type TestGitConnectionForbidden Problem
+
+func (*TestGitConnectionForbidden) testGitConnectionRes() {}
+
+type TestGitConnectionNotFound Problem
+
+func (*TestGitConnectionNotFound) testGitConnectionRes() {}
+
+type TestGitConnectionServiceUnavailable Problem
+
+func (*TestGitConnectionServiceUnavailable) testGitConnectionRes() {}
+
+type TestNewGitConnectionForbidden Problem
+
+func (*TestNewGitConnectionForbidden) testNewGitConnectionRes() {}
+
+type TestNewGitConnectionUnprocessableEntity Problem
+
+func (*TestNewGitConnectionUnprocessableEntity) testNewGitConnectionRes() {}
+
+type TestNewOrgRegistryForbidden Problem
+
+func (*TestNewOrgRegistryForbidden) testNewOrgRegistryRes() {}
+
+type TestNewOrgRegistryUnprocessableEntity Problem
+
+func (*TestNewOrgRegistryUnprocessableEntity) testNewOrgRegistryRes() {}
+
+type TestOrgRegistryForbidden Problem
+
+func (*TestOrgRegistryForbidden) testOrgRegistryRes() {}
+
+type TestOrgRegistryNotFound Problem
+
+func (*TestOrgRegistryNotFound) testOrgRegistryRes() {}
+
+type TestOrgRegistryServiceUnavailable Problem
+
+func (*TestOrgRegistryServiceUnavailable) testOrgRegistryRes() {}
+
 // Ref: #/components/schemas/TokenDto
 type TokenDto struct {
 	CreatedAt   int64        `json:"created_at"`
@@ -9766,6 +11235,48 @@ func (s *TokenDto) SetRevoked(val bool) {
 func (s *TokenDto) SetRole(val string) {
 	s.Role = val
 }
+
+type TriggerBuildConflict Problem
+
+func (*TriggerBuildConflict) triggerBuildRes() {}
+
+type TriggerBuildForbidden Problem
+
+func (*TriggerBuildForbidden) triggerBuildRes() {}
+
+type TriggerBuildNotFound Problem
+
+func (*TriggerBuildNotFound) triggerBuildRes() {}
+
+// A build of the source head was asked for: the head is read, then built unless it is already.
+// Ref: #/components/schemas/TriggeredBuildDto
+type TriggeredBuildDto struct {
+	Build OptNilBuildDto `json:"build"`
+	// The sync that reads the head and queues the build.
+	SyncOperation string `json:"syncOperation"`
+}
+
+// GetBuild returns the value of Build.
+func (s *TriggeredBuildDto) GetBuild() OptNilBuildDto {
+	return s.Build
+}
+
+// GetSyncOperation returns the value of SyncOperation.
+func (s *TriggeredBuildDto) GetSyncOperation() string {
+	return s.SyncOperation
+}
+
+// SetBuild sets the value of Build.
+func (s *TriggeredBuildDto) SetBuild(val OptNilBuildDto) {
+	s.Build = val
+}
+
+// SetSyncOperation sets the value of SyncOperation.
+func (s *TriggeredBuildDto) SetSyncOperation(val string) {
+	s.SyncOperation = val
+}
+
+func (*TriggeredBuildDto) triggerBuildRes() {}
 
 // Partial update; omitted fields are left unchanged, lists are replaced.
 // Ref: #/components/schemas/UpdateApp
@@ -9946,6 +11457,77 @@ type UpdateAppUnprocessableEntity Problem
 
 func (*UpdateAppUnprocessableEntity) updateAppRes() {}
 
+// Only the members given change.
+// Ref: #/components/schemas/UpdateGitConnection
+type UpdateGitConnection struct {
+	BaseUrl OptString `json:"baseUrl"`
+	// Null clears it.
+	DefaultBranch OptNilString `json:"defaultBranch"`
+	Name          OptString    `json:"name"`
+	// A new token; write-only. The connection is checked again.
+	Token OptString `json:"token"`
+}
+
+// GetBaseUrl returns the value of BaseUrl.
+func (s *UpdateGitConnection) GetBaseUrl() OptString {
+	return s.BaseUrl
+}
+
+// GetDefaultBranch returns the value of DefaultBranch.
+func (s *UpdateGitConnection) GetDefaultBranch() OptNilString {
+	return s.DefaultBranch
+}
+
+// GetName returns the value of Name.
+func (s *UpdateGitConnection) GetName() OptString {
+	return s.Name
+}
+
+// GetToken returns the value of Token.
+func (s *UpdateGitConnection) GetToken() OptString {
+	return s.Token
+}
+
+// SetBaseUrl sets the value of BaseUrl.
+func (s *UpdateGitConnection) SetBaseUrl(val OptString) {
+	s.BaseUrl = val
+}
+
+// SetDefaultBranch sets the value of DefaultBranch.
+func (s *UpdateGitConnection) SetDefaultBranch(val OptNilString) {
+	s.DefaultBranch = val
+}
+
+// SetName sets the value of Name.
+func (s *UpdateGitConnection) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetToken sets the value of Token.
+func (s *UpdateGitConnection) SetToken(val OptString) {
+	s.Token = val
+}
+
+type UpdateGitConnectionConflict Problem
+
+func (*UpdateGitConnectionConflict) updateGitConnectionRes() {}
+
+type UpdateGitConnectionForbidden Problem
+
+func (*UpdateGitConnectionForbidden) updateGitConnectionRes() {}
+
+type UpdateGitConnectionNotFound Problem
+
+func (*UpdateGitConnectionNotFound) updateGitConnectionRes() {}
+
+type UpdateGitConnectionServiceUnavailable Problem
+
+func (*UpdateGitConnectionServiceUnavailable) updateGitConnectionRes() {}
+
+type UpdateGitConnectionUnprocessableEntity Problem
+
+func (*UpdateGitConnectionUnprocessableEntity) updateGitConnectionRes() {}
+
 // Ref: #/components/schemas/UpdateMember
 type UpdateMember struct {
 	Role string `json:"role"`
@@ -9968,6 +11550,76 @@ func (*UpdateMemberConflict) updateMemberRes() {}
 type UpdateMemberForbidden Problem
 
 func (*UpdateMemberForbidden) updateMemberRes() {}
+
+// Only the members given change; a new password rotates the login.
+// Ref: #/components/schemas/UpdateOrgRegistry
+type UpdateOrgRegistry struct {
+	Name OptString `json:"name"`
+	// Write-only.
+	Password OptString `json:"password"`
+	Server   OptString `json:"server"`
+	Username OptString `json:"username"`
+}
+
+// GetName returns the value of Name.
+func (s *UpdateOrgRegistry) GetName() OptString {
+	return s.Name
+}
+
+// GetPassword returns the value of Password.
+func (s *UpdateOrgRegistry) GetPassword() OptString {
+	return s.Password
+}
+
+// GetServer returns the value of Server.
+func (s *UpdateOrgRegistry) GetServer() OptString {
+	return s.Server
+}
+
+// GetUsername returns the value of Username.
+func (s *UpdateOrgRegistry) GetUsername() OptString {
+	return s.Username
+}
+
+// SetName sets the value of Name.
+func (s *UpdateOrgRegistry) SetName(val OptString) {
+	s.Name = val
+}
+
+// SetPassword sets the value of Password.
+func (s *UpdateOrgRegistry) SetPassword(val OptString) {
+	s.Password = val
+}
+
+// SetServer sets the value of Server.
+func (s *UpdateOrgRegistry) SetServer(val OptString) {
+	s.Server = val
+}
+
+// SetUsername sets the value of Username.
+func (s *UpdateOrgRegistry) SetUsername(val OptString) {
+	s.Username = val
+}
+
+type UpdateOrgRegistryConflict Problem
+
+func (*UpdateOrgRegistryConflict) updateOrgRegistryRes() {}
+
+type UpdateOrgRegistryForbidden Problem
+
+func (*UpdateOrgRegistryForbidden) updateOrgRegistryRes() {}
+
+type UpdateOrgRegistryNotFound Problem
+
+func (*UpdateOrgRegistryNotFound) updateOrgRegistryRes() {}
+
+type UpdateOrgRegistryServiceUnavailable Problem
+
+func (*UpdateOrgRegistryServiceUnavailable) updateOrgRegistryRes() {}
+
+type UpdateOrgRegistryUnprocessableEntity Problem
+
+func (*UpdateOrgRegistryUnprocessableEntity) updateOrgRegistryRes() {}
 
 // Ref: #/components/schemas/UserDto
 type UserDto struct {

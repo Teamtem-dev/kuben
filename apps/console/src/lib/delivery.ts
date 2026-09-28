@@ -85,3 +85,59 @@ export function sbomUrl(project: string, environment: string, app: string, diges
   const path = [project, environment, app, digest].map(encodeURIComponent)
   return `/api/v1/projects/${path[0]}/environments/${path[1]}/apps/${path[2]}/sbom/${path[3]}`
 }
+
+// ---- build stages and logs ----
+
+export type BuildStage = Schemas['BuildStageDto']
+export type TriggeredBuild = Schemas['TriggeredBuildDto']
+
+/** The stages a build goes through, in order. */
+export const STAGES: readonly BuildStage['name'][] = ['clone', 'plan', 'build', 'scan', 'push', 'deploy']
+
+/** The build's stages in their order (the API's order when it names others). */
+export function stagesOf(b: Pick<Build, 'stages'>): BuildStage[] {
+  const stages = b.stages ?? []
+  const rank = (s: BuildStage) => {
+    const i = STAGES.indexOf(s.name)
+    return i < 0 ? STAGES.length : i
+  }
+  return stages
+    .map((stage, i) => ({ stage, i }))
+    .sort((a, z) => rank(a.stage) - rank(z.stage) || a.i - z.i)
+    .map(({ stage }) => stage)
+}
+
+/** The colour of a stage's status. */
+export function stageTone(status: BuildStage['status']): Tone {
+  if (status === 'succeeded') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'running') return 'warning'
+  return 'neutral'
+}
+
+/** How long a stage ran (or has run by `now`); `null` before it started. */
+export function stageElapsed(s: Pick<BuildStage, 'startedAt' | 'finishedAt'>, now: number): number | null {
+  if (s.startedAt == null) return null
+  return Math.max(0, (s.finishedAt ?? now) - s.startedAt)
+}
+
+/** The address of a build's log: text, or with `follow` a stream of `line` and `end` events. */
+export function buildLogsUrl(
+  project: string,
+  environment: string,
+  app: string,
+  build: string,
+  follow = false,
+): string {
+  const path = [project, environment, app, build].map(encodeURIComponent)
+  const url = `/api/v1/projects/${path[0]}/environments/${path[1]}/apps/${path[2]}/builds/${path[3]}/logs`
+  return follow ? `${url}?follow=true` : url
+}
+
+/** A log's text as lines, without the empty one a final newline leaves. */
+export function logLines(text: string): string[] {
+  if (text === '') return []
+  const lines = text.split(/\r?\n/)
+  if (lines[lines.length - 1] === '') lines.pop()
+  return lines
+}

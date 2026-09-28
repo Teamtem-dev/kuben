@@ -184,8 +184,8 @@ config): strings quoted TOML-style, lists as `["a", "b"]`, maps as
 {{- end }}
 
 {{/*
-Single sign-on, CI trust, Git sources and builds: `KUBEN_SSO__*`,
-`KUBEN_CI__*`, `KUBEN_GIT__*` and `KUBEN_BUILD__*`. Secrets are files mounted
+Single sign-on, CI trust, Git sources, builds and integrations: `KUBEN_SSO__*`,
+`KUBEN_CI__*`, `KUBEN_GIT__*`, `KUBEN_BUILD__*` and `KUBEN_INTEGRATIONS__*`. Secrets are files mounted
 from existing Secrets (see kuben.platformVolumes) or `secretKeyRef`s; no
 credential is written into the pod spec.
 */}}
@@ -262,9 +262,9 @@ credential is written into the pod spec.
 {{- end }}
 {{- $b := .Values.build }}
 {{- if $b.enabled }}
-{{- if not $gh.appId }}
-{{- fail "build.enabled needs git.github: builds start from Git sources" }}
-{{- end }}
+{{- /* Builds read sources through the GitHub App (git.github) and through
+  the organizations' Git connections (2.1, runtime data sealed with the
+  keyring), so build.enabled no longer needs git.github. */}}
 - name: KUBEN_BUILD__ENABLED
   value: "true"
 - name: KUBEN_BUILD__NAMESPACE
@@ -285,6 +285,17 @@ credential is written into the pod spec.
 - name: KUBEN_BUILD__DEADLINE_SECS
   value: {{ . | toString | quote }}
 {{- end }}
+{{- with $b.logTailKiB }}
+{{- if or (lt (int .) 1) (gt (int .) 1024) }}
+{{- fail "build.logTailKiB must be between 1 and 1024 (0 keeps the server's 256)" }}
+{{- end }}
+- name: KUBEN_BUILD__LOG_TAIL_KIB
+  value: {{ . | toString | quote }}
+{{- end }}
+{{- end }}
+{{- if .Values.integrations.allowPrivateHosts }}
+- name: KUBEN_INTEGRATIONS__ALLOW_PRIVATE_HOSTS
+  value: "true"
 {{- end }}
 {{- end }}
 

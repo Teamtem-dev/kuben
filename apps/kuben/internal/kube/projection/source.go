@@ -115,6 +115,9 @@ func (v *Visibility) Admit(d Delta) bool {
 		return ok
 	case Resync:
 		return true
+	case BuildChanged:
+		// Builds are not in the snapshot: the organization decides.
+		return v.allowed(opt.Some(d.Org))
 	}
 	return false
 }

@@ -121,6 +121,8 @@ apps/kuben/                   module github.com/Teamtem-dev/kuben/apps/kuben
     doctor/                   why an app is or is not reachable, as a list of checks
     evidence/                 the Doctor's evidence graph
     firstrun/                 the hub's first boot: the default org, the admin, the setup token and link
+    gitprovider/              Git providers through an organization's token: what GitHub, GitLab and Gitea share, and GitHub by token
+      connect/                opens a Git connection's sealed token and reaches its provider (API, webhooks, builds)
     health/                   the subsystem health registry behind /livez and /readyz
     host/                     the machine Kuben runs on: its advertised address, owner-only files
     httpapi/                  the HTTP API handlers (the server generated from openapi.json)
@@ -137,7 +139,9 @@ apps/kuben/                   module github.com/Teamtem-dev/kuben/apps/kuben
       journal/                the installer's journal: what `kuben setup` did and who owns what
     integrations/             clients of other systems
       dns/                    DNS over HTTPS lookups and the Cloudflare DNS adapter
+      gitea/                  Gitea and Forgejo by token: account, repositories, branches, signed push webhooks
       github/                 the GitHub App: JWTs, installation tokens, webhooks
+      gitlab/                 GitLab by token: account and scopes, projects, branches, push webhooks
       oci/                    OCI registries: tag lists, digests, build output verification
       oidc/                   OpenID Connect token verification (JWKS, RS256)
       outbound/               the HTTP transport every outbound call goes through

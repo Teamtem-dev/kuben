@@ -27,8 +27,10 @@ type InvalidKind string
 const (
 	InvalidCommit     InvalidKind = "commit"
 	InvalidRepository InvalidKind = "repository"
-	InvalidBranch     InvalidKind = "branch"
-	InvalidPath       InvalidKind = "path"
+	// InvalidProjectPath: not a GitLab project path (ParseNestedRepoName).
+	InvalidProjectPath InvalidKind = "projectPath"
+	InvalidBranch      InvalidKind = "branch"
+	InvalidPath        InvalidKind = "path"
 	// InvalidPayload: a malformed webhook payload, or an unknown name in one.
 	InvalidPayload InvalidKind = "payload"
 )
@@ -46,6 +48,8 @@ func (e *Invalid) Error() string {
 		return "not a full 40-character commit SHA: " + rustQuote(e.Value)
 	case InvalidRepository:
 		return "not an `owner/name` repository: " + rustQuote(e.Value)
+	case InvalidProjectPath:
+		return "not a `group/…/name` project path: " + rustQuote(e.Value)
 	case InvalidBranch:
 		return "not a valid branch name: " + rustQuote(e.Value)
 	case InvalidPath:
@@ -106,9 +110,16 @@ func (c CommitSha) MarshalJSON() ([]byte, error) { return json.Marshal(c.s) }
 func (c *CommitSha) UnmarshalJSON(data []byte) error { return unmarshalVia(data, ParseCommitSha, c) }
 
 // RepoName is `owner/name` of a hosted repository, compared
-// case-insensitively by the provider and stored lowercase here. The zero
-// value is not a repository; see [RepoName.Valid].
+// case-insensitively by the provider and stored lowercase here; a GitLab
+// project in a subgroup has more segments, `group/subgroup/…/name`
+// ([ParseNestedRepoName]). The zero value is not a repository; see
+// [RepoName.Valid].
 type RepoName struct{ s string }
+
+// MaxRepoSegments is the most segments a nested repository path has: a
+// project in a group nested 20 deep (GitLab's limit is lower), as
+// migration 0035 allows.
+const MaxRepoSegments = 21
 
 func repoPartOK(part string) bool {
 	if part == "" || len(part) > 100 || part == "." || part == ".." {
@@ -132,21 +143,56 @@ func ParseRepoName(s string) (RepoName, error) {
 	return RepoName{s: strings.ToLower(s)}, nil
 }
 
-// Valid reports whether the value came from [ParseRepoName].
+// ParseNestedRepoName reads a GitLab project path, `group/name` or
+// `group/subgroup/…/name` (2 to [MaxRepoSegments] segments, each as
+// ParseRepoName's), and lowers it. Only GitLab nests groups: other
+// providers' repositories are read with ParseRepoName.
+func ParseNestedRepoName(s string) (RepoName, error) {
+	parts := strings.Split(s, "/")
+	if len(parts) < 2 || len(parts) > MaxRepoSegments || !allRepoParts(parts) {
+		return RepoName{}, &Invalid{Kind: InvalidProjectPath, Value: s}
+	}
+	return RepoName{s: strings.ToLower(s)}, nil
+}
+
+func allRepoParts(parts []string) bool {
+	for _, part := range parts {
+		if !repoPartOK(part) {
+			return false
+		}
+	}
+	return true
+}
+
+// Valid reports whether the value came from [ParseRepoName] or
+// [ParseNestedRepoName].
 func (r RepoName) Valid() bool { return r.s != "" }
 
 func (r RepoName) String() string { return r.s }
 
-// Owner is the part before the slash.
+// Nested reports whether r has more than two segments: a GitLab project in
+// a subgroup.
+func (r RepoName) Nested() bool { return strings.Count(r.s, "/") > 1 }
+
+// Owner is the part before the last slash: the owner, or a nested
+// project's group path.
 func (r RepoName) Owner() string {
-	owner, _, _ := strings.Cut(r.s, "/")
+	owner, _ := r.split()
 	return owner
 }
 
-// Name is the part after the slash.
+// Name is the part after the last slash.
 func (r RepoName) Name() string {
-	_, name, _ := strings.Cut(r.s, "/")
+	_, name := r.split()
 	return name
+}
+
+func (r RepoName) split() (string, string) {
+	i := strings.LastIndexByte(r.s, '/')
+	if i < 0 {
+		return r.s, ""
+	}
+	return r.s[:i], r.s[i+1:]
 }
 
 // MarshalJSON writes `owner/name` as a string.

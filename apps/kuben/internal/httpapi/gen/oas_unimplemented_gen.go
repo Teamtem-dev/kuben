@@ -116,6 +116,26 @@ func (UnimplementedHandler) CreateFreeze(ctx context.Context, req *CreateWindow,
 	return r, ht.ErrNotImplemented
 }
 
+// CreateGitConnection implements createGitConnection operation.
+//
+// Connect a Git provider account by token. The token is checked first and sealed; it is never
+// returned.
+//
+// POST /api/v1/git/connections
+func (UnimplementedHandler) CreateGitConnection(ctx context.Context, req *CreateGitConnection) (r CreateGitConnectionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// CreateOrgRegistry implements createOrgRegistry operation.
+//
+// Add a registry login for every environment of the organization. An environment's own login for the
+// same registry wins.
+//
+// POST /api/v1/registries
+func (UnimplementedHandler) CreateOrgRegistry(ctx context.Context, req *CreateOrgRegistry) (r CreateOrgRegistryRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CreateProject implements createProject operation.
 //
 // Create a project; its `Project` resource follows.
@@ -189,12 +209,30 @@ func (UnimplementedHandler) DeleteEnvironment(ctx context.Context, params Delete
 	return r, ht.ErrNotImplemented
 }
 
+// DeleteGitConnection implements deleteGitConnection operation.
+//
+// Delete a Git connection no app source reads through.
+//
+// DELETE /api/v1/git/connections/{connection}
+func (UnimplementedHandler) DeleteGitConnection(ctx context.Context, params DeleteGitConnectionParams) (r DeleteGitConnectionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // DeleteImagePolicy implements deleteImagePolicy operation.
 //
 // Stop following the image repository.
 //
 // DELETE /api/v1/projects/{project}/environments/{environment}/apps/{app}/image-policy
 func (UnimplementedHandler) DeleteImagePolicy(ctx context.Context, params DeleteImagePolicyParams) (r DeleteImagePolicyRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// DeleteOrgRegistry implements deleteOrgRegistry operation.
+//
+// Delete a registry login. Pods already running keep their pull secret until their next deployment.
+//
+// DELETE /api/v1/registries/{registry}
+func (UnimplementedHandler) DeleteOrgRegistry(ctx context.Context, params DeleteOrgRegistryParams) (r DeleteOrgRegistryRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -402,6 +440,16 @@ func (UnimplementedHandler) GetBuild(ctx context.Context, params GetBuildParams)
 	return r, ht.ErrNotImplemented
 }
 
+// GetBuildLogs implements getBuildLogs operation.
+//
+// The build's log: from the build pod while it runs, from the kept tail after. With `follow=true`, a
+// live stream of new lines.
+//
+// GET /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/logs
+func (UnimplementedHandler) GetBuildLogs(ctx context.Context, params GetBuildLogsParams) (r GetBuildLogsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetDeployment implements getDeployment operation.
 //
 // One deployment run of this app.
@@ -447,6 +495,15 @@ func (UnimplementedHandler) GetEnvironmentPolicy(ctx context.Context, params Get
 	return r, ht.ErrNotImplemented
 }
 
+// GetGitConnection implements getGitConnection operation.
+//
+// A Git connection.
+//
+// GET /api/v1/git/connections/{connection}
+func (UnimplementedHandler) GetGitConnection(ctx context.Context, params GetGitConnectionParams) (r GetGitConnectionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetHealthDetails implements getHealthDetails operation.
 //
 // Per-subsystem health (authenticated).
@@ -471,6 +528,15 @@ func (UnimplementedHandler) GetImagePolicy(ctx context.Context, params GetImageP
 //
 // GET /api/v1/me
 func (UnimplementedHandler) GetMe(ctx context.Context) (r GetMeRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetOrgRegistry implements getOrgRegistry operation.
+//
+// A registry login of the organization.
+//
+// GET /api/v1/registries/{registry}
+func (UnimplementedHandler) GetOrgRegistry(ctx context.Context, params GetOrgRegistryParams) (r GetOrgRegistryRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -675,6 +741,33 @@ func (UnimplementedHandler) ListFreezes(ctx context.Context, params ListFreezesP
 	return r, ht.ErrNotImplemented
 }
 
+// ListGitConnectionBranches implements listGitConnectionBranches operation.
+//
+// Branches of one repository the connection can read.
+//
+// GET /api/v1/git/connections/{connection}/branches
+func (UnimplementedHandler) ListGitConnectionBranches(ctx context.Context, params ListGitConnectionBranchesParams) (r ListGitConnectionBranchesRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListGitConnectionRepositories implements listGitConnectionRepositories operation.
+//
+// Repositories the connection's token can read.
+//
+// GET /api/v1/git/connections/{connection}/repositories
+func (UnimplementedHandler) ListGitConnectionRepositories(ctx context.Context, params ListGitConnectionRepositoriesParams) (r ListGitConnectionRepositoriesRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListGitConnections implements listGitConnections operation.
+//
+// Git connections of the caller's organization.
+//
+// GET /api/v1/git/connections
+func (UnimplementedHandler) ListGitConnections(ctx context.Context) (r ListGitConnectionsRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ListGitInstallations implements listGitInstallations operation.
 //
 // GitHub App installations linked to the caller's organization.
@@ -699,6 +792,15 @@ func (UnimplementedHandler) ListIncidents(ctx context.Context, params ListIncide
 //
 // GET /api/v1/members
 func (UnimplementedHandler) ListMembers(ctx context.Context) (r ListMembersRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListOrgRegistries implements listOrgRegistries operation.
+//
+// Registry logins of the caller's organization.
+//
+// GET /api/v1/registries
+func (UnimplementedHandler) ListOrgRegistries(ctx context.Context) (r ListOrgRegistriesRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -735,6 +837,15 @@ func (UnimplementedHandler) ListProjects(ctx context.Context) (r []ProjectDto, _
 //
 // GET /api/v1/projects/{project}/environments/{environment}/registries
 func (UnimplementedHandler) ListRegistryLogins(ctx context.Context, params ListRegistryLoginsParams) (r []RegistryLoginDto, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ListRegistryPresets implements listRegistryPresets operation.
+//
+// The registries Kuben knows how to log in to.
+//
+// GET /api/v1/registries/presets
+func (UnimplementedHandler) ListRegistryPresets(ctx context.Context) (r ListRegistryPresetsRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -1104,6 +1215,15 @@ func (UnimplementedHandler) RollbackApp(ctx context.Context, req *Rollback, para
 	return r, ht.ErrNotImplemented
 }
 
+// RotateGitConnectionWebhookSecret implements rotateGitConnectionWebhookSecret operation.
+//
+// Replace a connection's webhook secret with a new one, returned once.
+//
+// POST /api/v1/git/connections/{connection}/webhook-secret
+func (UnimplementedHandler) RotateGitConnectionWebhookSecret(ctx context.Context, params RotateGitConnectionWebhookSecretParams) (r RotateGitConnectionWebhookSecretRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // RunApp implements runApp operation.
 //
 // Run a scheduled process now (a Job from its CronJob template).
@@ -1171,6 +1291,51 @@ func (UnimplementedHandler) SyncAppSource(ctx context.Context, params SyncAppSou
 	return r, ht.ErrNotImplemented
 }
 
+// TestGitConnection implements testGitConnection operation.
+//
+// Check a saved connection's token again and record the outcome.
+//
+// POST /api/v1/git/connections/{connection}/test
+func (UnimplementedHandler) TestGitConnection(ctx context.Context, params TestGitConnectionParams) (r TestGitConnectionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// TestNewGitConnection implements testNewGitConnection operation.
+//
+// Check a token without saving it: the account it belongs to and its scopes.
+//
+// POST /api/v1/git/connections/test
+func (UnimplementedHandler) TestNewGitConnection(ctx context.Context, req *CreateGitConnection) (r TestNewGitConnectionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// TestNewOrgRegistry implements testNewOrgRegistry operation.
+//
+// Log in to a registry without saving the login.
+//
+// POST /api/v1/registries/test
+func (UnimplementedHandler) TestNewOrgRegistry(ctx context.Context, req *CreateOrgRegistry) (r TestNewOrgRegistryRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// TestOrgRegistry implements testOrgRegistry operation.
+//
+// Log in with a saved registry login again and record the outcome.
+//
+// POST /api/v1/registries/{registry}/test
+func (UnimplementedHandler) TestOrgRegistry(ctx context.Context, params TestOrgRegistryParams) (r TestOrgRegistryRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// TriggerBuild implements triggerBuild operation.
+//
+// Build the source's branch head now: the same as a source sync.
+//
+// POST /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds
+func (UnimplementedHandler) TriggerBuild(ctx context.Context, params TriggerBuildParams) (r TriggerBuildRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // UpdateApp implements updateApp operation.
 //
 // Update an app (image changes require `app-deploy`). Every change is a new deployment run; a new tag
@@ -1181,12 +1346,30 @@ func (UnimplementedHandler) UpdateApp(ctx context.Context, req *UpdateApp, param
 	return r, ht.ErrNotImplemented
 }
 
+// UpdateGitConnection implements updateGitConnection operation.
+//
+// Change a Git connection; a new token is checked first.
+//
+// PATCH /api/v1/git/connections/{connection}
+func (UnimplementedHandler) UpdateGitConnection(ctx context.Context, req *UpdateGitConnection, params UpdateGitConnectionParams) (r UpdateGitConnectionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // UpdateMember implements updateMember operation.
 //
 // Change a member's role.
 //
 // PATCH /api/v1/members/{member}
 func (UnimplementedHandler) UpdateMember(ctx context.Context, req *UpdateMember, params UpdateMemberParams) (r UpdateMemberRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpdateOrgRegistry implements updateOrgRegistry operation.
+//
+// Change a registry login; a new password rotates it.
+//
+// PUT /api/v1/registries/{registry}
+func (UnimplementedHandler) UpdateOrgRegistry(ctx context.Context, req *UpdateOrgRegistry, params UpdateOrgRegistryParams) (r UpdateOrgRegistryRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

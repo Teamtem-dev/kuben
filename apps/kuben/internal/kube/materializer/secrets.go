@@ -102,13 +102,26 @@ func RevisionOf(s *corev1.Secret) (store.SecretRevisionKey, bool) {
 
 // writeSecrets writes the Secret of every revision m's run is bound to. A
 // revoked revision fails the run.
+// The organization login the run pulls with, if any, follows
+// (org_registry.go).
 func (w *Worker) writeSecrets(ctx context.Context, m *store.Materialization) stop {
-	if len(m.Secrets) == 0 {
+	if len(m.Secrets) == 0 && m.OrgRegistry.IsNone() {
 		return nil
 	}
 	ring, ok := w.d.Keyring.Get()
 	if !ok || ring == nil {
 		return refused("SecretsUnavailable")
+	}
+	if st := w.writeRevisions(ctx, m, ring); st != nil {
+		return st
+	}
+	return w.writeOrgRegistry(ctx, m, ring)
+}
+
+// writeRevisions writes the Secret of every revision m's run is bound to.
+func (w *Worker) writeRevisions(ctx context.Context, m *store.Materialization, ring *keyring.Keyring) stop {
+	if len(m.Secrets) == 0 {
+		return nil
 	}
 	bound, err := w.runSecrets(ctx, m)
 	if err != nil {

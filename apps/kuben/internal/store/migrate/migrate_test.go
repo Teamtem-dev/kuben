@@ -43,7 +43,7 @@ func TestEmbeddedMigrationsResolveAsSqlxDoes(t *testing.T) {
 	}
 	want := []int64{
 		1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
 	}
 	if diff := cmp.Diff(want, versions); diff != "" {
 		t.Fatalf("versions (-want +got):\n%s", diff)
@@ -51,17 +51,18 @@ func TestEmbeddedMigrationsResolveAsSqlxDoes(t *testing.T) {
 	if len(ms) != len(want) {
 		t.Fatalf("%d migrations", len(ms))
 	}
-	first, last := ms[0], ms[len(ms)-1]
-	if first.Description != "init" || ms[1].Description != "team releases" || last.Description != "usage rollups" {
-		t.Errorf("descriptions: %q, %q, %q", first.Description, ms[1].Description, last.Description)
+	first, rollups, last := ms[0], ms[len(ms)-2], ms[len(ms)-1]
+	if first.Description != "init" || ms[1].Description != "team releases" ||
+		rollups.Description != "usage rollups" || last.Description != "integrations" {
+		t.Errorf("descriptions: %q, %q, %q, %q", first.Description, ms[1].Description, rollups.Description, last.Description)
 	}
 	if got := hex.EncodeToString(first.Checksum); got != initChecksum {
 		t.Errorf("checksum of 0001: %s", got)
 	}
-	if got := hex.EncodeToString(last.Checksum); got != rollupChecksum {
+	if got := hex.EncodeToString(rollups.Checksum); got != rollupChecksum {
 		t.Errorf("checksum of 0034: %s", got)
 	}
-	if got := migrate.New(ms).Latest(); got != 34 {
+	if got := migrate.New(ms).Latest(); got != 35 {
 		t.Errorf("latest: %d", got)
 	}
 }

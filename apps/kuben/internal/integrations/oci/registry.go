@@ -53,6 +53,10 @@ type Registry struct {
 	transport http.RoundTripper
 }
 
+// NewRegistry is a Registry whose requests go through rt (nil is the
+// zero Registry's transport).
+func NewRegistry(rt http.RoundTripper) Registry { return Registry{transport: rt} }
+
 // ResolveAs asks the registry which digest the tag of image names now,
 // pulling as login when given: HEAD first (no rate-limit cost on Docker
 // Hub); a registry that sends no usable Docker-Content-Digest gets a GET,

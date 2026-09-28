@@ -60,8 +60,14 @@ func sourceDto(b store.SourceBinding, sync opt.Val[ids.OperationID]) gen.SourceD
 	if o, ok := sync.Get(); ok {
 		operation = opt.Some(o.String())
 	}
+	connection := opt.None[string]()
+	if c, ok := b.Connection.Get(); ok {
+		connection = opt.Some(c.String())
+	}
 	return gen.SourceDto{
 		InstallationId:  int64(b.InstallationID), //nolint:gosec // stored as BIGINT
+		Provider:        gen.GitProviderDto(b.Provider),
+		Connection:      optNilString(connection),
 		Repository:      b.Repository.String(),
 		Branch:          b.Branch.String(),
 		Strategy:        strategyDto(b.Recipe.Strategy),
@@ -93,9 +99,29 @@ func imageRepository(value string) (string, error) {
 	return ref.Repository(), nil
 }
 
-// newBinding is the binding body asks for, validated and normalized.
+// newBinding is the binding body asks for, validated and normalized: it
+// reads through a Git connection when body names one, else through a
+// GitHub App installation.
 func newBinding(body *gen.PutSource) (store.NewBinding, error) {
-	repository, err := source.ParseRepoName(body.Repository)
+	connection := opt.None[ids.GitConnectionID]()
+	if c, ok := body.Connection.Get(); ok {
+		id, err := ids.Parse[ids.GitConnection](c)
+		if err != nil {
+			return store.NewBinding{}, kerrors.New(kerrors.Validation, "`connection` must be a connection id")
+		}
+		connection = opt.Some(id)
+	}
+	installation, hasInstallation := body.InstallationId.Get()
+	if connection.IsNone() && !hasInstallation {
+		return store.NewBinding{}, kerrors.New(kerrors.Validation, "`installationId` or `connection` is required")
+	}
+	// A connection may be GitLab's, whose projects nest in subgroups; the
+	// store checks the path against the connection's provider.
+	parse := source.ParseRepoName
+	if connection.IsSome() {
+		parse = source.ParseNestedRepoName
+	}
+	repository, err := parse(body.Repository)
 	if err != nil {
 		return store.NewBinding{}, invalid(err)
 	}
@@ -122,7 +148,8 @@ func newBinding(body *gen.PutSource) (store.NewBinding, error) {
 		return store.NewBinding{}, err
 	}
 	return store.NewBinding{
-		InstallationID: uint64(body.InstallationId), //nolint:gosec // the contract's minimum is 0
+		InstallationID: uint64(installation), //nolint:gosec // the contract's minimum is 0
+		Connection:     connection,
 		Repository:     repository,
 		Branch:         branch,
 		Recipe: source.BuildRecipe{
@@ -169,6 +196,9 @@ func bindAndSync(
 	case store.BoundInstallationMissing:
 		return store.SourceBinding{}, ids.OperationID{}, kerrors.New(kerrors.Validation,
 			"installation %d is not linked to this organization", binding.InstallationID)
+	case store.BoundConnectionMissing:
+		return store.SourceBinding{}, ids.OperationID{}, kerrors.New(kerrors.Validation,
+			"this organization has no Git connection %s", binding.Connection.Or(ids.GitConnectionID{}))
 	case store.BoundNotFound:
 		return store.SourceBinding{}, ids.OperationID{}, kerrors.New(kerrors.NotFound, "the app")
 	case store.BoundCreated:
@@ -204,8 +234,11 @@ func bindAndSync(
 func (s *Server) createGitApp(
 	ctx context.Context, a access.Access, e envScope, name string, spec v1alpha1.AppSpec, git *gen.PutSource,
 ) (gen.AppDto, error) {
-	if _, err := s.github(); err != nil {
-		return gen.AppDto{}, err
+	// A source through a Git connection needs no GitHub App.
+	if !git.Connection.IsSet() {
+		if _, err := s.github(); err != nil {
+			return gen.AppDto{}, err
+		}
 	}
 	if err := validateSpec(&spec); err != nil {
 		return gen.AppDto{}, err
@@ -320,8 +353,11 @@ func (s *Server) PutAppSource(ctx context.Context, req *gen.PutSource, params ge
 	if _, err := a.Require(perm.AppWrite, app.chain()); err != nil {
 		return nil, err //nolint:wrapcheck // a kerrors already
 	}
-	if _, err := s.github(); err != nil {
-		return nil, err
+	// A source through a Git connection needs no GitHub App.
+	if !req.Connection.IsSet() {
+		if _, err := s.github(); err != nil {
+			return nil, err
+		}
 	}
 	binding, err := newBinding(req)
 	if err != nil {

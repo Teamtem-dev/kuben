@@ -1,6 +1,19 @@
 import { expect, test } from '@playwright/test'
 import { expectAccessible, watchCsp } from './checks'
-import { audit, awaitingRun, builds, builtDigest, mockApi, planHash, prefer } from './fixtures'
+import {
+  audit,
+  awaitingRun,
+  buildLogLines,
+  builds,
+  builtDigest,
+  gitConnections,
+  mockApi,
+  orgRegistries,
+  planHash,
+  prefer,
+  rotatedWebhookSecret,
+  webhookSecret,
+} from './fixtures'
 
 const locales = [
   {
@@ -176,6 +189,8 @@ for (const l of locales) {
         '/team',
         '/audit',
         '/settings',
+        '/settings/integrations',
+        '/settings/registries',
         '/projects/shop',
         '/projects/shop/prod',
       ]) {
@@ -564,6 +579,262 @@ test('builds and approvals in Persian, right to left', async ({ page }) => {
   await expectAccessible(page)
 })
 
+test('integrations: connections with their webhook, a token tested before saving, repositories', async ({
+  page,
+}) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/settings/integrations')
+  await expect(page.getByRole('heading', { level: 1, name: 'Integrations' })).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Settings' }),
+  ).toBeVisible()
+  const table = page.getByRole('table', { name: 'Git connections' })
+  const gitlab = table.getByRole('row', { name: /gitlab-acme/ })
+  await expect(gitlab.getByText('acme-bot')).toBeVisible()
+  await expect(gitlab.getByText(`http://kuben.test${gitConnections[0]?.webhookUrl}`)).toBeVisible()
+  await expect(gitlab.getByText(/Settings → Webhooks/)).toBeVisible()
+  const codeberg = table.getByRole('row', { name: /codeberg/ })
+  await expect(codeberg.getByText('Forgejo')).toBeVisible()
+  await expect(codeberg.getByText('the token was revoked (401)')).toBeVisible()
+  // The GitHub App's installations are on the same page.
+  await expect(page.getByText('#4242')).toBeVisible()
+  await expectAccessible(page)
+
+  // A token is tested before it can be saved; a change asks for a new test.
+  await page.getByRole('button', { name: 'Add connection' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add connection' })
+  await dialog.getByRole('radio', { name: /Gitea/ }).check({ force: true })
+  await expect(dialog.getByLabel('URL')).toHaveValue('')
+  await dialog.getByRole('radio', { name: /GitLab/ }).check({ force: true })
+  await expect(dialog.getByLabel('URL')).toHaveValue('https://gitlab.com')
+  await expect(dialog.getByLabel('Name')).toHaveValue('gitlab')
+  const save = dialog.getByRole('button', { name: 'Save connection' })
+  await dialog.getByLabel('Access token').fill('glpat-secret')
+  await expect(save).toBeDisabled()
+  const tested = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/git/connections/test'),
+  )
+  await dialog.getByRole('button', { name: 'Test', exact: true }).click()
+  expect((await tested).postDataJSON()).toEqual({
+    provider: 'gitlab',
+    name: 'gitlab',
+    token: 'glpat-secret',
+    baseUrl: 'https://gitlab.com',
+  })
+  await expect(dialog.getByRole('status').getByText('acme-bot')).toBeVisible()
+  await expect(dialog.getByText('read_repository')).toBeVisible()
+  await expect(save).toBeEnabled()
+  await expectAccessible(page)
+  await dialog.getByLabel('Name').fill('gitlab-2')
+  await expect(save).toBeDisabled()
+  await dialog.getByRole('button', { name: 'Test', exact: true }).click()
+  const created = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/git/connections'),
+  )
+  await save.click()
+  expect((await created).postDataJSON()).toMatchObject({ provider: 'gitlab', name: 'gitlab-2' })
+  // The webhook secret is shown this once, with the address and where both go.
+  await expect(dialog.getByRole('alert').getByText(/shown only this once/)).toBeVisible()
+  await expect(dialog.getByText(webhookSecret, { exact: true })).toBeVisible()
+  await expect(
+    dialog.getByText('http://kuben.test/api/v1/webhooks/gitlab/0190f3c6-0000-7000-8000-0000000000g3'),
+  ).toBeVisible()
+  await expect(dialog.getByText(/Secret token, and tick Push events/)).toBeVisible()
+  await expectAccessible(page)
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(dialog).toBeHidden()
+
+  // Rotating the secret asks first, then shows the new one once.
+  await gitlab.getByRole('button', { name: 'Rotate webhook secret' }).click()
+  const rotate = page.getByRole('dialog', { name: 'Rotate the webhook secret of gitlab-acme' })
+  await expect(rotate.getByText(/stops working at once/)).toBeVisible()
+  const rotated = page.waitForRequest(
+    (r) =>
+      r.method() === 'POST' && r.url().endsWith(`/git/connections/${gitConnections[0]?.id}/webhook-secret`),
+  )
+  await rotate.getByRole('button', { name: 'Rotate webhook secret' }).click()
+  await rotated
+  await expect(rotate.getByText(rotatedWebhookSecret, { exact: true })).toBeVisible()
+  await rotate.getByRole('button', { name: 'Done' }).click()
+  await expect(rotate).toBeHidden()
+
+  // Repositories page by page, and a repository's branches.
+  await gitlab.getByRole('button', { name: 'Repositories' }).click()
+  const browse = page.getByRole('dialog', { name: 'Repositories of gitlab-acme' })
+  await expect(browse.getByRole('radio', { name: /acme\/web/ })).toBeVisible()
+  await browse.getByRole('button', { name: 'Next page' }).click()
+  await browse.getByRole('radio', { name: /acme\/docs/ }).check()
+  await expect(browse.getByLabel('Branch')).toHaveValue('main')
+  await expectAccessible(page)
+  await browse.getByRole('button', { name: 'Close' }).click()
+
+  // A connection in use cannot be deleted; the dialog says why.
+  await gitlab.getByRole('button', { name: 'Delete' }).click()
+  const confirm = page.getByRole('alertdialog', { name: 'Delete gitlab-acme' })
+  await confirm.getByRole('button', { name: 'Delete' }).click()
+  await expect(confirm.getByText(/App sources still read through this connection/)).toBeVisible()
+  expect(csp).toEqual([])
+})
+
+test('registries: a preset fills the server, the login is tested first, rotated and deleted', async ({
+  page,
+}) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/settings/registries')
+  const table = page.getByRole('table', { name: 'Registry logins' })
+  const row = table.getByRole('row', { name: /ghcr/ })
+  await expect(row.getByText('GitHub Packages')).toBeVisible()
+  await expect(row.getByText('Login works')).toBeVisible()
+  await expectAccessible(page)
+
+  await page.getByRole('button', { name: 'Add registry' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add registry' })
+  await dialog.getByRole('radio', { name: /Harbor/ }).check({ force: true })
+  await expect(dialog.getByLabel('Server')).toHaveValue('')
+  await expect(dialog.getByText('A robot account (robot$…)')).toBeVisible()
+  await dialog.getByRole('radio', { name: /Docker Hub/ }).check({ force: true })
+  await expect(dialog.getByLabel('Server')).toHaveValue('docker.io')
+  await expect(dialog.getByRole('link', { name: 'How to create a token for Docker Hub' })).toBeVisible()
+  await dialog.getByLabel('Username').fill('acme')
+  await dialog.getByLabel('Password or token').fill('dckr_pat_x')
+  const save = dialog.getByRole('button', { name: 'Save login' })
+  await expect(save).toBeDisabled()
+  const tested = page.waitForRequest(
+    (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/registries/test'),
+  )
+  await dialog.getByRole('button', { name: 'Test', exact: true }).click()
+  expect((await tested).postDataJSON()).toEqual({
+    preset: 'dockerhub',
+    name: 'dockerhub',
+    username: 'acme',
+    password: 'dckr_pat_x',
+  })
+  await expect(dialog.getByRole('status').getByText('Login works')).toBeVisible()
+  await expectAccessible(page)
+  await save.click()
+  await expect(dialog).toBeHidden()
+
+  await row.getByRole('button', { name: 'Test' }).click()
+  await expect(page.getByText('unauthorized: the token expired')).toBeVisible()
+
+  await row.getByRole('button', { name: 'Rotate' }).click()
+  const rotate = page.getByRole('dialog', { name: 'Rotate ghcr' })
+  await rotate.getByLabel('New password or token').fill('ghp_new')
+  const put = page.waitForRequest(
+    (r) => r.method() === 'PUT' && r.url().endsWith(`/api/v1/registries/${orgRegistries[0]?.id}`),
+  )
+  await rotate.getByRole('button', { name: 'Rotate' }).click()
+  expect((await put).postDataJSON()).toEqual({ password: 'ghp_new' })
+  await expect(rotate).toBeHidden()
+
+  await row.getByRole('button', { name: 'Delete' }).click()
+  const confirm = page.getByRole('alertdialog', { name: 'Delete ghcr' })
+  const removed = page.waitForRequest((r) => r.method() === 'DELETE')
+  await confirm.getByRole('button', { name: 'Delete' }).click()
+  await removed
+  await expect(confirm).toBeHidden()
+  expect(csp).toEqual([])
+})
+
+test('app settings: a repository is connected through a Git connection', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page)
+  await page.goto('/projects/shop/prod/web?tab=settings')
+  const card = page.getByRole('heading', { name: 'Git source' })
+  await expect(card).toBeVisible()
+  await page.getByRole('button', { name: 'Connect repository' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Connect repository' })
+  await expect(dialog.getByLabel('Through')).toHaveValue(`connection:${gitConnections[0]?.id}`)
+  await dialog.getByRole('radio', { name: /acme\/web/ }).check()
+  await expect(dialog.getByLabel('Branch')).toHaveValue('main')
+  await dialog.getByLabel('Branch').selectOption('develop')
+  await dialog.getByLabel('Image repository').fill('registry.example.com/acme/web')
+  await expectAccessible(page)
+  const put = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/apps/web/source'))
+  await dialog.getByRole('button', { name: 'Save and build' }).click()
+  expect((await put).postDataJSON()).toEqual({
+    repository: 'acme/web',
+    branch: 'develop',
+    strategy: 'auto',
+    imageRepository: 'registry.example.com/acme/web',
+    connection: gitConnections[0]?.id,
+  })
+  await expect(dialog).toBeHidden()
+
+  // Through the GitHub App, the repository and branch are typed; a malformed repository is said so.
+  await page.getByRole('button', { name: 'Change source' }).click()
+  const change = page.getByRole('dialog', { name: 'Change source' })
+  await change.getByLabel('Through').selectOption('installation:4242')
+  await expect(change.getByRole('radio')).toHaveCount(0)
+  await change.getByLabel('Repository').fill('just-a-name')
+  await change.getByLabel('Branch').fill('main')
+  await change.getByLabel('Image repository').fill('registry.example.com/acme/web')
+  await change.getByRole('button', { name: 'Save and build' }).click()
+  await expect(change.getByRole('alert').getByText(/Not a repository/)).toBeVisible()
+  await expect(change.getByLabel('Repository')).toHaveAttribute('aria-invalid', 'true')
+  await expectAccessible(page)
+  const put2 = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/apps/web/source'))
+  await change.getByLabel('Repository').fill('https://github.com/acme/web.git')
+  await change.getByRole('button', { name: 'Save and build' }).click()
+  expect((await put2).postDataJSON()).toMatchObject({ repository: 'acme/web', installationId: 4242 })
+  expect(csp).toEqual([])
+})
+
+test('builds: build now opens the build, with its stages and the followed log', async ({ page }) => {
+  const csp = await watchCsp(page)
+  await mockApi(page, { gitSource: true })
+  await page.goto('/projects/shop/prod/web?tab=settings')
+  await expect(page.getByText('gitlab-acme')).toBeVisible()
+  await expect(page.getByText('registry.example.com/acme/web')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Builds' }).click()
+  const triggered = page.waitForRequest((r) => r.method() === 'POST' && r.url().endsWith('/apps/web/builds'))
+  await page.getByRole('button', { name: 'Build now' }).click()
+  await triggered
+  await expect(page).toHaveURL(new RegExp(`tab=builds&build=${builds[0]?.id}`))
+  const stages = page.getByRole('list', { name: 'Stages' })
+  await expect(stages.getByRole('listitem')).toHaveCount(4)
+  await expect(stages.locator('[aria-current="step"]')).toContainText('Build')
+  const log = page.locator('pre[dir="ltr"]')
+  for (const line of buildLogLines) await expect(log).toContainText(line)
+  await expect(page.getByRole('link', { name: 'Download' })).toHaveAttribute(
+    'href',
+    `/api/v1/projects/shop/environments/prod/apps/web/builds/${builds[0]?.id}/logs`,
+  )
+  await page.getByRole('switch', { name: 'Wrap lines' }).click()
+  await expectAccessible(page)
+
+  // A settled build shows its kept log.
+  await page.goto(`/projects/shop/prod/web?tab=builds&build=${builds[2]?.id}`)
+  await expect(page.locator('pre[dir="ltr"]')).toContainText('railpack plan: node 22')
+  await expect(page.getByRole('list', { name: 'Stages' }).getByText('Skipped')).toBeVisible()
+  await expectAccessible(page)
+  expect(csp).toEqual([])
+})
+
+test('builds: a build delta on the stream updates the list without a refetch', async ({ page }) => {
+  await mockApi(page, { gitSource: true, buildDelta: true })
+  await page.goto('/projects/shop/prod/web?tab=builds')
+  const running = page.getByRole('table', { name: 'Builds' }).getByRole('row', { name: /aaaaaaa/ })
+  await expect(running.getByText('Succeeded')).toBeVisible()
+  await expect(running.getByRole('button', { name: 'Cancel build' })).toHaveCount(0)
+})
+
+test('integrations and builds in Persian, right to left', async ({ page }) => {
+  await prefer(page, 'fa', 'dark')
+  await mockApi(page, { gitSource: true })
+  await page.goto('/settings/integrations')
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl')
+  await expect(page.getByRole('heading', { level: 1, name: 'یکپارچه‌سازی‌ها' })).toBeVisible()
+  await expect(page.getByRole('table', { name: 'اتصال‌های Git' })).toBeVisible()
+  await expectAccessible(page)
+  await page.goto(`/projects/shop/prod/web?tab=builds&build=${builds[0]?.id}`)
+  await expect(page.getByRole('list', { name: 'مرحله‌ها' })).toBeVisible()
+  await expectAccessible(page)
+})
+
 test('the sidebar opens as a drawer on a phone and closes on navigation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page)
@@ -681,6 +952,8 @@ test.describe('content security policy', () => {
     '/domains',
     '/audit',
     '/settings',
+    '/settings/integrations',
+    '/settings/registries',
     '/account',
     '/projects/shop',
     '/projects/shop/prod',

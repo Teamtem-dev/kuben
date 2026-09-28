@@ -328,5 +328,9 @@ func appSpec(m *store.Materialization) (v1alpha1.AppSpec, *RenderError) {
 			spec.ImagePullSecrets = append(spec.ImagePullSecrets, SecretObjectName(b.Name, b.Revision))
 		}
 	}
+	// Without a login of its own, the organization's (org_registry.go).
+	if r, ok := m.OrgRegistry.Get(); ok {
+		spec.ImagePullSecrets = append(spec.ImagePullSecrets, OrgRegistrySecretName(r.Name))
+	}
 	return spec, nil
 }

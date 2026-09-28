@@ -26,10 +26,10 @@ func embedded(t *testing.T) []string {
 
 func TestEveryMigrationIsEmbedded(t *testing.T) {
 	names := embedded(t)
-	if len(names) != 33 {
-		t.Fatalf("embedded %d migrations, want 33: %v", len(names), names)
+	if len(names) != 34 {
+		t.Fatalf("embedded %d migrations, want 34: %v", len(names), names)
 	}
-	if names[0] != "0001_init.sql" || names[len(names)-1] != "0034_usage_rollups.sql" {
+	if names[0] != "0001_init.sql" || names[len(names)-1] != "0035_integrations.sql" {
 		t.Fatalf("first/last migration: %s, %s", names[0], names[len(names)-1])
 	}
 }

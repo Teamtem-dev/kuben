@@ -512,12 +512,12 @@ func sseEvent(name string, data any) []byte {
 const ssePing = ": ping\n\n"
 
 // followsLogs reports whether r asks for a followed log: the getAppLogs
-// route with `follow` true as the generated decoder reads it (one value,
+// or getBuildLogs route with `follow` true as the generated decoder reads it (one value,
 // strconv.ParseBool). Such a stream outlives the request timeout, which
 // Rust's TimeoutLayer never applied to a body either.
 func (s *Server) followsLogs(r *http.Request) bool {
 	route, ok := s.routes.FindPath(r.Method, r.URL)
-	if !ok || route.Name() != gen.GetAppLogsOperation {
+	if !ok || (route.Name() != gen.GetAppLogsOperation && route.Name() != gen.GetBuildLogsOperation) {
 		return false
 	}
 	values := r.URL.Query()["follow"]

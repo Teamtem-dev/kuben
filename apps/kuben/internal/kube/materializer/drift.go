@@ -177,6 +177,7 @@ func (w *Worker) CheckDrift(ctx context.Context, touched *v1alpha1.App) (Finding
 	if err != nil || clean {
 		return Clean{}, err
 	}
+	KeepOrgPull(&desired.App, live)
 	finding := Compare(live, &desired.App)
 	drift, drifted := finding.(Drift)
 	if !drifted {

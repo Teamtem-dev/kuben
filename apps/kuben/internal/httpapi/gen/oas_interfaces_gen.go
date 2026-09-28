@@ -45,6 +45,14 @@ type CreateFreezeRes interface {
 	createFreezeRes()
 }
 
+type CreateGitConnectionRes interface {
+	createGitConnectionRes()
+}
+
+type CreateOrgRegistryRes interface {
+	createOrgRegistryRes()
+}
+
 type CreateProjectRes interface {
 	createProjectRes()
 }
@@ -77,8 +85,16 @@ type DeleteEnvironmentRes interface {
 	deleteEnvironmentRes()
 }
 
+type DeleteGitConnectionRes interface {
+	deleteGitConnectionRes()
+}
+
 type DeleteImagePolicyRes interface {
 	deleteImagePolicyRes()
+}
+
+type DeleteOrgRegistryRes interface {
+	deleteOrgRegistryRes()
 }
 
 type DeleteProjectRes interface {
@@ -161,6 +177,10 @@ type GetApplicationOwnerRes interface {
 	getApplicationOwnerRes()
 }
 
+type GetBuildLogsRes interface {
+	getBuildLogsRes()
+}
+
 type GetBuildRes interface {
 	getBuildRes()
 }
@@ -185,12 +205,20 @@ type GetEnvironmentRes interface {
 	getEnvironmentRes()
 }
 
+type GetGitConnectionRes interface {
+	getGitConnectionRes()
+}
+
 type GetImagePolicyRes interface {
 	getImagePolicyRes()
 }
 
 type GetMeRes interface {
 	getMeRes()
+}
+
+type GetOrgRegistryRes interface {
+	getOrgRegistryRes()
 }
 
 type GetPreviewPolicyRes interface {
@@ -265,6 +293,18 @@ type ListEnvironmentsRes interface {
 	listEnvironmentsRes()
 }
 
+type ListGitConnectionBranchesRes interface {
+	listGitConnectionBranchesRes()
+}
+
+type ListGitConnectionRepositoriesRes interface {
+	listGitConnectionRepositoriesRes()
+}
+
+type ListGitConnectionsRes interface {
+	listGitConnectionsRes()
+}
+
 type ListGitInstallationsRes interface {
 	listGitInstallationsRes()
 }
@@ -273,12 +313,20 @@ type ListMembersRes interface {
 	listMembersRes()
 }
 
+type ListOrgRegistriesRes interface {
+	listOrgRegistriesRes()
+}
+
 type ListPreviewsRes interface {
 	listPreviewsRes()
 }
 
 type ListProjectMembersRes interface {
 	listProjectMembersRes()
+}
+
+type ListRegistryPresetsRes interface {
+	listRegistryPresetsRes()
 }
 
 type ListReleasesRes interface {
@@ -417,6 +465,10 @@ type RollbackAppRes interface {
 	rollbackAppRes()
 }
 
+type RotateGitConnectionWebhookSecretRes interface {
+	rotateGitConnectionWebhookSecretRes()
+}
+
 type RunAppRes interface {
 	runAppRes()
 }
@@ -441,12 +493,40 @@ type SyncAppSourceRes interface {
 	syncAppSourceRes()
 }
 
+type TestGitConnectionRes interface {
+	testGitConnectionRes()
+}
+
+type TestNewGitConnectionRes interface {
+	testNewGitConnectionRes()
+}
+
+type TestNewOrgRegistryRes interface {
+	testNewOrgRegistryRes()
+}
+
+type TestOrgRegistryRes interface {
+	testOrgRegistryRes()
+}
+
+type TriggerBuildRes interface {
+	triggerBuildRes()
+}
+
 type UpdateAppRes interface {
 	updateAppRes()
 }
 
+type UpdateGitConnectionRes interface {
+	updateGitConnectionRes()
+}
+
 type UpdateMemberRes interface {
 	updateMemberRes()
+}
+
+type UpdateOrgRegistryRes interface {
+	updateOrgRegistryRes()
 }
 
 type VerifyDomainClaimRes interface {

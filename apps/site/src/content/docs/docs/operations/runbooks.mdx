@@ -43,14 +43,14 @@ The incident's detail is the failure code:
 
 **Signal:** a warning `build.failed` incident, or a `failure` status on the `kuben/build` context.
 
-**Check:** `GET …/apps/{app}/builds` lists the app's builds with their outcome, and `GET …/apps/{app}/builds/{build}` one of them.
+**Check:** the app's Builds tab, or `kuben builds <app>`, lists the builds with their outcome and stages; `kuben builds logs <app> <build>` (`GET …/apps/{app}/builds/{build}/logs`) shows the log. See [Builds](/docs/guides/builds/).
 
 | Code | Fix |
 |---|---|
 | `BuildError` | The build itself failed. Read the build log, fix the code or the build settings, and push again. |
 | `OutOfMemory`, `DiskFull` | Raise `build.memory` or `build.ephemeral_storage`, or make the build smaller. |
 | `DeadlineExceeded` | Raise `build.deadline_secs`, or speed up the build (use a cache, fetch less). |
-| `SourceUnavailable`, `CredentialsRefused` | Check the GitHub App installation and its access to the repository. |
+| `SourceUnavailable`, `CredentialsRefused` | Check the GitHub App installation, or the app's [Git connection](/docs/guides/git-providers/) (**Test** on it under **Settings → Integrations**), and its access to the repository. |
 | `Unschedulable` | No node can run the build. Check `build.node_pool`, and the taints and free capacity. |
 | `OutputRejected` | The pushed image did not match what the build reported. Check the registry. |
 

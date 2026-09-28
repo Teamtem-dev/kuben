@@ -247,6 +247,12 @@ export const builds = [
     createdAt: now - 60_000,
     startedAt: now - 50_000,
     finishedAt: null,
+    stages: [
+      { name: 'clone', status: 'succeeded', startedAt: now - 50_000, finishedAt: now - 48_000 },
+      { name: 'plan', status: 'succeeded', startedAt: now - 48_000, finishedAt: now - 45_000 },
+      { name: 'build', status: 'running', startedAt: now - 45_000, finishedAt: null, detail: 'railpack' },
+      { name: 'push', status: 'pending' },
+    ],
   }),
   build('0190f3c6-0000-7000-8000-0000000000d2', {
     commit: 'bbbbbbb89abcdef0123456789abcdef01234567',
@@ -265,8 +271,180 @@ export const builds = [
     createdAt: now - 86_400_000,
     startedAt: now - 86_390_000,
     finishedAt: now - 86_300_000,
+    stages: [
+      { name: 'clone', status: 'succeeded', startedAt: now - 86_390_000, finishedAt: now - 86_385_000 },
+      { name: 'build', status: 'succeeded', startedAt: now - 86_385_000, finishedAt: now - 86_320_000 },
+      { name: 'scan', status: 'skipped' },
+      { name: 'push', status: 'succeeded', startedAt: now - 86_320_000, finishedAt: now - 86_300_000 },
+    ],
   }),
 ]
+
+/** The kept log of a settled build (text) and the followed log of a running one (lines). */
+export const buildLog = '#1 [internal] load build definition\n#2 railpack plan: node 22\n#3 DONE 42.1s\n'
+
+export const buildLogLines = ['#1 cloning acme/web@aaaaaaa', '#2 installing dependencies']
+
+// ---- integrations (2.1) ----
+
+export const gitConnections = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000g1',
+    name: 'gitlab-acme',
+    provider: 'gitlab',
+    baseUrl: 'https://gitlab.com',
+    authKind: 'token',
+    username: 'acme-bot',
+    defaultBranch: 'main',
+    hasToken: true,
+    tokenHint: 'x9Qa',
+    webhookUrl: '/api/v1/webhooks/gitlab/0190f3c6-0000-7000-8000-0000000000g1',
+    createdAt: now - 86_400_000,
+    updatedAt: now - 86_400_000,
+    lastCheckedAt: now - 3_600_000,
+    lastError: null,
+  },
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000g2',
+    name: 'codeberg',
+    provider: 'gitea',
+    baseUrl: 'https://codeberg.org',
+    authKind: 'token',
+    username: null,
+    defaultBranch: null,
+    hasToken: true,
+    tokenHint: 'b7Zk',
+    webhookUrl: '/api/v1/webhooks/gitea/0190f3c6-0000-7000-8000-0000000000g2',
+    createdAt: now - 7_200_000,
+    updatedAt: now - 7_200_000,
+    lastCheckedAt: now - 600_000,
+    lastError: 'the token was revoked (401)',
+  },
+]
+
+/** The webhook secrets a new connection, and a rotation, show once. */
+export const webhookSecret = 'whsec_created_0123456789abcdef'
+export const rotatedWebhookSecret = 'whsec_rotated_fedcba9876543210'
+
+export const connectionCheck = {
+  ok: true,
+  username: 'acme-bot',
+  scopes: ['read_api', 'read_repository'],
+  missingScopes: [],
+  error: null,
+  checkedAt: now,
+}
+
+const repository = (fullName: string, fields: Record<string, unknown> = {}) => ({
+  id: fullName,
+  fullName,
+  description: null,
+  defaultBranch: 'main',
+  private: false,
+  webUrl: `https://gitlab.com/${fullName}`,
+  updatedAt: now - 86_400_000,
+  ...fields,
+})
+
+export const repositoryPages = [
+  {
+    repositories: [
+      repository('acme/web', { description: 'The shop front', private: true }),
+      repository('acme/api'),
+    ],
+    page: 1,
+    hasMore: true,
+  },
+  { repositories: [repository('acme/docs', { defaultBranch: 'trunk' })], page: 2, hasMore: false },
+]
+
+export const gitBranches = [
+  { name: 'develop', commit: 'cccccccc89abcdef', protected: false, default: false },
+  { name: 'main', commit: '0123456789abcdef', protected: true, default: true },
+]
+
+export const installations = [{ installationId: 4242, account: 'acme', suspended: false }]
+
+export const registryPresets = [
+  {
+    id: 'dockerhub',
+    label: 'Docker Hub',
+    server: 'docker.io',
+    usernameHint: 'Your Docker ID',
+    passwordHint: 'A personal access token (read-only)',
+    docsUrl: 'https://docs.docker.com/security/access-tokens/',
+  },
+  {
+    id: 'ghcr',
+    label: 'GitHub Packages',
+    server: 'ghcr.io',
+    usernameHint: 'Your GitHub user name',
+    passwordHint: 'A classic token with read:packages',
+    docsUrl: null,
+  },
+  {
+    id: 'gitlab',
+    label: 'GitLab',
+    server: 'registry.gitlab.com',
+    usernameHint: 'A deploy token user',
+    passwordHint: 'The deploy token (read_registry)',
+    docsUrl: null,
+  },
+  {
+    id: 'quay',
+    label: 'Quay',
+    server: 'quay.io',
+    usernameHint: 'A robot account',
+    passwordHint: 'The robot token',
+    docsUrl: null,
+  },
+  {
+    id: 'harbor',
+    label: 'Harbor',
+    server: null,
+    usernameHint: 'A robot account (robot$…)',
+    passwordHint: 'The robot secret',
+    docsUrl: null,
+  },
+  {
+    id: 'custom',
+    label: 'Custom',
+    server: null,
+    usernameHint: 'The registry user',
+    passwordHint: 'Its password or token',
+    docsUrl: null,
+  },
+]
+
+export const orgRegistries = [
+  {
+    id: '0190f3c6-0000-7000-8000-0000000000h1',
+    name: 'ghcr',
+    preset: 'ghcr',
+    server: 'ghcr.io',
+    username: 'acme-bot',
+    hasPassword: true,
+    createdAt: now - 86_400_000,
+    updatedAt: now - 86_400_000,
+    lastCheckedAt: now - 3_600_000,
+    lastError: null,
+  },
+]
+
+/** The Git source of the app with the `gitSource` option: through the GitLab connection. */
+export const appSource = {
+  installationId: 0,
+  repository: 'acme/web',
+  branch: 'main',
+  strategy: 'railpack',
+  context: '',
+  dockerfile: null,
+  imageRepository: 'registry.example.com/acme/web',
+  head: '0123456789abcdef0123456789abcdef01234567',
+  syncOperation: null,
+  provider: 'gitlab',
+  connection: gitConnections[0]?.id,
+}
 
 const scans = {
   release: '0190f3c6-0000-7000-8000-0000000000r1',
@@ -656,7 +834,14 @@ export async function mockApi(
     setupNeeded = false,
     approval: approvalMode,
     gitSource = false,
-  }: { signedIn?: boolean; setupNeeded?: boolean; approval?: 'decide' | 'watch'; gitSource?: boolean } = {},
+    buildDelta = false,
+  }: {
+    signedIn?: boolean
+    setupNeeded?: boolean
+    approval?: 'decide' | 'watch'
+    gitSource?: boolean
+    buildDelta?: boolean
+  } = {},
 ) {
   const appPath = '/api/v1/projects/shop/environments/prod/apps/web'
   const runPath = `${appPath}/deployments/${awaitingRun.run}`
@@ -674,7 +859,26 @@ export async function mockApi(
         : json(route, { code: 'unauthorized', title: 'Unauthorized', status: 401 }, 401)
     }
     if (path === '/api/v1/stream') {
-      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': ok\n\n' })
+      // With `buildDelta`, the running build settles; the stream reconnects fast so the delta
+      // also lands after the builds list loaded.
+      const body = buildDelta
+        ? `retry: 300\n${sse([
+            [
+              'delta',
+              {
+                kind: 'build',
+                seq: 43,
+                org: 'o1',
+                app: 'kb-shop-prod/web',
+                project: 'shop',
+                environment: 'prod',
+                name: 'web',
+                build: { ...builds[0], phase: 'succeeded', finishedAt: now, deployDecision: 'deployed' },
+              },
+            ],
+          ])}`
+        : ': ok\n\n'
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body })
     }
     if (path === appPath)
       return json(route, {
@@ -711,6 +915,91 @@ export async function mockApi(
         { code: 'conflict', title: 'Conflict', status: 409, detail: 'the deployment was already decided' },
         409,
       )
+    }
+    if (gitSource && path === `${appPath}/builds` && route.request().method() === 'POST') {
+      return json(route, { syncOperation: '0190f3c6-0000-7000-8000-0000000000o9', build: builds[0] }, 202)
+    }
+    const logMatch = gitSource ? new RegExp(`^${appPath}/builds/([^/]+)/logs$`).exec(path) : null
+    if (logMatch && url.searchParams.get('follow') === 'true') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: sse(
+          buildLogLines.map((line, i): [string, unknown] => [
+            'line',
+            { pod: 'build', time: iso(now + i * 1000), line },
+          ]),
+        ),
+      })
+    }
+    if (logMatch) return route.fulfill({ status: 200, contentType: 'text/plain', body: buildLog })
+    if (path === `${appPath}/source`) {
+      if (route.request().method() === 'PUT') {
+        const body = route.request().postDataJSON() as Record<string, unknown>
+        return json(route, { ...appSource, ...body, installationId: body.installationId ?? 0, head: null })
+      }
+      if (gitSource) return json(route, appSource)
+    }
+    if (path === '/api/v1/git/connections' && route.request().method() === 'POST') {
+      const body = route.request().postDataJSON() as { name: string; provider: string; baseUrl?: string }
+      return json(
+        route,
+        {
+          ...gitConnections[0],
+          ...body,
+          id: '0190f3c6-0000-7000-8000-0000000000g3',
+          webhookUrl: '/api/v1/webhooks/gitlab/0190f3c6-0000-7000-8000-0000000000g3',
+          webhookSecret: webhookSecret,
+        },
+        201,
+      )
+    }
+    if (path === '/api/v1/git/connections') return json(route, gitConnections)
+    if (path === '/api/v1/git/connections/test') return json(route, connectionCheck)
+    const connectionMatch = /^\/api\/v1\/git\/connections\/([^/]+)(?:\/(\w+)(?:-secret)?)?$/.exec(path)
+    if (connectionMatch) {
+      const [, id, sub] = connectionMatch
+      const found = gitConnections.find((c) => c.id === id)
+      if (!found) return json(route, { code: 'not_found', title: 'Not Found', status: 404 }, 404)
+      if (sub === 'repositories') {
+        return json(route, repositoryPages[url.searchParams.get('page') === '2' ? 1 : 0])
+      }
+      if (sub === 'branches') return json(route, gitBranches)
+      if (sub === 'test') return json(route, { ...connectionCheck, username: found.username })
+      if (sub === 'webhook') {
+        return json(route, { webhookSecret: rotatedWebhookSecret, webhookUrl: found.webhookUrl })
+      }
+      if (route.request().method() === 'DELETE') {
+        return json(
+          route,
+          { code: 'conflict', title: 'Conflict', status: 409, detail: 'app sources read through it' },
+          409,
+        )
+      }
+      if (route.request().method() === 'PATCH') {
+        return json(route, { ...found, ...(route.request().postDataJSON() as object) })
+      }
+      return json(route, found)
+    }
+    if (path === '/api/v1/git/installations') return json(route, installations)
+    if (path === '/api/v1/registries/presets') return json(route, registryPresets)
+    if (path === '/api/v1/registries/test') return json(route, { ok: true, error: null, checkedAt: now })
+    if (path === '/api/v1/registries' && route.request().method() === 'POST') {
+      return json(route, { ...orgRegistries[0], ...(route.request().postDataJSON() as object) }, 201)
+    }
+    if (path === '/api/v1/registries') return json(route, orgRegistries)
+    const registryMatch = /^\/api\/v1\/registries\/([^/]+)(\/test)?$/.exec(path)
+    if (registryMatch) {
+      const found = orgRegistries.find((r) => r.id === registryMatch[1])
+      if (!found) return json(route, { code: 'not_found', title: 'Not Found', status: 404 }, 404)
+      if (registryMatch[2]) {
+        return json(route, { ok: false, error: 'unauthorized: the token expired', checkedAt: now })
+      }
+      if (route.request().method() === 'DELETE') return route.fulfill({ status: 204 })
+      if (route.request().method() === 'PUT') {
+        return json(route, { ...found, updatedAt: now, lastError: null })
+      }
+      return json(route, found)
     }
     if (gitSource && path === `${appPath}/builds`) return json(route, builds)
     if (gitSource && path === `${appPath}/scans`) return json(route, scans)

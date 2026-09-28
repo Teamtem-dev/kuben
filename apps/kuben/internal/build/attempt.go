@@ -147,6 +147,7 @@ func (w *Worker) admit(ctx context.Context, claim store.Claim, attempt store.Bui
 		return r
 	}
 	w.mirror(ctx, attempt, phase, opt.None[string]())
+	w.keepStages(ctx, attempt, w.stagesOf(attempt))
 	return wait{After: poll, Code: "Preparing"}
 }
 
@@ -187,11 +188,12 @@ func (w *Worker) notCreated(ctx context.Context, claim store.Claim, attempt stor
 }
 
 func (w *Worker) observe(ctx context.Context, claim store.Claim, attempt store.BuildAttempt) result {
-	seen, err := w.observeJob(ctx, attempt)
+	seen, pod, err := w.observeJob(ctx, attempt)
 	if err != nil {
 		return kubeRetry(err)
 	}
 	plan := PlanFor(attempt.Phase, attempt.CancelRequested, outcome.Classify(seen), attempt.ReportedDigest)
+	w.observeStages(ctx, attempt, pod, plan)
 	switch p := plan.(type) {
 	case PlanWait:
 		phase, r := w.record(ctx, claim, attempt, p.Events, store.BuildProgress{})
@@ -360,6 +362,7 @@ func (w *Worker) finish(
 	if d, ok := digest.Get(); ok {
 		text = opt.Some(d.String())
 	}
+	w.settleRecords(ctx, attempt, phase, code)
 	if err := w.cleanup(ctx, shown, phase, text); err != nil {
 		// The attempt is final; the next claim repeats the cleanup.
 		return kubeRetry(err)

@@ -1056,6 +1056,176 @@ func (s *Server) handleCreateFreezeRequest(args [2]string, argsEscaped bool, w h
 	}
 }
 
+// handleCreateGitConnectionRequest handles createGitConnection operation.
+//
+// Connect a Git provider account by token. The token is checked first and sealed; it is never
+// returned.
+//
+// POST /api/v1/git/connections
+func (s *Server) handleCreateGitConnectionRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: CreateGitConnectionOperation,
+			ID:   "createGitConnection",
+		}
+	)
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeCreateGitConnectionRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response CreateGitConnectionRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    CreateGitConnectionOperation,
+			OperationSummary: "Connect a Git provider account by token. The token is checked first\nand sealed; it is never returned.",
+			OperationID:      "createGitConnection",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = *CreateGitConnection
+			Params   = struct{}
+			Response = CreateGitConnectionRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.CreateGitConnection(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.CreateGitConnection(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeCreateGitConnectionResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleCreateOrgRegistryRequest handles createOrgRegistry operation.
+//
+// Add a registry login for every environment of the organization. An environment's own login for the
+// same registry wins.
+//
+// POST /api/v1/registries
+func (s *Server) handleCreateOrgRegistryRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: CreateOrgRegistryOperation,
+			ID:   "createOrgRegistry",
+		}
+	)
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeCreateOrgRegistryRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response CreateOrgRegistryRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    CreateOrgRegistryOperation,
+			OperationSummary: "Add a registry login for every environment of the organization. An\nenvironment's own login for the same registry wins.",
+			OperationID:      "createOrgRegistry",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = *CreateOrgRegistry
+			Params   = struct{}
+			Response = CreateOrgRegistryRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.CreateOrgRegistry(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.CreateOrgRegistry(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeCreateOrgRegistryResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleCreateProjectRequest handles createProject operation.
 //
 // Create a project; its `Project` resource follows.
@@ -1764,6 +1934,90 @@ func (s *Server) handleDeleteEnvironmentRequest(args [2]string, argsEscaped bool
 	}
 }
 
+// handleDeleteGitConnectionRequest handles deleteGitConnection operation.
+//
+// Delete a Git connection no app source reads through.
+//
+// DELETE /api/v1/git/connections/{connection}
+func (s *Server) handleDeleteGitConnectionRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: DeleteGitConnectionOperation,
+			ID:   "deleteGitConnection",
+		}
+	)
+	params, err := decodeDeleteGitConnectionParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response DeleteGitConnectionRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    DeleteGitConnectionOperation,
+			OperationSummary: "Delete a Git connection no app source reads through.",
+			OperationID:      "deleteGitConnection",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = DeleteGitConnectionParams
+			Response = DeleteGitConnectionRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackDeleteGitConnectionParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.DeleteGitConnection(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.DeleteGitConnection(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeDeleteGitConnectionResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleDeleteImagePolicyRequest handles deleteImagePolicy operation.
 //
 // Stop following the image repository.
@@ -1848,6 +2102,90 @@ func (s *Server) handleDeleteImagePolicyRequest(args [3]string, argsEscaped bool
 	}
 
 	if err := encodeDeleteImagePolicyResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleDeleteOrgRegistryRequest handles deleteOrgRegistry operation.
+//
+// Delete a registry login. Pods already running keep their pull secret until their next deployment.
+//
+// DELETE /api/v1/registries/{registry}
+func (s *Server) handleDeleteOrgRegistryRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: DeleteOrgRegistryOperation,
+			ID:   "deleteOrgRegistry",
+		}
+	)
+	params, err := decodeDeleteOrgRegistryParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response DeleteOrgRegistryRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    DeleteOrgRegistryOperation,
+			OperationSummary: "Delete a registry login. Pods already running keep their pull secret\nuntil their next deployment.",
+			OperationID:      "deleteOrgRegistry",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "registry",
+					In:   "path",
+				}: params.Registry,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = DeleteOrgRegistryParams
+			Response = DeleteOrgRegistryRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackDeleteOrgRegistryParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.DeleteOrgRegistry(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.DeleteOrgRegistry(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeDeleteOrgRegistryResponse(response, w); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -3938,6 +4276,107 @@ func (s *Server) handleGetBuildRequest(args [4]string, argsEscaped bool, w http.
 	}
 }
 
+// handleGetBuildLogsRequest handles getBuildLogs operation.
+//
+// The build's log: from the build pod while it runs, from the kept tail after. With `follow=true`, a
+// live stream of new lines.
+//
+// GET /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/logs
+func (s *Server) handleGetBuildLogsRequest(args [4]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetBuildLogsOperation,
+			ID:   "getBuildLogs",
+		}
+	)
+	params, err := decodeGetBuildLogsParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response GetBuildLogsRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GetBuildLogsOperation,
+			OperationSummary: "The build's log: from the build pod while it runs, from the kept tail\nafter. With `follow=true`, a live stream of new lines.",
+			OperationID:      "getBuildLogs",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "project",
+					In:   "path",
+				}: params.Project,
+				{
+					Name: "environment",
+					In:   "path",
+				}: params.Environment,
+				{
+					Name: "app",
+					In:   "path",
+				}: params.App,
+				{
+					Name: "build",
+					In:   "path",
+				}: params.Build,
+				{
+					Name: "follow",
+					In:   "query",
+				}: params.Follow,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = GetBuildLogsParams
+			Response = GetBuildLogsRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackGetBuildLogsParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GetBuildLogs(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GetBuildLogs(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGetBuildLogsResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleGetDeploymentRequest handles getDeployment operation.
 //
 // One deployment run of this app.
@@ -4398,6 +4837,90 @@ func (s *Server) handleGetEnvironmentPolicyRequest(args [2]string, argsEscaped b
 	}
 }
 
+// handleGetGitConnectionRequest handles getGitConnection operation.
+//
+// A Git connection.
+//
+// GET /api/v1/git/connections/{connection}
+func (s *Server) handleGetGitConnectionRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetGitConnectionOperation,
+			ID:   "getGitConnection",
+		}
+	)
+	params, err := decodeGetGitConnectionParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response GetGitConnectionRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GetGitConnectionOperation,
+			OperationSummary: "A Git connection.",
+			OperationID:      "getGitConnection",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = GetGitConnectionParams
+			Response = GetGitConnectionRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackGetGitConnectionParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GetGitConnection(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GetGitConnection(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGetGitConnectionResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleGetHealthDetailsRequest handles getHealthDetails operation.
 //
 // Per-subsystem health (authenticated).
@@ -4612,6 +5135,90 @@ func (s *Server) handleGetMeRequest(args [0]string, argsEscaped bool, w http.Res
 	}
 
 	if err := encodeGetMeResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleGetOrgRegistryRequest handles getOrgRegistry operation.
+//
+// A registry login of the organization.
+//
+// GET /api/v1/registries/{registry}
+func (s *Server) handleGetOrgRegistryRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: GetOrgRegistryOperation,
+			ID:   "getOrgRegistry",
+		}
+	)
+	params, err := decodeGetOrgRegistryParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response GetOrgRegistryRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    GetOrgRegistryOperation,
+			OperationSummary: "A registry login of the organization.",
+			OperationID:      "getOrgRegistry",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "registry",
+					In:   "path",
+				}: params.Registry,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = GetOrgRegistryParams
+			Response = GetOrgRegistryRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackGetOrgRegistryParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.GetOrgRegistry(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.GetOrgRegistry(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeGetOrgRegistryResponse(response, w); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -6486,6 +7093,251 @@ func (s *Server) handleListFreezesRequest(args [2]string, argsEscaped bool, w ht
 	}
 }
 
+// handleListGitConnectionBranchesRequest handles listGitConnectionBranches operation.
+//
+// Branches of one repository the connection can read.
+//
+// GET /api/v1/git/connections/{connection}/branches
+func (s *Server) handleListGitConnectionBranchesRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: ListGitConnectionBranchesOperation,
+			ID:   "listGitConnectionBranches",
+		}
+	)
+	params, err := decodeListGitConnectionBranchesParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response ListGitConnectionBranchesRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    ListGitConnectionBranchesOperation,
+			OperationSummary: "Branches of one repository the connection can read.",
+			OperationID:      "listGitConnectionBranches",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+				{
+					Name: "repository",
+					In:   "query",
+				}: params.Repository,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = ListGitConnectionBranchesParams
+			Response = ListGitConnectionBranchesRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackListGitConnectionBranchesParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.ListGitConnectionBranches(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.ListGitConnectionBranches(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeListGitConnectionBranchesResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleListGitConnectionRepositoriesRequest handles listGitConnectionRepositories operation.
+//
+// Repositories the connection's token can read.
+//
+// GET /api/v1/git/connections/{connection}/repositories
+func (s *Server) handleListGitConnectionRepositoriesRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: ListGitConnectionRepositoriesOperation,
+			ID:   "listGitConnectionRepositories",
+		}
+	)
+	params, err := decodeListGitConnectionRepositoriesParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response ListGitConnectionRepositoriesRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    ListGitConnectionRepositoriesOperation,
+			OperationSummary: "Repositories the connection's token can read.",
+			OperationID:      "listGitConnectionRepositories",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+				{
+					Name: "search",
+					In:   "query",
+				}: params.Search,
+				{
+					Name: "page",
+					In:   "query",
+				}: params.Page,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = ListGitConnectionRepositoriesParams
+			Response = ListGitConnectionRepositoriesRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackListGitConnectionRepositoriesParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.ListGitConnectionRepositories(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.ListGitConnectionRepositories(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeListGitConnectionRepositoriesResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleListGitConnectionsRequest handles listGitConnections operation.
+//
+// Git connections of the caller's organization.
+//
+// GET /api/v1/git/connections
+func (s *Server) handleListGitConnectionsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err error
+	)
+
+	var rawBody []byte
+
+	var response ListGitConnectionsRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    ListGitConnectionsOperation,
+			OperationSummary: "Git connections of the caller's organization.",
+			OperationID:      "listGitConnections",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = struct{}
+			Response = ListGitConnectionsRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.ListGitConnections(ctx)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.ListGitConnections(ctx)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeListGitConnectionsResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleListGitInstallationsRequest handles listGitInstallations operation.
 //
 // GitHub App installations linked to the caller's organization.
@@ -6696,6 +7548,71 @@ func (s *Server) handleListMembersRequest(args [0]string, argsEscaped bool, w ht
 	}
 
 	if err := encodeListMembersResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleListOrgRegistriesRequest handles listOrgRegistries operation.
+//
+// Registry logins of the caller's organization.
+//
+// GET /api/v1/registries
+func (s *Server) handleListOrgRegistriesRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err error
+	)
+
+	var rawBody []byte
+
+	var response ListOrgRegistriesRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    ListOrgRegistriesOperation,
+			OperationSummary: "Registry logins of the caller's organization.",
+			OperationID:      "listOrgRegistries",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = struct{}
+			Response = ListOrgRegistriesRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.ListOrgRegistries(ctx)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.ListOrgRegistries(ctx)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeListOrgRegistriesResponse(response, w); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -7021,6 +7938,71 @@ func (s *Server) handleListRegistryLoginsRequest(args [2]string, argsEscaped boo
 	}
 
 	if err := encodeListRegistryLoginsResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleListRegistryPresetsRequest handles listRegistryPresets operation.
+//
+// The registries Kuben knows how to log in to.
+//
+// GET /api/v1/registries/presets
+func (s *Server) handleListRegistryPresetsRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err error
+	)
+
+	var rawBody []byte
+
+	var response ListRegistryPresetsRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    ListRegistryPresetsOperation,
+			OperationSummary: "The registries Kuben knows how to log in to.",
+			OperationID:      "listRegistryPresets",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = struct{}
+			Response = ListRegistryPresetsRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.ListRegistryPresets(ctx)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.ListRegistryPresets(ctx)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeListRegistryPresetsResponse(response, w); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)
@@ -10712,6 +11694,90 @@ func (s *Server) handleRollbackAppRequest(args [3]string, argsEscaped bool, w ht
 	}
 }
 
+// handleRotateGitConnectionWebhookSecretRequest handles rotateGitConnectionWebhookSecret operation.
+//
+// Replace a connection's webhook secret with a new one, returned once.
+//
+// POST /api/v1/git/connections/{connection}/webhook-secret
+func (s *Server) handleRotateGitConnectionWebhookSecretRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: RotateGitConnectionWebhookSecretOperation,
+			ID:   "rotateGitConnectionWebhookSecret",
+		}
+	)
+	params, err := decodeRotateGitConnectionWebhookSecretParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response RotateGitConnectionWebhookSecretRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    RotateGitConnectionWebhookSecretOperation,
+			OperationSummary: "Replace a connection's webhook secret with a new one, returned once.",
+			OperationID:      "rotateGitConnectionWebhookSecret",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = RotateGitConnectionWebhookSecretParams
+			Response = RotateGitConnectionWebhookSecretRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackRotateGitConnectionWebhookSecretParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.RotateGitConnectionWebhookSecret(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.RotateGitConnectionWebhookSecret(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeRotateGitConnectionWebhookSecretResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleRunAppRequest handles runApp operation.
 //
 // Run a scheduled process now (a Job from its CronJob template).
@@ -11366,6 +12432,434 @@ func (s *Server) handleSyncAppSourceRequest(args [3]string, argsEscaped bool, w 
 	}
 }
 
+// handleTestGitConnectionRequest handles testGitConnection operation.
+//
+// Check a saved connection's token again and record the outcome.
+//
+// POST /api/v1/git/connections/{connection}/test
+func (s *Server) handleTestGitConnectionRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: TestGitConnectionOperation,
+			ID:   "testGitConnection",
+		}
+	)
+	params, err := decodeTestGitConnectionParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response TestGitConnectionRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    TestGitConnectionOperation,
+			OperationSummary: "Check a saved connection's token again and record the outcome.",
+			OperationID:      "testGitConnection",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = TestGitConnectionParams
+			Response = TestGitConnectionRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackTestGitConnectionParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.TestGitConnection(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.TestGitConnection(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeTestGitConnectionResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleTestNewGitConnectionRequest handles testNewGitConnection operation.
+//
+// Check a token without saving it: the account it belongs to and its scopes.
+//
+// POST /api/v1/git/connections/test
+func (s *Server) handleTestNewGitConnectionRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: TestNewGitConnectionOperation,
+			ID:   "testNewGitConnection",
+		}
+	)
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeTestNewGitConnectionRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response TestNewGitConnectionRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    TestNewGitConnectionOperation,
+			OperationSummary: "Check a token without saving it: the account it belongs to and its\nscopes.",
+			OperationID:      "testNewGitConnection",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = *CreateGitConnection
+			Params   = struct{}
+			Response = TestNewGitConnectionRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.TestNewGitConnection(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.TestNewGitConnection(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeTestNewGitConnectionResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleTestNewOrgRegistryRequest handles testNewOrgRegistry operation.
+//
+// Log in to a registry without saving the login.
+//
+// POST /api/v1/registries/test
+func (s *Server) handleTestNewOrgRegistryRequest(args [0]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: TestNewOrgRegistryOperation,
+			ID:   "testNewOrgRegistry",
+		}
+	)
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeTestNewOrgRegistryRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response TestNewOrgRegistryRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    TestNewOrgRegistryOperation,
+			OperationSummary: "Log in to a registry without saving the login.",
+			OperationID:      "testNewOrgRegistry",
+			Body:             request,
+			RawBody:          rawBody,
+			Params:           middleware.Parameters{},
+			Raw:              r,
+		}
+
+		type (
+			Request  = *CreateOrgRegistry
+			Params   = struct{}
+			Response = TestNewOrgRegistryRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			nil,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.TestNewOrgRegistry(ctx, request)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.TestNewOrgRegistry(ctx, request)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeTestNewOrgRegistryResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleTestOrgRegistryRequest handles testOrgRegistry operation.
+//
+// Log in with a saved registry login again and record the outcome.
+//
+// POST /api/v1/registries/{registry}/test
+func (s *Server) handleTestOrgRegistryRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: TestOrgRegistryOperation,
+			ID:   "testOrgRegistry",
+		}
+	)
+	params, err := decodeTestOrgRegistryParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response TestOrgRegistryRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    TestOrgRegistryOperation,
+			OperationSummary: "Log in with a saved registry login again and record the outcome.",
+			OperationID:      "testOrgRegistry",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "registry",
+					In:   "path",
+				}: params.Registry,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = TestOrgRegistryParams
+			Response = TestOrgRegistryRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackTestOrgRegistryParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.TestOrgRegistry(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.TestOrgRegistry(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeTestOrgRegistryResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleTriggerBuildRequest handles triggerBuild operation.
+//
+// Build the source's branch head now: the same as a source sync.
+//
+// POST /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds
+func (s *Server) handleTriggerBuildRequest(args [3]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: TriggerBuildOperation,
+			ID:   "triggerBuild",
+		}
+	)
+	params, err := decodeTriggerBuildParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+
+	var response TriggerBuildRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    TriggerBuildOperation,
+			OperationSummary: "Build the source's branch head now: the same as a source sync.",
+			OperationID:      "triggerBuild",
+			Body:             nil,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "project",
+					In:   "path",
+				}: params.Project,
+				{
+					Name: "environment",
+					In:   "path",
+				}: params.Environment,
+				{
+					Name: "app",
+					In:   "path",
+				}: params.App,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = struct{}
+			Params   = TriggerBuildParams
+			Response = TriggerBuildRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackTriggerBuildParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.TriggerBuild(ctx, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.TriggerBuild(ctx, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeTriggerBuildResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleUpdateAppRequest handles updateApp operation.
 //
 // Update an app (image changes require `app-deploy`). Every change is a new deployment run; a new tag
@@ -11474,6 +12968,105 @@ func (s *Server) handleUpdateAppRequest(args [3]string, argsEscaped bool, w http
 	}
 }
 
+// handleUpdateGitConnectionRequest handles updateGitConnection operation.
+//
+// Change a Git connection; a new token is checked first.
+//
+// PATCH /api/v1/git/connections/{connection}
+func (s *Server) handleUpdateGitConnectionRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: UpdateGitConnectionOperation,
+			ID:   "updateGitConnection",
+		}
+	)
+	params, err := decodeUpdateGitConnectionParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeUpdateGitConnectionRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response UpdateGitConnectionRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    UpdateGitConnectionOperation,
+			OperationSummary: "Change a Git connection; a new token is checked first.",
+			OperationID:      "updateGitConnection",
+			Body:             request,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "connection",
+					In:   "path",
+				}: params.Connection,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = *UpdateGitConnection
+			Params   = UpdateGitConnectionParams
+			Response = UpdateGitConnectionRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackUpdateGitConnectionParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.UpdateGitConnection(ctx, request, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.UpdateGitConnection(ctx, request, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeUpdateGitConnectionResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
 // handleUpdateMemberRequest handles updateMember operation.
 //
 // Change a member's role.
@@ -11565,6 +13158,105 @@ func (s *Server) handleUpdateMemberRequest(args [1]string, argsEscaped bool, w h
 	}
 
 	if err := encodeUpdateMemberResponse(response, w); err != nil {
+		defer recordError("EncodeResponse", err)
+		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
+			s.cfg.ErrorHandler(ctx, w, r, err)
+		}
+		return
+	}
+}
+
+// handleUpdateOrgRegistryRequest handles updateOrgRegistry operation.
+//
+// Change a registry login; a new password rotates it.
+//
+// PUT /api/v1/registries/{registry}
+func (s *Server) handleUpdateOrgRegistryRequest(args [1]string, argsEscaped bool, w http.ResponseWriter, r *http.Request) {
+	statusWriter := &codeRecorder{ResponseWriter: w}
+	w = statusWriter
+	ctx := r.Context()
+
+	var (
+		err          error
+		opErrContext = ogenerrors.OperationContext{
+			Name: UpdateOrgRegistryOperation,
+			ID:   "updateOrgRegistry",
+		}
+	)
+	params, err := decodeUpdateOrgRegistryParams(args, argsEscaped, r)
+	if err != nil {
+		err = &ogenerrors.DecodeParamsError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeParams", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	var rawBody []byte
+	request, rawBody, close, err := s.decodeUpdateOrgRegistryRequest(r)
+	if err != nil {
+		err = &ogenerrors.DecodeRequestError{
+			OperationContext: opErrContext,
+			Err:              err,
+		}
+		defer recordError("DecodeRequest", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+	defer func() {
+		if err := close(); err != nil {
+			recordError("CloseRequest", err)
+		}
+	}()
+
+	var response UpdateOrgRegistryRes
+	if m := s.cfg.Middleware; m != nil {
+		mreq := middleware.Request{
+			Context:          ctx,
+			OperationName:    UpdateOrgRegistryOperation,
+			OperationSummary: "Change a registry login; a new password rotates it.",
+			OperationID:      "updateOrgRegistry",
+			Body:             request,
+			RawBody:          rawBody,
+			Params: middleware.Parameters{
+				{
+					Name: "registry",
+					In:   "path",
+				}: params.Registry,
+			},
+			Raw: r,
+		}
+
+		type (
+			Request  = *UpdateOrgRegistry
+			Params   = UpdateOrgRegistryParams
+			Response = UpdateOrgRegistryRes
+		)
+		response, err = middleware.HookMiddleware[
+			Request,
+			Params,
+			Response,
+		](
+			m,
+			mreq,
+			unpackUpdateOrgRegistryParams,
+			func(ctx context.Context, request Request, params Params) (response Response, err error) {
+				response, err = s.h.UpdateOrgRegistry(ctx, request, params)
+				return response, err
+			},
+		)
+	} else {
+		response, err = s.h.UpdateOrgRegistry(ctx, request, params)
+	}
+	if err != nil {
+		defer recordError("Internal", err)
+		s.cfg.ErrorHandler(ctx, w, r, err)
+		return
+	}
+
+	if err := encodeUpdateOrgRegistryResponse(response, w); err != nil {
 		defer recordError("EncodeResponse", err)
 		if !errors.Is(err, ht.ErrInternalServerErrorResponse) {
 			s.cfg.ErrorHandler(ctx, w, r, err)

@@ -1550,6 +1550,72 @@ func decodeDeleteEnvironmentParams(args [2]string, argsEscaped bool, r *http.Req
 	return params, nil
 }
 
+// DeleteGitConnectionParams is parameters of deleteGitConnection operation.
+type DeleteGitConnectionParams struct {
+	// Connection id.
+	Connection string
+}
+
+func unpackDeleteGitConnectionParams(packed middleware.Parameters) (params DeleteGitConnectionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteGitConnectionParams(args [1]string, argsEscaped bool, r *http.Request) (params DeleteGitConnectionParams, _ error) {
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // DeleteImagePolicyParams is parameters of deleteImagePolicy operation.
 type DeleteImagePolicyParams struct {
 	// Project name.
@@ -1717,6 +1783,72 @@ func decodeDeleteImagePolicyParams(args [3]string, argsEscaped bool, r *http.Req
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "app",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// DeleteOrgRegistryParams is parameters of deleteOrgRegistry operation.
+type DeleteOrgRegistryParams struct {
+	// Registry id or name.
+	Registry string
+}
+
+func unpackDeleteOrgRegistryParams(packed middleware.Parameters) (params DeleteOrgRegistryParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "registry",
+			In:   "path",
+		}
+		params.Registry = packed[key].(string)
+	}
+	return params
+}
+
+func decodeDeleteOrgRegistryParams(args [1]string, argsEscaped bool, r *http.Request) (params DeleteOrgRegistryParams, _ error) {
+	// Decode path: registry.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "registry",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Registry = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "registry",
 			In:   "path",
 			Err:  err,
 		}
@@ -5430,6 +5562,288 @@ func decodeGetBuildParams(args [4]string, argsEscaped bool, r *http.Request) (pa
 	return params, nil
 }
 
+// GetBuildLogsParams is parameters of getBuildLogs operation.
+type GetBuildLogsParams struct {
+	// Project name.
+	Project string
+	// Environment short name.
+	Environment string
+	// App name.
+	App string
+	// Build id.
+	Build string
+	// Keep the connection open and send new lines as `text/event-stream`: `line` events (a [`LogLine`])
+	// and an `end` event (a [`LogEnd`]) when the build's log stops.
+	Follow OptBool `json:",omitempty,omitzero"`
+}
+
+func unpackGetBuildLogsParams(packed middleware.Parameters) (params GetBuildLogsParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project",
+			In:   "path",
+		}
+		params.Project = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "environment",
+			In:   "path",
+		}
+		params.Environment = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "app",
+			In:   "path",
+		}
+		params.App = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "build",
+			In:   "path",
+		}
+		params.Build = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "follow",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Follow = v.(OptBool)
+		}
+	}
+	return params
+}
+
+func decodeGetBuildLogsParams(args [4]string, argsEscaped bool, r *http.Request) (params GetBuildLogsParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode path: project.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Project = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: environment.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "environment",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Environment = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "environment",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: app.
+	if err := func() error {
+		param := args[2]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[2])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "app",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.App = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "app",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: build.
+	if err := func() error {
+		param := args[3]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[3])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "build",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Build = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "build",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode query: follow.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "follow",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotFollowVal bool
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToBool(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotFollowVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Follow.SetTo(paramsDotFollowVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "follow",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetDeploymentParams is parameters of getDeployment operation.
 type GetDeploymentParams struct {
 	// Project name.
@@ -6300,6 +6714,72 @@ func decodeGetEnvironmentPolicyParams(args [2]string, argsEscaped bool, r *http.
 	return params, nil
 }
 
+// GetGitConnectionParams is parameters of getGitConnection operation.
+type GetGitConnectionParams struct {
+	// Connection id.
+	Connection string
+}
+
+func unpackGetGitConnectionParams(packed middleware.Parameters) (params GetGitConnectionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetGitConnectionParams(args [1]string, argsEscaped bool, r *http.Request) (params GetGitConnectionParams, _ error) {
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // GetImagePolicyParams is parameters of getImagePolicy operation.
 type GetImagePolicyParams struct {
 	// Project name.
@@ -6467,6 +6947,72 @@ func decodeGetImagePolicyParams(args [3]string, argsEscaped bool, r *http.Reques
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "app",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// GetOrgRegistryParams is parameters of getOrgRegistry operation.
+type GetOrgRegistryParams struct {
+	// Registry id or name.
+	Registry string
+}
+
+func unpackGetOrgRegistryParams(packed middleware.Parameters) (params GetOrgRegistryParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "registry",
+			In:   "path",
+		}
+		params.Registry = packed[key].(string)
+	}
+	return params
+}
+
+func decodeGetOrgRegistryParams(args [1]string, argsEscaped bool, r *http.Request) (params GetOrgRegistryParams, _ error) {
+	// Decode path: registry.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "registry",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Registry = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "registry",
 			In:   "path",
 			Err:  err,
 		}
@@ -8554,6 +9100,289 @@ func decodeListFreezesParams(args [2]string, argsEscaped bool, r *http.Request) 
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "all",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListGitConnectionBranchesParams is parameters of listGitConnectionBranches operation.
+type ListGitConnectionBranchesParams struct {
+	// Connection id.
+	Connection string
+	// `owner/name`.
+	Repository string
+}
+
+func unpackListGitConnectionBranchesParams(packed middleware.Parameters) (params ListGitConnectionBranchesParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "repository",
+			In:   "query",
+		}
+		params.Repository = packed[key].(string)
+	}
+	return params
+}
+
+func decodeListGitConnectionBranchesParams(args [1]string, argsEscaped bool, r *http.Request) (params ListGitConnectionBranchesParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode query: repository.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "repository",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Repository = c
+				return nil
+			}); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "repository",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// ListGitConnectionRepositoriesParams is parameters of listGitConnectionRepositories operation.
+type ListGitConnectionRepositoriesParams struct {
+	// Connection id.
+	Connection string
+	// Only repositories whose name contains this.
+	Search OptString `json:",omitempty,omitzero"`
+	// From 1; 1 unless given.
+	Page OptInt64 `json:",omitempty,omitzero"`
+}
+
+func unpackListGitConnectionRepositoriesParams(packed middleware.Parameters) (params ListGitConnectionRepositoriesParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "search",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Search = v.(OptString)
+		}
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "page",
+			In:   "query",
+		}
+		if v, ok := packed[key]; ok {
+			params.Page = v.(OptInt64)
+		}
+	}
+	return params
+}
+
+func decodeListGitConnectionRepositoriesParams(args [1]string, argsEscaped bool, r *http.Request) (params ListGitConnectionRepositoriesParams, _ error) {
+	q := uri.NewQueryDecoder(r.URL.Query())
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode query: search.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "search",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotSearchVal string
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToString(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotSearchVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Search.SetTo(paramsDotSearchVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "search",
+			In:   "query",
+			Err:  err,
+		}
+	}
+	// Decode query: page.
+	if err := func() error {
+		cfg := uri.QueryParameterDecodingConfig{
+			Name:    "page",
+			Style:   uri.QueryStyleForm,
+			Explode: true,
+		}
+
+		if err := q.HasParam(cfg); err == nil {
+			if err := q.DecodeParam(cfg, func(d uri.Decoder) error {
+				var paramsDotPageVal int64
+				if err := func() error {
+					val, err := d.DecodeValue()
+					if err != nil {
+						return err
+					}
+
+					c, err := conv.ToInt64(val)
+					if err != nil {
+						return err
+					}
+
+					paramsDotPageVal = c
+					return nil
+				}(); err != nil {
+					return err
+				}
+				params.Page.SetTo(paramsDotPageVal)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "page",
 			In:   "query",
 			Err:  err,
 		}
@@ -13577,6 +14406,72 @@ func decodeRollbackAppParams(args [3]string, argsEscaped bool, r *http.Request) 
 	return params, nil
 }
 
+// RotateGitConnectionWebhookSecretParams is parameters of rotateGitConnectionWebhookSecret operation.
+type RotateGitConnectionWebhookSecretParams struct {
+	// Connection id.
+	Connection string
+}
+
+func unpackRotateGitConnectionWebhookSecretParams(packed middleware.Parameters) (params RotateGitConnectionWebhookSecretParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	return params
+}
+
+func decodeRotateGitConnectionWebhookSecretParams(args [1]string, argsEscaped bool, r *http.Request) (params RotateGitConnectionWebhookSecretParams, _ error) {
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // RunAppParams is parameters of runApp operation.
 type RunAppParams struct {
 	// Project name.
@@ -14389,6 +15284,312 @@ func decodeSyncAppSourceParams(args [3]string, argsEscaped bool, r *http.Request
 	return params, nil
 }
 
+// TestGitConnectionParams is parameters of testGitConnection operation.
+type TestGitConnectionParams struct {
+	// Connection id.
+	Connection string
+}
+
+func unpackTestGitConnectionParams(packed middleware.Parameters) (params TestGitConnectionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	return params
+}
+
+func decodeTestGitConnectionParams(args [1]string, argsEscaped bool, r *http.Request) (params TestGitConnectionParams, _ error) {
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// TestOrgRegistryParams is parameters of testOrgRegistry operation.
+type TestOrgRegistryParams struct {
+	// Registry id or name.
+	Registry string
+}
+
+func unpackTestOrgRegistryParams(packed middleware.Parameters) (params TestOrgRegistryParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "registry",
+			In:   "path",
+		}
+		params.Registry = packed[key].(string)
+	}
+	return params
+}
+
+func decodeTestOrgRegistryParams(args [1]string, argsEscaped bool, r *http.Request) (params TestOrgRegistryParams, _ error) {
+	// Decode path: registry.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "registry",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Registry = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "registry",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// TriggerBuildParams is parameters of triggerBuild operation.
+type TriggerBuildParams struct {
+	// Project name.
+	Project string
+	// Environment short name.
+	Environment string
+	// App name.
+	App string
+}
+
+func unpackTriggerBuildParams(packed middleware.Parameters) (params TriggerBuildParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "project",
+			In:   "path",
+		}
+		params.Project = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "environment",
+			In:   "path",
+		}
+		params.Environment = packed[key].(string)
+	}
+	{
+		key := middleware.ParameterKey{
+			Name: "app",
+			In:   "path",
+		}
+		params.App = packed[key].(string)
+	}
+	return params
+}
+
+func decodeTriggerBuildParams(args [3]string, argsEscaped bool, r *http.Request) (params TriggerBuildParams, _ error) {
+	// Decode path: project.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "project",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Project = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "project",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: environment.
+	if err := func() error {
+		param := args[1]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[1])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "environment",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Environment = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "environment",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	// Decode path: app.
+	if err := func() error {
+		param := args[2]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[2])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "app",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.App = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "app",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // UpdateAppParams is parameters of updateApp operation.
 type UpdateAppParams struct {
 	// Project name.
@@ -14563,6 +15764,72 @@ func decodeUpdateAppParams(args [3]string, argsEscaped bool, r *http.Request) (p
 	return params, nil
 }
 
+// UpdateGitConnectionParams is parameters of updateGitConnection operation.
+type UpdateGitConnectionParams struct {
+	// Connection id.
+	Connection string
+}
+
+func unpackUpdateGitConnectionParams(packed middleware.Parameters) (params UpdateGitConnectionParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "connection",
+			In:   "path",
+		}
+		params.Connection = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateGitConnectionParams(args [1]string, argsEscaped bool, r *http.Request) (params UpdateGitConnectionParams, _ error) {
+	// Decode path: connection.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "connection",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Connection = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "connection",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
 // UpdateMemberParams is parameters of updateMember operation.
 type UpdateMemberParams struct {
 	// User id.
@@ -14622,6 +15889,72 @@ func decodeUpdateMemberParams(args [1]string, argsEscaped bool, r *http.Request)
 	}(); err != nil {
 		return params, &ogenerrors.DecodeParamError{
 			Name: "member",
+			In:   "path",
+			Err:  err,
+		}
+	}
+	return params, nil
+}
+
+// UpdateOrgRegistryParams is parameters of updateOrgRegistry operation.
+type UpdateOrgRegistryParams struct {
+	// Registry id or name.
+	Registry string
+}
+
+func unpackUpdateOrgRegistryParams(packed middleware.Parameters) (params UpdateOrgRegistryParams) {
+	{
+		key := middleware.ParameterKey{
+			Name: "registry",
+			In:   "path",
+		}
+		params.Registry = packed[key].(string)
+	}
+	return params
+}
+
+func decodeUpdateOrgRegistryParams(args [1]string, argsEscaped bool, r *http.Request) (params UpdateOrgRegistryParams, _ error) {
+	// Decode path: registry.
+	if err := func() error {
+		param := args[0]
+		if argsEscaped {
+			unescaped, err := url.PathUnescape(args[0])
+			if err != nil {
+				return errors.Wrap(err, "unescape path")
+			}
+			param = unescaped
+		}
+		if len(param) > 0 {
+			d := uri.NewPathDecoder(uri.PathDecoderConfig{
+				Param:   "registry",
+				Value:   param,
+				Style:   uri.PathStyleSimple,
+				Explode: false,
+			})
+
+			if err := func() error {
+				val, err := d.DecodeValue()
+				if err != nil {
+					return err
+				}
+
+				c, err := conv.ToString(val)
+				if err != nil {
+					return err
+				}
+
+				params.Registry = c
+				return nil
+			}(); err != nil {
+				return err
+			}
+		} else {
+			return validate.ErrFieldRequired
+		}
+		return nil
+	}(); err != nil {
+		return params, &ogenerrors.DecodeParamError{
+			Name: "registry",
 			In:   "path",
 			Err:  err,
 		}

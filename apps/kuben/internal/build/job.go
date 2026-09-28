@@ -82,6 +82,9 @@ type Settings struct {
 	// ScannerImage is the Trivy image; none builds without a scan.
 	ScannerImage  opt.Val[string]
 	ScannerMemory string
+	// LogTailBytes is how much of a build's log is kept when it settles;
+	// [DefaultLogTailBytes] when 0.
+	LogTailBytes int
 }
 
 // SettingsFromConfig are the settings of cfg, in namespace.
@@ -106,6 +109,7 @@ func SettingsFromConfig(cfg config.BuildCfg, namespace string) Settings {
 		InsecureRegistry: cfg.InsecureRegistry,
 		ScannerImage:     nonEmpty(opt.Some(cfg.ScannerImage)),
 		ScannerMemory:    cfg.ScannerMemory,
+		LogTailBytes:     cfg.LogTailBytes(),
 	}
 	// Railpack needs both images; with either missing the plan step
 	// explains that only Dockerfile builds run.

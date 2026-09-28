@@ -4,6 +4,7 @@
  * stored token.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { PlusIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { type Column, DataTable } from '@/components/data-table'
@@ -363,7 +364,20 @@ export function SettingsPage() {
   const { t } = usePrefs()
   return (
     <div className="space-y-6">
-      <PageHeader title={t('nav.settings')} description={t('settings.lead')} />
+      <PageHeader
+        title={t('nav.settings')}
+        description={t('settings.lead')}
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link to="/settings/integrations">{t('nav.integrations')}</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/settings/registries">{t('nav.registries')}</Link>
+            </Button>
+          </>
+        }
+      />
       <SsoCard />
       <CiPoliciesCard />
     </div>

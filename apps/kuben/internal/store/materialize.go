@@ -136,6 +136,11 @@ type Materialization struct {
 	// Secrets is the secret revisions the run renders, by referenced name
 	// (M4.4).
 	Secrets []SecretBinding
+	// OrgRegistry is the organization's login the run pulls its image
+	// with (2.1): the login for the image's registry, when the environment
+	// has none of its own for it. It is read when the run is, not bound to
+	// it: a rotation reaches every run's pull Secret.
+	OrgRegistry opt.Val[OrgRegistry]
 	// Emergency: the run is an emergency rollback, which a pause does not
 	// hold.
 	Emergency bool
@@ -351,6 +356,9 @@ func (t *Tenant) Materialization(ctx context.Context, operation ids.OperationID)
 		return Materialization{}, false, err
 	}
 	if m.Secrets, err = t.RunSecretBindings(ctx, m.Run); err != nil {
+		return Materialization{}, false, err
+	}
+	if m.OrgRegistry, err = t.pullRegistry(ctx, m.ImageRepository, m.Secrets); err != nil {
 		return Materialization{}, false, err
 	}
 	return m, true, nil

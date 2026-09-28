@@ -46,12 +46,17 @@ type (
 	ConfigRevision struct{}
 	// RenderPlan is a frozen, content-addressed render plan (ADR-026, I22).
 	RenderPlan struct{}
+	// GitConnection is an organization's token connection to a Git provider (2.1).
+	GitConnection struct{}
+	// OrgRegistry is an organization's login for one container registry (2.1).
+	OrgRegistry struct{}
 )
 
 // Kind is closed: only the kinds above name ids.
 type Kind interface {
 	User | Org | Audit | Token | Target | Release | DeploymentRun | BuildAttempt | SourceBinding |
-		Project | Environment | Cluster | Placement | Application | Operation | ConfigRevision | RenderPlan
+		Project | Environment | Cluster | Placement | Application | Operation | ConfigRevision | RenderPlan |
+		GitConnection | OrgRegistry
 }
 
 // The id types, by kind.
@@ -90,6 +95,10 @@ type (
 	ConfigRevisionID = ID[ConfigRevision]
 	// RenderPlanID is an id of kind RenderPlan.
 	RenderPlanID = ID[RenderPlan]
+	// GitConnectionID is an id of kind GitConnection.
+	GitConnectionID = ID[GitConnection]
+	// OrgRegistryID is an id of kind OrgRegistry.
+	OrgRegistryID = ID[OrgRegistry]
 )
 
 // ID names one thing of kind K. It is comparable, a valid map key, text in

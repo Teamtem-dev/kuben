@@ -29,6 +29,7 @@ import (
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/dns"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/oci"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/outbound"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/sso"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/kube/projection"
@@ -94,6 +95,17 @@ type Deps struct {
 	// `git.github_app_id` is configured; without it the Git routes answer
 	// 503 and the webhook 404.
 	GitHub opt.Val[*github.App]
+
+	// GitTransport reaches the Git providers of Git connections (2.1);
+	// when nil, a clone of http.DefaultTransport that connects to public
+	// addresses only unless `integrations.allow_private_hosts`
+	// (outbound.NewTransport; tests give an in-memory server's).
+	GitTransport http.RoundTripper
+	// Registries checks organization registry logins (2.1); when nil, the
+	// image resolver when it checks logins and is not the registries
+	// themselves (tests: oci.Fixed), else the registries reached as
+	// GitTransport's default reaches Git providers.
+	Registries oci.LoginChecker
 }
 
 // Server implements the generated handler interface. Operations not ported
@@ -133,6 +145,21 @@ func New(deps Deps) (*Server, error) {
 	}
 	if deps.Images == nil {
 		deps.Images = oci.Registry{}
+	}
+	if deps.GitTransport == nil || deps.Registries == nil {
+		// An organization admin chooses these addresses, not the operator.
+		guarded := outbound.NewTransport(deps.Config.Integrations.AllowPrivateHosts, outbound.Guard{})
+		if deps.GitTransport == nil {
+			deps.GitTransport = guarded
+		}
+		if deps.Registries == nil {
+			deps.Registries = oci.NewRegistry(guarded)
+			if c, ok := deps.Images.(oci.LoginChecker); ok {
+				if _, registries := deps.Images.(oci.Registry); !registries {
+					deps.Registries = c
+				}
+			}
+		}
 	}
 	if deps.Console == nil {
 		deps.Console = web.New()
@@ -235,6 +262,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(ciExchangePath, s.ciExchange()) // signed by GitHub: outside the session and CSRF layers
 	// Signed by the GitHub App: outside the session and CSRF layers too.
 	mux.Handle(githubWebhookPath, s.githubWebhook())
+	// Push webhooks of Git connections (2.1), checked with each connection's
+	// own secret: outside the session and CSRF layers too.
+	mux.Handle(gitlabWebhookPrefix+"{connection}", s.gitlabWebhook())
+	mux.Handle(giteaWebhookPrefix+"{connection}", s.giteaWebhook())
+	mux.Handle(githubWebhookPrefix+"{connection}", s.githubConnectionWebhook())
 	mux.HandleFunc("GET /livez", s.livez)
 	mux.HandleFunc("GET /readyz", s.readyz)
 	mux.Handle("/", s.deps.Console)

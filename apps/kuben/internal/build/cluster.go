@@ -167,7 +167,7 @@ func (w *Worker) createObjects(ctx context.Context, attempt store.BuildAttempt) 
 	} else if !isNotFound(err) {
 		return "", kubeFailed{err}
 	}
-	token, err := w.d.Provider.FetchToken(ctx, attempt.InstallationID, attempt.Repository)
+	access, err := w.fetchAccess(ctx, attempt)
 	if err != nil {
 		var pe ProviderError
 		if !errors.As(err, &pe) {
@@ -186,11 +186,11 @@ func (w *Worker) createObjects(ctx context.Context, attempt store.BuildAttempt) 
 	} else if !isNotFound(err) {
 		return "", kubeFailed{err}
 	}
-	if _, err := secrets.Create(ctx, SourceSecret(attempt, w.d.Settings, &run, token.Token), metav1.CreateOptions{}); err != nil {
-		w.revokeToken(ctx, token)
+	if _, err := secrets.Create(ctx, SourceSecret(attempt, w.d.Settings, &run, access.Token.Token), metav1.CreateOptions{}); err != nil {
+		w.revokeAccess(ctx, attempt, access.Token)
 		return "", kubeFailed{err}
 	}
-	job, err := Job(attempt, w.d.Settings, &run, w.d.Provider.CloneURL(attempt.Repository))
+	job, err := Job(attempt, w.d.Settings, &run, access.CloneURL)
 	if err != nil {
 		return "", renderFailed{err.Error()}
 	}
@@ -201,15 +201,17 @@ func (w *Worker) createObjects(ctx context.Context, attempt store.BuildAttempt) 
 	return name, nil
 }
 
-// observeJob is what attempt's Job and its newest pod show now.
-func (w *Worker) observeJob(ctx context.Context, attempt store.BuildAttempt) (outcome.JobObservation, error) {
+// observeJob is what attempt's Job and its newest pod show now, and that
+// pod.
+func (w *Worker) observeJob(ctx context.Context, attempt store.BuildAttempt) (outcome.JobObservation, opt.Val[*corev1.Pod], error) {
+	none := opt.None[*corev1.Pod]()
 	found := opt.None[*batchv1.Job]()
 	job, err := w.d.Client.BatchV1().Jobs(w.d.Settings.Namespace).Get(ctx, Name(attempt), metav1.GetOptions{})
 	switch {
 	case err == nil:
 		found = opt.Some(job)
 	case !isNotFound(err):
-		return outcome.JobObservation{}, fmt.Errorf("reading the build Job: %w", err)
+		return outcome.JobObservation{}, none, fmt.Errorf("reading the build Job: %w", err)
 	}
 	var pods []corev1.Pod
 	if found.IsSome() {
@@ -217,11 +219,11 @@ func (w *Worker) observeJob(ctx context.Context, attempt store.BuildAttempt) (ou
 			LabelSelector: AttemptLabel + "=" + attempt.ID.String(),
 		})
 		if err != nil {
-			return outcome.JobObservation{}, fmt.Errorf("listing the build pods: %w", err)
+			return outcome.JobObservation{}, none, fmt.Errorf("listing the build pods: %w", err)
 		}
 		pods = listed.Items
 	}
-	return ObserveJob(found, pods, w.d.Clock.NowMs()), nil
+	return ObserveJob(found, pods, w.d.Clock.NowMs()), newestPod(pods), nil
 }
 
 // cleanup revokes the fetch token, deletes the Job and the Secret, and
@@ -265,8 +267,12 @@ func (w *Worker) Sweep(ctx context.Context) (int, error) {
 	return removed, nil
 }
 
-// revoke revokes the fetch token in attempt's Secret, if it is there.
+// revoke revokes the fetch token in attempt's Secret, if it is there. A
+// connection's token is the organization's own: it stays.
 func (w *Worker) revoke(ctx context.Context, attempt store.BuildAttempt) {
+	if attempt.Connection.IsSome() {
+		return
+	}
 	secret, err := w.d.Client.CoreV1().Secrets(w.d.Settings.Namespace).Get(ctx, SecretName(attempt), metav1.GetOptions{})
 	if isNotFound(err) {
 		return
@@ -277,6 +283,13 @@ func (w *Worker) revoke(ctx context.Context, attempt store.BuildAttempt) {
 	}
 	if token, ok := secret.Data[TokenKey]; ok && utf8.Valid(token) {
 		w.revokeToken(ctx, FetchToken{Token: string(token), ExpiresAt: w.d.Clock.NowMs()})
+	}
+}
+
+// revokeAccess revokes token unless attempt fetched through a connection.
+func (w *Worker) revokeAccess(ctx context.Context, attempt store.BuildAttempt, token FetchToken) {
+	if attempt.Connection.IsNone() {
+		w.revokeToken(ctx, token)
 	}
 }
 

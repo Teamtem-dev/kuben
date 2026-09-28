@@ -176,6 +176,15 @@ ci:
 # Git sources through a GitHub App (M3, `[git]`). All three of appId, the
 # private key and the webhook secret are needed; GitHub delivers webhooks to
 # `<publicUrl>/api/v1/webhooks/github`.
+#
+# Token connections to GitHub, GitLab and Gitea/Forgejo (2.1) are not chart
+# values: an organization admin adds them at runtime (Settings → Integrations,
+# or `POST /api/v1/git/connections`), and their tokens are sealed with the
+# keyring. Their push webhooks go to
+#   <publicUrl>/api/v1/webhooks/gitlab/<connection id>   (X-Gitlab-Token)
+#   <publicUrl>/api/v1/webhooks/gitea/<connection id>    (X-Gitea-Signature)
+# so publicUrl must be reachable from the Git host. Organization registry
+# logins (Settings → Registries) are runtime data too.
 git:
   github:
     # The GitHub App's numeric id; empty turns Git sources off.
@@ -190,7 +199,9 @@ git:
     cloneUrl: https://github.com
 
 # Isolated builds of Git sources (ADR-028, `[build]`): one rootless BuildKit
-# Job per attempt, then an SBOM and a vulnerability scan. Needs `git.github`.
+# Job per attempt, then an SBOM and a vulnerability scan. Sources come from
+# the GitHub App (`git.github`) or from Git connections an organization adds
+# at runtime (GitHub, GitLab, Gitea/Forgejo tokens); either is enough.
 # Empty values keep the server's defaults (see the configuration reference);
 # pin every image by digest in production.
 build:
@@ -219,6 +230,18 @@ build:
   memory: ""
   ephemeralStorage: ""
   deadlineSeconds: 0
+  # How much of the end of each build's log is kept when the build ends, so
+  # the log outlives the build pod: 1 to 1024 KiB; 0 keeps the server's 256.
+  logTailKiB: 0
+
+# Git connections and organization registries (2.1, `[integrations]`).
+# Organization admins choose the address of a self-hosted GitLab or Gitea and
+# the server of a registry, and Kuben calls them; by default it refuses any
+# that resolves to a private, loopback or link-local address. Set this when
+# your Git server or registry runs inside your network: every organization
+# admin can then reach private addresses through Kuben.
+integrations:
+  allowPrivateHosts: false
 
 # Expose the Kuben UI itself through a Gateway API HTTPRoute.
 route:

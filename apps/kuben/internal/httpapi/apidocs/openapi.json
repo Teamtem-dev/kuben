@@ -675,6 +675,664 @@
         }
       }
     },
+    "/api/v1/git/connections": {
+      "get": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Git connections of the caller's organization.",
+        "operationId": "listGitConnections",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GitConnectionDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Connect a Git provider account by token. The token is checked first\nand sealed; it is never returned.",
+        "operationId": "createGitConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGitConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitConnectionDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git/connections/test": {
+      "post": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Check a token without saving it: the account it belongs to and its\nscopes.",
+        "operationId": "testNewGitConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGitConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitConnectionCheckDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git/connections/{connection}": {
+      "get": {
+        "tags": [
+          "git"
+        ],
+        "summary": "A Git connection.",
+        "operationId": "getGitConnection",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitConnectionDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Change a Git connection; a new token is checked first.",
+        "operationId": "updateGitConnection",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGitConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitConnectionDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Delete a Git connection no app source reads through.",
+        "operationId": "deleteGitConnection",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "App sources read through it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git/connections/{connection}/branches": {
+      "get": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Branches of one repository the connection can read.",
+        "operationId": "listGitConnectionBranches",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repository",
+            "in": "query",
+            "description": "`owner/name`.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GitBranchDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The provider refused or failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git/connections/{connection}/repositories": {
+      "get": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Repositories the connection's token can read.",
+        "operationId": "listGitConnectionRepositories",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Only repositories whose name contains this.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "From 1; 1 unless given.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitRepositoryListDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The provider refused or failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git/connections/{connection}/test": {
+      "post": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Check a saved connection's token again and record the outcome.",
+        "operationId": "testGitConnection",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitConnectionCheckDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git/connections/{connection}/webhook-secret": {
+      "post": {
+        "tags": [
+          "git"
+        ],
+        "summary": "Replace a connection's webhook secret with a new one, returned once.",
+        "operationId": "rotateGitConnectionWebhookSecret",
+        "parameters": [
+          {
+            "name": "connection",
+            "in": "path",
+            "description": "Connection id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitWebhookSecretDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/git/installations": {
       "get": {
         "tags": [
@@ -2164,6 +2822,84 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Build the source's branch head now: the same as a source sync.",
+        "operationId": "triggerBuild",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "The sync was queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggeredBuildDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The app has no Git source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}": {
@@ -2323,6 +3059,114 @@
           },
           "409": {
             "description": "The build already finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/logs": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The build's log: from the build pod while it runs, from the kept tail\nafter. With `follow=true`, a live stream of new lines.",
+        "operationId": "getBuildLogs",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Project name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "path",
+            "description": "Environment short name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "app",
+            "in": "path",
+            "description": "App name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "build",
+            "in": "path",
+            "description": "Build id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "follow",
+            "in": "query",
+            "description": "Keep the connection open and send new lines as `text/event-stream`:\n`line` events (a [`LogLine`]) and an `end` event (a [`LogEnd`]) when the\nbuild's log stops.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The log as text; with `follow`, `text/event-stream` of `line` (LogLine) and `end` (LogEnd) events",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many followed logs open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -7022,6 +7866,441 @@
         }
       }
     },
+    "/api/v1/registries": {
+      "get": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "Registry logins of the caller's organization.",
+        "operationId": "listOrgRegistries",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrgRegistryDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "Add a registry login for every environment of the organization. An\nenvironment's own login for the same registry wins.",
+        "operationId": "createOrgRegistry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrgRegistry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgRegistryDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name or registry is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registries/presets": {
+      "get": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "The registries Kuben knows how to log in to.",
+        "operationId": "listRegistryPresets",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegistryPresetDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registries/test": {
+      "post": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "Log in to a registry without saving the login.",
+        "operationId": "testNewOrgRegistry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrgRegistry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryCheckDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registries/{registry}": {
+      "get": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "A registry login of the organization.",
+        "operationId": "getOrgRegistry",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "description": "Registry id or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgRegistryDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "Change a registry login; a new password rotates it.",
+        "operationId": "updateOrgRegistry",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "description": "Registry id or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgRegistry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgRegistryDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name or registry is taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "Delete a registry login. Pods already running keep their pull secret\nuntil their next deployment.",
+        "operationId": "deleteOrgRegistry",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "description": "Registry id or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registries/{registry}/test": {
+      "post": {
+        "tags": [
+          "registries"
+        ],
+        "summary": "Log in with a saved registry login again and record the outcome.",
+        "operationId": "testOrgRegistry",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "description": "Registry id or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryCheckDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/setup": {
       "get": {
         "tags": [
@@ -8119,6 +9398,63 @@
               "null"
             ],
             "format": "int64"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuildStageDto"
+            },
+            "description": "The stages in order, once the build reported them."
+          }
+        }
+      },
+      "BuildStageDto": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "clone",
+              "plan",
+              "build",
+              "scan",
+              "push",
+              "deploy"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "skipped"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "finishedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -8619,6 +9955,70 @@
               "null"
             ],
             "description": "Limit it to one project; every project when omitted."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateGitConnection": {
+        "type": "object",
+        "required": [
+          "provider",
+          "name",
+          "token"
+        ],
+        "properties": {
+          "provider": {
+            "$ref": "#/components/schemas/GitProviderDto"
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization: lowercase letters, digits and `-`.",
+            "example": "gitlab-acme"
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "The provider's URL; the provider's public service when empty\n(`https://api.github.com`, `https://gitlab.com`). Required for Gitea.",
+            "example": "https://gitlab.com"
+          },
+          "token": {
+            "type": "string",
+            "description": "A personal, project or group access token; write-only."
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateOrgRegistry": {
+        "type": "object",
+        "required": [
+          "name",
+          "preset",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique in the organization: lowercase letters, digits and `-`."
+          },
+          "preset": {
+            "$ref": "#/components/schemas/RegistryPresetIdDto"
+          },
+          "server": {
+            "type": "string",
+            "description": "Required unless the preset names its server."
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "A password or access token; write-only."
           }
         },
         "additionalProperties": false
@@ -9514,6 +10914,270 @@
         },
         "additionalProperties": false
       },
+      "GitBranchDto": {
+        "type": "object",
+        "required": [
+          "name",
+          "protected",
+          "default"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The head commit."
+          },
+          "protected": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GitConnectionCheckDto": {
+        "type": "object",
+        "description": "What the provider said about a token.",
+        "required": [
+          "ok",
+          "scopes",
+          "missingScopes",
+          "checkedAt"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the token belongs to."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The token's scopes, when the provider tells them."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scopes Kuben needs that the token lacks."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "GitConnectionDto": {
+        "type": "object",
+        "description": "An organization's token connection to a Git provider. The token is\nnever returned.",
+        "required": [
+          "id",
+          "name",
+          "provider",
+          "baseUrl",
+          "authKind",
+          "hasToken",
+          "tokenHint",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "gitlab-acme"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/GitProviderDto"
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "The provider's API root: `https://api.github.com`, `https://gitlab.com`,\na self-hosted URL.",
+            "example": "https://gitlab.com"
+          },
+          "authKind": {
+            "type": "string",
+            "description": "`token`."
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The account the token belongs to, as the provider named it at the\nlast check."
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch new sources suggest when the repository names none."
+          },
+          "hasToken": {
+            "type": "boolean"
+          },
+          "tokenHint": {
+            "type": "string",
+            "description": "The last four characters of the token."
+          },
+          "webhookUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the provider sends push events for this connection\n(`/api/v1/webhooks/github/{id}`, `/api/v1/webhooks/gitlab/{id}` or\n`/api/v1/webhooks/gitea/{id}`); absolute when `server.public_url` is set."
+          },
+          "webhookSecret": {
+            "type": "string",
+            "description": "The secret the provider's push webhooks carry (GitHub: the webhook's\nSecret, which signs the body with X-Hub-Signature-256; GitLab: the\nwebhook's Secret token; Gitea/Forgejo: its Secret, which signs the body). Present\nonly in the answer of createGitConnection, never again: rotate it with\n`POST /api/v1/git/connections/{connection}/webhook-secret`."
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastCheckedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the last check failed."
+          }
+        }
+      },
+      "GitProviderDto": {
+        "type": "string",
+        "description": "`github` (a personal or fine-grained token; the GitHub App has its\ninstallations), `gitlab`, or `gitea` (Gitea and Forgejo).",
+        "enum": [
+          "github",
+          "gitlab",
+          "gitea"
+        ]
+      },
+      "GitRepositoryDto": {
+        "type": "object",
+        "required": [
+          "fullName",
+          "private"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider's id."
+          },
+          "fullName": {
+            "type": "string",
+            "description": "`owner/name` (GitLab: `group/subgroup/name`).",
+            "example": "acme/shop"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "private": {
+            "type": "boolean"
+          },
+          "webUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "GitRepositoryListDto": {
+        "type": "object",
+        "required": [
+          "repositories",
+          "page",
+          "hasMore"
+        ],
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitRepositoryDto"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int64",
+            "description": "This page, from 1."
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GitWebhookSecretDto": {
+        "type": "object",
+        "description": "A Git connection's new webhook secret, shown once.",
+        "required": [
+          "webhookSecret"
+        ],
+        "properties": {
+          "webhookSecret": {
+            "type": "string",
+            "description": "Paste it into the provider's webhook settings; the previous secret stops\nworking now."
+          },
+          "webhookUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the provider sends push events for this connection."
+          }
+        }
+      },
       "HealthDetails": {
         "type": "object",
         "required": [
@@ -10031,6 +11695,62 @@
             "items": {
               "$ref": "#/components/schemas/MetricPoint"
             }
+          }
+        }
+      },
+      "OrgRegistryDto": {
+        "type": "object",
+        "description": "An organization's login for one registry, used by every environment\nwithout a login of its own for that registry. The password is never\nreturned.",
+        "required": [
+          "id",
+          "name",
+          "preset",
+          "server",
+          "username",
+          "hasPassword",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "preset": {
+            "$ref": "#/components/schemas/RegistryPresetIdDto"
+          },
+          "server": {
+            "type": "string",
+            "description": "The registry as image references name it (`ghcr.io`, `docker.io`,\n`registry.example.com:5000`)."
+          },
+          "username": {
+            "type": "string"
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastCheckedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -10785,7 +12505,6 @@
       "PutSource": {
         "type": "object",
         "required": [
-          "installationId",
           "repository",
           "branch",
           "imageRepository"
@@ -10794,8 +12513,12 @@
           "installationId": {
             "type": "integer",
             "format": "int64",
-            "description": "A GitHub App installation linked to this organization.",
+            "description": "A GitHub App installation linked to this organization. Required\nunless `connection` is given.",
             "minimum": 0
+          },
+          "connection": {
+            "type": "string",
+            "description": "A Git connection of this organization (its id), instead of an\ninstallation: GitLab, Gitea or a GitHub token."
           },
           "repository": {
             "type": "string",
@@ -10896,6 +12619,28 @@
         },
         "additionalProperties": false
       },
+      "RegistryCheckDto": {
+        "type": "object",
+        "required": [
+          "ok",
+          "checkedAt"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "RegistryLoginDto": {
         "type": "object",
         "required": [
@@ -10926,6 +12671,53 @@
             "type": "string"
           }
         }
+      },
+      "RegistryPresetDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "usernameHint",
+          "passwordHint"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/RegistryPresetIdDto"
+          },
+          "label": {
+            "type": "string"
+          },
+          "server": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The registry host; none when the user names it (Harbor, custom)."
+          },
+          "usernameHint": {
+            "type": "string"
+          },
+          "passwordHint": {
+            "type": "string"
+          },
+          "docsUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RegistryPresetIdDto": {
+        "type": "string",
+        "enum": [
+          "dockerhub",
+          "ghcr",
+          "gitlab",
+          "quay",
+          "harbor",
+          "custom"
+        ]
       },
       "ReleaseDto": {
         "type": "object",
@@ -11310,13 +13102,15 @@
           "branch",
           "strategy",
           "context",
-          "imageRepository"
+          "imageRepository",
+          "provider"
         ],
         "properties": {
           "installationId": {
             "type": "integer",
             "format": "int64",
-            "minimum": 0
+            "minimum": 0,
+            "description": "The GitHub App installation; 0 when the source reads through a\nconnection."
           },
           "repository": {
             "type": "string"
@@ -11352,6 +13146,16 @@
               "null"
             ],
             "description": "The sync this change or request queued, if any."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/GitProviderDto"
+          },
+          "connection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Git connection the source reads through; none for a GitHub App\ninstallation."
           }
         }
       },
@@ -11594,6 +13398,30 @@
           }
         }
       },
+      "TriggeredBuildDto": {
+        "type": "object",
+        "description": "A build of the source head was asked for: the head is read, then built\nunless it is already.",
+        "required": [
+          "syncOperation"
+        ],
+        "properties": {
+          "syncOperation": {
+            "type": "string",
+            "description": "The sync that reads the head and queues the build."
+          },
+          "build": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BuildDto",
+                "description": "The newest build, when one exists."
+              }
+            ]
+          }
+        }
+      },
       "UpdateApp": {
         "type": "object",
         "description": "Partial update; omitted fields are left unchanged, lists are replaced.",
@@ -11711,6 +13539,30 @@
           }
         }
       },
+      "UpdateGitConnection": {
+        "type": "object",
+        "description": "Only the members given change.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "description": "A new token; write-only. The connection is checked again."
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null clears it."
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateMember": {
         "type": "object",
         "required": [
@@ -11721,6 +13573,26 @@
             "type": "string"
           }
         }
+      },
+      "UpdateOrgRegistry": {
+        "type": "object",
+        "description": "Only the members given change; a new password rotates the login.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "description": "Write-only."
+          }
+        },
+        "additionalProperties": false
       },
       "UserDto": {
         "type": "object",
@@ -11881,7 +13753,7 @@
     },
     {
       "name": "git",
-      "description": "GitHub App installations for Git sources"
+      "description": "Git providers: GitHub App installations and token connections"
     },
     {
       "name": "ci",
@@ -11906,6 +13778,10 @@
     {
       "name": "system",
       "description": "Health and diagnostics"
+    },
+    {
+      "name": "registries",
+      "description": "Organization registry logins"
     }
   ]
 }

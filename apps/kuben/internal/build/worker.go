@@ -108,13 +108,18 @@ type Deps struct {
 	// Dynamic reads and writes the BuildRuns.
 	Dynamic dynamic.Interface
 	// ID is unique per process.
-	ID       string
+	ID string
+	// Provider is the GitHub App; sources of an installation are refused
+	// without it.
 	Provider SourceProvider
-	Verifier OutputVerifier
-	Settings Settings
-	Limits   store.SlotLimits
-	Clock    clock.Clock
-	Logger   *slog.Logger
+	// Connections reads sources through Git connections (2.1); they are
+	// unavailable without it.
+	Connections Connections
+	Verifier    OutputVerifier
+	Settings    Settings
+	Limits      store.SlotLimits
+	Clock       clock.Clock
+	Logger      *slog.Logger
 }
 
 // Worker is the build worker of one process.
@@ -129,6 +134,12 @@ func NewWorker(d Deps) *Worker {
 	}
 	if d.Clock == nil {
 		d.Clock = clock.System{}
+	}
+	if d.Provider == nil {
+		d.Provider = noApp{}
+	}
+	if d.Connections == nil {
+		d.Connections = noConnections{}
 	}
 	return &Worker{d: d}
 }
@@ -223,15 +234,12 @@ func (w *Worker) sync(ctx context.Context, claim store.Claim) result {
 	if !ok {
 		return failedWith("BindingMissing")
 	}
-	if link, found, err := w.d.Store.GitInstallationOrg(ctx, binding.InstallationID); err == nil && found && link.Suspended {
-		return failedWith(string(outcome.CredentialsRefused))
+	if binding.Connection.IsNone() {
+		if link, found, err := w.d.Store.GitInstallationOrg(ctx, binding.InstallationID); err == nil && found && link.Suspended {
+			return failedWith(string(outcome.CredentialsRefused))
+		}
 	}
-	var head Head
-	if number, ok := binding.PullRequest.Get(); ok {
-		head, err = w.d.Provider.PullHead(ctx, binding.InstallationID, binding.Repository, number)
-	} else {
-		head, err = w.d.Provider.Head(ctx, binding.InstallationID, binding.Repository, binding.Branch)
-	}
+	head, err := w.readHead(ctx, binding)
 	if err != nil {
 		return w.syncFailed(claim, binding, err)
 	}

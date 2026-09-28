@@ -147,7 +147,7 @@ See [Deploy from CI](/docs/guides/deploy-from-ci/).
 | `git.github.privateKeyKey` | `private-key.pem` | key of the PEM private key in that Secret |
 | `git.github.webhookSecretKey` | `webhook-secret` | key of the webhook secret in that Secret |
 | `git.github.apiUrl` / `git.github.cloneUrl` | `https://api.github.com` / `https://github.com` | for GitHub Enterprise Server |
-| `build.enabled` | `false` | run the build worker (needs `git.github`) |
+| `build.enabled` | `false` | run the build worker; sources come from `git.github`, from the organizations' [Git connections](/docs/guides/git-providers/), or both |
 | `build.namespace` | `""` | namespace of build Jobs; empty: the release namespace |
 | `build.buildkitImage`, `build.fetchImage`, `build.scannerImage` | `""` | empty: the server's defaults; pin by digest in production |
 | `build.railpackFrontend`, `build.railpackImage` | `""` | both set: Railpack builds for sources without a Dockerfile |
@@ -156,8 +156,22 @@ See [Deploy from CI](/docs/guides/deploy-from-ci/).
 | `build.insecureRegistry` | `false` | push over plain HTTP |
 | `build.nodePool` | `""` | node selector `key=value` of a build pool |
 | `build.cpuRequest`, `build.cpuLimit`, `build.memory`, `build.ephemeralStorage`, `build.deadlineSeconds` | empty / `0` | per build; empty keeps 500m, 2, 2Gi, 10Gi and 30 minutes |
+| `build.logTailKiB` | `0` | how much of the end of each build's log is kept after the build, 1 to 1024 KiB; `0` keeps the server's 256 |
+| `integrations.allowPrivateHosts` | `false` | let Git connections and organization registries reach private, loopback and link-local addresses (a GitLab, Gitea or registry inside your network); every organization admin can then reach them through Kuben |
 
-GitHub delivers the App's webhooks to `<publicUrl>/api/v1/webhooks/github`. Every value is an environment variable of the Kuben pod (`KUBEN_SSO__*`, `KUBEN_CI__*`, `KUBEN_GIT__*`, `KUBEN_BUILD__*`, see [Configuration](/docs/reference/configuration/)); secrets come from the Secrets you name and are never written into the pod spec. A value that needs another (for example `sso.enabled` without `sso.issuer`) stops `helm install` with a message.
+GitHub delivers the App's webhooks to `<publicUrl>/api/v1/webhooks/github`.
+
+Token connections to GitHub, GitLab and Gitea/Forgejo, and organization registry logins, are **not** chart values: organization admins add them at runtime under **Settings → Integrations** and **Settings → Registries**, and their secrets are sealed with the keyring (see [Git providers](/docs/guides/git-providers/) and [Container registries](/docs/guides/registries/)). Their push webhooks go to:
+
+| Provider | Webhook URL | Verified with |
+|---|---|---|
+| GitHub App | `<publicUrl>/api/v1/webhooks/github` | the App's webhook secret |
+| GitLab | `<publicUrl>/api/v1/webhooks/gitlab/<connection id>` | `X-Gitlab-Token` |
+| Gitea / Forgejo | `<publicUrl>/api/v1/webhooks/gitea/<connection id>` | `X-Gitea-Signature` (HMAC-SHA256) |
+
+Set `publicUrl` and make it reachable from the Git host.
+
+Every value is an environment variable of the Kuben pod (`KUBEN_SSO__*`, `KUBEN_CI__*`, `KUBEN_GIT__*`, `KUBEN_BUILD__*`, `KUBEN_INTEGRATIONS__*`, see [Configuration](/docs/reference/configuration/)); secrets come from the Secrets you name and are never written into the pod spec. A value that needs another (for example `sso.enabled` without `sso.issuer`) stops `helm install` with a message.
 
 ## Cluster agent
 

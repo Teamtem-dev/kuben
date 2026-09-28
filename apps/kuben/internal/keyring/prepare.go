@@ -84,6 +84,25 @@ func resealBatchOf(
 	if err != nil {
 		return 0, 0, fmt.Errorf("reseal: %w", err)
 	}
+	integrations, err := tenant.StaleIntegrationSeals(ctx, keyring.Current(), resealBatch)
+	if err != nil {
+		return 0, 0, fmt.Errorf("reseal: %w", err)
+	}
+	for _, s := range integrations {
+		next, err := keyring.Rewrap(IntegrationIdentity(org, s), s.Sealed)
+		if err != nil {
+			logger.Warn("an integration secret cannot be resealed",
+				"org", org.String(), "kind", string(s.Kind), "id", s.ID.String(), "error", err.Error())
+			continue
+		}
+		ok, err := tenant.ResealIntegration(ctx, s, next)
+		if err != nil {
+			return moved, len(integrations), fmt.Errorf("reseal: %w", err)
+		}
+		if ok {
+			moved++
+		}
+	}
 	for _, s := range stale {
 		who := Identity{Org: org.String(), Secret: s.Secret.String(), Revision: s.Revision}
 		next, err := keyring.Rewrap(who, s.Sealed)
@@ -94,16 +113,16 @@ func resealBatchOf(
 		}
 		ok, err := tenant.Reseal(ctx, s, next)
 		if err != nil {
-			return moved, len(stale), fmt.Errorf("reseal: %w", err)
+			return moved, max(len(stale), len(integrations)), fmt.Errorf("reseal: %w", err)
 		}
 		if ok {
 			moved++
 		}
 	}
 	if err := tenant.Commit(ctx); err != nil {
-		return 0, len(stale), fmt.Errorf("reseal: %w", err)
+		return 0, max(len(stale), len(integrations)), fmt.Errorf("reseal: %w", err)
 	}
-	return moved, len(stale), nil
+	return moved, max(len(stale), len(integrations)), nil
 }
 
 // rustList is a list of versions as Rust's `{:?}` printed it: `[1, 2]`.

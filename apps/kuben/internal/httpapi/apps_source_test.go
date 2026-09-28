@@ -19,7 +19,7 @@ import (
 // sourceBody is routes/apps/source.rs tests body().
 func sourceBody(image string) gen.PutSource {
 	return gen.PutSource{
-		InstallationId:  7,
+		InstallationId:  gen.NewOptInt64(7),
 		Repository:      "Acme/Shop",
 		Branch:          "main",
 		Strategy:        gen.NewOptStrategyDto(gen.StrategyDtoDockerfile),
@@ -60,7 +60,7 @@ func TestBindingsAreValidatedAndNormalized(t *testing.T) {
 	}
 	// Nothing given for the strategy, context and Dockerfile: auto, the
 	// root and the default.
-	bare := gen.PutSource{InstallationId: 1, Repository: "a/b", Branch: "main", ImageRepository: "ghcr.io/a/b"}
+	bare := gen.PutSource{InstallationId: gen.NewOptInt64(1), Repository: "a/b", Branch: "main", ImageRepository: "ghcr.io/a/b"}
 	b, err = httpapi.NewBinding(&bare)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,10 @@ func TestSourcesShowTheirBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := store.SourceBinding{InstallationID: 9, Repository: repo, Branch: branch, ImageRepository: "ghcr.io/acme/shop"}
+	b := store.SourceBinding{
+		Provider: store.GitProviderGitHub, InstallationID: 9, Repository: repo, Branch: branch,
+		ImageRepository: "ghcr.io/acme/shop",
+	}
 	dto := httpapi.SourceDtoOf(b, opt.None[ids.OperationID]())
 	raw, err := json.Marshal(&dto)
 	if err != nil {
@@ -142,6 +145,7 @@ func TestSourcesShowTheirBinding(t *testing.T) {
 	want := map[string]any{
 		"installationId": float64(9), "repository": "acme/shop", "branch": "main", "strategy": "auto",
 		"context": "", "dockerfile": nil, "imageRepository": "ghcr.io/acme/shop", "head": nil, "syncOperation": nil,
+		"provider": "github", "connection": nil,
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("source (-want +got):\n%s", diff)
@@ -149,5 +153,42 @@ func TestSourcesShowTheirBinding(t *testing.T) {
 	sync := ids.New[ids.Operation]()
 	if dto := httpapi.SourceDtoOf(b, opt.Some(sync)); dto.SyncOperation.Or("") != sync.String() {
 		t.Errorf("sync operation %v", dto.SyncOperation)
+	}
+}
+
+// A source reads through a Git connection or an installation; one of them
+// is required.
+func TestBindingsReadThroughAConnectionOrAnInstallation(t *testing.T) {
+	connection := ids.New[ids.GitConnection]()
+	body := sourceBody("ghcr.io/acme/shop")
+	body.InstallationId = gen.OptInt64{}
+	body.Connection = gen.NewOptString(connection.String())
+	b, err := httpapi.NewBinding(&body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Connection != opt.Some(connection) || b.InstallationID != 0 {
+		t.Errorf("connection %v, installation %d", b.Connection, b.InstallationID)
+	}
+	neither := sourceBody("ghcr.io/acme/shop")
+	neither.InstallationId = gen.OptInt64{}
+	if _, err := httpapi.NewBinding(&neither); kerrors.CodeOf(err) != kerrors.Validation {
+		t.Errorf("neither installation nor connection: %v", err)
+	}
+	// A connection's repository may be a GitLab project in a subgroup (the
+	// store checks the provider); an installation's is `owner/name`.
+	body.Repository = "Acme/Platform/Shop"
+	if b, err := httpapi.NewBinding(&body); err != nil || b.Repository.String() != "acme/platform/shop" {
+		t.Errorf("a nested path through a connection: %v, %v", b.Repository, err)
+	}
+	app := sourceBody("ghcr.io/acme/shop")
+	app.Repository = "acme/platform/shop"
+	if _, err := httpapi.NewBinding(&app); kerrors.CodeOf(err) != kerrors.Validation {
+		t.Errorf("a nested path through an installation: %v", err)
+	}
+	bad := sourceBody("ghcr.io/acme/shop")
+	bad.Connection = gen.NewOptString("not-an-id")
+	if _, err := httpapi.NewBinding(&bad); kerrors.CodeOf(err) != kerrors.Validation {
+		t.Errorf("a bad connection id: %v", err)
 	}
 }

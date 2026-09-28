@@ -17,6 +17,7 @@ import (
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/ids"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/source"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/gitprovider"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/outbound"
@@ -46,11 +47,21 @@ type Deps struct {
 	Keyring *keyring.Keyring
 	// GitHub reports commit statuses, when Git sources are configured.
 	GitHub opt.Val[*github.App]
-	Config config.NotifyCfg
+	// Connections report the commit statuses of sources that read through
+	// a Git connection (2.1); none reports none.
+	Connections opt.Val[StatusReporter]
+	Config      config.NotifyCfg
 	// PublicURL is the console's address, for links in payloads.
 	PublicURL opt.Val[string]
 	Clock     clock.Clock
 	Logger    *slog.Logger
+}
+
+// StatusReporter sets commit statuses through organizations' Git
+// connections (connect.Source).
+type StatusReporter interface {
+	CommitStatus(ctx context.Context, org ids.OrgID, connection ids.GitConnectionID, repository source.RepoName,
+		commit string, status gitprovider.CommitStatus) error
 }
 
 // Notifier turns the outbox into incidents, webhook deliveries and commit
@@ -154,7 +165,7 @@ func (n *Notifier) handle(ctx context.Context, m store.OutboxMessage, plan Plan)
 		return err //nolint:wrapcheck // the store's error, logged
 	}
 	if state, ok := plan.Status.Get(); ok {
-		n.reportStatus(ctx, c, plan, state)
+		n.reportStatus(ctx, m.Org, c, plan, state)
 	}
 	return nil
 }
@@ -258,11 +269,9 @@ func (n *Notifier) payload(m store.OutboxMessage, plan Plan, c store.OperationCo
 // reportStatus reports a commit status for a Git-sourced build or
 // deployment; a failure is logged, never retried (the next event reports
 // again).
-func (n *Notifier) reportStatus(ctx context.Context, c store.OperationContext, plan Plan, state string) {
-	app, okApp := n.deps.GitHub.Get()
-	installation, okInstallation := c.InstallationID.Get()
+func (n *Notifier) reportStatus(ctx context.Context, org ids.OrgID, c store.OperationContext, plan Plan, state string) {
 	src := sourceOf(c)
-	if !okApp || !okInstallation || c.Source.IsNone() || installation < 0 {
+	if c.Source.IsNone() {
 		return
 	}
 	name, okName := src["repository"].(string)
@@ -270,20 +279,35 @@ func (n *Notifier) reportStatus(ctx context.Context, c store.OperationContext, p
 	if !okName || !okCommit {
 		return
 	}
-	repository, err := source.ParseRepoName(name)
-	if err != nil {
-		return
-	}
 	check := "kuben/" + c.Environment
 	if plan.Build {
 		check = "kuben/build"
 	}
-	status := github.CommitStatus{
-		State:       state,
-		Context:     check,
-		Description: strings.TrimSpace(plan.Event + " " + plan.Code.Or("")),
-		TargetURL:   n.appURL(c),
+	description := strings.TrimSpace(plan.Event + " " + plan.Code.Or(""))
+	if connection, ok := c.Connection.Get(); ok {
+		reporter, ok := n.deps.Connections.Get()
+		// The store checked the path against the connection's provider.
+		repository, err := source.ParseNestedRepoName(name)
+		if !ok || reporter == nil || err != nil {
+			return
+		}
+		status := gitprovider.CommitStatus{State: state, Context: check, Description: description, TargetURL: n.appURL(c)}
+		if err := reporter.CommitStatus(ctx, org, connection, repository, commit, status); err != nil {
+			n.deps.Logger.Warn("a commit status was not reported", "repository", repository.String(), "commit", commit,
+				"connection", connection.String(), "error", err)
+		}
+		return
 	}
+	app, okApp := n.deps.GitHub.Get()
+	installation, okInstallation := c.InstallationID.Get()
+	if !okApp || !okInstallation || installation < 0 {
+		return
+	}
+	repository, err := source.ParseRepoName(name)
+	if err != nil {
+		return
+	}
+	status := github.CommitStatus{State: state, Context: check, Description: description, TargetURL: n.appURL(c)}
 	if err := app.CommitStatus(ctx, uint64(installation), repository, commit, status); err != nil {
 		n.deps.Logger.Warn("a commit status was not reported", "repository", repository.String(), "commit", commit, "error", err)
 	}

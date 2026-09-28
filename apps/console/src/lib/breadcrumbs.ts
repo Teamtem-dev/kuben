@@ -2,7 +2,7 @@ import type { MessageKey } from './messages'
 
 /** One step of the shell's breadcrumb, derived from the URL. */
 export type Crumb =
-  | { kind: 'page'; label: MessageKey; to?: '/' }
+  | { kind: 'page'; label: MessageKey; to?: '/' | '/settings' }
   | { kind: 'project'; project: string }
   | { kind: 'environment'; project: string; environment: string }
   | { kind: 'app'; project: string; environment: string; app: string }
@@ -18,6 +18,12 @@ const PAGES: Record<string, MessageKey> = {
   account: 'shell.account',
 }
 
+/** Pages below Settings: Settings › the page. */
+const SETTINGS_PAGES: Record<string, MessageKey> = {
+  integrations: 'nav.integrations',
+  registries: 'nav.registries',
+}
+
 const decode = (segment: string) => {
   try {
     return decodeURIComponent(segment)
@@ -30,6 +36,12 @@ const decode = (segment: string) => {
 export function crumbsFor(pathname: string): Crumb[] {
   const [first, ...rest] = pathname.split('/').filter(Boolean).map(decode)
   if (first === undefined) return [{ kind: 'page', label: 'nav.home' }]
+  const sub = first === 'settings' && rest[0] ? SETTINGS_PAGES[rest[0]] : undefined
+  if (sub)
+    return [
+      { kind: 'page', label: 'nav.settings', to: '/settings' },
+      { kind: 'page', label: sub },
+    ]
   const page = PAGES[first]
   if (page) return [{ kind: 'page', label: page }]
   if (first !== 'projects') return []

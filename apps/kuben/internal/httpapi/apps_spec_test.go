@@ -157,7 +157,7 @@ func TestCreateSpecAppliesControllerRules(t *testing.T) {
 	git := createBody("", 8080, 1, nil)
 	git.Image = gen.OptNilString{}
 	git.Git = gen.NewOptNilPutSource(gen.PutSource{
-		InstallationId: 7, Repository: "acme/shop", Branch: "main", ImageRepository: "ghcr.io/acme/shop",
+		InstallationId: gen.NewOptInt64(7), Repository: "acme/shop", Branch: "main", ImageRepository: "ghcr.io/acme/shop",
 	})
 	fromGit, err := httpapi.SpecFromCreate(&git)
 	if err != nil || fromGit.Source.Image != nil || fromGit.Source.Git == nil || fromGit.Source.Git.Repo != "acme/shop" {

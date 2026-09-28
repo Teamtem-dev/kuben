@@ -9,7 +9,11 @@ import { Aside } from '@astrojs/starlight/components'
 
 When a project has previews turned on, every pull request to a repository its apps build from gets a **preview**: a separate environment with its own namespace and URL. It runs the pull request's newest commit.
 
-Previews need apps that Kuben builds from Git, which needs Kuben's GitHub App in the server's configuration (see [`git` and `build`](/docs/reference/configuration/#git)). A Git source is set through the API (`PUT …/apps/{app}/source`); the console does not set sources yet, but shows an app's builds on its Builds tab, and with Helm the GitHub App is set through the `git.github.*` values (see [Helm values](/docs/reference/helm-values/#git-sources-and-builds)).
+Previews need apps that Kuben builds from Git through **Kuben's GitHub App**, set in the server's configuration (see [`git` and `build`](/docs/reference/configuration/#git); with Helm, the `git.github.*` values in [Helm values](/docs/reference/helm-values/#git-sources-and-builds)). Connect an app to its repository with **Connect repository** on the app, or `PUT …/apps/{app}/source`; its builds are on its [Builds](/docs/guides/builds/) tab.
+
+<Aside type="note" title="GitHub App only">
+Apps that build through a [token connection](/docs/guides/git-providers/) (GitLab, Gitea, Forgejo, or a GitHub token) deploy on push, but get no previews yet: GitLab merge requests and Gitea pull requests are not turned into preview environments.
+</Aside>
 
 ## Turn previews on
 

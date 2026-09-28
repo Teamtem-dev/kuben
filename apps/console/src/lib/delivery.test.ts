@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   approvalsLeft,
   buildElapsed,
+  buildLogsUrl,
   buildTone,
   COMMENT_MAX,
   canCancelBuild,
@@ -10,9 +11,13 @@ import {
   imageDigest,
   isAwaitingApproval,
   isFinalBuild,
+  logLines,
   sbomUrl,
   shortCommit,
   shortId,
+  stageElapsed,
+  stagesOf,
+  stageTone,
 } from './delivery'
 
 describe('approvals', () => {
@@ -106,5 +111,48 @@ describe('builds', () => {
     expect(sbomUrl('shop', 'prod', 'web', 'sha256:abc')).toBe(
       '/api/v1/projects/shop/environments/prod/apps/web/sbom/sha256%3Aabc',
     )
+  })
+})
+
+describe('build stages and logs', () => {
+  const stage = (name: 'clone' | 'plan' | 'build' | 'scan' | 'push' | 'deploy') => ({
+    name,
+    status: 'succeeded' as const,
+  })
+
+  test('stages come in build order, whatever order the API sent', () => {
+    expect(stagesOf({ stages: [stage('push'), stage('clone'), stage('build')] }).map((s) => s.name)).toEqual([
+      'clone',
+      'build',
+      'push',
+    ])
+    expect(stagesOf({})).toEqual([])
+    expect(stagesOf({ stages: undefined })).toEqual([])
+  })
+
+  test('the stage colour and how long it ran', () => {
+    expect(stageTone('succeeded')).toBe('success')
+    expect(stageTone('failed')).toBe('danger')
+    expect(stageTone('running')).toBe('warning')
+    expect(stageTone('pending')).toBe('neutral')
+    expect(stageTone('skipped')).toBe('neutral')
+    expect(stageElapsed({ startedAt: null }, 9)).toBeNull()
+    expect(stageElapsed({ startedAt: 1_000, finishedAt: 3_000 }, 9_000)).toBe(2_000)
+    expect(stageElapsed({ startedAt: 1_000, finishedAt: null }, 4_000)).toBe(3_000)
+  })
+
+  test('the log address escapes every part and follows on request', () => {
+    expect(buildLogsUrl('shop', 'prod', 'web', 'a/b')).toBe(
+      '/api/v1/projects/shop/environments/prod/apps/web/builds/a%2Fb/logs',
+    )
+    expect(buildLogsUrl('shop', 'prod', 'web', 'b1', true)).toBe(
+      '/api/v1/projects/shop/environments/prod/apps/web/builds/b1/logs?follow=true',
+    )
+  })
+
+  test('a log splits into lines without the empty last one', () => {
+    expect(logLines('')).toEqual([])
+    expect(logLines('a\nb\n')).toEqual(['a', 'b'])
+    expect(logLines('a\r\n\nb')).toEqual(['a', '', 'b'])
   })
 })

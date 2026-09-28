@@ -8,6 +8,7 @@ package build_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -257,6 +258,21 @@ func TestASyncedHeadIsBuiltVerifiedAndCleanedUp(t *testing.T) {
 	if digest, _, _ := unstructured.NestedString(run.Object, "status", "imageDigest"); digest != good {
 		t.Errorf("BuildRun digest %q", digest)
 	}
+	// 2.1: every stage is closed, and the log outlives the pod.
+	if len(a.Stages) != 6 {
+		t.Fatalf("stages %+v", a.Stages)
+	}
+	for _, st := range a.Stages {
+		if st.Status != store.StageSucceeded && st.Status != store.StageSkipped {
+			t.Errorf("stage %+v", st)
+		}
+	}
+	if a.Stages[2].Name != store.StageBuild || a.Stages[2].Status != store.StageSucceeded {
+		t.Errorf("the build stage %+v", a.Stages[2])
+	}
+	if log := check(tn.BuildLogTail(ctx, a.ID)).must(t); !strings.Contains(log.Or(""), "==> build <==\nfake logs") {
+		t.Errorf("kept log %q", log.Or(""))
+	}
 
 	// A day later the finished BuildRun is swept.
 	later := f.newWorker(clock.Fixed(clock.System{}.NowMs() + 25*3600*1000))
@@ -279,6 +295,10 @@ func TestADigestTheRegistryLacksFailsTheBuild(t *testing.T) {
 	a = f.attempt(t)
 	if a.Phase != opbuild.Failed || a.Failure != opt.Some("OutputRejected") {
 		t.Errorf("attempt %s, failure %v", a.Phase, a.Failure)
+	}
+	if len(a.Stages) != 6 || a.Stages[4].Name != store.StagePush || a.Stages[4].Status != store.StageFailed ||
+		a.Stages[5].Status != store.StageSkipped {
+		t.Errorf("stages %+v", a.Stages)
 	}
 	if _, err := f.client.BatchV1().Jobs(f.settings.Namespace).Get(t.Context(), build.Name(a), metav1.GetOptions{}); !build.IsNotFound(err) {
 		t.Errorf("the Job is left: %v", err)
