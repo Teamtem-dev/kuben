@@ -66,6 +66,7 @@ Managed secret values are sealed with the keys of this keyring, which never ente
 | `backup.maxAgeHours` | `26` | Kuben reports itself degraded when the newest good backup is older (`0` when backups are off) |
 | `backup.includeKeyring` | `false` | also copy the keyring into each backup; whoever has such a backup can read every secret |
 | `backup.beforeUpgrade` | `true` | on `helm upgrade`, a hook Job takes a backup and runs the new version's `kuben upgrade-check`; a failure stops the upgrade before anything changed |
+| `backup.upgradeCheckMajor` | `false` | pass `--major` to that `kuben upgrade-check`: set `true` for the one upgrade across a major version (1.2 → 2.0), after reading its release notes |
 | `backup.image` | `""` | an image with PostgreSQL client tools at least as new as the server; empty: the chart's PostgreSQL image |
 | `backup.deadlineSeconds` | `3600` | deadline of a backup Job |
 | `backup.persistence.size` | `20Gi` | the backup volume `<fullname>-backup`, kept on `helm uninstall` |
@@ -106,6 +107,57 @@ The chart always sets `KUBEN_SECURITY__TRUST_FORWARDED_FOR=true` (Kuben sits beh
 | `platform.clusterIssuer` | `""` | cert-manager ClusterIssuer; enables HTTPS once it is Ready |
 
 The chart sets only these fields of `KubenConfig`. The others (`wildcardTlsSecret`, `registry`, `sizes`) are set on the resource itself, for example `kubectl patch kubenconfig kuben --type merge -p '{"spec":{"wildcardTlsSecret":"apps-wildcard"}}'`; see [Custom resources](/docs/reference/custom-resources/#kubenconfig).
+
+## Single sign-on
+
+| Value | Default | |
+|---|---|---|
+| `sso.enabled` | `false` | sign-in with an OpenID Connect provider; needs `publicUrl`, `sso.issuer`, `sso.clientId` and `sso.existingSecret` |
+| `sso.issuer` | `""` | the provider's issuer URL |
+| `sso.clientId` | `""` | |
+| `sso.existingSecret` | `""` | Secret with the client secret, mounted as a file (`KUBEN_SSO__CLIENT_SECRET_FILE`) |
+| `sso.clientSecretKey` | `client-secret` | its key in that Secret |
+| `sso.displayName` | `Single sign-on` | the sign-in button |
+| `sso.scopes` | `[openid, email, profile]` | |
+| `sso.groupClaim` | `groups` | the ID token claim with the person's groups |
+| `sso.groups` | `{}` | provider group → role (`viewer`, `developer`, `admin`, `owner`), applied at every sign-in |
+| `sso.defaultRole` | `""` | role of people in no mapped group; empty refuses them |
+| `sso.allowedDomains` | `[]` | email domains allowed; empty allows any |
+| `sso.requireVerifiedEmail` | `true` | |
+| `sso.org` | `""` | organization people join; empty: the bootstrap organization |
+| `sso.disablePasswordForLinked` | `false` | linked accounts cannot also sign in with a password |
+
+Register `<publicUrl>/api/v1/auth/sso/callback` at the provider. See [Sign-in and security](/docs/guides/sign-in-security/).
+
+## CI trust
+
+| Value | Default | |
+|---|---|---|
+| `ci.githubActions.enabled` | `false` | GitHub Actions may exchange its OIDC token at `<publicUrl>/api/v1/ci/github/token` for a short-lived Kuben token under a trust policy (Settings → CI trust policies) |
+| `ci.githubActions.audience` | `""` | the audience workflows request; empty: `publicUrl` |
+
+See [Deploy from CI](/docs/guides/deploy-from-ci/).
+
+## Git sources and builds
+
+| Value | Default | |
+|---|---|---|
+| `git.github.appId` | `""` | the GitHub App's numeric id; empty turns Git sources off |
+| `git.github.existingSecret` | `""` | Secret with the App's private key (file `KUBEN_GIT__GITHUB_PRIVATE_KEY_FILE`) and webhook secret |
+| `git.github.privateKeyKey` | `private-key.pem` | key of the PEM private key in that Secret |
+| `git.github.webhookSecretKey` | `webhook-secret` | key of the webhook secret in that Secret |
+| `git.github.apiUrl` / `git.github.cloneUrl` | `https://api.github.com` / `https://github.com` | for GitHub Enterprise Server |
+| `build.enabled` | `false` | run the build worker (needs `git.github`) |
+| `build.namespace` | `""` | namespace of build Jobs; empty: the release namespace |
+| `build.buildkitImage`, `build.fetchImage`, `build.scannerImage` | `""` | empty: the server's defaults; pin by digest in production |
+| `build.railpackFrontend`, `build.railpackImage` | `""` | both set: Railpack builds for sources without a Dockerfile |
+| `build.maxConcurrent` / `build.maxConcurrentPerOrg` | `2` / `1` | builds at once |
+| `build.pushSecret` | `""` | a `kubernetes.io/dockerconfigjson` Secret in the build namespace with push access |
+| `build.insecureRegistry` | `false` | push over plain HTTP |
+| `build.nodePool` | `""` | node selector `key=value` of a build pool |
+| `build.cpuRequest`, `build.cpuLimit`, `build.memory`, `build.ephemeralStorage`, `build.deadlineSeconds` | empty / `0` | per build; empty keeps 500m, 2, 2Gi, 10Gi and 30 minutes |
+
+GitHub delivers the App's webhooks to `<publicUrl>/api/v1/webhooks/github`. Every value is an environment variable of the Kuben pod (`KUBEN_SSO__*`, `KUBEN_CI__*`, `KUBEN_GIT__*`, `KUBEN_BUILD__*`, see [Configuration](/docs/reference/configuration/)); secrets come from the Secrets you name and are never written into the pod spec. A value that needs another (for example `sso.enabled` without `sso.issuer`) stops `helm install` with a message.
 
 ## Cluster agent
 

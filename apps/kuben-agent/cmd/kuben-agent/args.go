@@ -68,11 +68,10 @@ func (e usageError) Error() string { return e.msg }
 func command(env func(string) (string, bool), run func(args) error) *cobra.Command {
 	a := args{given: map[string]bool{}}
 	cmd := &cobra.Command{
-		Use:     "kuben-agent",
-		Short:   "The Kuben cluster agent: links this cluster to its hub over outbound mTLS",
-		Version: version,
-		Args: func(_ *cobra.Command, positional []string) error {
-			if len(positional) > 0 {
+		Use:   "kuben-agent",
+		Short: "The Kuben cluster agent: links this cluster to its hub over outbound mTLS",
+		Args: func(cmd *cobra.Command, positional []string) error {
+			if len(positional) > 0 && !versionFlag(cmd) {
 				return usageError{msg: fmt.Sprintf("unexpected argument '%s' found", positional[0])}
 			}
 			return nil
@@ -80,6 +79,10 @@ func command(env func(string) (string, bool), run func(args) error) *cobra.Comma
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if versionFlag(cmd) {
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", cmd.Name(), version)
+				return err
+			}
 			for _, s := range a.specs() {
 				if cmd.Flags().Changed(s.name) {
 					a.given[s.name] = true
@@ -99,9 +102,21 @@ func command(env func(string) (string, bool), run func(args) error) *cobra.Comma
 	}
 	cmd.Flags().BoolVar(&a.tokenStdin, "token-stdin", false, "Read the bootstrap token from stdin, only to enroll")
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{msg: err.Error()} })
-	// clap's `--version`: the name and the version.
-	cmd.SetVersionTemplate("{{.Name}} {{.Version}}\n")
+	// clap's `--version`: the name and the version. The flag is the one
+	// cobra adds for a Version, answered here rather than through
+	// SetVersionTemplate: a cobra template links text/template, whose
+	// reflective method calls stop the linker from dropping unused exported
+	// methods (about 9 MB of the binary). Nothing validates the command line
+	// before Args and RunE, so --version still wins over every other check.
+	cmd.Flags().BoolP("version", "v", false, "version for kuben-agent")
+	_ = cmd.Flags().SetAnnotation("version", cobra.FlagSetByCobraAnnotation, []string{"true"}) //nolint:errcheck // the flag is defined above
 	return cmd
+}
+
+// versionFlag is whether --version was given.
+func versionFlag(cmd *cobra.Command) bool {
+	on, err := cmd.Flags().GetBool("version")
+	return err == nil && on
 }
 
 // validate applies clap's conflicts and requirements.

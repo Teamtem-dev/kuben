@@ -58,7 +58,6 @@ func Root() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "kuben",
 		Short:         "Kuben — Kubernetes-native PaaS in a single binary",
-		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
@@ -67,8 +66,8 @@ func Root() *cobra.Command {
 		},
 	}
 	// clap's --version and -V: `kuben <version>`, no completion command.
-	cmd.SetVersionTemplate("kuben {{.Version}}\n")
 	cmd.Flags().BoolP("version", "V", false, "Print version")
+	printVersionFlag(cmd, "kuben "+version.Version)
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err} })
 	flags := cmd.PersistentFlags()
@@ -98,6 +97,33 @@ func Root() *cobra.Command {
 		copySelfCmd(g),
 	)
 	return cmd
+}
+
+// printVersionFlag makes the root's --version print line, as cobra's
+// SetVersionTemplate did, without a cobra template: one links
+// text/template, whose reflective method calls stop the linker from
+// dropping unused exported methods (about 30 MB of the binary).
+//
+// cmd has no Version, so cobra leaves the flag alone and, the root not being
+// runnable, answers `kuben --version` with its help function: that is where
+// the version is printed, after --help, as cobra's own check was.
+func printVersionFlag(cmd *cobra.Command, line string) {
+	help := cmd.HelpFunc()
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		if c == cmd && flagOn(c, "version") && !flagOn(c, "help") {
+			if _, err := fmt.Fprintln(c.OutOrStdout(), line); err != nil {
+				c.Println(err) // as cobra reports a failed version template
+			}
+			return
+		}
+		help(c, args)
+	})
+}
+
+// flagOn is whether c's boolean flag name is set.
+func flagOn(c *cobra.Command, name string) bool {
+	on, err := c.Flags().GetBool(name)
+	return err == nil && on
 }
 
 // bindEnv makes the flag fall back to the environment variable.

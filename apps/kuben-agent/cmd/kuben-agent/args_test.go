@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"slices"
 	"testing"
@@ -69,5 +70,25 @@ func TestTheTokenComesFromOneFileOrStdin(t *testing.T) {
 	a, code = parse(with("--token-stdin"), noEnv)
 	if code != 0 || a.tokenSource() != (state.TokenStdin{}) {
 		t.Fatalf("%d %+v", code, a.tokenSource())
+	}
+}
+
+// clap's `--version` printed the name and the version, before any other
+// check of the command line.
+func TestVersionPrintsTheNameAndTheVersion(t *testing.T) {
+	for _, argv := range [][]string{{"--version"}, {"-v"}, {"--version", "stray"}, {"--version", "--token-stdin"}} {
+		cmd := command(noEnv, func(args) error {
+			t.Errorf("%v: the agent ran", argv)
+			return nil
+		})
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetArgs(argv)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("%v: %v", argv, err)
+		}
+		if got := out.String(); got != "kuben-agent "+version+"\n" {
+			t.Errorf("%v printed %q", argv, got)
+		}
 	}
 }

@@ -9,7 +9,7 @@ import { Aside } from '@astrojs/starlight/components'
 
 When a project has previews turned on, every pull request to a repository its apps build from gets a **preview**: a separate environment with its own namespace and URL. It runs the pull request's newest commit.
 
-Previews need apps that Kuben builds from Git, which needs Kuben's GitHub App in the server's configuration (see [`git` and `build`](/docs/reference/configuration/#git)). A Git source is set through the API (`PUT …/apps/{app}/source`); the console does not manage sources or builds yet, and the Helm chart has no values for the GitHub App.
+Previews need apps that Kuben builds from Git, which needs Kuben's GitHub App in the server's configuration (see [`git` and `build`](/docs/reference/configuration/#git)). A Git source is set through the API (`PUT …/apps/{app}/source`); the console does not set sources yet, but shows an app's builds on its Builds tab, and with Helm the GitHub App is set through the `git.github.*` values (see [Helm values](/docs/reference/helm-values/#git-sources-and-builds)).
 
 ## Turn previews on
 

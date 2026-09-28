@@ -70,6 +70,10 @@ backup:
   # Before `helm upgrade`: a backup, then the new version's preflight; a
   # failure stops the upgrade (see `kuben upgrade-check`).
   beforeUpgrade: true
+  # The preflight refuses a major version step (1.2 → 2.0) unless told the
+  # operator read its release notes: set true for that one upgrade
+  # (`kuben upgrade-check --major`), then back to false.
+  upgradeCheckMajor: false
   # An image with PostgreSQL client tools at least as new as the server;
   # default: the chart's PostgreSQL image.
   image: ""
@@ -129,6 +133,92 @@ platform:
 agent:
   enabled: true
   port: 7443
+
+# Single sign-on with an OpenID Connect provider (M4.3, `[sso]`). Local
+# accounts keep working; the callback URL to register at the provider is
+# `<publicUrl>/api/v1/auth/sso/callback` (publicUrl is required).
+sso:
+  enabled: false
+  # The provider's issuer URL; its discovery document names the rest.
+  issuer: ""
+  clientId: ""
+  # Secret with the client secret (key `clientSecretKey`), mounted as a file:
+  # the secret never appears in the pod spec.
+  existingSecret: ""
+  clientSecretKey: client-secret
+  # Shown on the sign-in button.
+  displayName: Single sign-on
+  scopes: [openid, email, profile]
+  # The ID token claim that lists the person's groups.
+  groupClaim: groups
+  # Provider group → organization role (viewer, developer, admin, owner),
+  # re-read at every sign-in, e.g. {platform-admins: owner, developers: developer}.
+  groups: {}
+  # Role of people in no mapped group; empty refuses them.
+  defaultRole: ""
+  # Email domains allowed to sign in; empty allows any.
+  allowedDomains: []
+  requireVerifiedEmail: true
+  # Organization people join; empty: the bootstrap organization.
+  org: ""
+  # Accounts linked to the provider cannot also sign in with a password.
+  disablePasswordForLinked: false
+
+# External CI trust (M4.2, `[ci]`): GitHub Actions exchanges its OIDC token
+# for a short-lived Kuben token under a trust policy an owner creates in
+# Settings. The exchange endpoint is `<publicUrl>/api/v1/ci/github/token`.
+ci:
+  githubActions:
+    enabled: false
+    # The audience workflows request (`id-token` audience); empty: publicUrl.
+    audience: ""
+
+# Git sources through a GitHub App (M3, `[git]`). All three of appId, the
+# private key and the webhook secret are needed; GitHub delivers webhooks to
+# `<publicUrl>/api/v1/webhooks/github`.
+git:
+  github:
+    # The GitHub App's numeric id; empty turns Git sources off.
+    appId: ""
+    # Secret holding the App's private key (PEM, key `privateKeyKey`) and the
+    # webhook secret (key `webhookSecretKey`).
+    existingSecret: ""
+    privateKeyKey: private-key.pem
+    webhookSecretKey: webhook-secret
+    # For GitHub Enterprise Server: the REST API root and where builds clone from.
+    apiUrl: https://api.github.com
+    cloneUrl: https://github.com
+
+# Isolated builds of Git sources (ADR-028, `[build]`): one rootless BuildKit
+# Job per attempt, then an SBOM and a vulnerability scan. Needs `git.github`.
+# Empty values keep the server's defaults (see the configuration reference);
+# pin every image by digest in production.
+build:
+  enabled: false
+  # Namespace of the build Jobs; empty: the release namespace.
+  namespace: ""
+  buildkitImage: ""
+  fetchImage: ""
+  scannerImage: ""
+  # Both set: Railpack builds for sources without a Dockerfile.
+  railpackFrontend: ""
+  railpackImage: ""
+  # Builds at once over all organizations, and per organization.
+  maxConcurrent: 2
+  maxConcurrentPerOrg: 1
+  # A kubernetes.io/dockerconfigjson Secret in the build namespace with push
+  # access to the image repositories; empty for an open registry.
+  pushSecret: ""
+  # Push over plain HTTP (an in-cluster registry without TLS).
+  insecureRegistry: false
+  # Node selector `key=value` of a dedicated build pool.
+  nodePool: ""
+  # Per build (empty: 500m request, 2 CPU limit, 2Gi memory, 10Gi disk, 30 min).
+  cpuRequest: ""
+  cpuLimit: ""
+  memory: ""
+  ephemeralStorage: ""
+  deadlineSeconds: 0
 
 # Expose the Kuben UI itself through a Gateway API HTTPRoute.
 route:

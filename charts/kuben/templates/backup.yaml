@@ -105,7 +105,11 @@ spec:
         {{- include "kuben.backup.pod" (dict "root" . "claim" $claim "command" $backup) | nindent 8 }}
 {{- $volume := or .Values.backup.persistence.existingClaim (lookup "v1" "PersistentVolumeClaim" .Release.Namespace $name) }}
 {{- if and .Release.IsUpgrade .Values.backup.beforeUpgrade $volume }}
-{{- $check := list "/bin/sh" "-c" (printf "%s && /tools/kuben upgrade-check" (join " " $backup)) }}
+{{- $upgradeCheck := "/tools/kuben upgrade-check" }}
+{{- if .Values.backup.upgradeCheckMajor }}
+{{- $upgradeCheck = printf "%s --major" $upgradeCheck }}
+{{- end }}
+{{- $check := list "/bin/sh" "-c" (printf "%s && %s" (join " " $backup) $upgradeCheck) }}
 ---
 apiVersion: batch/v1
 kind: Job

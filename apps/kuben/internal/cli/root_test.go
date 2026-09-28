@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/config"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/version"
 )
 
 // parseServe parses `kuben serve` arguments the way Execute does, without
@@ -129,7 +130,20 @@ func TestVersionAndUsageErrorsBehaveAsClapDid(t *testing.T) {
 		if err := root.Execute(); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
-		if got := out.String(); !strings.HasPrefix(got, "kuben ") || strings.Contains(got, "(") {
+		if got := out.String(); got != "kuben "+version.Version+"\n" {
+			t.Errorf("%v printed %q", args, got)
+		}
+	}
+	// --help wins over --version, and a subcommand's help is its own.
+	for _, args := range [][]string{{"--version", "--help"}, {"serve", "--help"}, {"help"}} {
+		root := Root()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetArgs(args)
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if got := out.String(); !strings.Contains(got, "Usage:") {
 			t.Errorf("%v printed %q", args, got)
 		}
 	}

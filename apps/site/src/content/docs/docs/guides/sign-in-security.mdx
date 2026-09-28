@@ -26,7 +26,7 @@ groups = { "platform-admins" = "admin", "developers" = "developer" }
 # allowed_domains = ["example.com"]
 ```
 
-Register `https://kuben.example.com/api/v1/auth/sso/callback` as the redirect URI at the provider. Every key, with its `KUBEN_SSO__*` variable, is in [Configuration](/docs/reference/configuration/#sso). The Helm chart has no values for single sign-on yet.
+Register `https://kuben.example.com/api/v1/auth/sso/callback` as the redirect URI at the provider. Every key, with its `KUBEN_SSO__*` variable, is in [Configuration](/docs/reference/configuration/#sso). With Helm, set the `sso.*` values (see [Helm values](/docs/reference/helm-values/#single-sign-on)).
 
 How it behaves:
 
