@@ -846,6 +846,7 @@ export async function mockApi(
   const appPath = '/api/v1/projects/shop/environments/prod/apps/web'
   const runPath = `${appPath}/deployments/${awaitingRun.run}`
   const shownApproval = { ...approval, canDecide: approvalMode === 'decide' }
+  let currentSource: Record<string, unknown> | null = gitSource ? (appSource as Record<string, unknown>) : null
   await page.route('http://kuben.test/**', serveConsole)
   await page.route('http://kuben.test/api/**', async (route) => {
     const url = new URL(route.request().url())
@@ -882,7 +883,7 @@ export async function mockApi(
     }
     if (path === appPath)
       return json(route, {
-        app: gitSource ? { ...app, git_repo: gitRepo } : app,
+        app: currentSource ? { ...app, git_repo: gitRepo } : app,
         pods: [pod('web-web-7d9c-x2x9q', 'web'), pod('web-worker-5f6b-q8w2e', 'worker')],
       })
     if (path === `${appPath}/deployments`) {
@@ -916,10 +917,10 @@ export async function mockApi(
         409,
       )
     }
-    if (gitSource && path === `${appPath}/builds` && route.request().method() === 'POST') {
+    if (currentSource && path === `${appPath}/builds` && route.request().method() === 'POST') {
       return json(route, { syncOperation: '0190f3c6-0000-7000-8000-0000000000o9', build: builds[0] }, 202)
     }
-    const logMatch = gitSource ? new RegExp(`^${appPath}/builds/([^/]+)/logs$`).exec(path) : null
+    const logMatch = currentSource ? new RegExp(`^${appPath}/builds/([^/]+)/logs$`).exec(path) : null
     if (logMatch && url.searchParams.get('follow') === 'true') {
       return route.fulfill({
         status: 200,
@@ -936,9 +937,10 @@ export async function mockApi(
     if (path === `${appPath}/source`) {
       if (route.request().method() === 'PUT') {
         const body = route.request().postDataJSON() as Record<string, unknown>
-        return json(route, { ...appSource, ...body, installationId: body.installationId ?? 0, head: null })
+        currentSource = { ...appSource, ...body, installationId: body.installationId ?? 0, head: null }
+        return json(route, currentSource)
       }
-      if (gitSource) return json(route, appSource)
+      if (currentSource) return json(route, currentSource)
     }
     if (path === '/api/v1/git/connections' && route.request().method() === 'POST') {
       const body = route.request().postDataJSON() as { name: string; provider: string; baseUrl?: string }

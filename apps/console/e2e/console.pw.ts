@@ -595,7 +595,7 @@ test('integrations: connections with their webhook, a token tested before saving
   await expect(gitlab.getByText(`http://kuben.test${gitConnections[0]?.webhookUrl}`)).toBeVisible()
   await expect(gitlab.getByText(/Settings → Webhooks/)).toBeVisible()
   const codeberg = table.getByRole('row', { name: /codeberg/ })
-  await expect(codeberg.getByText('Forgejo')).toBeVisible()
+  await expect(codeberg.getByText(/Forgejo ·/)).toBeVisible()
   await expect(codeberg.getByText('the token was revoked (401)')).toBeVisible()
   // The GitHub App's installations are on the same page.
   await expect(page.getByText('#4242')).toBeVisible()
@@ -691,10 +691,10 @@ test('registries: a preset fills the server, the login is tested first, rotated 
 
   await page.getByRole('button', { name: 'Add registry' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add registry' })
-  await dialog.getByRole('radio', { name: /Harbor/ }).check({ force: true })
+  await dialog.getByText('Harbor', { exact: true }).click()
   await expect(dialog.getByLabel('Server')).toHaveValue('')
   await expect(dialog.getByText('A robot account (robot$…)')).toBeVisible()
-  await dialog.getByRole('radio', { name: /Docker Hub/ }).check({ force: true })
+  await dialog.getByText('Docker Hub', { exact: true }).click()
   await expect(dialog.getByLabel('Server')).toHaveValue('docker.io')
   await expect(dialog.getByRole('link', { name: 'How to create a token for Docker Hub' })).toBeVisible()
   await dialog.getByLabel('Username').fill('acme')
