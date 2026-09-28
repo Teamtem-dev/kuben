@@ -60,6 +60,7 @@ builds:
 archives:
   - id: kuben
     ids: [kuben, kuben-agent]
+    allow_different_binary_count: true
     formats: [tar.gz]
     format_overrides:
       - goos: windows
