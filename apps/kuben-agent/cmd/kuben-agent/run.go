@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 
@@ -93,10 +92,8 @@ func linked(ctx context.Context, a args, d linkedDeps) error {
 		return err //nolint:wrapcheck // says what failed
 	}
 	cfg := link.NewConfig(d.target.cluster, version, credentials, d.logger)
-	if disco, err := discovery.NewDiscoveryClientForConfig(d.restCfg); err == nil {
-		if v, err := disco.ServerVersion(); err == nil {
-			cfg.KubernetesVersion = v.GitVersion
-		}
+	if v, err := kubernetesVersion(ctx, d.restCfg); err == nil {
+		cfg.KubernetesVersion = v
 	}
 	cfg.Capabilities = agentlink.NewFeatures(agentlink.ApplicationRuntime)
 	cfg.Executor = runtime.NewKubeExecutor(d.client, d.logger)

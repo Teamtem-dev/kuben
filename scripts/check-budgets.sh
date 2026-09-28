@@ -30,6 +30,16 @@ case "$kind" in
 binary)
   [[ -f $target ]] || { echo "no such binary: $target" >&2; exit 2; }
   report "binary $(basename "$target")" "$(wc -c <"$target" | tr -d ' ')" "${3:-${KUBEN_BUDGET_BINARY_MB:-45}}"
+  # A linked text/template engine calls methods by name, so the linker keeps
+  # every exported method of every reachable type: about 30 MiB more for the
+  # hub (one cobra SetVersionTemplate did it). That is a defect, not a budget.
+  # Function names stay in Go's function table (.gopclntab) even in a
+  # stripped (-s -w) binary, so a byte search works without symbols.
+  if LC_ALL=C grep -aqF 'text/template.(*Template).Execute' "$target"; then
+    echo "binary $(basename "$target") links text/template's Execute: dead-code elimination of methods is off (a cobra Set*Template call or html/template?)" >&2
+    if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::error title=text/template linked::$(basename "$target") links text/template's Execute"; fi
+    exit 1
+  fi
   ;;
 image)
   bytes=$(docker image inspect --format '{{.Size}}' "$target")
