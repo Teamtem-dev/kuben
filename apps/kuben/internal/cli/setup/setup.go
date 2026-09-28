@@ -37,6 +37,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/cli/ui"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/opt"
@@ -137,12 +139,15 @@ type UninstallOpts struct {
 type machine struct {
 	ui ui.UI
 	// stdout gets the final link; stderr the lines ui does not draw.
-	stdout  io.Writer
-	stderr  io.Writer
-	runner  runner
-	clock   clock.Clock
-	sleep   func(context.Context, time.Duration) error
-	connect func(kubeconfig string) (cluster, error)
+	stdout io.Writer
+	// sameScreen: stdout and stderr are both a terminal, so the final link
+	// is already on the screen (stderr) and stdout does not repeat it.
+	sameScreen bool
+	stderr     io.Writer
+	runner     runner
+	clock      clock.Clock
+	sleep      func(context.Context, time.Duration) error
+	connect    func(kubeconfig string) (cluster, error)
 	// portFree reports whether nothing listens on the port.
 	portFree func(port uint16) bool
 	httpGet  func(ctx context.Context, port uint16, path string) (int, string, error)
@@ -158,20 +163,21 @@ type machine struct {
 
 func newMachine(stdout, stderr io.Writer, version string) *machine {
 	return &machine{
-		ui:        consoleUI(stderr),
-		stdout:    stdout,
-		stderr:    stderr,
-		runner:    execRunner{},
-		clock:     clock.System{},
-		sleep:     sleepCtx,
-		connect:   connectKube,
-		portFree:  portFreeOn,
-		httpGet:   httpGet,
-		advertise: host.AdvertiseIP,
-		getenv:    os.Getenv,
-		lookupEnv: os.LookupEnv,
-		version:   version,
-		logger:    slog.New(slog.DiscardHandler),
+		ui:         consoleUI(stderr),
+		stdout:     stdout,
+		sameScreen: isTerminal(stdout) && isTerminal(stderr),
+		stderr:     stderr,
+		runner:     execRunner{},
+		clock:      clock.System{},
+		sleep:      sleepCtx,
+		connect:    connectKube,
+		portFree:   portFreeOn,
+		httpGet:    httpGet,
+		advertise:  host.AdvertiseIP,
+		getenv:     os.Getenv,
+		lookupEnv:  os.LookupEnv,
+		version:    version,
+		logger:     slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -190,9 +196,19 @@ func (m *machine) eprintln(text string) {
 	_, _ = io.WriteString(m.stderr, text+"\n") //nolint:errcheck // stderr
 }
 
-// println writes a line to stdout (the final link).
+// println writes a line to stdout (the final link), for scripts that read
+// it; on a terminal that already shows it on stderr it is not repeated.
 func (m *machine) println(text string) {
+	if m.sameScreen {
+		return
+	}
 	_, _ = io.WriteString(m.stdout, text+"\n") //nolint:errcheck // stdout
+}
+
+// isTerminal reports whether w is a terminal.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd())) //nolint:gosec // a file descriptor fits an int
 }
 
 // Setup is `kuben setup`; version is this binary's.
