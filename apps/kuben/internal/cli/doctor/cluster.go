@@ -44,7 +44,7 @@ func checkCluster(ctx context.Context, r *Report, cfg config.Config, installed b
 	facts := discovery.Discover(ctx, logger, c)
 	CheckCapabilities(r, facts)
 	CheckFeatures(r, facts)
-	checkPermissions(ctx, r, c)
+	checkPermissions(ctx, r, c, registry.OwnNamespace(cfg.Kube.Namespace).Or("kuben-system"))
 	if installed {
 		checkExposure(ctx, r, c, facts)
 	}
@@ -215,40 +215,57 @@ func anyReady(list []discovery.Readiness) bool {
 	return false
 }
 
-// needed is what the chart's ClusterRole grants Kuben: verb, group,
-// resource.
-func needed() [8][3]string {
-	return [8][3]string{
-		{"create", "", "namespaces"},
-		{"patch", "apps", "deployments"},
-		{"create", "", "secrets"},
-		{"create", "gateway.networking.k8s.io", "httproutes"},
-		{"create", "gateway.networking.k8s.io", "gateways"},
-		{"list", "cert-manager.io", "clusterissuers"},
-		{"create", "apiextensions.k8s.io", "customresourcedefinitions"},
-		{"update", "coordination.k8s.io", "leases"},
+// permission is one thing Kuben needs from the API server; namespaced
+// ones are granted in Kuben's own namespace only (the chart's Role).
+type permission struct {
+	verb, group, resource string
+	namespaced            bool
+}
+
+// needed is what the chart grants Kuben: its ClusterRole, and its Role for
+// the leader-election Lease.
+func needed() []permission {
+	return []permission{
+		{verb: "create", resource: "namespaces"},
+		{verb: "patch", group: "apps", resource: "deployments"},
+		{verb: "create", resource: "secrets"},
+		{verb: "create", group: "gateway.networking.k8s.io", resource: "httproutes"},
+		{verb: "create", group: "gateway.networking.k8s.io", resource: "gateways"},
+		{verb: "list", group: "cert-manager.io", resource: "clusterissuers"},
+		{verb: "create", group: "apiextensions.k8s.io", resource: "customresourcedefinitions"},
+		{verb: "update", group: "coordination.k8s.io", resource: "leases", namespaced: true},
 	}
 }
 
-// checkPermissions is Kuben's own permissions: what the chart's
-// ClusterRole grants, checked for whoever runs this.
-func checkPermissions(ctx context.Context, r *Report, c registry.Cluster) {
+// accessReview asks whether whoever runs this may do p; a namespaced
+// permission is asked in namespace.
+func accessReview(p permission, namespace string) *authorizationv1.SelfSubjectAccessReview {
+	attrs := &authorizationv1.ResourceAttributes{Verb: p.verb, Group: p.group, Resource: p.resource}
+	if p.namespaced {
+		attrs.Namespace = namespace
+	}
+	return &authorizationv1.SelfSubjectAccessReview{
+		Spec: authorizationv1.SelfSubjectAccessReviewSpec{ResourceAttributes: attrs},
+	}
+}
+
+// checkPermissions is Kuben's own permissions: what the chart grants,
+// checked for whoever runs this.
+func checkPermissions(ctx context.Context, r *Report, c registry.Cluster, namespace string) {
 	reviews := c.Typed.AuthorizationV1().SelfSubjectAccessReviews()
 	var denied []string
-	for _, n := range needed() {
-		verb, group, resource := n[0], n[1], n[2]
-		review := &authorizationv1.SelfSubjectAccessReview{
-			Spec: authorizationv1.SelfSubjectAccessReviewSpec{
-				ResourceAttributes: &authorizationv1.ResourceAttributes{Verb: verb, Group: group, Resource: resource},
-			},
-		}
-		answer, err := reviews.Create(ctx, review, metav1.CreateOptions{})
+	for _, p := range needed() {
+		answer, err := reviews.Create(ctx, accessReview(p, namespace), metav1.CreateOptions{})
 		if err != nil {
 			r.Line(LevelWarn, "permissions", fmt.Sprintf("cannot check them: %v", err))
 			return
 		}
 		if answer == nil || !answer.Status.Allowed {
-			denied = append(denied, verb+" "+resource)
+			what := p.verb + " " + p.resource
+			if p.namespaced {
+				what += " in " + namespace
+			}
+			denied = append(denied, what)
 		}
 	}
 	if len(denied) == 0 {
@@ -256,7 +273,7 @@ func checkPermissions(ctx context.Context, r *Report, c registry.Cluster) {
 		return
 	}
 	r.Line(LevelFail, "permissions",
-		fmt.Sprintf("denied: %s (the Helm chart's ClusterRole grants them)", strings.Join(denied, ", ")))
+		fmt.Sprintf("denied: %s (the Helm chart's ClusterRole and Role grant them)", strings.Join(denied, ", ")))
 }
 
 func readinessLine(r *Report, name string, list []discovery.Readiness, none string) {

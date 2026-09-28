@@ -293,9 +293,18 @@ main() {
   trap 'exit 130' INT TERM
 
   target=$(detect_target)
-  banner "${version:-}"
+  # `kuben setup` of 2.x takes the banner and the download line from us
+  # (KUBEN_BANNER_PRINTED, KUBEN_INSTALLED); 1.x prints its own, so for a
+  # 1.x release that runs setup we print neither and show each only once.
+  will_setup=0
+  if [ "$binary_only" != 1 ] && can_setup; then will_setup=1; fi
   [ -n "$version" ] || version=$(latest_tag)
   case "$version" in v*) ;; *) version="v${version}" ;; esac
+  own_banner=1
+  case "$version" in
+  v1.*) [ "$will_setup" = 1 ] && own_banner=0 ;;
+  esac
+  [ "$own_banner" = 1 ] && banner "$version"
 
   archive="${BIN}-${target}.tar.gz"
   base="https://github.com/${REPO}/releases/download/${version}"
@@ -313,9 +322,9 @@ main() {
   tar -xzf "${tmp}/${archive}" -C "$tmp" "$BIN" || err "archive does not contain '${BIN}'"
   install_binary "${tmp}/${BIN}" "$dir"
 
-  say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
+  [ "$own_banner" = 1 ] && say "Installed ${BIN} ${version} (${target}) to ${dir}/${BIN}. ${DIM}sha256 ${actual}${RESET}"
 
-  if [ "$binary_only" != 1 ] && can_setup; then
+  if [ "$will_setup" = 1 ]; then
     KUBEN_INSTALLED="${version} ${target} ${dir}/${BIN} ${actual}"
     KUBEN_BANNER_PRINTED=1
     export KUBEN_INSTALLED KUBEN_BANNER_PRINTED
