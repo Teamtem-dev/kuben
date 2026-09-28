@@ -161,3 +161,164 @@ spec:
         secretName: {{ include "kuben.keyring.secret" .root }}
         defaultMode: 0400
 {{- end -}}
+
+{{/*
+A value in the server's environment grammar (figment's, kept by the Go
+config): strings quoted TOML-style, lists as `["a", "b"]`, maps as
+`{"key" = "value"}`. JSON string quoting is valid TOML basic-string quoting.
+*/}}
+{{- define "kuben.envString" -}}
+{{ . | toString | toJson | quote }}
+{{- end }}
+
+{{- define "kuben.envList" -}}
+{{ . | default list | toJson | quote }}
+{{- end }}
+
+{{- define "kuben.envTable" -}}
+{{- $pairs := list }}
+{{- range $key, $value := . }}
+{{- $pairs = append $pairs (printf "%s = %s" ($key | toJson) ($value | toString | toJson)) }}
+{{- end }}
+{{- printf "{%s}" (join ", " $pairs) | quote }}
+{{- end }}
+
+{{/*
+Single sign-on, CI trust, Git sources and builds: `KUBEN_SSO__*`,
+`KUBEN_CI__*`, `KUBEN_GIT__*` and `KUBEN_BUILD__*`. Secrets are files mounted
+from existing Secrets (see kuben.platformVolumes) or `secretKeyRef`s; no
+credential is written into the pod spec.
+*/}}
+{{- define "kuben.platformEnv" -}}
+{{- $sso := .Values.sso }}
+{{- if $sso.enabled }}
+{{- if not (and $sso.issuer $sso.clientId $sso.existingSecret) }}
+{{- fail "sso.enabled needs sso.issuer, sso.clientId and sso.existingSecret (a Secret with the client secret)" }}
+{{- end }}
+{{- if not .Values.publicUrl }}
+{{- fail "sso.enabled needs publicUrl: the provider redirects back to <publicUrl>/api/v1/auth/sso/callback" }}
+{{- end }}
+- name: KUBEN_SSO__ENABLED
+  value: "true"
+- name: KUBEN_SSO__ISSUER
+  value: {{ include "kuben.envString" $sso.issuer }}
+- name: KUBEN_SSO__CLIENT_ID
+  value: {{ include "kuben.envString" $sso.clientId }}
+- name: KUBEN_SSO__CLIENT_SECRET_FILE
+  value: /etc/kuben/sso/{{ $sso.clientSecretKey }}
+- name: KUBEN_SSO__DISPLAY_NAME
+  value: {{ include "kuben.envString" $sso.displayName }}
+- name: KUBEN_SSO__SCOPES
+  value: {{ include "kuben.envList" $sso.scopes }}
+- name: KUBEN_SSO__GROUP_CLAIM
+  value: {{ include "kuben.envString" $sso.groupClaim }}
+- name: KUBEN_SSO__GROUPS
+  value: {{ include "kuben.envTable" $sso.groups }}
+{{- with $sso.defaultRole }}
+- name: KUBEN_SSO__DEFAULT_ROLE
+  value: {{ include "kuben.envString" . }}
+{{- end }}
+- name: KUBEN_SSO__ALLOWED_DOMAINS
+  value: {{ include "kuben.envList" $sso.allowedDomains }}
+- name: KUBEN_SSO__REQUIRE_VERIFIED_EMAIL
+  value: {{ $sso.requireVerifiedEmail | toString | quote }}
+{{- with $sso.org }}
+- name: KUBEN_SSO__ORG
+  value: {{ include "kuben.envString" . }}
+{{- end }}
+- name: KUBEN_SSO__DISABLE_PASSWORD_FOR_LINKED
+  value: {{ $sso.disablePasswordForLinked | toString | quote }}
+{{- end }}
+{{- $gha := .Values.ci.githubActions }}
+{{- if $gha.enabled }}
+{{- if not (or $gha.audience .Values.publicUrl) }}
+{{- fail "ci.githubActions.enabled needs publicUrl or ci.githubActions.audience: workflows request a token for that audience" }}
+{{- end }}
+- name: KUBEN_CI__GITHUB_ACTIONS
+  value: "true"
+{{- with $gha.audience }}
+- name: KUBEN_CI__GITHUB_OIDC_AUDIENCE
+  value: {{ include "kuben.envString" . }}
+{{- end }}
+{{- end }}
+{{- $gh := .Values.git.github }}
+{{- if $gh.appId }}
+{{- if not $gh.existingSecret }}
+{{- fail "git.github.appId needs git.github.existingSecret (a Secret with the App's private key and webhook secret)" }}
+{{- end }}
+- name: KUBEN_GIT__GITHUB_APP_ID
+  value: {{ $gh.appId | toString | quote }}
+- name: KUBEN_GIT__GITHUB_PRIVATE_KEY_FILE
+  value: /etc/kuben/github/{{ $gh.privateKeyKey }}
+- name: KUBEN_GIT__GITHUB_WEBHOOK_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ $gh.existingSecret }}
+      key: {{ $gh.webhookSecretKey }}
+- name: KUBEN_GIT__GITHUB_API_URL
+  value: {{ include "kuben.envString" $gh.apiUrl }}
+- name: KUBEN_GIT__GITHUB_CLONE_URL
+  value: {{ include "kuben.envString" $gh.cloneUrl }}
+{{- end }}
+{{- $b := .Values.build }}
+{{- if $b.enabled }}
+{{- if not $gh.appId }}
+{{- fail "build.enabled needs git.github: builds start from Git sources" }}
+{{- end }}
+- name: KUBEN_BUILD__ENABLED
+  value: "true"
+- name: KUBEN_BUILD__NAMESPACE
+  value: {{ include "kuben.envString" ($b.namespace | default .Release.Namespace) }}
+- name: KUBEN_BUILD__MAX_CONCURRENT
+  value: {{ $b.maxConcurrent | toString | quote }}
+- name: KUBEN_BUILD__MAX_CONCURRENT_PER_ORG
+  value: {{ $b.maxConcurrentPerOrg | toString | quote }}
+- name: KUBEN_BUILD__INSECURE_REGISTRY
+  value: {{ $b.insecureRegistry | toString | quote }}
+{{- range $key, $env := dict "buildkitImage" "BUILDKIT_IMAGE" "fetchImage" "FETCH_IMAGE" "scannerImage" "SCANNER_IMAGE" "railpackFrontend" "RAILPACK_FRONTEND" "railpackImage" "RAILPACK_IMAGE" "pushSecret" "PUSH_SECRET" "nodePool" "NODE_POOL" "cpuRequest" "CPU_REQUEST" "cpuLimit" "CPU_LIMIT" "memory" "MEMORY" "ephemeralStorage" "EPHEMERAL_STORAGE" }}
+{{- with index $b $key }}
+- name: KUBEN_BUILD__{{ $env }}
+  value: {{ include "kuben.envString" . }}
+{{- end }}
+{{- end }}
+{{- with $b.deadlineSeconds }}
+- name: KUBEN_BUILD__DEADLINE_SECS
+  value: {{ . | toString | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/* Mounts for kuben.platformEnv's files. */}}
+{{- define "kuben.platformMounts" -}}
+{{- if .Values.sso.enabled }}
+- name: sso
+  mountPath: /etc/kuben/sso
+  readOnly: true
+{{- end }}
+{{- if .Values.git.github.appId }}
+- name: github
+  mountPath: /etc/kuben/github
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "kuben.platformVolumes" -}}
+{{- if .Values.sso.enabled }}
+- name: sso
+  secret:
+    secretName: {{ .Values.sso.existingSecret }}
+    defaultMode: 0400
+    items:
+      - key: {{ .Values.sso.clientSecretKey }}
+        path: {{ .Values.sso.clientSecretKey }}
+{{- end }}
+{{- if .Values.git.github.appId }}
+- name: github
+  secret:
+    secretName: {{ .Values.git.github.existingSecret }}
+    defaultMode: 0400
+    items:
+      - key: {{ .Values.git.github.privateKeyKey }}
+        path: {{ .Values.git.github.privateKeyKey }}
+{{- end }}
+{{- end }}

@@ -128,6 +128,7 @@ spec:
             - name: KUBEN_AGENT__NAMESPACE
               value: {{ .Release.Namespace | quote }}
             {{- end }}
+            {{- include "kuben.platformEnv" . | trim | nindent 12 }}
             {{- with .Values.publicUrl }}
             - name: KUBEN_SERVER__PUBLIC_URL
               value: {{ . | quote }}
@@ -159,6 +160,7 @@ spec:
             - name: keyring
               mountPath: /etc/kuben/keyring
               readOnly: true
+            {{- include "kuben.platformMounts" . | trim | nindent 12 }}
       volumes:
         - name: keyring
           secret:
@@ -170,6 +172,7 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        {{- include "kuben.platformVolumes" . | trim | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
