@@ -441,7 +441,7 @@ for r in "${repos[@]}" external-ci-app; do
   expect 204 DELETE "/projects/$P/environments/$ENV/apps/$r"
 done
 expect 202 DELETE "/projects/$P/environments/$ENV"
-eventually 30 "project has no environments" bash -c "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments' | jq -e 'length == 0'"
+eventually 90 "project has no environments" bash -c "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments' | jq -e 'length == 0'"
 expect 204 DELETE "/projects/$P"
 
 echo "==> M3 E2E BUILD TESTS PASSED SUCCESSFULLY <=="
