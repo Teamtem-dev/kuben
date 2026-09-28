@@ -4398,12 +4398,14 @@ type GitConnectionDto struct {
 	UpdatedAt int64  `json:"updatedAt"`
 	// The account the token belongs to, as the provider named it at the last check.
 	Username OptNilString `json:"username"`
-	// The secret the provider's push webhooks carry (GitLab: the webhook's Secret token; Gitea/Forgejo:
-	// its Secret, which signs the body). Present only in the answer of createGitConnection, never again:
-	// rotate it with `POST /api/v1/git/connections/{connection}/webhook-secret`.
+	// The secret the provider's push webhooks carry (GitHub: the webhook's Secret, which signs the body
+	// with X-Hub-Signature-256; GitLab: the webhook's Secret token; Gitea/Forgejo: its Secret, which signs
+	// the body). Present only in the answer of createGitConnection, never again: rotate it with
+	// `POST /api/v1/git/connections/{connection}/webhook-secret`.
 	WebhookSecret OptString `json:"webhookSecret"`
-	// Where the provider sends push events for this connection (`/api/v1/webhooks/gitlab/{id}` or
-	// `/api/v1/webhooks/gitea/{id}`); none for GitHub.
+	// Where the provider sends push events for this connection (`/api/v1/webhooks/github/{id}`,
+	// `/api/v1/webhooks/gitlab/{id}` or `/api/v1/webhooks/gitea/{id}`); absolute when `server.public_url`
+	// is set.
 	WebhookUrl OptNilString `json:"webhookUrl"`
 }
 
@@ -4740,7 +4742,7 @@ func (*GitRepositoryListDto) listGitConnectionRepositoriesRes() {}
 type GitWebhookSecretDto struct {
 	// Paste it into the provider's webhook settings; the previous secret stops working now.
 	WebhookSecret string `json:"webhookSecret"`
-	// Where the provider sends push events for this connection; none for GitHub.
+	// Where the provider sends push events for this connection.
 	WebhookUrl OptNilString `json:"webhookUrl"`
 }
 

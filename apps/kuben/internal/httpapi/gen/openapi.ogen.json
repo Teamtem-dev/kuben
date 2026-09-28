@@ -2143,11 +2143,11 @@
             ]
           },
           "webhookSecret": {
-            "description": "The secret the provider's push webhooks carry (GitLab: the webhook's\nSecret token; Gitea/Forgejo: its Secret, which signs the body). Present\nonly in the answer of createGitConnection, never again: rotate it with\n`POST /api/v1/git/connections/{connection}/webhook-secret`.",
+            "description": "The secret the provider's push webhooks carry (GitHub: the webhook's\nSecret, which signs the body with X-Hub-Signature-256; GitLab: the\nwebhook's Secret token; Gitea/Forgejo: its Secret, which signs the body). Present\nonly in the answer of createGitConnection, never again: rotate it with\n`POST /api/v1/git/connections/{connection}/webhook-secret`.",
             "type": "string"
           },
           "webhookUrl": {
-            "description": "Where the provider sends push events for this connection\n(`/api/v1/webhooks/gitlab/{id}` or `/api/v1/webhooks/gitea/{id}`);\nnone for GitHub.",
+            "description": "Where the provider sends push events for this connection\n(`/api/v1/webhooks/github/{id}`, `/api/v1/webhooks/gitlab/{id}` or\n`/api/v1/webhooks/gitea/{id}`); absolute when `server.public_url` is set.",
             "type": [
               "string",
               "null"
@@ -2257,7 +2257,7 @@
             "type": "string"
           },
           "webhookUrl": {
-            "description": "Where the provider sends push events for this connection; none for GitHub.",
+            "description": "Where the provider sends push events for this connection.",
             "type": [
               "string",
               "null"
