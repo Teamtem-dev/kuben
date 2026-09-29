@@ -3,6 +3,8 @@ package build
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
+
 	opbuild "github.com/Teamtem-dev/kuben/apps/kuben/internal/core/ops/build"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/opt"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/store"
@@ -45,3 +47,16 @@ func IsConflict(err error) bool { return isConflict(err) }
 
 // IsInvalid exposes isInvalid to the tests.
 func IsInvalid(err error) bool { return isInvalid(err) }
+
+// PodLog exposes podLog to the tests.
+func PodLog(ctx context.Context, w *Worker, pod *corev1.Pod) map[string]string {
+	return w.podLog(ctx, pod)
+}
+
+// LogTailBytes exposes logTailBytes to the tests.
+func LogTailBytes(w *Worker) int { return w.logTailBytes() }
+
+// ReadHead exposes readHead to the tests.
+func ReadHead(ctx context.Context, w *Worker, binding store.SourceBinding) (Head, error) {
+	return w.readHead(ctx, binding)
+}

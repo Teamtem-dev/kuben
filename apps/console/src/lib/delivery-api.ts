@@ -128,3 +128,25 @@ export const appScansQuery = (project: string, environment: string, app: string)
       ),
     retry: false,
   })
+
+/** Build the source's branch head now (202: the sync, and the build once it is queued). */
+export const triggerBuild = (project: string, environment: string, app: string) =>
+  unwrap(
+    api.POST('/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds', {
+      params: { path: { project, environment, app } },
+    }),
+  )
+
+/** A build's log as text: the build pod's while it runs, the kept tail after. */
+export const buildLogQuery = (project: string, environment: string, app: string, build: string) =>
+  queryOptions({
+    queryKey: ['app', project, environment, app, 'builds', build, 'logs'],
+    queryFn: () =>
+      unwrap(
+        api.GET('/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/logs', {
+          ...buildPath(project, environment, app, build),
+          parseAs: 'text',
+        }),
+      ),
+    retry: false,
+  })

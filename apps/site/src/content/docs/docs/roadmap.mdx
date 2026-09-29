@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: What Kuben does today, how 2.0 reaches a stable release (alpha, beta, rc, 2.0.0), what is not built yet, and how to influence the order.
+description: What Kuben does today, what 2.1 adds (Git providers, organization registries, build logs), how 2.0 reaches a stable release (alpha, beta, rc, 2.0.0), what is next and not built yet, and how to influence the order.
 ---
 
 import { Badge } from '@astrojs/starlight/components'
@@ -22,6 +22,15 @@ Both 1.2 and the 2.0 pre-releases do all of this:
 - **Install** with one command on a server (k3s included) or with Helm; several replicas run side by side on PostgreSQL.
 
 2.0 adds a redesigned console: a home dashboard, the app page in tabs, and pages for settings, domains, incidents and webhooks, with the controls for owners, freezes, silences, paused delivery and emergency rollback.
+
+## Coming in 2.1 <Badge text="unreleased" variant="caution" />
+
+In development, not in a release yet. 2.1 only adds to 2.0: one database migration, new API operations and CLI commands, nothing existing changes.
+
+- **Git providers.** Connect GitHub (by token), GitLab (gitlab.com or self-hosted), Gitea or Forgejo to an organization with an access token, checked before it is saved and sealed with the keyring; browse repositories and branches, connect an app to a repository and branch from the console, and deploy on push through a webhook per connection. See [Git providers](/docs/guides/git-providers/).
+- **Organization registries.** One registry login for every environment, with presets for Docker Hub, GHCR, GitLab, Quay and Harbor, a live test, rotation, and pull secrets bound automatically; an environment's own login still wins. See [Container registries](/docs/guides/registries/).
+- **Commit statuses** (`kuben/build`) on GitHub, GitLab and Gitea/Forgejo commits for builds through a connection, and GitLab projects in subgroups.
+- **Build logs and stages.** The log of every build, live while it runs and kept afterwards, a stage timeline, **Build now**, live updates on the Builds tab, and `kuben builds`. See [Builds](/docs/guides/builds/).
 
 ## The 2.0 release train
 
@@ -45,9 +54,21 @@ Until 2.0.0 is out:
 
 These are real gaps in the code today. The order in which they close depends on what users need most; see below.
 
+### Next for Git and builds <Badge text="next" variant="note" />
+
+- **Sign in to Git providers with OAuth** (GitHub, GitLab, Gitea) to create a connection without copying a token.
+- **Previews for GitLab merge requests and Gitea/Forgejo pull requests.** Previews are GitHub App only today.
+- **Build caches** shared between builds of an app, and **build secrets**.
+
+### Other big gaps <Badge text="planned" variant="note" />
+
+- **Managed databases**: PostgreSQL, MySQL and Redis as one-click services with backups, instead of a template and a volume.
+- **Metrics and alerts per app** beyond CPU and memory: request rates, latency and error rates, with alert rules.
+- **Terminals** and **scale to zero**, below.
+
 ### In the console
 
-Some things work through the API but have no page yet: environment approval policies, setting an app's Git source, vulnerability exceptions, and roles for one project or environment. Deployments waiting for approval are approved or rejected on the app's Deployments tab, and Git-built apps list their builds on a Builds tab; build logs have no API yet.
+Some things work through the API but have no page yet: environment approval policies, vulnerability exceptions, and roles for one project or environment. Deployments waiting for approval are approved or rejected on the app's Deployments tab. (Setting an app's Git source and reading build logs get pages in 2.1.)
 
 ### Scale to zero <Badge text="planned" variant="note" />
 
@@ -58,7 +79,7 @@ Idle apps stop and the first request wakes them, through the `activator` role. T
 - **High availability with the cluster agent.** Several replicas work, but with the agent, one replica is best for now.
 - **Terminals** into a running pod.
 - **Two-factor sign-in or passkeys** of Kuben's own. Today, use single sign-on with your provider's MFA.
-- **More Git hosts and DNS providers.** Git sources are GitHub only; DNS-01 and DNS records are Cloudflare only.
+- **More DNS providers.** DNS-01 and DNS records are Cloudflare only.
 - **Separate service accounts** for the API and the controller roles, with narrower RBAC each.
 - **ListenerSet support** to go beyond 60 hostnames per Gateway.
 - **Signed anchoring** of the audit log.

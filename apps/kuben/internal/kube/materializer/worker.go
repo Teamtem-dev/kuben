@@ -181,6 +181,13 @@ func (w *Worker) carry(ctx context.Context, claim store.Claim) stop {
 			w.d.Logger.Warn("unused secret revisions stay for now", "run", m.Run.String(), "error", err.Error())
 		}
 	}
+	// Any succeeded run collects the pull Secrets of deleted organization
+	// logins (org_registry.go).
+	if s, ok := st.(stopSettled); ok && s.phase == run.Succeeded {
+		if _, err := w.collectOrgRegistries(ctx, &m); err != nil {
+			w.d.Logger.Warn("pull secrets of deleted registry logins stay for now", "run", m.Run.String(), "error", err.Error())
+		}
+	}
 	switch s := st.(type) {
 	case stopRefused:
 		return w.end(ctx, claim, &m, run.EventFailed, s.code)

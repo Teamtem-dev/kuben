@@ -56,7 +56,26 @@ func buildDto(a store.BuildAttempt) gen.BuildDto {
 		CreatedAt:       a.CreatedAt,
 		StartedAt:       optNilInt64(a.StartedAt),
 		FinishedAt:      optNilInt64(a.FinishedAt),
+		Stages:          stageDtos(a.Stages),
 	}
+}
+
+// stageDtos is the stages a build reported; none (left out) before any.
+func stageDtos(stages []store.BuildStage) []gen.BuildStageDto {
+	if stages == nil {
+		return nil
+	}
+	out := make([]gen.BuildStageDto, 0, len(stages))
+	for _, s := range stages {
+		out = append(out, gen.BuildStageDto{
+			Name:       gen.BuildStageDtoName(s.Name),
+			Status:     gen.BuildStageDtoStatus(s.Status),
+			StartedAt:  optNilInt64(s.StartedAt),
+			FinishedAt: optNilInt64(s.FinishedAt),
+			Detail:     optNilString(s.Detail),
+		})
+	}
+	return out
 }
 
 // buildID reads a build id; anything that is not a UUID names no build.

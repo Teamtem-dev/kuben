@@ -83,14 +83,19 @@ func (l RegistryLogin) DockerConfig(registry string) string {
 }
 
 // OpenRegistryLogin is the login of environment env (of org) for registry,
-// opened with k; none when the environment has no login for it, or the
-// secret holds no usable one. The API and the image watcher both use it.
+// opened with k: the environment's own login when it has one, else the
+// organization's login for that registry (2.1); none when neither exists,
+// or the environment's secret holds no usable one. The API and the image
+// watcher both use it.
 func (k *Keyring) OpenRegistryLogin(
 	ctx context.Context, t *store.Tenant, org ids.OrgID, env ids.EnvironmentID, registry string,
 ) (opt.Val[RegistryLogin], error) {
 	current, found, err := t.RegistryLogin(ctx, env, registry)
-	if err != nil || !found {
+	if err != nil {
 		return opt.None[RegistryLogin](), err //nolint:wrapcheck // a store error, answered as internal
+	}
+	if !found {
+		return k.openOrgLogin(ctx, t, registry)
 	}
 	who := Identity{Org: org.String(), Secret: current.Secret.String(), Revision: current.Revision}
 	values, err := k.OpenValues(who, current.Sealed)
@@ -100,6 +105,19 @@ func (k *Keyring) OpenRegistryLogin(
 	login, ok := RegistryLoginFrom(values)
 	if !ok {
 		return opt.None[RegistryLogin](), nil
+	}
+	return opt.Some(login), nil
+}
+
+// openOrgLogin is the organization's login for registry, if it has one.
+func (k *Keyring) openOrgLogin(ctx context.Context, t *store.Tenant, registry string) (opt.Val[RegistryLogin], error) {
+	r, found, err := t.OrgRegistryForServer(ctx, registry)
+	if err != nil || !found {
+		return opt.None[RegistryLogin](), err //nolint:wrapcheck // a store error, answered as internal
+	}
+	login, err := k.OpenOrgRegistry(r)
+	if err != nil {
+		return opt.None[RegistryLogin](), err
 	}
 	return opt.Some(login), nil
 }

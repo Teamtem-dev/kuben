@@ -20,16 +20,21 @@ import (
 
 // startBackground starts the work every replica shares through SQL claims
 // (serve.rs spawn_background): the notifier (M4.10: incidents, webhooks
-// and commit statuses from the outbox; app reports the commit statuses),
-// the preview janitor (M5.1) and the image update watcher (M5.4). The
-// channels are closed when each has ended.
+// and commit statuses from the outbox; app, or since 2.1 a source's Git
+// connection, reports the commit statuses), the preview janitor (M5.1) and
+// the image update watcher (M5.4). The channels are closed when each has
+// ended.
 func startBackground(
 	ctx context.Context, cfg config.Config, st *store.Store, keyring *keyring.Keyring, app opt.Val[*github.App],
 	h *health.Health, logger *slog.Logger,
 ) []<-chan struct{} {
+	connections := opt.None[notify.StatusReporter]()
+	if keyring != nil {
+		connections = opt.Some[notify.StatusReporter](connectionSource(cfg, st, keyring))
+	}
 	notifier := notify.New(notify.Deps{
-		Store: st, Keyring: keyring, GitHub: app, Config: cfg.Notify, PublicURL: cfg.Server.PublicURL,
-		Clock: clock.System{}, Logger: logger,
+		Store: st, Keyring: keyring, GitHub: app, Connections: connections, Config: cfg.Notify,
+		PublicURL: cfg.Server.PublicURL, Clock: clock.System{}, Logger: logger,
 	})
 	notifications := supervise.Go(ctx, notify.Subsystem, h, logger, func(ctx context.Context) error {
 		return notify.Run(ctx, notifier, h)

@@ -19,6 +19,7 @@ import {
 import { appScansQuery, buildQuery, buildsQuery, cancelBuild } from '@/lib/delivery-api'
 import { fill } from '@/lib/messages/pages'
 import { usePrefs } from '@/lib/prefs'
+import { BuildLog, BuildNow, StageTimeline } from './build-log'
 
 type Where = { project: string; environment: string; app: string }
 
@@ -185,7 +186,11 @@ function BuildList({ project, environment, app, repository }: Where & { reposito
     },
   ]
   return (
-    <Section title={t('builds.title')} description={fill(t('builds.lead'), { repository })}>
+    <Section
+      title={t('builds.title')}
+      description={fill(t('builds.lead'), { repository })}
+      actions={<BuildNow project={project} environment={environment} app={app} />}
+    >
       {builds.isError ? (
         <ErrorAlert error={builds.error} />
       ) : (
@@ -256,7 +261,7 @@ function Row({ label, children }: { label: ReactNode; children: ReactNode }) {
   )
 }
 
-/** Every field the API gives about one build (the API has no build log to show). */
+/** Every field the API gives about one build, its stages and its log. */
 function BuildDetail({ project, environment, app, id }: Where & { id: string }) {
   const { t, tOr, locale } = usePrefs()
   const query = useQuery(buildQuery(project, environment, app, id))
@@ -265,120 +270,129 @@ function BuildDetail({ project, environment, app, id }: Where & { id: string }) 
     ms == null ? '—' : <time dateTime={new Date(ms).toISOString()}>{date.format(ms)}</time>
   const b = query.data
   const digest = imageDigest(b?.image)
+  const now = Date.now()
   return (
-    <Section
-      title={fill(t('builds.detailTitle'), { build: shortId(id) })}
-      actions={
-        <>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={appRoute} params={{ project, environment, app }} search={{ tab: 'builds' }}>
-              <ArrowLeftIcon aria-hidden="true" className="rtl:-scale-x-100" />
-              {t('builds.back')}
-            </Link>
-          </Button>
-          {b && canCancelBuild(b) && (
-            <CancelBuild project={project} environment={environment} app={app} build={b} />
-          )}
-        </>
-      }
-    >
-      {query.isError ? (
-        <ErrorAlert error={query.error} />
-      ) : !b ? (
-        <Loading lines={4} />
-      ) : (
-        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-          <Row label={t('builds.status')}>
-            <BuildStatus build={b} />
-          </Row>
-          <Row label={t('builds.build')}>
-            <span dir="ltr" className="block break-all text-start font-mono text-xs">
-              {b.id}
-            </span>
-            {b.attempt > 1 && (
-              <span className="text-muted-foreground text-xs">
-                {fill(t('builds.attempt'), { attempt: b.attempt })}
-              </span>
-            )}
-          </Row>
-          <Row label={t('builds.repository')}>
-            <span dir="ltr" className="block text-start font-mono text-xs">
-              {b.repository}
-            </span>
-          </Row>
-          <Row label={t('builds.branch')}>
-            <span dir="ltr" className="block text-start font-mono text-xs">
-              {b.branch}
-            </span>
-          </Row>
-          <Row label={t('builds.commit')}>
-            <span dir="ltr" className="block break-all text-start font-mono text-xs">
-              {b.commit}
-            </span>
-          </Row>
-          <Row label={t('builds.strategy')}>
-            <Tag>{b.strategy}</Tag>
-          </Row>
-          <Row label={t('builds.queued')}>{at(b.createdAt)}</Row>
-          <Row label={t('builds.started')}>{at(b.startedAt)}</Row>
-          <Row label={t('builds.finished')}>{at(b.finishedAt)}</Row>
-          <Row label={t('builds.duration')}>
-            <BuildTiming build={b} now={Date.now()} />
-          </Row>
-          {b.blockedReason && (
-            <Row label={t('builds.blockedReason')}>
-              <span dir="auto" className="text-warning">
-                {b.blockedReason}
-              </span>
-            </Row>
-          )}
-          {(b.failure || b.failureDetail) && (
-            <Row label={t('builds.failure')}>
-              {b.failure && <p className="text-destructive">{tOr(`buildFailure.${b.failure}`, b.failure)}</p>}
-              {b.failureDetail && (
-                <pre
-                  dir="ltr"
-                  className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-start font-mono text-xs"
-                >
-                  {b.failureDetail}
-                </pre>
-              )}
-            </Row>
-          )}
-          {b.image && (
-            <Row label={t('builds.image')}>
-              <Copyable value={b.image} />
-            </Row>
-          )}
-          {b.release && (
-            <Row label={t('builds.release')}>
-              <span dir="ltr" className="block break-all text-start font-mono text-xs">
-                {b.release}
-              </span>
-            </Row>
-          )}
-          {b.deployment && (
-            <Row label={t('builds.deployment')}>
-              <Link
-                to={appRoute}
-                params={{ project, environment, app }}
-                search={{ tab: 'deployments' }}
-                dir="ltr"
-                className="block break-all text-start font-mono text-link text-xs hover:underline"
-              >
-                {b.deployment}
+    <div className="space-y-6">
+      <Section
+        title={fill(t('builds.detailTitle'), { build: shortId(id) })}
+        actions={
+          <>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={appRoute} params={{ project, environment, app }} search={{ tab: 'builds' }}>
+                <ArrowLeftIcon aria-hidden="true" className="rtl:-scale-x-100" />
+                {t('builds.back')}
               </Link>
-            </Row>
-          )}
-          {b.deployDecision && (
-            <Row label={t('builds.deployDecision')}>
-              {tOr(`buildDeploy.${b.deployDecision}`, b.deployDecision)}
-            </Row>
-          )}
-          {digest && <BuildScan project={project} environment={environment} app={app} digest={digest} />}
-        </dl>
-      )}
-    </Section>
+            </Button>
+            {b && canCancelBuild(b) && (
+              <CancelBuild project={project} environment={environment} app={app} build={b} />
+            )}
+          </>
+        }
+      >
+        {query.isError ? (
+          <ErrorAlert error={query.error} />
+        ) : !b ? (
+          <Loading lines={4} />
+        ) : (
+          <>
+            <StageTimeline build={b} now={now} />
+            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
+              <Row label={t('builds.status')}>
+                <BuildStatus build={b} />
+              </Row>
+              <Row label={t('builds.build')}>
+                <span dir="ltr" className="block break-all text-start font-mono text-xs">
+                  {b.id}
+                </span>
+                {b.attempt > 1 && (
+                  <span className="text-muted-foreground text-xs">
+                    {fill(t('builds.attempt'), { attempt: b.attempt })}
+                  </span>
+                )}
+              </Row>
+              <Row label={t('builds.repository')}>
+                <span dir="ltr" className="block text-start font-mono text-xs">
+                  {b.repository}
+                </span>
+              </Row>
+              <Row label={t('builds.branch')}>
+                <span dir="ltr" className="block text-start font-mono text-xs">
+                  {b.branch}
+                </span>
+              </Row>
+              <Row label={t('builds.commit')}>
+                <span dir="ltr" className="block break-all text-start font-mono text-xs">
+                  {b.commit}
+                </span>
+              </Row>
+              <Row label={t('builds.strategy')}>
+                <Tag>{b.strategy}</Tag>
+              </Row>
+              <Row label={t('builds.queued')}>{at(b.createdAt)}</Row>
+              <Row label={t('builds.started')}>{at(b.startedAt)}</Row>
+              <Row label={t('builds.finished')}>{at(b.finishedAt)}</Row>
+              <Row label={t('builds.duration')}>
+                <BuildTiming build={b} now={now} />
+              </Row>
+              {b.blockedReason && (
+                <Row label={t('builds.blockedReason')}>
+                  <span dir="auto" className="text-warning">
+                    {b.blockedReason}
+                  </span>
+                </Row>
+              )}
+              {(b.failure || b.failureDetail) && (
+                <Row label={t('builds.failure')}>
+                  {b.failure && (
+                    <p className="text-destructive">{tOr(`buildFailure.${b.failure}`, b.failure)}</p>
+                  )}
+                  {b.failureDetail && (
+                    <pre
+                      dir="ltr"
+                      className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-start font-mono text-xs"
+                    >
+                      {b.failureDetail}
+                    </pre>
+                  )}
+                </Row>
+              )}
+              {b.image && (
+                <Row label={t('builds.image')}>
+                  <Copyable value={b.image} />
+                </Row>
+              )}
+              {b.release && (
+                <Row label={t('builds.release')}>
+                  <span dir="ltr" className="block break-all text-start font-mono text-xs">
+                    {b.release}
+                  </span>
+                </Row>
+              )}
+              {b.deployment && (
+                <Row label={t('builds.deployment')}>
+                  <Link
+                    to={appRoute}
+                    params={{ project, environment, app }}
+                    search={{ tab: 'deployments' }}
+                    dir="ltr"
+                    className="block break-all text-start font-mono text-link text-xs hover:underline"
+                  >
+                    {b.deployment}
+                  </Link>
+                </Row>
+              )}
+              {b.deployDecision && (
+                <Row label={t('builds.deployDecision')}>
+                  {tOr(`buildDeploy.${b.deployDecision}`, b.deployDecision)}
+                </Row>
+              )}
+              {digest && <BuildScan project={project} environment={environment} app={app} digest={digest} />}
+            </dl>
+          </>
+        )}
+      </Section>
+      {b && <BuildLog key={b.id} project={project} environment={environment} app={app} build={b} />}
+    </div>
   )
 }
 

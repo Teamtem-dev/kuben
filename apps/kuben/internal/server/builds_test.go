@@ -129,7 +129,7 @@ func TestBuildsRunOnlyOnAControllerWithAClusterAndGitSources(t *testing.T) {
 		if c.cluster {
 			cluster = opt.Some(r)
 		}
-		done, err := server.StartBuilds(t.Context(), c.cfg, nil, cluster, c.app, h, quiet())
+		done, err := server.StartBuilds(t.Context(), c.cfg, nil, cluster, c.app, nil, h, quiet())
 		if err != nil || len(done) != 0 {
 			t.Errorf("%s: %d started, %v", c.name, len(done), err)
 		}
@@ -148,7 +148,7 @@ func TestBuildsRunOnlyOnAControllerWithAClusterAndGitSources(t *testing.T) {
 	cfg.Build.Namespace = opt.Some("builds")
 	cfg.Build.RegistryAuthFile = opt.Some(filepath.Join(t.TempDir(), "missing"))
 	r := fakeRegistry()
-	_, err := server.StartBuilds(t.Context(), cfg, nil, opt.Some(r), opt.Some(a), h, quiet())
+	_, err := server.StartBuilds(t.Context(), cfg, nil, opt.Some(r), opt.Some(a), nil, h, quiet())
 	if err == nil || !strings.HasPrefix(err.Error(), "reading build.registry_auth_file ") {
 		t.Errorf("unreadable credentials: %v", err)
 	}

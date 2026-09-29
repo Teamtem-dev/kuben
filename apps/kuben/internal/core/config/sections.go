@@ -278,6 +278,10 @@ type BuildCfg struct {
 	// RescanHours: rescan the images apps run when their newest scan is
 	// older than this.
 	RescanHours uint32 `koanf:"rescan_hours"`
+	// LogTailKiB is how much of the end of a build's log, KiB, is kept when
+	// the build settles, so the log outlives the build pod (2.1); from 1 to
+	// 1024, a value outside is the nearest bound. See [BuildCfg.LogTailBytes].
+	LogTailKiB uint32 `koanf:"log_tail_kib"`
 }
 
 // DefaultBuildCfg is `[build]` when nothing is configured.
@@ -295,7 +299,21 @@ func DefaultBuildCfg() BuildCfg {
 		DeadlineSecs:        1800,
 		MaxConcurrent:       2,
 		MaxConcurrentPerOrg: 1,
+		LogTailKiB:          DefaultLogTailKiB,
 	}
+}
+
+// The bounds of `build.log_tail_kib`, and its default.
+const (
+	DefaultLogTailKiB = 256
+	MinLogTailKiB     = 1
+	// MaxLogTailKiB is what the database keeps at most (migration 0035).
+	MaxLogTailKiB = 1024
+)
+
+// LogTailBytes is [BuildCfg.LogTailKiB] in bytes, within its bounds.
+func (b BuildCfg) LogTailBytes() int {
+	return int(min(max(b.LogTailKiB, MinLogTailKiB), MaxLogTailKiB)) << 10
 }
 
 // UnpinnedImages are the build images that are not pinned by digest.

@@ -71,7 +71,7 @@ const (
 		"FROM webhook_deliveries WHERE org_id = $1 AND endpoint_id = $2 ORDER BY created_at DESC LIMIT $3"
 	runContext = "SELECT r.project_id, p.environment_id, r.target_id, pr.slug AS project, " +
 		"e.slug AS environment, a.slug AS app, r.reason, r.generation, rel.source::text AS source, " +
-		"b.installation_id " +
+		"b.installation_id, b.connection_id " +
 		"FROM deployment_runs r " +
 		"JOIN application_targets t ON t.id = r.target_id AND t.org_id = r.org_id " +
 		"JOIN environment_placements p ON p.id = t.placement_id AND p.org_id = r.org_id " +
@@ -84,7 +84,7 @@ const (
 	buildContext = "SELECT ba.project_id, p.environment_id, ba.target_id, pr.slug AS project, " +
 		"e.slug AS environment, a.slug AS app, ba.phase AS reason, 0::bigint AS generation, " +
 		"jsonb_build_object('repository', ba.repository, 'commit', ba.commit_sha)::text AS source, " +
-		"b.installation_id " +
+		"b.installation_id, b.connection_id " +
 		"FROM build_attempts ba " +
 		"JOIN application_targets t ON t.id = ba.target_id AND t.org_id = ba.org_id " +
 		"JOIN environment_placements p ON p.id = t.placement_id AND p.org_id = ba.org_id " +
@@ -190,6 +190,9 @@ type OperationContext struct {
 	// InstallationID is the GitHub App installation of the app's Git
 	// source, if any.
 	InstallationID opt.Val[int64]
+	// Connection is the Git connection the app's source reads through, if
+	// any (2.1).
+	Connection opt.Val[ids.GitConnectionID]
 }
 
 // OpenIncident opens an incident, or counts it again while one with its key is open.
@@ -398,12 +401,16 @@ func (t *Tenant) OperationContext(ctx context.Context, operation ids.OperationID
 			c            OperationContext
 			source       *string
 			installation *int64
+			connection   *uuid.UUID
 		)
 		if err := row.Scan(&c.ProjectID, &c.EnvironmentID, &c.TargetID, &c.Project, &c.Environment, &c.App,
-			&c.Reason, &c.Generation, &source, &installation); err != nil {
+			&c.Reason, &c.Generation, &source, &installation, &connection); err != nil {
 			return OperationContext{}, err
 		}
 		c.Source, c.InstallationID = opt.FromPtr(source), opt.FromPtr(installation)
+		if connection != nil {
+			c.Connection = opt.Some(ids.From[ids.GitConnection](*connection))
+		}
 		return c, nil
 	}, operation.UUID(), t.org.String())
 }

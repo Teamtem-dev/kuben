@@ -82,6 +82,39 @@ func TestRepositoriesAreOwnerSlashName(t *testing.T) {
 	}
 }
 
+func TestGitlabProjectPathsMayNestGroups(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"Acme/Shop":                    {"acme", "shop"},
+		"acme/platform/backend/api":    {"acme/platform/backend", "api"},
+		"a.b/c-d/e_f":                  {"a.b/c-d", "e_f"},
+		strings.Repeat("g/", 20) + "p": {strings.TrimSuffix(strings.Repeat("g/", 20), "/"), "p"},
+	} {
+		r, err := source.ParseNestedRepoName(in)
+		if err != nil || r.String() != strings.ToLower(in) || r.Owner() != want[0] || r.Name() != want[1] {
+			t.Errorf("%q: got %v (%q, %q), %v", in, r, r.Owner(), r.Name(), err)
+		}
+		if r.Nested() != (strings.Count(in, "/") > 1) {
+			t.Errorf("%q: nested %v", in, r.Nested())
+		}
+	}
+	bad := []string{
+		"", "acme", "/shop", "acme/", "acme//shop", "acme/../shop", "acme/sub/", "ac me/sub/shop", "acmé/sub/shop",
+		strings.Repeat("g/", 21) + "p", "acme/" + strings.Repeat("a", 101),
+	}
+	for _, s := range bad {
+		if _, err := source.ParseNestedRepoName(s); invalidKind(err) != source.InvalidProjectPath {
+			t.Errorf("%q: got %v", s, err)
+		}
+	}
+	if _, err := source.ParseRepoName("acme/platform/api"); invalidKind(err) != source.InvalidRepository {
+		t.Errorf("owner/name stays two segments: %v", err)
+	}
+	err := &source.Invalid{Kind: source.InvalidProjectPath, Value: "a"}
+	if err.Error() != "not a `group/…/name` project path: \"a\"" {
+		t.Errorf("got %s", err)
+	}
+}
+
 func TestBranchesFollowRefFormat(t *testing.T) {
 	for _, good := range []string{"main", "release/1.2", "feat/x-y_z", "weiß/ünï", "a@b", "a{b", strings.Repeat("a", 255)} {
 		if b, err := source.ParseBranchName(good); err != nil || b.String() != good || !b.Valid() {

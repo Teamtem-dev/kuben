@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, agent-token, backup, restore, upgrade-check, dns01-issuer, support-bundle, version) and as a client of one (login, apps, deploy, status, logs, rollback), its options, exit codes and how configuration is loaded.
+description: Every kuben subcommand, for the server (setup, status, uninstall, serve, migrate, doctor, reset-admin, setup-token, agent-token, backup, restore, upgrade-check, dns01-issuer, support-bundle, version) and as a client of one (login, apps, deploy, status, logs, rollback, builds), its options, exit codes and how configuration is loaded.
 ---
 
 The `kuben` binary is the server, the operator's tool, and a client of any Kuben server ([below](#client-commands)). Every subcommand reads the same [configuration](/docs/reference/configuration/): built-in defaults, then `/etc/kuben/config.toml`, then `./kuben.toml`, then `KUBEN_*` environment variables. `--config <file>` layers a file between the defaults and the environment.
@@ -296,6 +296,24 @@ kuben rollback shop/prod/web [--to <revision>]
 ```
 
 A new revision with the image and configuration of an earlier one, by default the one before the current. Domains and volumes stay as they are.
+
+### `builds`
+
+```bash
+kuben builds shop/prod/web [--json] [--limit 20]
+kuben builds logs shop/prod/web <build> [-f]
+kuben builds trigger shop/prod/web
+kuben builds cancel shop/prod/web <build>
+```
+
+For apps built from Git (see [Builds](/docs/guides/builds/)):
+
+- `kuben builds` lists the newest builds (20 by default, `--limit` up to 100): id, phase (with the failure or why it is blocked), the stage it is at, commit, branch and when it was created. `--json` prints the builds as the API returns them, stages included.
+- `builds logs` prints a build's log: from the build pod while it runs, the kept end of it afterwards. `-f` (`--follow`) keeps printing new lines, each with its stage in front (`[build] …`), until the build's log ends; an error that ended it goes to stderr.
+- `builds trigger` builds the head of the app's branch now, like **Build now** in the console (a source sync), and prints the sync and the newest build.
+- `builds cancel` stops a build: a queued one is cancelled at once, a running one says it is stopping.
+
+A build is named by its id (a UUID), as `kuben builds` lists it. Reading needs the `viewer` role; `trigger` and `cancel` need `developer`.
 
 ## Exit codes and logs
 

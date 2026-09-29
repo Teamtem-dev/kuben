@@ -44,6 +44,7 @@ import { usePrefs } from '@/lib/prefs'
 import { BuildsCard } from './app-builds'
 import { DeploymentsCard } from './app-deployments'
 import { LiveLogs } from './app-logs'
+import { SourceCard } from './app-source'
 import { DetachCard, DnsCard, ImagePolicyCard, UsageCard } from './ops/app-ops'
 import { DeliveryCard, EmergencyRollbackCard, OwnerCard } from './ops/controls'
 
@@ -267,6 +268,8 @@ export function AppPage() {
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-6">
+          <SourceCard project={project} environment={environment} app={app} />
+
           <EnvCard
             text={formatEnvLines(a.env)}
             pending={update.isPending}

@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import {
   ChevronRightIcon,
+  ContainerIcon,
   FolderKanbanIcon,
+  GitBranchIcon,
   GlobeIcon,
   KeyRoundIcon,
   LayoutDashboardIcon,
@@ -56,6 +58,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
@@ -78,8 +83,14 @@ const NAV = [
   { to: '/webhooks', label: 'nav.webhooks', icon: WebhookIcon, exact: false },
   { to: '/domains', label: 'nav.domains', icon: GlobeIcon, exact: false },
   { to: '/audit', label: 'nav.audit', icon: ScrollTextIcon, exact: false },
-  { to: '/settings', label: 'nav.settings', icon: SettingsIcon, exact: false },
+  { to: '/settings', label: 'nav.settings', icon: SettingsIcon, exact: true },
 ] as const satisfies readonly { to: string; label: MessageKey; icon: LucideIcon; exact: boolean }[]
+
+/** The pages under Settings, listed below it in the sidebar. */
+const SETTINGS_NAV = [
+  { to: '/settings/integrations', label: 'nav.integrations', icon: GitBranchIcon },
+  { to: '/settings/registries', label: 'nav.registries', icon: ContainerIcon },
+] as const satisfies readonly { to: string; label: MessageKey; icon: LucideIcon }[]
 
 /** The sidebar remembers being collapsed (shadcn keeps it in a cookie). */
 const sidebarOpenAtStart = () => !document.cookie.split('; ').includes('sidebar_state=false')
@@ -124,6 +135,20 @@ function AppSidebar() {
                         <span>{t(item.label)}</span>
                       </Link>
                     </SidebarMenuButton>
+                    {item.to === '/settings' && (
+                      <SidebarMenuSub>
+                        {SETTINGS_NAV.map((sub) => (
+                          <SidebarMenuSubItem key={sub.to}>
+                            <SidebarMenuSubButton asChild>
+                              <Link to={sub.to} activeProps={{ 'data-active': true, 'aria-current': 'page' }}>
+                                <sub.icon aria-hidden="true" />
+                                <span>{t(sub.label)}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -151,7 +176,7 @@ function CrumbLink({ crumb }: { crumb: Crumb }) {
     switch (crumb.kind) {
       case 'page':
         return (
-          <Link to="/" activeOptions={crumbActive}>
+          <Link to={crumb.to ?? '/'} activeOptions={crumbActive}>
             {t(crumb.label)}
           </Link>
         )
@@ -283,6 +308,16 @@ function CommandPalette() {
           <CommandEmpty>{t('command.empty')}</CommandEmpty>
           <CommandGroup heading={t('command.pages')}>
             {NAV.map((item) => (
+              <CommandItem
+                key={item.to}
+                value={`${t(item.label)} ${item.to}`}
+                onSelect={() => go(() => navigate({ to: item.to }))}
+              >
+                <item.icon aria-hidden="true" />
+                {t(item.label)}
+              </CommandItem>
+            ))}
+            {SETTINGS_NAV.map((item) => (
               <CommandItem
                 key={item.to}
                 value={`${t(item.label)} ${item.to}`}

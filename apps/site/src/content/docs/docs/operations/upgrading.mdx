@@ -116,6 +116,12 @@ Because 2.0.0 changed neither the schema nor the resources, a rollback is a chan
 
 Kuben records every version that started against the database, so after a rollback `kuben upgrade-check` of 1.2.x reports the step from 2.0 as going back. That is expected; the server starts regardless.
 
+## Upgrading to 2.1 (not released yet)
+
+2.1 is the first release since 2.0 that changes the database: migration `0035_integrations` adds the tables for Git connections (GitLab, Gitea/Forgejo, GitHub tokens) and organization registries, and build stages and kept build logs. The server applies it on start, after the backup the pre-upgrade hook (Helm) or `kuben migrate` takes; `kuben upgrade-check` reports it as a pending migration.
+
+Going back from 2.1 to 2.0 is therefore **not** an image swap: 2.0 refuses a database that has a migration it does not know. Keep the backup taken before the upgrade, and restore it (`kuben restore`) if you need to go back.
+
 ## Binary
 
 Re-run the installer, optionally pinned. It runs `kuben setup`, which replaces the binary and restarts the service. To check before the new version takes over, install the binary only, check, then restart:

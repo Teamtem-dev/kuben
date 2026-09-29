@@ -78,6 +78,20 @@ type Handler interface {
 	//
 	// POST /api/v1/projects/{project}/environments/{environment}/freezes
 	CreateFreeze(ctx context.Context, req *CreateWindow, params CreateFreezeParams) (CreateFreezeRes, error)
+	// CreateGitConnection implements createGitConnection operation.
+	//
+	// Connect a Git provider account by token. The token is checked first and sealed; it is never
+	// returned.
+	//
+	// POST /api/v1/git/connections
+	CreateGitConnection(ctx context.Context, req *CreateGitConnection) (CreateGitConnectionRes, error)
+	// CreateOrgRegistry implements createOrgRegistry operation.
+	//
+	// Add a registry login for every environment of the organization. An environment's own login for the
+	// same registry wins.
+	//
+	// POST /api/v1/registries
+	CreateOrgRegistry(ctx context.Context, req *CreateOrgRegistry) (CreateOrgRegistryRes, error)
 	// CreateProject implements createProject operation.
 	//
 	// Create a project; its `Project` resource follows.
@@ -127,12 +141,24 @@ type Handler interface {
 	//
 	// DELETE /api/v1/projects/{project}/environments/{environment}
 	DeleteEnvironment(ctx context.Context, params DeleteEnvironmentParams) (DeleteEnvironmentRes, error)
+	// DeleteGitConnection implements deleteGitConnection operation.
+	//
+	// Delete a Git connection no app source reads through.
+	//
+	// DELETE /api/v1/git/connections/{connection}
+	DeleteGitConnection(ctx context.Context, params DeleteGitConnectionParams) (DeleteGitConnectionRes, error)
 	// DeleteImagePolicy implements deleteImagePolicy operation.
 	//
 	// Stop following the image repository.
 	//
 	// DELETE /api/v1/projects/{project}/environments/{environment}/apps/{app}/image-policy
 	DeleteImagePolicy(ctx context.Context, params DeleteImagePolicyParams) (DeleteImagePolicyRes, error)
+	// DeleteOrgRegistry implements deleteOrgRegistry operation.
+	//
+	// Delete a registry login. Pods already running keep their pull secret until their next deployment.
+	//
+	// DELETE /api/v1/registries/{registry}
+	DeleteOrgRegistry(ctx context.Context, params DeleteOrgRegistryParams) (DeleteOrgRegistryRes, error)
 	// DeleteProject implements deleteProject operation.
 	//
 	// Delete an empty project. Projects with environments are refused (`409`): deleting environments is an
@@ -271,6 +297,13 @@ type Handler interface {
 	//
 	// GET /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}
 	GetBuild(ctx context.Context, params GetBuildParams) (GetBuildRes, error)
+	// GetBuildLogs implements getBuildLogs operation.
+	//
+	// The build's log: from the build pod while it runs, from the kept tail after. With `follow=true`, a
+	// live stream of new lines.
+	//
+	// GET /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/logs
+	GetBuildLogs(ctx context.Context, params GetBuildLogsParams) (GetBuildLogsRes, error)
 	// GetDeployment implements getDeployment operation.
 	//
 	// One deployment run of this app.
@@ -301,6 +334,12 @@ type Handler interface {
 	//
 	// GET /api/v1/projects/{project}/environments/{environment}/policy
 	GetEnvironmentPolicy(ctx context.Context, params GetEnvironmentPolicyParams) (GetEnvironmentPolicyRes, error)
+	// GetGitConnection implements getGitConnection operation.
+	//
+	// A Git connection.
+	//
+	// GET /api/v1/git/connections/{connection}
+	GetGitConnection(ctx context.Context, params GetGitConnectionParams) (GetGitConnectionRes, error)
 	// GetHealthDetails implements getHealthDetails operation.
 	//
 	// Per-subsystem health (authenticated).
@@ -319,6 +358,12 @@ type Handler interface {
 	//
 	// GET /api/v1/me
 	GetMe(ctx context.Context) (GetMeRes, error)
+	// GetOrgRegistry implements getOrgRegistry operation.
+	//
+	// A registry login of the organization.
+	//
+	// GET /api/v1/registries/{registry}
+	GetOrgRegistry(ctx context.Context, params GetOrgRegistryParams) (GetOrgRegistryRes, error)
 	// GetPreviewPolicy implements getPreviewPolicy operation.
 	//
 	// A project's preview settings.
@@ -454,6 +499,24 @@ type Handler interface {
 	//
 	// GET /api/v1/projects/{project}/environments/{environment}/freezes
 	ListFreezes(ctx context.Context, params ListFreezesParams) ([]WindowDto, error)
+	// ListGitConnectionBranches implements listGitConnectionBranches operation.
+	//
+	// Branches of one repository the connection can read.
+	//
+	// GET /api/v1/git/connections/{connection}/branches
+	ListGitConnectionBranches(ctx context.Context, params ListGitConnectionBranchesParams) (ListGitConnectionBranchesRes, error)
+	// ListGitConnectionRepositories implements listGitConnectionRepositories operation.
+	//
+	// Repositories the connection's token can read.
+	//
+	// GET /api/v1/git/connections/{connection}/repositories
+	ListGitConnectionRepositories(ctx context.Context, params ListGitConnectionRepositoriesParams) (ListGitConnectionRepositoriesRes, error)
+	// ListGitConnections implements listGitConnections operation.
+	//
+	// Git connections of the caller's organization.
+	//
+	// GET /api/v1/git/connections
+	ListGitConnections(ctx context.Context) (ListGitConnectionsRes, error)
 	// ListGitInstallations implements listGitInstallations operation.
 	//
 	// GitHub App installations linked to the caller's organization.
@@ -472,6 +535,12 @@ type Handler interface {
 	//
 	// GET /api/v1/members
 	ListMembers(ctx context.Context) (ListMembersRes, error)
+	// ListOrgRegistries implements listOrgRegistries operation.
+	//
+	// Registry logins of the caller's organization.
+	//
+	// GET /api/v1/registries
+	ListOrgRegistries(ctx context.Context) (ListOrgRegistriesRes, error)
 	// ListPreviews implements listPreviews operation.
 	//
 	// A project's previews, newest first.
@@ -496,6 +565,12 @@ type Handler interface {
 	//
 	// GET /api/v1/projects/{project}/environments/{environment}/registries
 	ListRegistryLogins(ctx context.Context, params ListRegistryLoginsParams) ([]RegistryLoginDto, error)
+	// ListRegistryPresets implements listRegistryPresets operation.
+	//
+	// The registries Kuben knows how to log in to.
+	//
+	// GET /api/v1/registries/presets
+	ListRegistryPresets(ctx context.Context) (ListRegistryPresetsRes, error)
 	// ListReleases implements listReleases operation.
 	//
 	// Release history, newest first (50 revisions).
@@ -742,6 +817,12 @@ type Handler interface {
 	//
 	// POST /api/v1/projects/{project}/environments/{environment}/apps/{app}/rollback
 	RollbackApp(ctx context.Context, req *Rollback, params RollbackAppParams) (RollbackAppRes, error)
+	// RotateGitConnectionWebhookSecret implements rotateGitConnectionWebhookSecret operation.
+	//
+	// Replace a connection's webhook secret with a new one, returned once.
+	//
+	// POST /api/v1/git/connections/{connection}/webhook-secret
+	RotateGitConnectionWebhookSecret(ctx context.Context, params RotateGitConnectionWebhookSecretParams) (RotateGitConnectionWebhookSecretRes, error)
 	// RunApp implements runApp operation.
 	//
 	// Run a scheduled process now (a Job from its CronJob template).
@@ -788,6 +869,36 @@ type Handler interface {
 	//
 	// POST /api/v1/projects/{project}/environments/{environment}/apps/{app}/source/sync
 	SyncAppSource(ctx context.Context, params SyncAppSourceParams) (SyncAppSourceRes, error)
+	// TestGitConnection implements testGitConnection operation.
+	//
+	// Check a saved connection's token again and record the outcome.
+	//
+	// POST /api/v1/git/connections/{connection}/test
+	TestGitConnection(ctx context.Context, params TestGitConnectionParams) (TestGitConnectionRes, error)
+	// TestNewGitConnection implements testNewGitConnection operation.
+	//
+	// Check a token without saving it: the account it belongs to and its scopes.
+	//
+	// POST /api/v1/git/connections/test
+	TestNewGitConnection(ctx context.Context, req *CreateGitConnection) (TestNewGitConnectionRes, error)
+	// TestNewOrgRegistry implements testNewOrgRegistry operation.
+	//
+	// Log in to a registry without saving the login.
+	//
+	// POST /api/v1/registries/test
+	TestNewOrgRegistry(ctx context.Context, req *CreateOrgRegistry) (TestNewOrgRegistryRes, error)
+	// TestOrgRegistry implements testOrgRegistry operation.
+	//
+	// Log in with a saved registry login again and record the outcome.
+	//
+	// POST /api/v1/registries/{registry}/test
+	TestOrgRegistry(ctx context.Context, params TestOrgRegistryParams) (TestOrgRegistryRes, error)
+	// TriggerBuild implements triggerBuild operation.
+	//
+	// Build the source's branch head now: the same as a source sync.
+	//
+	// POST /api/v1/projects/{project}/environments/{environment}/apps/{app}/builds
+	TriggerBuild(ctx context.Context, params TriggerBuildParams) (TriggerBuildRes, error)
 	// UpdateApp implements updateApp operation.
 	//
 	// Update an app (image changes require `app-deploy`). Every change is a new deployment run; a new tag
@@ -795,12 +906,24 @@ type Handler interface {
 	//
 	// PATCH /api/v1/projects/{project}/environments/{environment}/apps/{app}
 	UpdateApp(ctx context.Context, req *UpdateApp, params UpdateAppParams) (UpdateAppRes, error)
+	// UpdateGitConnection implements updateGitConnection operation.
+	//
+	// Change a Git connection; a new token is checked first.
+	//
+	// PATCH /api/v1/git/connections/{connection}
+	UpdateGitConnection(ctx context.Context, req *UpdateGitConnection, params UpdateGitConnectionParams) (UpdateGitConnectionRes, error)
 	// UpdateMember implements updateMember operation.
 	//
 	// Change a member's role.
 	//
 	// PATCH /api/v1/members/{member}
 	UpdateMember(ctx context.Context, req *UpdateMember, params UpdateMemberParams) (UpdateMemberRes, error)
+	// UpdateOrgRegistry implements updateOrgRegistry operation.
+	//
+	// Change a registry login; a new password rotates it.
+	//
+	// PUT /api/v1/registries/{registry}
+	UpdateOrgRegistry(ctx context.Context, req *UpdateOrgRegistry, params UpdateOrgRegistryParams) (UpdateOrgRegistryRes, error)
 	// VerifyDomainClaim implements verifyDomainClaim operation.
 	//
 	// Verify a claim through its TXT record or a DNS provider account.

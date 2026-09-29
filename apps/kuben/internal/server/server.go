@@ -40,6 +40,7 @@ import (
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/maintenance/upgrade"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/metrics"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/store"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/supervise"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/usage"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/version"
 )
@@ -147,7 +148,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	subsystems = append(subsystems, startMaintenance(ctx, cfg, st, h, logger)...)
 	warnActivator(cfg, logger)
 	subsystems = append(subsystems, startAgentLink(ctx, cfg, st, cluster, link, h, logger)...)
-	builds, err := startBuilds(ctx, cfg, st, cluster, app, h, logger)
+	builds, err := startBuilds(ctx, cfg, st, cluster, app, keyring, h, logger)
 	if err != nil {
 		return err
 	}
@@ -212,6 +213,8 @@ func serveAPI(ctx context.Context, cfg config.Config, cluster opt.Val[*registry.
 	if err != nil {
 		return fmt.Errorf("api: %w", err)
 	}
+	// Build changes reach this replica's event streams (2.1).
+	*subsystems = append(*subsystems, supervise.Go(ctx, httpapi.BuildFeedSubsystem, h, logger, server.RunBuildFeed))
 	return listen(ctx, cfg, server.Handler(), h, logger)
 }
 

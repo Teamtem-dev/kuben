@@ -63,7 +63,7 @@ helm upgrade --install kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-sys
 ## What you get
 
 - **Projects → environments → apps.** Each environment is its own namespace with quotas and network policies.
-- **Deploy any container image, or build from Git** through a GitHub App, in isolated BuildKit Jobs, with an SBOM and a vulnerability scan of every image and a policy that can block a deployment.
+- **Deploy any container image, or build from Git** through a GitHub App, in isolated BuildKit Jobs, with an SBOM and a vulnerability scan of every image and a policy that can block a deployment. 2.1 (unreleased) adds GitLab, Gitea/Forgejo and GitHub token connections, organization-wide registry logins, and build logs with a stage timeline.
 - **Zero-downtime rollouts**, health checks, autoscaling, environment variables and write-only secrets.
 - **Day-2 operations built in:** logs, restarts, release history with rollback, promotion between environments with a diff preview, persistent volumes, cron jobs, custom domains with automatic HTTPS, and a Doctor that says why an address does not answer.
 - **Preview environments** for every pull request, with a lifetime and no secrets for forks.

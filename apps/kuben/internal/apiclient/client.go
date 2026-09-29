@@ -324,7 +324,12 @@ func (EndEvent) followEvent()  {}
 // the loop ends. An event the client cannot read is an error in the
 // sequence; so is a broken connection, after which the sequence ends.
 func (c Client) FollowLogs(ctx context.Context, app AppPath, options LogOptions) (iter.Seq2[FollowEvent, error], error) {
-	path := app.api() + "/logs" + options.query(true)
+	return c.follow(ctx, app.api()+"/logs"+options.query(true))
+}
+
+// follow is the `line` and `end` events of the stream at path, as
+// FollowLogs reads them.
+func (c Client) follow(ctx context.Context, path string) (iter.Seq2[FollowEvent, error], error) {
 	response, err := c.send(ctx, http.MethodGet, path, nil, nil) //nolint:bodyclose // closed by the returned iterator
 	if err != nil {
 		return nil, err

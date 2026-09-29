@@ -194,7 +194,7 @@ AgentLink, where cluster agents connect to Kuben (ADR-027).
 
 ## `git`
 
-The GitHub App Kuben acts as. Git sources are on only when the App id, its key file and the webhook secret are all set.
+The GitHub App Kuben acts as. The App is on only when the App id, its key file and the webhook secret are all set. Token connections to GitHub, GitLab and Gitea/Forgejo need no configuration: organization admins add them at runtime, and their tokens are sealed with the keyring (see [Git providers](/docs/guides/git-providers/)).
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -206,7 +206,7 @@ The GitHub App Kuben acts as. Git sources are on only when the App id, its key f
 
 ## `build`
 
-Builds run as one rootless BuildKit Job per attempt (ADR-028).
+Builds run as one rootless BuildKit Job per attempt (ADR-028). They read sources through the GitHub App, through Git connections, or both; see [Builds](/docs/guides/builds/).
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -230,6 +230,15 @@ Builds run as one rootless BuildKit Job per attempt (ADR-028).
 | `KUBEN_BUILD__SCANNER_IMAGE` | `aquasec/trivy:0.74.0` | writes the SBOM of every built image and scans it; empty disables scanning |
 | `KUBEN_BUILD__SCANNER_MEMORY` | `1Gi` | memory request and limit of the scan container |
 | `KUBEN_BUILD__RESCAN_HOURS` | `24` | rescan the images apps run when their newest scan is older than this |
+| `KUBEN_BUILD__LOG_TAIL_KIB` | `256` | how much of the end of a build's log is kept when the build ends, so the log outlives the build pod; 1 to 1024, a value outside is the nearest bound |
+
+## `integrations`
+
+Git connections and organization registries (2.1). Organization admins choose the address of a self-hosted GitLab or Gitea and the server of a registry, and Kuben calls them. By default it refuses any that resolves to a private, loopback, link-local or otherwise non-public address, checked on every connection after the name is resolved. A proxy from `HTTPS_PROXY`/`HTTP_PROXY` is used as it is; the target behind it is checked first.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KUBEN_INTEGRATIONS__ALLOW_PRIVATE_HOSTS` | `false` | let Git connections and registry checks reach private addresses too, for a Git server or registry inside your network. Every organization admin can then reach those addresses through Kuben |
 
 ## `ci`
 

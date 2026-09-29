@@ -10,6 +10,18 @@ describe('crumbsFor', () => {
     expect(crumbsFor('/nowhere')).toEqual([])
   })
 
+  test('pages under Settings', () => {
+    expect(crumbsFor('/settings/integrations')).toEqual([
+      { kind: 'page', label: 'nav.settings', to: '/settings' },
+      { kind: 'page', label: 'nav.integrations' },
+    ])
+    expect(crumbsFor('/settings/registries')).toEqual([
+      { kind: 'page', label: 'nav.settings', to: '/settings' },
+      { kind: 'page', label: 'nav.registries' },
+    ])
+    expect(crumbsFor('/settings/nowhere')).toEqual([{ kind: 'page', label: 'nav.settings' }])
+  })
+
   test('the project hierarchy, down to Doctor', () => {
     expect(crumbsFor('/projects/shop/prod/web/doctor')).toEqual([
       { kind: 'page', label: 'nav.home', to: '/' },

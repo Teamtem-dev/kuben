@@ -9,6 +9,22 @@ export type Release = {
 }
 
 export const releases: Release[] = [
+  // Not released yet: uncomment when v2.1.0 is tagged, with its date.
+  // {
+  //   version: 'v2.1.0',
+  //   date: '',
+  //   title: 'Git providers, organization registries and build logs',
+  //   highlights: [
+  //     'Git connections: connect GitHub (token), GitLab (gitlab.com or self-hosted), Gitea or Forgejo to an organization with an access token, checked before it is saved (account and scopes) and sealed with the keyring; browse repositories and branches, and connect an app to a repository and branch.',
+  //     'Deploy on push from GitLab and Gitea/Forgejo: push webhooks at /api/v1/webhooks/gitlab/<connection> (X-Gitlab-Token) and /api/v1/webhooks/gitea/<connection> (HMAC-SHA256 signature), deduplicated like GitHub deliveries. The GitHub App keeps working unchanged.',
+  //     'Organization registries: one login per registry for every environment, with presets for Docker Hub, GHCR, GitLab, Quay and Harbor, a live test before saving, rotation, and pull secrets bound automatically; an environment\'s own login still wins.',
+  //     'Builds: the log of every build (live while it runs, kept after the build pod is gone), a stage timeline (clone, plan, build, scan, push, deploy), Build now, and live updates on the Builds tab.',
+  //     'kuben builds, builds logs [-f], builds trigger and builds cancel on the command line.',
+  //     'Settings → Integrations and Settings → Registries in the console, in English and Persian.',
+  //     'Upgrading adds migration 0035; the 2.0 API, CLI and configuration are unchanged, only extended.',
+  //     'Not in yet: signing in to Git providers with OAuth, and preview environments for GitLab merge requests and Gitea pull requests (previews stay GitHub App only).',
+  //   ],
+  // },
   {
     version: 'v2.0.0-alpha.1',
     date: '2026-09-28',

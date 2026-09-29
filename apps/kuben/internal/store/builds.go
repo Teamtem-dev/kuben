@@ -31,6 +31,7 @@ import (
 
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/artifact"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/ids"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/kerrors"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/ops"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/ops/build"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/ops/target"
@@ -86,7 +87,7 @@ const (
 		"WHERE id = $1 AND org_id = $2 AND project_id = $3 FOR UPDATE"
 	bindingColumns = "b.id, b.org_id, b.project_id, b.application_id, b.target_id, " +
 		"b.installation_id, b.repository, b.repository_id, b.branch, b.recipe::text AS recipe, " +
-		"b.image_repository, b.head_sha, b.head_epoch, b.pull_request"
+		"b.image_repository, b.head_sha, b.head_epoch, b.pull_request, b.provider, b.connection_id"
 	selectBindingOfTarget = "SELECT " + bindingColumns +
 		" FROM source_bindings b WHERE b.target_id = $1 AND b.org_id = $2"
 	selectBinding = "SELECT " + bindingColumns +
@@ -94,14 +95,18 @@ const (
 	selectBindingsForPush = "SELECT " + bindingColumns + " FROM source_bindings b " +
 		"WHERE b.provider = $1 AND b.installation_id = $2 AND b.repository = $3 AND b.branch = $4 " +
 		"AND b.org_id = $5 AND b.pull_request IS NULL ORDER BY b.id"
+	selectBindingsForConnectionPush = "SELECT " + bindingColumns + " FROM source_bindings b " +
+		"WHERE b.connection_id = $1 AND b.repository = $2 AND b.branch = $3 " +
+		"AND b.org_id = $4 AND b.pull_request IS NULL ORDER BY b.id"
+	ownsConnection      = "SELECT provider FROM git_connections WHERE id = $1 AND org_id = $2"
 	insertSourceBinding = "INSERT INTO source_bindings " +
 		"(id, org_id, project_id, application_id, target_id, provider, installation_id, repository, " +
-		"branch, recipe, image_repository, pull_request, created_at, updated_at) " +
-		"VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $13, $12, $12)"
+		"branch, recipe, image_repository, pull_request, created_at, updated_at, connection_id) " +
+		"VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $13, $12, $12, $14)"
 	updateBinding = "UPDATE source_bindings " +
 		"SET installation_id = $2, repository = $3, branch = $4, recipe = $5::jsonb, image_repository = $6, " +
-		"repository_id = CASE WHEN repository = $3 THEN repository_id END, " +
-		"head_sha = NULL, updated_at = $7, pull_request = $8 " +
+		"repository_id = CASE WHEN repository = $3 AND provider = $9 THEN repository_id END, " +
+		"head_sha = NULL, updated_at = $7, pull_request = $8, provider = $9, connection_id = $10 " +
 		"WHERE id = $1"
 	raiseBuildConfig = "UPDATE application_targets SET build_config_revision = build_config_revision + 1 WHERE id = $1"
 	pendingSync      = "SELECT id FROM operations " +
@@ -130,7 +135,7 @@ const (
 		"a.recipe::text AS recipe, a.image_repository, a.phase, a.blocked_reason, a.failure, a.failure_detail, " +
 		"a.reported_digest, a.digest, a.job_name, a.release_id, a.deployment_run_id, a.deploy_decision, " +
 		"a.operation_id, a.cancel_requested_at, a.created_at, a.started_at, a.finished_at, " +
-		"b.installation_id, b.branch"
+		"b.installation_id, b.branch, b.provider, b.connection_id, a.stages::text AS stages"
 	attemptsFrom = "SELECT " + attemptColumns +
 		" FROM build_attempts a JOIN source_bindings b ON b.id = a.binding_id WHERE "
 	// attemptByOperation and attemptByID are Rust's attempt_where with its
@@ -162,6 +167,9 @@ const (
 		"WHERE id = $1 AND target_id = $2 AND phase <> ALL($4) RETURNING operation_id"
 	nextAttemptNo = "SELECT COALESCE(max(attempt_no), 0) + 1 FROM build_attempts " +
 		"WHERE binding_id = $1 AND source_epoch = $2 AND build_config_revision = $3"
+	setLogTail = "UPDATE build_attempts SET log_tail = $3, updated_at = $4 WHERE id = $1 AND org_id = $2"
+	logTailOf  = "SELECT log_tail FROM build_attempts WHERE id = $1 AND org_id = $2"
+	setStages  = "UPDATE build_attempts SET stages = $3::jsonb, updated_at = $4 WHERE id = $1 AND org_id = $2"
 )
 
 // terminalPhases are the final build phases, as the SQL arrays compare them.
@@ -169,9 +177,13 @@ func terminalPhases() []string {
 	return []string{string(build.Succeeded), string(build.Failed), string(build.Cancelled)}
 }
 
-// NewBinding is a new or changed source binding of a target.
+// NewBinding is a new or changed source binding of a target. It reads the
+// repository through a GitHub App installation (InstallationID) or, when
+// Connection is set, through that Git connection (InstallationID is then
+// ignored).
 type NewBinding struct {
 	InstallationID uint64
+	Connection     opt.Val[ids.GitConnectionID]
 	Repository     source.RepoName
 	Branch         source.BranchName
 	Recipe         source.BuildRecipe
@@ -183,12 +195,17 @@ type NewBinding struct {
 
 // SourceBinding is a target's Git source.
 type SourceBinding struct {
-	ID             ids.SourceBindingID
-	Org            ids.OrgID
-	Project        ids.ProjectID
-	Application    ids.ApplicationID
-	Target         ids.TargetID
+	ID          ids.SourceBindingID
+	Org         ids.OrgID
+	Project     ids.ProjectID
+	Application ids.ApplicationID
+	Target      ids.TargetID
+	// Provider is `github`, `gitlab` or `gitea`.
+	Provider GitProvider
+	// InstallationID is the GitHub App installation; 0 when the binding
+	// reads through Connection.
 	InstallationID uint64
+	Connection     opt.Val[ids.GitConnectionID]
 	Repository     source.RepoName
 	// RepositoryID is the provider's id, pinned on the first verified read.
 	RepositoryID    opt.Val[uint64]
@@ -220,6 +237,9 @@ type (
 	// BoundInstallationMissing means the installation is not linked to this
 	// organization.
 	BoundInstallationMissing struct{}
+	// BoundConnectionMissing means the Git connection is not this
+	// organization's.
+	BoundConnectionMissing struct{}
 	// BoundNotFound means no such target, or it is being deleted.
 	BoundNotFound struct{}
 )
@@ -228,6 +248,7 @@ func (BoundCreated) bound()             {}
 func (BoundChanged) bound()             {}
 func (BoundUnchanged) bound()           {}
 func (BoundInstallationMissing) bound() {}
+func (BoundConnectionMissing) bound()   {}
 func (BoundNotFound) bound()            {}
 
 // BindingOf is the binding a [Bound] names, if it names one.
@@ -239,14 +260,14 @@ func BindingOf(b Bound) (ids.SourceBindingID, bool) {
 		return b.ID, true
 	case BoundUnchanged:
 		return b.ID, true
-	case BoundInstallationMissing, BoundNotFound:
+	case BoundInstallationMissing, BoundConnectionMissing, BoundNotFound:
 		return ids.SourceBindingID{}, false
 	}
 	return ids.SourceBindingID{}, false
 }
 
-// BuildAttempt is one build attempt with its binding's installation and
-// branch.
+// BuildAttempt is one build attempt with its binding's provider,
+// installation or connection, and branch.
 type BuildAttempt struct {
 	ID                  ids.BuildAttemptID
 	Org                 ids.OrgID
@@ -262,23 +283,29 @@ type BuildAttempt struct {
 	Repository          source.RepoName
 	Recipe              source.BuildRecipe
 	ImageRepository     string
-	InstallationID      uint64
-	Branch              source.BranchName
-	Phase               build.Phase
-	BlockedReason       opt.Val[string]
-	Failure             opt.Val[string]
-	FailureDetail       opt.Val[string]
-	ReportedDigest      opt.Val[artifact.Digest]
-	Digest              opt.Val[artifact.Digest]
-	JobName             opt.Val[string]
-	Release             opt.Val[ids.ReleaseID]
-	Run                 opt.Val[ids.DeploymentRunID]
-	DeployDecision      opt.Val[string]
-	Operation           ids.OperationID
-	CancelRequested     bool
-	CreatedAt           int64
-	StartedAt           opt.Val[int64]
-	FinishedAt          opt.Val[int64]
+	Provider            GitProvider
+	// InstallationID is 0 when the binding reads through Connection.
+	InstallationID  uint64
+	Connection      opt.Val[ids.GitConnectionID]
+	Branch          source.BranchName
+	Phase           build.Phase
+	BlockedReason   opt.Val[string]
+	Failure         opt.Val[string]
+	FailureDetail   opt.Val[string]
+	ReportedDigest  opt.Val[artifact.Digest]
+	Digest          opt.Val[artifact.Digest]
+	JobName         opt.Val[string]
+	Release         opt.Val[ids.ReleaseID]
+	Run             opt.Val[ids.DeploymentRunID]
+	DeployDecision  opt.Val[string]
+	Operation       ids.OperationID
+	CancelRequested bool
+	CreatedAt       int64
+	StartedAt       opt.Val[int64]
+	FinishedAt      opt.Val[int64]
+	// Stages is what the build reported of its stages, in order; nil
+	// before it reported any.
+	Stages []BuildStage
 }
 
 // PushReference is the image reference the build pushes: the repository
@@ -514,19 +541,22 @@ type bindingRow struct {
 	project                         ids.ProjectID
 	application                     ids.ApplicationID
 	target                          ids.TargetID
-	installationID                  int64
+	installationID                  *int64
 	repository                      string
 	repositoryID                    *int64
 	branch, recipe, imageRepository string
 	headSha                         *string
 	headEpoch                       int64
 	pullRequest                     *int64
+	provider                        string
+	connection                      *uuid.UUID
 }
 
 func scanBinding(row pgx.CollectableRow) (SourceBinding, error) {
 	var r bindingRow
 	if err := row.Scan(&r.id, &r.org, &r.project, &r.application, &r.target, &r.installationID, &r.repository,
-		&r.repositoryID, &r.branch, &r.recipe, &r.imageRepository, &r.headSha, &r.headEpoch, &r.pullRequest); err != nil {
+		&r.repositoryID, &r.branch, &r.recipe, &r.imageRepository, &r.headSha, &r.headEpoch, &r.pullRequest,
+		&r.provider, &r.connection); err != nil {
 		return SourceBinding{}, err
 	}
 	return r.binding()
@@ -542,10 +572,10 @@ func (r bindingRow) binding() (SourceBinding, error) {
 	if b.Org, err = orgID(op, r.org); err != nil {
 		return SourceBinding{}, err
 	}
-	if b.InstallationID, err = counter(op, r.installationID); err != nil {
+	if b.Provider, b.InstallationID, b.Connection, err = readerOf(op, r.provider, r.installationID, r.connection); err != nil {
 		return SourceBinding{}, err
 	}
-	if b.Repository, err = parseColumn(op, r.repository, source.ParseRepoName); err != nil {
+	if b.Repository, err = parseColumn(op, r.repository, b.Provider.ParseRepository); err != nil {
 		return SourceBinding{}, err
 	}
 	if b.RepositoryID, err = optCounter(op, r.repositoryID); err != nil {
@@ -592,8 +622,11 @@ type attemptRow struct {
 	cancelRequestedAt                          *int64
 	createdAt                                  int64
 	startedAt, finishedAt                      *int64
-	installationID                             int64
+	installationID                             *int64
 	branch                                     string
+	provider                                   string
+	connection                                 *uuid.UUID
+	stages                                     *string
 }
 
 func scanAttempt(row pgx.CollectableRow) (BuildAttempt, error) {
@@ -602,7 +635,7 @@ func scanAttempt(row pgx.CollectableRow) (BuildAttempt, error) {
 		&r.sourceEpoch, &r.buildConfigRevision, &r.lifecycleUID, &r.repository, &r.recipe, &r.imageRepository,
 		&r.phase, &r.blockedReason, &r.failure, &r.failureDetail, &r.reportedDigest, &r.digest, &r.jobName,
 		&r.release, &r.run, &r.deployDecision, &r.operation, &r.cancelRequestedAt, &r.createdAt, &r.startedAt,
-		&r.finishedAt, &r.installationID, &r.branch); err != nil {
+		&r.finishedAt, &r.installationID, &r.branch, &r.provider, &r.connection, &r.stages); err != nil {
 		return BuildAttempt{}, err
 	}
 	return r.attempt()
@@ -645,6 +678,9 @@ func (r attemptRow) attempt() (BuildAttempt, error) {
 	if a.Digest, err = optColumn(op, r.digest, artifact.ParseDigest); err != nil {
 		return BuildAttempt{}, err
 	}
+	if a.Stages, err = stagesOf(op, r.stages); err != nil {
+		return BuildAttempt{}, err
+	}
 	return a, nil
 }
 
@@ -662,13 +698,13 @@ func (r attemptRow) inputs(op string, a *BuildAttempt) error {
 	if a.BuildConfigRevision, err = counter(op, r.buildConfigRevision); err != nil {
 		return err
 	}
-	if a.Repository, err = parseColumn(op, r.repository, source.ParseRepoName); err != nil {
+	if a.Provider, a.InstallationID, a.Connection, err = readerOf(op, r.provider, r.installationID, r.connection); err != nil {
+		return err
+	}
+	if a.Repository, err = parseColumn(op, r.repository, a.Provider.ParseRepository); err != nil {
 		return err
 	}
 	if a.Recipe, err = recipeOf(op, r.recipe); err != nil {
-		return err
-	}
-	if a.InstallationID, err = counter(op, r.installationID); err != nil {
 		return err
 	}
 	a.Branch, err = parseColumn(op, r.branch, source.ParseBranchName)
@@ -766,16 +802,12 @@ func (t *Tenant) Installations(ctx context.Context) ([]Installation, error) {
 func (t *Tenant) BindSource(ctx context.Context, project ids.ProjectID, tgt ids.TargetID, binding NewBinding) (Bound, error) {
 	const op = "bind a source"
 	org := t.org.String()
-	installation, err := signed(op, binding.InstallationID)
+	reader, missing, err := t.readerFor(ctx, op, binding)
 	if err != nil {
 		return nil, err
 	}
-	var owns bool
-	if err := queryOne(ctx, t.tx, op, ownsInstallation, []any{&owns}, GitHub, installation, org); err != nil {
-		return nil, err
-	}
-	if !owns {
-		return BoundInstallationMissing{}, nil
+	if missing != nil {
+		return missing, nil
 	}
 	type locked struct {
 		application ids.ApplicationID
@@ -808,27 +840,103 @@ func (t *Tenant) BindSource(ctx context.Context, project ids.ProjectID, tgt ids.
 	}
 	if !found {
 		id := ids.New[ids.SourceBinding]()
-		_, err := exec(ctx, t.tx, op, insertSourceBinding, id, org, project, l.application, tgt, GitHub, installation,
-			binding.Repository.String(), binding.Branch.String(), recipe, binding.ImageRepository, now,
-			pullRequest.Ptr())
+		_, err := exec(ctx, t.tx, op, insertSourceBinding, id, org, project, l.application, tgt,
+			string(reader.provider), reader.installation, binding.Repository.String(), binding.Branch.String(),
+			recipe, binding.ImageRepository, now, pullRequest.Ptr(), reader.connection)
 		if err != nil {
 			return nil, err
 		}
 		return BoundCreated{ID: id}, nil
 	}
-	if existing.InstallationID == binding.InstallationID && existing.Repository == binding.Repository &&
-		existing.Branch == binding.Branch && sameRecipe(existing.Recipe, binding.Recipe) &&
-		existing.ImageRepository == binding.ImageRepository && existing.PullRequest == binding.PullRequest {
+	if sameBinding(existing, reader, binding) {
 		return BoundUnchanged{ID: existing.ID}, nil
 	}
-	if _, err := exec(ctx, t.tx, op, updateBinding, existing.ID, installation, binding.Repository.String(),
-		binding.Branch.String(), recipe, binding.ImageRepository, now, pullRequest.Ptr()); err != nil {
+	if _, err := exec(ctx, t.tx, op, updateBinding, existing.ID, reader.installation, binding.Repository.String(),
+		binding.Branch.String(), recipe, binding.ImageRepository, now, pullRequest.Ptr(),
+		string(reader.provider), reader.connection); err != nil {
 		return nil, err
 	}
 	if _, err := exec(ctx, t.tx, op, raiseBuildConfig, tgt); err != nil {
 		return nil, err
 	}
 	return BoundChanged{ID: existing.ID}, nil
+}
+
+// bindingReader is how a binding reads its repository: an installation or
+// a connection, as columns and as the binding reports them.
+type bindingReader struct {
+	provider       GitProvider
+	installation   *int64
+	installationID uint64
+	connection     *uuid.UUID
+	connectionID   opt.Val[ids.GitConnectionID]
+}
+
+// readerFor checks that the installation or connection binding names is
+// this organization's; the outcome is non-nil when it is not.
+func (t *Tenant) readerFor(ctx context.Context, op string, binding NewBinding) (bindingReader, Bound, error) {
+	if c, ok := binding.Connection.Get(); ok {
+		provider, found, err := queryOpt(ctx, t.tx, op, ownsConnection, pgx.RowTo[string], c, t.org.String())
+		if err != nil {
+			return bindingReader{}, nil, err
+		}
+		if !found {
+			return bindingReader{}, BoundConnectionMissing{}, nil
+		}
+		p, err := parseColumn(op, provider, ParseGitProvider)
+		if err != nil {
+			return bindingReader{}, nil, err
+		}
+		// Only a GitLab project nests: a path the provider cannot have is
+		// the caller's mistake.
+		if _, err := p.ParseRepository(binding.Repository.String()); err != nil {
+			return bindingReader{}, nil, kerrors.New(kerrors.Validation,
+				"a %s repository is `owner/name`: `%s` is not one", p, binding.Repository)
+		}
+		u := c.UUID()
+		return bindingReader{provider: p, connection: &u, connectionID: binding.Connection}, nil, nil
+	}
+	installation, err := signed(op, binding.InstallationID)
+	if err != nil {
+		return bindingReader{}, nil, err
+	}
+	var owns bool
+	if err := queryOne(ctx, t.tx, op, ownsInstallation, []any{&owns}, GitHub, installation, t.org.String()); err != nil {
+		return bindingReader{}, nil, err
+	}
+	if !owns {
+		return bindingReader{}, BoundInstallationMissing{}, nil
+	}
+	return bindingReader{provider: GitProviderGitHub, installation: &installation, installationID: binding.InstallationID},
+		nil, nil
+}
+
+// sameBinding reports whether existing already is binding, read through
+// reader.
+func sameBinding(existing SourceBinding, reader bindingReader, binding NewBinding) bool {
+	return existing.Provider == reader.provider && existing.InstallationID == reader.installationID &&
+		existing.Connection == reader.connectionID && existing.Repository == binding.Repository &&
+		existing.Branch == binding.Branch && sameRecipe(existing.Recipe, binding.Recipe) &&
+		existing.ImageRepository == binding.ImageRepository && existing.PullRequest == binding.PullRequest
+}
+
+// readerOf reads the provider, installation and connection columns of a
+// binding.
+func readerOf(
+	op, provider string, installation *int64, connection *uuid.UUID,
+) (GitProvider, uint64, opt.Val[ids.GitConnectionID], error) {
+	p, err := parseColumn(op, provider, ParseGitProvider)
+	if err != nil {
+		return "", 0, opt.None[ids.GitConnectionID](), err
+	}
+	if connection != nil {
+		return p, 0, opt.Some(ids.From[ids.GitConnection](*connection)), nil
+	}
+	if installation == nil {
+		return "", 0, opt.None[ids.GitConnectionID](), decodeErr(op, "a binding with neither installation nor connection")
+	}
+	id, err := counter(op, *installation)
+	return p, id, opt.None[ids.GitConnectionID](), err
 }
 
 // BindingOfTarget is the source binding of tgt.
@@ -854,6 +962,15 @@ func (t *Tenant) BindingsForPush(
 	}
 	return queryAll(ctx, t.tx, op, selectBindingsForPush, scanBinding,
 		GitHub, installation, repository.String(), branch.String(), t.org.String())
+}
+
+// BindingsForConnectionPush is this organization's bindings a push to
+// repository and branch through connection concerns.
+func (t *Tenant) BindingsForConnectionPush(
+	ctx context.Context, connection ids.GitConnectionID, repository source.RepoName, branch source.BranchName,
+) ([]SourceBinding, error) {
+	return queryAll(ctx, t.tx, "read the bindings of a push", selectBindingsForConnectionPush, scanBinding,
+		connection, repository.String(), branch.String(), t.org.String())
 }
 
 // RequestSync asks for binding's head to be read from the provider. A sync

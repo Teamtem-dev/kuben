@@ -87,6 +87,7 @@ func Root() *cobra.Command {
 		deployCmd(g),
 		logsCmd(g),
 		rollbackCmd(g),
+		buildsCmd(g),
 		uninstallCmd(g),
 		upgradeCheckCmd(g),
 		backupCmd(g),

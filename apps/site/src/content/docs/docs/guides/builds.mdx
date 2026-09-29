@@ -1,0 +1,82 @@
+---
+title: Builds
+description: How Kuben builds apps from Git, the stages of a build, its log, Build now, cancelling, and the kuben builds commands.
+sidebar:
+  order: 1.2
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+An app with a Git source is built by Kuben: every new commit on its branch becomes an image, which is scanned and deployed as a new [release](/docs/guides/rollbacks/). Connect a repository with a [Git provider](/docs/guides/git-providers/) or the GitHub App.
+
+Builds run in the cluster, one rootless BuildKit Job per attempt, in a namespace of their own, without cluster credentials. The server turns them on with `build.enabled`; see [`build`](/docs/reference/configuration/#build) and the [Helm values](/docs/reference/helm-values/#git-sources-and-builds).
+
+## The stages
+
+Every build goes through these stages, in order. The app's **Builds** tab shows them as a timeline, and the API returns them as `stages` on every build:
+
+| Stage | What happens |
+|---|---|
+| `clone` | The build pod fetches the commit. |
+| `plan` | The build is planned: the Dockerfile, or Railpack's plan when there is none. |
+| `build` | BuildKit builds the image and pushes it. |
+| `scan` | The image gets an SBOM and a vulnerability scan (skipped when the server has no scanner). |
+| `push` | Kuben checks that the registry holds exactly the image the build reported. |
+| `deploy` | The release is deployed, or kept by the environment's policy (see below). |
+
+Recording stages is best effort: a build never waits or fails because of its timeline. Each stage is `pending`, `running`, `succeeded`, `failed` or `skipped`, with when it started and finished, and a `detail` when there is something to say. A build as a whole has a `phase` (`queued` … `succeeded`, `failed`, `cancelled`) and, when it failed, a `failure` code that the [runbook](/docs/operations/runbooks/#a-build-failed) explains.
+
+The Builds tab updates live: a new build, a stage that starts or ends, and the outcome appear without reloading the page (Kuben publishes `build` changes on its event stream, `/api/v1/stream`).
+
+## The build log
+
+Open a build on the Builds tab to read its **Build log**: live while the build runs, with **Follow the end**, **Wrap lines** and **Download**. The log is the output of the clone, plan and build steps, in that order, each under a `==> <stage> <==` header; the scan's output is the image's SBOM, kept with the scan instead.
+
+While the build pod exists, the log is read from it. When the build ends, Kuben keeps the end of the log with the build (256 KiB by default, `build.log_tail_kib`), so it stays readable after the build pod is removed.
+
+```bash
+# the whole log so far
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api/builds/$BUILD/logs"
+# follow it: server-sent events, `line` per line and one `end` when the build's log ends
+curl -fsSN -H "Authorization: Bearer $TOKEN" \
+  "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api/builds/$BUILD/logs?follow=true"
+```
+
+A followed log waits while the build waits for its pod, then follows each step as it starts; for a build that has already ended, it sends the kept log and ends. Like a followed app log, a stream lasts at most an hour, and each person has a few at once.
+
+<Aside type="caution" title="Logs can hold secrets">
+A build log is what your build prints. Do not echo secrets in a Dockerfile or build script: anyone who can read the app can read its build logs.
+</Aside>
+
+## Build now
+
+A push starts a build when the provider's webhook is set up. To build the branch head right away (no webhook, a missed delivery, or a retry after a fix outside the repository), press **Build now** on the Builds tab, or:
+
+```bash
+curl -fsS -X POST -H "Authorization: Bearer $TOKEN" \
+  "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api/builds"
+```
+
+Kuben reads the head and builds it unless that commit is already built. The answer (`202`) has the operation that reads the head and the newest build. It is the same as `POST …/source/sync`, and needs the `developer` role.
+
+## Cancel a build
+
+**Cancel** on a build, or `POST …/builds/{build}/cancel`, stops it. A build that has not started is cancelled at once; a running one is stopped by deleting its Job.
+
+## What can hold a deploy
+
+A successful build is not always deployed. Its `deployDecision` says why: a newer commit already built (`StaleSource`), the source changed while it built (`BuildConfigChanged`), or the environment does not deploy automatically. A change freeze, paused delivery, a production approval or the vulnerability gate hold it like any other deployment.
+
+## From the command line
+
+With a [logged-in context](/docs/reference/cli/#login), or `KUBEN_URL` and `KUBEN_TOKEN` set:
+
+```bash
+kuben builds shop/staging/api            # the newest builds
+kuben builds logs shop/staging/api <build> -f
+kuben builds trigger shop/staging/api    # Build now
+kuben builds cancel shop/staging/api <build>
+```
+
+See [`builds`](/docs/reference/cli/#builds) for every option.

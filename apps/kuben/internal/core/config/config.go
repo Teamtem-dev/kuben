@@ -32,6 +32,8 @@ type Config struct {
 	Notify    NotifyCfg    `koanf:"notify"`
 	Retention RetentionCfg `koanf:"retention"`
 	Domains   DomainsCfg   `koanf:"domains"`
+	// Integrations is `[integrations]` (2.1).
+	Integrations IntegrationsCfg `koanf:"integrations"`
 }
 
 // Default is the configuration of an installation that configured nothing.
@@ -216,6 +218,23 @@ type NotifyCfg struct {
 	AllowPrivateTargets bool `koanf:"allow_private_targets"`
 	// AllowHTTP allows `http://` endpoints (by default only `https://`).
 	AllowHTTP bool `koanf:"allow_http"`
+}
+
+// IntegrationsCfg is `[integrations]`: what the services an organization
+// connects may be (2.1). An organization admin chooses the address of a Git
+// connection (a self-hosted GitLab or Gitea) and the server of an
+// organization registry; the server calls them, so by default it refuses
+// to connect to any that resolves to a private, loopback, link-local or
+// otherwise non-public address (outbound.IsPrivate), checked on every
+// connection, after resolution: a name that later resolves elsewhere
+// changes nothing. A proxy from HTTPS_PROXY/HTTP_PROXY is the operator's
+// and is used as it is; the target behind it is checked before.
+type IntegrationsCfg struct {
+	// AllowPrivateHosts lets Git connections and organization registry
+	// checks reach private addresses too: set it when the Git server or
+	// registry runs inside the operator's network. Every organization admin
+	// can then reach those addresses through the server.
+	AllowPrivateHosts bool `koanf:"allow_private_hosts"`
 }
 
 // DomainsCfg is `[domains]`: domain claims and DNS providers (M5.2).

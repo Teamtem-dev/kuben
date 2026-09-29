@@ -6,3 +6,6 @@ const HasSlot = hasSlot
 
 // Bounded exposes bounded to the external tests.
 func Bounded(detail string) string { return bounded(detail) }
+
+// LogTail exposes logTail to the external tests.
+func LogTail(log string, maxBytes int) string { return logTail(log, maxBytes) }

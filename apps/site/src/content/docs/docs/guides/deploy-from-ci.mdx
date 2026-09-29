@@ -12,6 +12,10 @@ When your CI builds the image, the flow is: CI builds and pushes it, then tells 
 - a **scoped API token** stored as a CI secret (any CI system), below;
 - a **CI trust policy**: GitHub Actions exchanges its own OIDC token for a short-lived Kuben token, and nothing is stored. See [GitHub Actions without a stored secret](#github-actions-without-a-stored-secret).
 
+<Aside type="tip" title="No CI at all">
+Kuben can also build the image itself: connect GitHub, GitLab, Gitea or Forgejo under **Settings → Integrations**, connect the app to a repository and branch, and every push is built and deployed. See [Git providers](/docs/guides/git-providers/) and [Builds](/docs/guides/builds/). This page is for pipelines that build the image themselves.
+</Aside>
+
 ## 1. Create a token
 
 <Steps>
@@ -96,7 +100,7 @@ jobs:
 ```
 
 <Aside type="tip" title="Private registries">
-The cluster pulls the image, not Kuben. For a private registry, add a login on the environment page under **Registry logins** (**Save login**), or with `PUT /api/v1/projects/shop/environments/staging/registries/ghcr` and `{"registry": "ghcr.io", "username": "…", "password": "…"}`. The password is never shown again.
+The cluster pulls the image, not Kuben. For a private registry, add a login once for the whole organization under **Settings → Registries** (see [Container registries](/docs/guides/registries/)), or for one environment on its page under **Registry logins** (**Save login**), or with `PUT /api/v1/projects/shop/environments/staging/registries/ghcr` and `{"registry": "ghcr.io", "username": "…", "password": "…"}`. An environment's own login wins over the organization's. The password is never shown again.
 </Aside>
 
 ### GitLab CI

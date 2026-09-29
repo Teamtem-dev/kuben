@@ -18,9 +18,13 @@ import (
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/clock"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/config"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/opt"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/gitprovider"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/gitprovider/connect"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/health"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/github"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/oci"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/integrations/outbound"
+	"github.com/Teamtem-dev/kuben/apps/kuben/internal/keyring"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/kube/leader"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/kube/registry"
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/store"
@@ -49,22 +53,32 @@ func githubApp(cfg config.Config, logger *slog.Logger) (opt.Val[*github.App], er
 }
 
 // startBuilds starts the build worker (M3, ADR-028) and the rescans, when
-// builds are enabled on a controller replica with a cluster and the GitHub
-// App is configured. The build namespace is created when missing; rootless
-// BuildKit needs the `privileged` Pod Security level there (for its own
-// seccomp and AppArmor profile, never a privileged container).
+// builds are enabled on a controller replica with a cluster. Sources read
+// through the GitHub App when it is configured, and through the
+// organizations' Git connections (2.1), whose tokens ring opens. The build
+// namespace is created when missing; rootless BuildKit needs the
+// `privileged` Pod Security level there (for its own seccomp and AppArmor
+// profile, never a privileged container).
 func startBuilds(ctx context.Context, cfg config.Config, st *store.Store, cluster opt.Val[*registry.Registry],
-	app opt.Val[*github.App], h *health.Health, logger *slog.Logger,
+	app opt.Val[*github.App], ring *keyring.Keyring, h *health.Health, logger *slog.Logger,
 ) ([]<-chan struct{}, error) {
 	b := cfg.Build
 	r, inCluster := cluster.Get()
 	if !b.Enabled || !cfg.HasRole(config.RoleController) || !inCluster {
 		return nil, nil
 	}
-	provider, ok := app.Get()
-	if !ok {
+	var provider build.SourceProvider
+	var connections build.Connections
+	if ring != nil {
+		connections = connectionSource(cfg, st, ring)
+	}
+	if a, ok := app.Get(); ok && a != nil {
+		provider = a
+	} else if connections == nil {
 		logger.Warn("build.enabled is set, but Git sources are not configured (git.github_app_id): no builds run")
 		return nil, nil
+	} else {
+		logger.Info("the GitHub App is not configured (git.github_app_id): builds read sources through Git connections only")
 	}
 	for _, image := range b.UnpinnedImages() {
 		logger.Warn("a build image is not pinned by digest; pin it as image@sha256:… in production", "image", image)
@@ -100,13 +114,22 @@ func startBuilds(ctx context.Context, cfg config.Config, st *store.Store, cluste
 	}
 	worker := build.NewWorker(build.Deps{
 		Store: st, Client: primary.Typed, Dynamic: primary.Dynamic, ID: leader.Identity(), Provider: provider,
-		Verifier: oci.NewVerifier(b.InsecureRegistry, credentials), Settings: settings,
+		Connections: connections, Verifier: oci.NewVerifier(b.InsecureRegistry, credentials), Settings: settings,
 		Limits: store.SlotLimits{Total: b.MaxConcurrent, PerOrg: b.MaxConcurrentPerOrg}, Clock: clock.System{}, Logger: logger,
 	})
 	logger.Info("build worker ready", "namespace", namespace, "max_concurrent", b.MaxConcurrent)
 	return append(done, supervise.Go(ctx, build.Subsystem, h, logger, func(ctx context.Context) error {
 		return build.Run(ctx, worker, h)
 	})), nil
+}
+
+// connectionSource reads through the organizations' Git connections. An
+// organization admin chooses a connection's address, not the operator: it
+// reaches public addresses only unless integrations.allow_private_hosts.
+func connectionSource(cfg config.Config, st *store.Store, ring *keyring.Keyring) connect.Source {
+	return connect.Source{Store: st, Keyring: ring, Options: gitprovider.Options{
+		Transport: outbound.NewTransport(cfg.Integrations.AllowPrivateHosts, outbound.Guard{}),
+	}}
 }
 
 // ensureBuildNamespace creates the namespace name when it is missing.

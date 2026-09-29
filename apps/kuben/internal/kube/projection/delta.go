@@ -79,6 +79,30 @@ type Resync struct {
 	Seq uint64
 }
 
+// BuildChanged means a build attempt of an app changed (2.1): its phase,
+// its stages, its outcome. It is not part of the snapshot: a client reads
+// the builds it shows (`GET …/apps/{app}/builds`) and applies these on
+// top. Only connections of the build's organization hear it. Its JSON, for
+// the console:
+//
+//	{"kind":"build","seq":42,"org":"…","app":"kb-shop-prod/web",
+//	 "project":"shop","environment":"prod","name":"web",
+//	 "build":{…BuildDto, as GET …/apps/{app}/builds/{build} answers…}}
+//
+// `app` is the key of the app's projection (`namespace/name`, as in
+// app_upsert); `project`, `environment` and `name` are the slugs of its
+// API path.
+type BuildChanged struct {
+	Seq         uint64
+	Org         string
+	App         string
+	Project     string
+	Environment string
+	Name        string
+	// Build is the BuildDto JSON of the attempt as it is now.
+	Build json.RawMessage
+}
+
 // Sequence implements Delta.
 func (d PodUpsert) Sequence() uint64 { return d.Seq }
 
@@ -109,6 +133,9 @@ func (d ExposureChanged) Sequence() uint64 { return d.Seq }
 // Sequence implements Delta.
 func (d Resync) Sequence() uint64 { return d.Seq }
 
+// Sequence implements Delta.
+func (d BuildChanged) Sequence() uint64 { return d.Seq }
+
 func (PodUpsert) isDelta()         {}
 func (PodDelete) isDelta()         {}
 func (ProjectUpsert) isDelta()     {}
@@ -119,6 +146,7 @@ func (AppUpsert) isDelta()         {}
 func (AppDelete) isDelta()         {}
 func (ExposureChanged) isDelta()   {}
 func (Resync) isDelta()            {}
+func (BuildChanged) isDelta()      {}
 
 // keyed is the JSON of a delete or an exposure change.
 type keyed struct {
@@ -190,6 +218,20 @@ func (d Resync) MarshalJSON() ([]byte, error) {
 		Kind string `json:"kind"`
 		Seq  uint64 `json:"seq"`
 	}{"resync", d.Seq})
+}
+
+// MarshalJSON writes the tagged form.
+func (d BuildChanged) MarshalJSON() ([]byte, error) {
+	return encode(struct {
+		Kind        string          `json:"kind"`
+		Seq         uint64          `json:"seq"`
+		Org         string          `json:"org"`
+		App         string          `json:"app"`
+		Project     string          `json:"project"`
+		Environment string          `json:"environment"`
+		Name        string          `json:"name"`
+		Build       json.RawMessage `json:"build"`
+	}{"build", d.Seq, d.Org, d.App, d.Project, d.Environment, d.Name, d.Build})
 }
 
 // encode is JSON without HTML escaping (serde does not escape <, > or &)

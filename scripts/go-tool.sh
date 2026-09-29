@@ -14,5 +14,8 @@ set -euo pipefail
 tools=$(cd "$(dirname "${BASH_SOURCE[0]}")/../tools" && pwd)
 name=${1:?usage: scripts/go-tool.sh <tool> [args...]}
 shift
-bin=$(cd "$tools" && GOWORK=off go tool -n "$name")
+bin=$(GOWORK=off go -C "$tools" tool -n "$name")
+if [[ ! -x "$bin" ]]; then
+  GOWORK=off go -C "$tools" tool "$name" --help >/dev/null 2>&1 || true
+fi
 exec "$bin" "$@"

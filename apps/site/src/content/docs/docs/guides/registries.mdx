@@ -1,0 +1,75 @@
+---
+title: Container registries
+description: Save a registry login once for the whole organization, with presets for Docker Hub, GitHub, GitLab, Quay and Harbor; test it, rotate it, and see how Kuben turns it into image pull secrets.
+sidebar:
+  order: 1.3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components'
+
+The cluster pulls your images, not Kuben. For a private image, it needs a login for the registry. Kuben keeps two kinds:
+
+- an **organization registry**: one login for one registry, used by every environment of the organization. This page is about these;
+- an **environment login**: set on one environment under **Registry logins** (`PUT /api/v1/projects/{project}/environments/{environment}/registries/{name}`), as before.
+
+When both exist for the same registry, **the environment's own login wins**.
+
+## Presets
+
+| Preset | Server | Username | Password |
+|---|---|---|---|
+| Docker Hub | `docker.io` | your Docker ID | a personal access token with read access |
+| GitHub Container Registry | `ghcr.io` | your GitHub user name | a classic token with `read:packages` |
+| GitLab Container Registry | `registry.gitlab.com` | your GitLab user name, or the deploy token's | a deploy token or personal access token with `read_registry` |
+| Quay.io | `quay.io` | the robot account (`org+robot`) | the robot account's token |
+| Harbor | your Harbor's host | the robot account (`robot$project+name`) | the robot account's secret |
+| Other registry (custom) | any `host[:port]`, such as a self-hosted GitLab's registry | the user name | a password or access token |
+
+`GET /api/v1/registries/presets` lists them with the hints the console shows. Use a read-only token: pulling is all the cluster does. A registry is named the way image references name it (`ghcr.io`, `docker.io`, `registry.example.com:5000`), and each registry has at most one login per organization.
+
+## Add a registry
+
+<Steps>
+
+1. Open **Settings → Registries** and press **Add**. Pick a preset.
+
+2. Fill in a **Name** (lowercase letters, digits and `-`), the **Server** when the preset does not name one (Harbor and other registries), the **Username** and the **Password** (or token). A preset with a server logs in to that server only; for any other host, use **Other registry**.
+
+3. Press **Test**. Kuben logs in to the registry the way the cluster will (the OCI `/v2/` endpoint and the token service it points to, over HTTPS, within 10 seconds) and says whether it worked. Nothing is saved yet. A registry on a private address is refused unless the server sets `[integrations] allow_private_hosts` (see [Configuration](/docs/reference/configuration/#integrations)).
+
+4. Press **Save**. The password is sealed with the keyring and never shown again. Saving does not check the login again: through the API, call the test first.
+
+</Steps>
+
+Adding, changing, testing and deleting registries needs the `admin` role, like an environment's logins; `developer` and above can see them (never the password). With the API:
+
+```bash
+curl -fsS -X POST "$KUBEN_URL/api/v1/registries/test" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "ghcr", "preset": "ghcr", "username": "acme-bot", "password": "ghp_…"}'
+curl -fsS -X POST "$KUBEN_URL/api/v1/registries" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "ghcr", "preset": "ghcr", "username": "acme-bot", "password": "ghp_…"}'
+```
+
+## Rotate and test
+
+To rotate, open the registry and enter the new password, or `PUT /api/v1/registries/{registry}` with `{"password": "…"}`. The pull Secret keeps its name and is rewritten with the new password the next time Kuben delivers an app of each environment; rendered apps do not change. **Test** on a saved registry (`POST /api/v1/registries/{registry}/test`) logs in again and records the outcome; the list shows when it was last checked and the last error.
+
+## How pull secrets are bound
+
+When Kuben deploys an app, it looks at the image's registry host:
+
+1. If the app's environment has its own login for that registry, that login is used.
+2. Otherwise, if the organization has a registry whose server is that host, its login is used.
+3. Otherwise, the image is pulled without credentials.
+
+An organization login becomes a `kubernetes.io/dockerconfigjson` Secret in the environment's namespace called `org-registry.<name>`, written before the app, and the app lists it in `imagePullSecrets` after the environment's own logins. Kuben also uses the same login to resolve tags to digests and for [automatic image updates](/docs/guides/image-updates/).
+
+<Aside type="caution" title="Deleting a registry">
+Deleting an organization registry stops new deployments from using it. Its Secret is removed from an environment once a deployment there succeeds; apps delivered before keep naming it until their next deployment, and pulls meanwhile go without it.
+</Aside>
+
+## Builds push elsewhere
+
+Organization registries are for pulling. Where [builds](/docs/guides/builds/) push is the server's `build.push_secret` (`build.pushSecret` in Helm), unchanged.

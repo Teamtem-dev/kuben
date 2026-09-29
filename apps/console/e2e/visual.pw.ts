@@ -23,6 +23,7 @@ const pages = [
   { name: 'incidents', path: '/incidents', ready: (p: Page) => p.getByRole('table') },
   { name: 'audit', path: '/audit', ready: (p: Page) => p.getByRole('table') },
   { name: 'settings', path: '/settings', ready: (p: Page) => p.getByRole('table') },
+  { name: 'integrations', path: '/settings/integrations', ready: (p: Page) => p.getByRole('table') },
   {
     name: 'login',
     path: '/login',

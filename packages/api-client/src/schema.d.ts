@@ -234,6 +234,134 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/git/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Git connections of the caller's organization. */
+        get: operations["listGitConnections"];
+        put?: never;
+        /**
+         * Connect a Git provider account by token. The token is checked first
+         *     and sealed; it is never returned.
+         */
+        post: operations["createGitConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git/connections/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a token without saving it: the account it belongs to and its
+         *     scopes.
+         */
+        post: operations["testNewGitConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git/connections/{connection}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A Git connection. */
+        get: operations["getGitConnection"];
+        put?: never;
+        post?: never;
+        /** Delete a Git connection no app source reads through. */
+        delete: operations["deleteGitConnection"];
+        options?: never;
+        head?: never;
+        /** Change a Git connection; a new token is checked first. */
+        patch: operations["updateGitConnection"];
+        trace?: never;
+    };
+    "/api/v1/git/connections/{connection}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Branches of one repository the connection can read. */
+        get: operations["listGitConnectionBranches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git/connections/{connection}/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Repositories the connection's token can read. */
+        get: operations["listGitConnectionRepositories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git/connections/{connection}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check a saved connection's token again and record the outcome. */
+        post: operations["testGitConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/git/connections/{connection}/webhook-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a connection's webhook secret with a new one, returned once. */
+        post: operations["rotateGitConnectionWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/git/installations": {
         parameters: {
             query?: never;
@@ -549,7 +677,8 @@ export type paths = {
         /** The app's newest builds. */
         get: operations["listBuilds"];
         put?: never;
-        post?: never;
+        /** Build the source's branch head now: the same as a source sync. */
+        post: operations["triggerBuild"];
         delete?: never;
         options?: never;
         head?: never;
@@ -589,6 +718,26 @@ export type paths = {
          *     verifies.
          */
         post: operations["cancelBuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project}/environments/{environment}/apps/{app}/builds/{build}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The build's log: from the build pod while it runs, from the kept tail
+         *     after. With `follow=true`, a live stream of new lines.
+         */
+        get: operations["getBuildLogs"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1572,6 +1721,100 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/registries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Registry logins of the caller's organization. */
+        get: operations["listOrgRegistries"];
+        put?: never;
+        /**
+         * Add a registry login for every environment of the organization. An
+         *     environment's own login for the same registry wins.
+         */
+        post: operations["createOrgRegistry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registries/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The registries Kuben knows how to log in to. */
+        get: operations["listRegistryPresets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registries/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log in to a registry without saving the login. */
+        post: operations["testNewOrgRegistry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registries/{registry}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A registry login of the organization. */
+        get: operations["getOrgRegistry"];
+        /** Change a registry login; a new password rotates it. */
+        put: operations["updateOrgRegistry"];
+        post?: never;
+        /**
+         * Delete a registry login. Pods already running keep their pull secret
+         *     until their next deployment.
+         */
+        delete: operations["deleteOrgRegistry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registries/{registry}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log in with a saved registry login again and record the outcome. */
+        post: operations["testOrgRegistry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -1918,6 +2161,19 @@ export type components = {
             startedAt?: number | null;
             /** Format: int64 */
             finishedAt?: number | null;
+            /** @description The stages in order, once the build reported them. */
+            stages?: components["schemas"]["BuildStageDto"][];
+        };
+        BuildStageDto: {
+            /** @enum {string} */
+            name: "clone" | "plan" | "build" | "scan" | "push" | "deploy";
+            /** @enum {string} */
+            status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+            /** Format: int64 */
+            startedAt?: number | null;
+            /** Format: int64 */
+            finishedAt?: number | null;
+            detail?: string | null;
         };
         ChangePassword: {
             /** Format: password */
@@ -2109,6 +2365,33 @@ export type components = {
             days: number;
             /** @description Limit it to one project; every project when omitted. */
             project?: string | null;
+        };
+        CreateGitConnection: {
+            provider: components["schemas"]["GitProviderDto"];
+            /**
+             * @description Unique in the organization: lowercase letters, digits and `-`.
+             * @example gitlab-acme
+             */
+            name: string;
+            /**
+             * @description The provider's URL; the provider's public service when empty
+             *     (`https://api.github.com`, `https://gitlab.com`). Required for Gitea.
+             * @example https://gitlab.com
+             */
+            baseUrl?: string;
+            /** @description A personal, project or group access token; write-only. */
+            token: string;
+            defaultBranch?: string | null;
+        };
+        CreateOrgRegistry: {
+            /** @description Unique in the organization: lowercase letters, digits and `-`. */
+            name: string;
+            preset: components["schemas"]["RegistryPresetIdDto"];
+            /** @description Required unless the preset names its server. */
+            server?: string;
+            username: string;
+            /** @description A password or access token; write-only. */
+            password: string;
         };
         CreateProject: {
             /**
@@ -2427,6 +2710,116 @@ export type components = {
             /** @description Keep the preview past its expiry until someone destroys it. */
             keep?: boolean;
         };
+        GitBranchDto: {
+            name: string;
+            /** @description The head commit. */
+            commit?: string | null;
+            protected: boolean;
+            default: boolean;
+        };
+        /** @description What the provider said about a token. */
+        GitConnectionCheckDto: {
+            ok: boolean;
+            /** @description The account the token belongs to. */
+            username?: string | null;
+            /** @description The token's scopes, when the provider tells them. */
+            scopes: string[];
+            /** @description Scopes Kuben needs that the token lacks. */
+            missingScopes: string[];
+            error?: string | null;
+            /** Format: int64 */
+            checkedAt: number;
+        };
+        /**
+         * @description An organization's token connection to a Git provider. The token is
+         *     never returned.
+         */
+        GitConnectionDto: {
+            id: string;
+            /** @example gitlab-acme */
+            name: string;
+            provider: components["schemas"]["GitProviderDto"];
+            /**
+             * @description The provider's API root: `https://api.github.com`, `https://gitlab.com`,
+             *     a self-hosted URL.
+             * @example https://gitlab.com
+             */
+            baseUrl: string;
+            /** @description `token`. */
+            authKind: string;
+            /**
+             * @description The account the token belongs to, as the provider named it at the
+             *     last check.
+             */
+            username?: string | null;
+            /** @description The branch new sources suggest when the repository names none. */
+            defaultBranch?: string | null;
+            hasToken: boolean;
+            /** @description The last four characters of the token. */
+            tokenHint: string;
+            /**
+             * @description Where the provider sends push events for this connection
+             *     (`/api/v1/webhooks/github/{id}`, `/api/v1/webhooks/gitlab/{id}` or
+             *     `/api/v1/webhooks/gitea/{id}`); absolute when `server.public_url` is set.
+             */
+            webhookUrl?: string | null;
+            /**
+             * @description The secret the provider's push webhooks carry (GitHub: the webhook's
+             *     Secret, which signs the body with X-Hub-Signature-256; GitLab: the
+             *     webhook's Secret token; Gitea/Forgejo: its Secret, which signs the body). Present
+             *     only in the answer of createGitConnection, never again: rotate it with
+             *     `POST /api/v1/git/connections/{connection}/webhook-secret`.
+             */
+            webhookSecret?: string;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            updatedAt: number;
+            /** Format: int64 */
+            lastCheckedAt?: number | null;
+            /** @description Why the last check failed. */
+            lastError?: string | null;
+        };
+        /**
+         * @description `github` (a personal or fine-grained token; the GitHub App has its
+         *     installations), `gitlab`, or `gitea` (Gitea and Forgejo).
+         * @enum {string}
+         */
+        GitProviderDto: "github" | "gitlab" | "gitea";
+        GitRepositoryDto: {
+            /** @description The provider's id. */
+            id?: string | null;
+            /**
+             * @description `owner/name` (GitLab: `group/subgroup/name`).
+             * @example acme/shop
+             */
+            fullName: string;
+            description?: string | null;
+            defaultBranch?: string | null;
+            private: boolean;
+            webUrl?: string | null;
+            /** Format: int64 */
+            updatedAt?: number | null;
+        };
+        GitRepositoryListDto: {
+            repositories: components["schemas"]["GitRepositoryDto"][];
+            /**
+             * Format: int64
+             * @description This page, from 1.
+             */
+            page: number;
+            hasMore: boolean;
+        };
+        /** @description A Git connection's new webhook secret, shown once. */
+        GitWebhookSecretDto: {
+            /**
+             * @description Paste it into the provider's webhook settings; the previous secret stops
+             *     working now.
+             */
+            webhookSecret: string;
+            /** @description Where the provider sends push events for this connection. */
+            webhookUrl?: string | null;
+        };
         HealthDetails: {
             ready: boolean;
             database: string;
@@ -2596,6 +2989,30 @@ export type components = {
             /** @description Why it is unavailable. */
             reason?: string | null;
             points: components["schemas"]["MetricPoint"][];
+        };
+        /**
+         * @description An organization's login for one registry, used by every environment
+         *     without a login of its own for that registry. The password is never
+         *     returned.
+         */
+        OrgRegistryDto: {
+            id: string;
+            name: string;
+            preset: components["schemas"]["RegistryPresetIdDto"];
+            /**
+             * @description The registry as image references name it (`ghcr.io`, `docker.io`,
+             *     `registry.example.com:5000`).
+             */
+            server: string;
+            username: string;
+            hasPassword: boolean;
+            /** Format: int64 */
+            createdAt: number;
+            /** Format: int64 */
+            updatedAt: number;
+            /** Format: int64 */
+            lastCheckedAt?: number | null;
+            lastError?: string | null;
         };
         OwnerDto: {
             /**
@@ -2850,9 +3267,15 @@ export type components = {
         PutSource: {
             /**
              * Format: int64
-             * @description A GitHub App installation linked to this organization.
+             * @description A GitHub App installation linked to this organization. Required
+             *     unless `connection` is given.
              */
-            installationId: number;
+            installationId?: number;
+            /**
+             * @description A Git connection of this organization (its id), instead of an
+             *     installation: GitLab, Gitea or a GitHub token.
+             */
+            connection?: string;
             /** @example acme/shop */
             repository: string;
             /** @example main */
@@ -2894,6 +3317,12 @@ export type components = {
         Reason: {
             reason: string;
         };
+        RegistryCheckDto: {
+            ok: boolean;
+            error?: string | null;
+            /** Format: int64 */
+            checkedAt: number;
+        };
         RegistryLoginDto: {
             name: string;
             /** @description The registry as image references name it (`ghcr.io`, `docker.io`). */
@@ -2907,6 +3336,17 @@ export type components = {
             revoked: boolean;
             updatedAt: string;
         };
+        RegistryPresetDto: {
+            id: components["schemas"]["RegistryPresetIdDto"];
+            label: string;
+            /** @description The registry host; none when the user names it (Harbor, custom). */
+            server?: string | null;
+            usernameHint: string;
+            passwordHint: string;
+            docsUrl?: string | null;
+        };
+        /** @enum {string} */
+        RegistryPresetIdDto: "dockerhub" | "ghcr" | "gitlab" | "quay" | "harbor" | "custom";
         ReleaseDto: {
             /** Format: int64 */
             revision: number;
@@ -3047,7 +3487,11 @@ export type components = {
             secure: boolean;
         };
         SourceDto: {
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description The GitHub App installation; 0 when the source reads through a
+             *     connection.
+             */
             installationId: number;
             repository: string;
             branch: string;
@@ -3059,6 +3503,12 @@ export type components = {
             head?: string | null;
             /** @description The sync this change or request queued, if any. */
             syncOperation?: string | null;
+            provider: components["schemas"]["GitProviderDto"];
+            /**
+             * @description The Git connection the source reads through; none for a GitHub App
+             *     installation.
+             */
+            connection?: string | null;
         };
         SsoInfo: {
             enabled: boolean;
@@ -3139,6 +3589,15 @@ export type components = {
             /** Format: int64 */
             created_at: number;
         };
+        /**
+         * @description A build of the source head was asked for: the head is read, then built
+         *     unless it is already.
+         */
+        TriggeredBuildDto: {
+            /** @description The sync that reads the head and queues the build. */
+            syncOperation: string;
+            build?: null | components["schemas"]["BuildDto"];
+        };
         /** @description Partial update; omitted fields are left unchanged, lists are replaced. */
         UpdateApp: {
             image?: string | null;
@@ -3166,8 +3625,25 @@ export type components = {
              */
             fs_group?: number | null;
         };
+        /** @description Only the members given change. */
+        UpdateGitConnection: {
+            name?: string;
+            baseUrl?: string;
+            /** @description A new token; write-only. The connection is checked again. */
+            token?: string;
+            /** @description Null clears it. */
+            defaultBranch?: string | null;
+        };
         UpdateMember: {
             role: string;
+        };
+        /** @description Only the members given change; a new password rotates the login. */
+        UpdateOrgRegistry: {
+            name?: string;
+            server?: string;
+            username?: string;
+            /** @description Write-only. */
+            password?: string;
         };
         UserDto: {
             id: string;
@@ -3728,6 +4204,497 @@ export interface operations {
             };
             /** @description Another organization verified an overlapping domain */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listGitConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectionDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createGitConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGitConnection"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectionDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    testNewGitConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGitConnection"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectionCheckDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGitConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectionDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteGitConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description App sources read through it */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateGitConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGitConnection"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectionDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listGitConnectionBranches: {
+        parameters: {
+            query: {
+                /** @description `owner/name`. */
+                repository: string;
+            };
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitBranchDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider refused or failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listGitConnectionRepositories: {
+        parameters: {
+            query?: {
+                /** @description Only repositories whose name contains this. */
+                search?: string;
+                /** @description From 1; 1 unless given. */
+                page?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitRepositoryListDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider refused or failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    testGitConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitConnectionCheckDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    rotateGitConnectionWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id */
+                connection: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitWebhookSecretDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4788,6 +5755,58 @@ export interface operations {
             };
         };
     };
+    triggerBuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sync was queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggeredBuildDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The app has no Git source */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getBuild: {
         parameters: {
             query?: never;
@@ -4877,6 +5896,75 @@ export interface operations {
             };
             /** @description The build already finished */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getBuildLogs: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Keep the connection open and send new lines as `text/event-stream`:
+                 *     `line` events (a [`LogLine`]) and an `end` event (a [`LogEnd`]) when the
+                 *     build's log stops.
+                 */
+                follow?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Project name */
+                project: string;
+                /** @description Environment short name */
+                environment: string;
+                /** @description App name */
+                app: string;
+                /** @description Build id */
+                build: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The log as text; with `follow`, `text/event-stream` of `line` (LogLine) and `end` (LogEnd) events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many followed logs open */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7752,6 +8840,343 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOrgRegistries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRegistryDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createOrgRegistry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrgRegistry"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRegistryDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name or registry is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listRegistryPresets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryPresetDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    testNewOrgRegistry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrgRegistry"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryCheckDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOrgRegistry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Registry id or name */
+                registry: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRegistryDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateOrgRegistry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Registry id or name */
+                registry: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOrgRegistry"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgRegistryDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The name or registry is taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteOrgRegistry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Registry id or name */
+                registry: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    testOrgRegistry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Registry id or name */
+                registry: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistryCheckDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

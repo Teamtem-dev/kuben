@@ -1,0 +1,174 @@
+---
+title: Git providers (GitHub, GitLab, Gitea/Forgejo)
+description: Connect GitHub, GitLab, Gitea or Forgejo to an organization with an access token, set up the push webhook, connect an app to a repository and branch, and deploy on every push.
+sidebar:
+  order: 1.1
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+
+Kuben builds apps from Git. It reads a repository through a **Git connection**: an access token for one account on a Git host, saved for the whole organization. Every app of the organization can then build from any repository that token can read.
+
+| Provider | How Kuben connects | Push webhook |
+|---|---|---|
+| **GitHub** | The GitHub App (server configuration), or a personal or fine-grained token | The App's webhook; for a token: `<publicUrl>/api/v1/webhooks/github/<connection>` |
+| **GitLab** | A token: gitlab.com or a self-hosted GitLab | `<publicUrl>/api/v1/webhooks/gitlab/<connection>` |
+| **Gitea** and **Forgejo** | A token on your instance | `<publicUrl>/api/v1/webhooks/gitea/<connection>` |
+
+`<publicUrl>` is the server's `server.public_url` (`publicUrl` in [Helm](/docs/reference/helm-values/#git-sources-and-builds)), and `<connection>` is the connection's id. Builds need the build worker: see [Builds](/docs/guides/builds/).
+
+<Aside title="The GitHub App stays">
+A GitHub App installation, set up in the server's configuration (`git.github.*`), works as before and is listed under **GitHub App** on the same page. It is still what [preview environments](/docs/guides/previews/) need. A GitHub token connection is for an organization that cannot or does not want to install the App.
+</Aside>
+
+## Create a token
+
+Kuben only reads: it lists repositories and branches, reads the branch head, and its build pods clone the repository. Give the token no more than that.
+
+<Tabs>
+<TabItem label="GitHub">
+
+A **fine-grained personal access token** limited to the repositories Kuben builds, with the repository permissions **Contents: read** and **Metadata: read**. A classic token needs the `repo` scope. A fine-grained token has no scopes GitHub reports, so the test shows the account only.
+
+</TabItem>
+<TabItem label="GitLab">
+
+A **personal**, **group** or **project access token** (User settings, or the group's or project's **Settings → Access tokens**) with the scopes `read_api` and `read_repository` (`api` covers both). A group or project token needs at least the **Reporter** role. Group tokens are the best fit: they belong to no person and see every project of the group.
+
+</TabItem>
+<TabItem label="Gitea / Forgejo">
+
+An **access token** (**Settings → Applications → Generate new token**) with read access to repositories and to the user (`read:repository`, `read:user`). On an older Gitea without scoped tokens, any token of an account that can read the repositories works. Gitea does not tell a token its scopes, so the test shows the account only.
+
+</TabItem>
+</Tabs>
+
+Set an expiry the provider allows and put a reminder on it: Kuben shows a failed check on the connection when the token stops working, and you [rotate it](#rotate-a-token) there.
+
+## Connect a provider
+
+<Steps>
+
+1. Open **Settings → Integrations**. Under **Git connections**, press **Add connection** and pick **GitHub**, **GitLab**, **Gitea** or **Forgejo**.
+
+2. Fill in:
+
+   - **Name:** unique in the organization, lowercase letters, digits and `-`, for example `gitlab-acme`;
+   - **URL:** the provider's address. Empty means the public service (`https://api.github.com`, `https://gitlab.com`); GitHub Enterprise Server takes its API root (`https://github.example.com/api/v3`), and Gitea and Forgejo need their instance's URL, for example `https://git.example.com` or `https://codeberg.org`;
+   - **Default branch (optional):** suggested when a repository names none;
+   - **Token:** the token from above. It is sealed with the keyring and never shown again: the connection only keeps its last four characters as a hint.
+
+   A self-hosted GitLab, Gitea or Forgejo on a private address (inside your network) is refused unless the server allows it with `[integrations] allow_private_hosts` (`integrations.allowPrivateHosts` in Helm); see [Configuration](/docs/reference/configuration/#integrations).
+
+3. Press **Test**. Kuben asks the provider who the token belongs to and, where the provider tells (GitHub classic tokens, GitLab), which scopes it has, and names any scope that is missing. Nothing is saved yet.
+
+4. Press **Save connection**. The token is checked once more and saved.
+
+</Steps>
+
+Adding, changing and deleting connections needs the `admin` role, from a signed-in session: an API token cannot manage them, so this is done in the console (or by a script holding a console session). Everyone in the organization can see connections and browse their repositories, with a token too. The API calls behind the console are `POST /api/v1/git/connections/test` (check without saving) and `POST /api/v1/git/connections` (save), both with a body like:
+
+```json
+{"provider": "gitlab", "name": "gitlab-acme", "baseUrl": "https://gitlab.com", "token": "glpat-…"}
+```
+
+The answer has the connection's `id`, the `username` the token belongs to, `tokenHint`, the `webhookUrl` and, this once, the `webhookSecret`. The token itself is never returned. `GET /api/v1/git/connections/{connection}/repositories?search=shop` lists the repositories the token can read, and `…/branches?repository=acme/shop` the branches of one.
+
+## Set up the push webhook
+
+A webhook tells Kuben about a push right away. Each GitLab and Gitea connection has its own webhook URL, shown on the connection under **Push webhook** (with a copy button) and returned as `webhookUrl`, and its own [secret](#the-webhook-secret). Add the webhook in every repository (or, on GitLab, once per group) that an app builds from.
+
+<Tabs>
+<TabItem label="GitLab">
+
+In the project (or group), open **Settings → Webhooks → Add new webhook**:
+
+- **URL:** `<publicUrl>/api/v1/webhooks/gitlab/<connection>`;
+- **Secret token:** the connection's webhook secret. GitLab sends it back in `X-Gitlab-Token`, and Kuben refuses deliveries without it;
+- **Trigger:** **Push events** (all branches, or the branches your apps build);
+- **SSL verification:** on.
+
+</TabItem>
+<TabItem label="Gitea / Forgejo">
+
+In the repository (or organization), open **Settings → Webhooks → Add webhook → Gitea** (on Forgejo: **Forgejo**):
+
+- **Target URL:** `<publicUrl>/api/v1/webhooks/gitea/<connection>`;
+- **HTTP method** `POST`, **POST content type** `application/json`;
+- **Secret:** the connection's webhook secret. Gitea and Forgejo sign every delivery with it (`X-Gitea-Signature` or `X-Forgejo-Signature`, HMAC-SHA256), and Kuben refuses deliveries whose signature does not match;
+- **Trigger on:** **Push events**.
+
+</TabItem>
+<TabItem label="GitHub">
+
+The GitHub App delivers its own webhooks to `<publicUrl>/api/v1/webhooks/github`; see [Git sources and builds](/docs/reference/helm-values/#git-sources-and-builds). A GitHub **token** connection has a webhook of its own. In the repository (or organization) on GitHub, **Settings → Webhooks → Add webhook**:
+
+- **Payload URL:** `<publicUrl>/api/v1/webhooks/github/<connection>`;
+- **Content type:** `application/json`;
+- **Secret:** the connection's webhook secret (below);
+- **Events:** *Just the push event*.
+
+GitHub signs each delivery with the secret (`X-Hub-Signature-256`); Kuben answers GitHub's `ping` with `pong`.
+
+</TabItem>
+</Tabs>
+
+### The webhook secret
+
+Kuben makes a secret for every connection and seals it with the keyring. It is shown **once**: when you save the connection, the console shows the **Webhook URL** and the **Webhook secret** to copy (the API returns them as `webhookUrl` and `webhookSecret` in the answer to `POST /api/v1/git/connections`, and never again).
+
+Lost it, or it leaked? **Rotate webhook secret** on the connection (`POST /api/v1/git/connections/{connection}/webhook-secret`, `admin`, from a signed-in session) returns a new one, once. The previous secret stops working at once, so paste the new one into every webhook of the connection.
+
+Kuben must be reachable from the Git host at `publicUrl`. Every delivery is recorded once: a delivery the provider retries is not built twice. Kuben answers a delivery for an unknown connection with `404`, and events other than pushes are accepted and ignored.
+
+## Connect an app
+
+<Steps>
+
+1. Open the app's **Settings** tab. Under **Git source**, press **Connect repository** (**Change source** when it has one).
+
+2. Pick the connection (or a GitHub App installation) under **Through**, then the **Repository** (`owner/name` or its URL; GitLab projects in subgroups as `group/subgroup/name`) and the **Branch**. The connection's default branch is suggested when the repository names none.
+
+3. Choose how to **Build**: **Automatic** (the Dockerfile when there is one, else Railpack), **Dockerfile** or **Railpack**, the **Context** folder, and the **Image repository** builds push to, without a tag.
+
+4. Press **Save and build**.
+
+</Steps>
+
+With the API, `PUT …/apps/{app}/source` with a `connection` instead of an `installationId`:
+
+```bash
+curl -fsS -X PUT "$KUBEN_URL/api/v1/projects/shop/environments/staging/apps/api/source" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"connection": "<connection id>", "repository": "acme/shop", "branch": "main",
+       "context": "apps/api", "imageRepository": "registry.example.com/acme/shop-api"}'
+```
+
+`GET …/source` then answers with the `provider` (`gitlab`, `gitea` or `github`) and the `connection`. Saving a source reads the branch head and builds it.
+
+## Deploy on push
+
+A push to the branch an app is bound to starts the same path as a GitHub push: Kuben reads the new head, builds it in an isolated build pod, scans the image, and deploys it as a new [release](/docs/guides/rollbacks/) of the app. Every app bound to that repository and branch through the connection is built. Pushes to other branches, and tags, are ignored.
+
+The webhook is only a hint: before anything is built, Kuben reads the real head of the branch from the provider with the connection's token, and the build pod clones with that token too. What can hold the deploy is the same as for any deployment: a change freeze, paused delivery, an approval on a production environment, or the vulnerability gate. Without a webhook, press **Build now** on the app's Builds tab, or run `kuben builds trigger`; see [Builds](/docs/guides/builds/).
+
+## Commit statuses
+
+Kuben reports each build's outcome on the commit it built (context `kuben/build`: pending, success or failure), through the connection it read the source with: GitHub and Gitea/Forgejo through `POST /repos/{owner}/{repo}/statuses/{sha}`, GitLab through `POST /projects/{id}/statuses/{sha}`. GitLab needs the `api` scope for this; with a read-only token (`read_api`, `read_repository`) builds work and the status is skipped, with a warning in the server log. A failed status is logged, not retried.
+
+## Private hosts
+
+A self-hosted GitLab, Gitea or Forgejo (or a registry) on an internal address is refused by default: Kuben resolves every host a connection or registry test reaches and does not connect to private, loopback, link-local or similar addresses, so an organization admin cannot use the server to reach inside your network. Set `[integrations] allow_private_hosts = true` (`KUBEN_INTEGRATIONS__ALLOW_PRIVATE_HOSTS=true`, Helm `integrations.allowPrivateHosts`) when your Git host is internal; then every organization admin can reach those addresses through Kuben. Build pods clone from inside the cluster and are not covered by this check; restrict them with a NetworkPolicy.
+
+## Rotate a token
+
+Press **Edit** on the connection under **Settings → Integrations** and enter the **New token**, or `PATCH /api/v1/git/connections/{connection}` with `{"token": "…"}`. The new token is checked before it replaces the old one; apps keep building through the connection without any change. **Test** on a connection (`POST …/connections/{connection}/test`) checks the saved token again and records the outcome, which the list shows as **Last check**.
+
+## Delete a connection
+
+A connection that an app's source still reads through cannot be deleted: point those apps elsewhere first. Deleting it removes the token and the webhook secret; remove the webhook at the provider too.
+
+## Not yet
+
+- **Sign in with GitHub, GitLab or Gitea** (OAuth) to create a connection without copying a token. Only tokens are supported.
+- **Preview environments** for GitLab merge requests and Gitea pull requests. Previews are GitHub-App only; see [Preview environments](/docs/guides/previews/).

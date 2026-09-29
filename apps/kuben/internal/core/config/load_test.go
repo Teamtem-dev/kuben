@@ -41,7 +41,7 @@ func wantDefaults() config.Config {
 			BuildkitImage: "moby/buildkit:v0.33.0-rootless", FetchImage: "alpine/git:2.49.1",
 			CPURequest: "500m", CPULimit: "2", Memory: "2Gi", EphemeralStorage: "10Gi",
 			DeadlineSecs: 1800, MaxConcurrent: 2, MaxConcurrentPerOrg: 1,
-			ScannerImage: "aquasec/trivy:0.74.0", ScannerMemory: "1Gi", RescanHours: 24,
+			ScannerImage: "aquasec/trivy:0.74.0", ScannerMemory: "1Gi", RescanHours: 24, LogTailKiB: 256,
 		},
 		CI: config.CiCfg{GithubOIDCIssuer: "https://token.actions.githubusercontent.com"},
 		SSO: config.SsoCfg{
@@ -452,4 +452,24 @@ func FuzzEnvValue(f *testing.F) {
 			t.Errorf("%q loaded as %q", value, cfg.Server.Bind)
 		}
 	})
+}
+
+func TestIntegrationSettingsLoad(t *testing.T) {
+	toml := "[build]\nlog_tail_kib = 512\n\n[integrations]\nallow_private_hosts = true\n"
+	cfg, err := jail(t, "", toml, nil).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Build.LogTailKiB != 512 || cfg.Build.LogTailBytes() != 512<<10 || !cfg.Integrations.AllowPrivateHosts {
+		t.Errorf("from the file: %d KiB, private hosts %v", cfg.Build.LogTailKiB, cfg.Integrations.AllowPrivateHosts)
+	}
+	cfg, err = jail(t, "", toml, map[string]string{
+		"KUBEN_BUILD__LOG_TAIL_KIB": "64", "KUBEN_INTEGRATIONS__ALLOW_PRIVATE_HOSTS": "false",
+	}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Build.LogTailKiB != 64 || cfg.Integrations.AllowPrivateHosts {
+		t.Errorf("from the environment: %d KiB, private hosts %v", cfg.Build.LogTailKiB, cfg.Integrations.AllowPrivateHosts)
+	}
 }

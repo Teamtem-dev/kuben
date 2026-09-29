@@ -332,3 +332,14 @@ func TestTheScriptsArePinned(t *testing.T) {
 		}
 	}
 }
+
+func TestTheLogTailComesFromTheConfiguration(t *testing.T) {
+	if got := settings().LogTailBytes; got != build.DefaultLogTailBytes {
+		t.Errorf("default: %d bytes", got)
+	}
+	cfg := config.DefaultBuildCfg()
+	cfg.LogTailKiB = 4096
+	if got := build.SettingsFromConfig(cfg, "kuben-builds").LogTailBytes; got != 1<<20 {
+		t.Errorf("over the bound: %d bytes", got)
+	}
+}
