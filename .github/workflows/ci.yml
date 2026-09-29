@@ -115,6 +115,11 @@ jobs:
         run: |
           assets=$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.1 use 1.37.x -p path --bin-dir "$RUNNER_TEMP/envtest")
           echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
+      - name: Build Go tools
+        run: |
+          for tool in gofumpt exhaustive go-check-sumtype nilaway; do
+            scripts/go-tool.sh "$tool" --help >/dev/null 2>&1 || true
+          done
       - run: bun turbo run lint --filter=kuben --filter=kuben-agent --filter=api
       - run: bun turbo run test --filter=kuben --filter=kuben-agent --filter=api
       # genspec, Kuben's own tool in the tools module.

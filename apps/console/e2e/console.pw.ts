@@ -604,13 +604,13 @@ test('integrations: connections with their webhook, a token tested before saving
   // A token is tested before it can be saved; a change asks for a new test.
   await page.getByRole('button', { name: 'Add connection' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add connection' })
-  await dialog.getByRole('radio', { name: /Gitea/ }).check({ force: true })
+  await dialog.getByText('Gitea', { exact: true }).click()
   await expect(dialog.getByLabel('URL')).toHaveValue('')
-  await dialog.getByRole('radio', { name: /GitLab/ }).check({ force: true })
+  await dialog.getByText('GitLab', { exact: true }).click()
   await expect(dialog.getByLabel('URL')).toHaveValue('https://gitlab.com')
   await expect(dialog.getByLabel('Name')).toHaveValue('gitlab')
   const save = dialog.getByRole('button', { name: 'Save connection' })
-  await dialog.getByLabel('Access token').fill('glpat-secret')
+  await dialog.getByRole('textbox', { name: 'Access token' }).fill('glpat-secret')
   await expect(save).toBeDisabled()
   const tested = page.waitForRequest(
     (r) => r.method() === 'POST' && r.url().endsWith('/api/v1/git/connections/test'),
@@ -623,7 +623,7 @@ test('integrations: connections with their webhook, a token tested before saving
     baseUrl: 'https://gitlab.com',
   })
   await expect(dialog.getByRole('status').getByText('acme-bot')).toBeVisible()
-  await expect(dialog.getByText('read_repository')).toBeVisible()
+  await expect(dialog.getByText('read_repository', { exact: true })).toBeVisible()
   await expect(save).toBeEnabled()
   await expectAccessible(page)
   await dialog.getByLabel('Name').fill('gitlab-2')
@@ -692,10 +692,10 @@ test('registries: a preset fills the server, the login is tested first, rotated 
   await page.getByRole('button', { name: 'Add registry' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add registry' })
   await dialog.getByText('Harbor', { exact: true }).click()
-  await expect(dialog.getByLabel('Server')).toHaveValue('')
+  await expect(dialog.getByRole('textbox', { name: 'Server' })).toHaveValue('')
   await expect(dialog.getByText('A robot account (robot$…)')).toBeVisible()
   await dialog.getByText('Docker Hub', { exact: true }).click()
-  await expect(dialog.getByLabel('Server')).toHaveValue('docker.io')
+  await expect(dialog.getByRole('textbox', { name: 'Server' })).toHaveValue('docker.io')
   await expect(dialog.getByRole('link', { name: 'How to create a token for Docker Hub' })).toBeVisible()
   await dialog.getByLabel('Username').fill('acme')
   await dialog.getByLabel('Password or token').fill('dckr_pat_x')
@@ -768,15 +768,20 @@ test('app settings: a repository is connected through a Git connection', async (
   const change = page.getByRole('dialog', { name: 'Change source' })
   await change.getByLabel('Through').selectOption('installation:4242')
   await expect(change.getByRole('radio')).toHaveCount(0)
-  await change.getByLabel('Repository').fill('just-a-name')
+  await change.getByRole('textbox', { name: 'Repository', exact: true }).fill('just-a-name')
   await change.getByLabel('Branch').fill('main')
   await change.getByLabel('Image repository').fill('registry.example.com/acme/web')
   await change.getByRole('button', { name: 'Save and build' }).click()
   await expect(change.getByRole('alert').getByText(/Not a repository/)).toBeVisible()
-  await expect(change.getByLabel('Repository')).toHaveAttribute('aria-invalid', 'true')
+  await expect(change.getByRole('textbox', { name: 'Repository', exact: true })).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  )
   await expectAccessible(page)
   const put2 = page.waitForRequest((r) => r.method() === 'PUT' && r.url().endsWith('/apps/web/source'))
-  await change.getByLabel('Repository').fill('https://github.com/acme/web.git')
+  await change
+    .getByRole('textbox', { name: 'Repository', exact: true })
+    .fill('https://github.com/acme/web.git')
   await change.getByRole('button', { name: 'Save and build' }).click()
   expect((await put2).postDataJSON()).toMatchObject({ repository: 'acme/web', installationId: 4242 })
   expect(csp).toEqual([])

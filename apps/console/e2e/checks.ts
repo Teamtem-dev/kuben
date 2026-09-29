@@ -33,6 +33,8 @@ export async function watchCsp(page: Page): Promise<string[]> {
 }
 
 export async function expectAccessible(page: Page) {
+  // Allow modal and transition animations (e.g. duration-200 fade-in) to finish before evaluating contrast.
+  await page.waitForTimeout(250)
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()
