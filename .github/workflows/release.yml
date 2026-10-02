@@ -216,7 +216,7 @@ jobs:
           load: true
           tags: kuben:budget
       - run: scripts/check-budgets.sh image kuben:budget
-      - uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
+      - uses: taiki-e/install-action@9983c65e42da123ff25d1f78505eb6de315aa172 # v2.87.20
         with:
           tool: trivy@0.74.0
       - name: Vulnerability scan (Trivy)
