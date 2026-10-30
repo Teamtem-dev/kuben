@@ -170,7 +170,7 @@ func TestTheGithubAppNeedsAllThreeSettings(t *testing.T) {
 	if git.GithubEnabled() {
 		t.Error("no webhook secret")
 	}
-	git.GithubWebhookSecret = "s3cret"
+	git.GithubWebhookSecret = config.NewSecret("s3cret")
 	if !git.GithubEnabled() {
 		t.Error("all three are set")
 	}
@@ -336,11 +336,11 @@ func TestSetupWizardOnlyWithoutAConfiguredPassword(t *testing.T) {
 	if !cfg.SetupWizard(false) || cfg.SetupWizard(true) {
 		t.Error("the wizard runs outside a cluster only")
 	}
-	cfg.Bootstrap.AdminPassword = ""
+	cfg.Bootstrap.AdminPassword = config.NewSecret("")
 	if !cfg.SetupWizard(false) {
 		t.Error("empty counts as unset")
 	}
-	cfg.Bootstrap.AdminPassword = "configured"
+	cfg.Bootstrap.AdminPassword = config.NewSecret("configured")
 	if cfg.SetupWizard(false) {
 		t.Error("a configured password needs no wizard")
 	}

@@ -350,7 +350,15 @@ done
 echo "chart and image are public; testing ${VERSION}${FROM:+, upgraded from ${FROM}}"
 
 step "one-line installer"
-if [[ -n $pinned ]]; then export KUBEN_VERSION="$VERSION"; else unset KUBEN_VERSION; fi
+# Unpinned, the installer's stable release is compared with helm's newest
+# stable chart (its default also picks pre-releases, helm's never does).
+if [[ -n $pinned ]]; then
+  export KUBEN_VERSION="$VERSION"
+  unset KUBEN_STABLE
+else
+  unset KUBEN_VERSION
+  export KUBEN_STABLE=1
+fi
 if [[ $MODE == binary ]]; then
   # As documented for a server: as root. The installer then runs `kuben setup`.
   curl -fsSL "$INSTALLER" | sudo -E sh 2>&1 | tee "$work/install.txt"
@@ -459,7 +467,12 @@ app_flow
 if [[ -n $FROM ]]; then
   step "helm upgrade ${FROM} → ${VERSION}"
   stop_forward
-  run "helm upgrade" helm upgrade "$RELEASE" "$CHART" --namespace "$NS" --version "$VERSION" --wait --timeout 6m
+  # A major step is refused without the operator's consent (the chart's
+  # pre-upgrade `kuben upgrade-check`), as upgrading.mdx documents.
+  major_step=false
+  if [[ ${FROM%%.*} != "${VERSION%%.*}" ]]; then major_step=true; fi
+  run "helm upgrade" helm upgrade "$RELEASE" "$CHART" --namespace "$NS" --version "$VERSION" \
+    --set "backup.upgradeCheckMajor=${major_step}" --wait --timeout 6m
   # The login inside verify already proves the database survived: a lost
   # volume would bootstrap a different admin password.
   verify "$VERSION"

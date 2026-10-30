@@ -16,13 +16,26 @@ const redacted = "[redacted]"
 // Keep it a plain field: inside a wrapper with unexported fields (such as
 // opt.Val) the fmt package cannot call these methods and would print the
 // value.
-type Secret string
+//
+// A struct, not a string type: encoding/json uses a string type's value
+// as a map key without asking MarshalText (Go 1.27.2 on), and such a key
+// would carry the secret.
+type Secret struct{ value string }
+
+// NewSecret is value as a Secret.
+func NewSecret(value string) Secret { return Secret{value: value} }
 
 // Expose is the secret itself. Never log it.
-func (s Secret) Expose() string { return string(s) }
+func (s Secret) Expose() string { return s.value }
 
 // IsSet reports whether a secret is configured.
-func (s Secret) IsSet() bool { return s != "" }
+func (s Secret) IsSet() bool { return s.value != "" }
+
+// UnmarshalText reads a secret from the configuration.
+func (s *Secret) UnmarshalText(text []byte) error {
+	s.value = string(text)
+	return nil
+}
 
 // String hides the value from %v, %s, %q and friends.
 func (Secret) String() string { return redacted }

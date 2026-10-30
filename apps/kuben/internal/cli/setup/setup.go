@@ -107,6 +107,9 @@ type Opts struct {
 	Datastore Datastore
 	// AllowHTTPSetup lets the first admin be created over plain HTTP.
 	AllowHTTPSetup bool
+	// Sslip uses <ip>.sslip.io as the base domain when there is no other:
+	// HTTPS without a domain of one's own.
+	Sslip bool
 }
 
 // consoleHost is the console's own HTTPS host, when setup gives it one: a
@@ -225,8 +228,7 @@ func (m *machine) setup(ctx context.Context, opts Opts) error {
 		return nil
 	}
 	m.reportDownload()
-	host, err := m.preflight(opts)
-	if err != nil {
+	if _, err := m.preflight(opts); err != nil {
 		return err
 	}
 	// The journal lives in the state directory: whether that directory is
@@ -253,7 +255,7 @@ func (m *machine) setup(ctx context.Context, opts Opts) error {
 	if err := book.Begin(m.version); err != nil {
 		return err
 	}
-	result := m.install(ctx, opts, host, freshState, book)
+	result := m.install(ctx, opts, freshState, book)
 	if err := book.Finish(result); err != nil {
 		return err
 	}
@@ -329,7 +331,7 @@ func (m *machine) installPostService(ctx context.Context, kubeconfig string, wan
 	return m.openFirewall(ctx, port, hub.IsSome(), book)
 }
 
-func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshState bool, book *journal.Book) error {
+func (m *machine) install(ctx context.Context, opts Opts, freshState bool, book *journal.Book) error {
 	base, err := m.installBase(ctx, opts, freshState, book)
 	if err != nil {
 		return err
@@ -346,6 +348,7 @@ func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshS
 	hub := opt.None[string]()
 	if managed {
 		hub = m.advertise(ctx)
+		opts = m.withSslip(opts, hub, base.configured)
 	}
 	console := opt.None[string]()
 	if hub.IsSome() {
@@ -368,6 +371,9 @@ func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshS
 		return fmt.Errorf("reading /etc/kuben/config.toml: %w", err)
 	}
 	port = cfg.BindPort()
+	if base.binaryChanged && m.serviceActive(ctx) {
+		m.backupBeforeUpgrade(ctx)
+	}
 	book.Start("service")
 	if err := m.startService(ctx, port, base.binaryChanged || configChanged, book); err != nil {
 		return err
@@ -380,7 +386,7 @@ func (m *machine) install(ctx context.Context, opts Opts, host hostFacts, freshS
 	if managed {
 		managedWanted = opt.Some(wanted)
 	}
-	return m.announce(ctx, cfg, base.owner, base.configured.IsNone(), host, managedWanted)
+	return m.announce(ctx, cfg, base.owner, base.configured.IsNone(), managedWanted)
 }
 
 // allowHTTPSetup is `--allow-http-setup`, or, without a domain and on every

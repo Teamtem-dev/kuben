@@ -66,7 +66,7 @@ func ssoConfig(cfg *config.Config) {
 	cfg.SSO.Enabled = true
 	cfg.SSO.Issuer = opt.Some("https://idp.example.com")
 	cfg.SSO.ClientID = opt.Some("kuben-console")
-	cfg.SSO.ClientSecret = "s3cret"
+	cfg.SSO.ClientSecret = config.NewSecret("s3cret")
 	cfg.SSO.Groups = map[string]string{"platform-admins": "admin", "devs": "developer"}
 	cfg.SSO.AllowedDomains = []string{"example.com"}
 }

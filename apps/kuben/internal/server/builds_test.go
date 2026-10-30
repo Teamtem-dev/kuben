@@ -74,7 +74,7 @@ func app(t *testing.T) (config.GitCfg, *github.App) {
 	git := config.DefaultGitCfg()
 	git.GithubAppID = opt.Some[uint64](7)
 	git.GithubPrivateKeyFile = opt.Some(path)
-	git.GithubWebhookSecret = config.Secret("hook")
+	git.GithubWebhookSecret = config.NewSecret("hook")
 	var cfg config.Config
 	cfg.Git = git
 	got, err := server.GithubApp(cfg, quiet())
@@ -93,7 +93,7 @@ func TestGitSourcesAreOffUnlessConfiguredAndStopTheServerWhenBroken(t *testing.T
 	}
 	cfg.Git.GithubAppID = opt.Some[uint64](7)
 	cfg.Git.GithubPrivateKeyFile = opt.Some(filepath.Join(t.TempDir(), "missing.pem"))
-	cfg.Git.GithubWebhookSecret = config.Secret("hook")
+	cfg.Git.GithubWebhookSecret = config.NewSecret("hook")
 	if _, err := server.GithubApp(cfg, quiet()); err == nil || !strings.HasPrefix(err.Error(), "Git sources: ") {
 		t.Errorf("an unreadable key: %v", err)
 	}

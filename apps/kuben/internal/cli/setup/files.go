@@ -134,10 +134,7 @@ type configWants struct {
 func securitySection(wants configWants) string {
 	ls := []string{}
 	if wants.console.IsSome() {
-		ls = append(ls,
-			"# The console is reached through Kuben's Gateway; its proxies run in the pod network.",
-			"trust_forwarded_for = true",
-			fmt.Sprintf("trusted_proxies = [\"%s\"]", PodNetwork))
+		ls = append(ls, consoleTrust()...)
 	}
 	if wants.insecureSetup {
 		ls = append(ls,
@@ -148,6 +145,44 @@ func securitySection(wants configWants) string {
 		return ""
 	}
 	return "\n[security]\n" + strings.Join(ls, "\n") + "\n"
+}
+
+// consoleTrust is what `[security]` says for a console reached through
+// Kuben's Gateway.
+func consoleTrust() []string {
+	return []string{
+		"# The console is reached through Kuben's Gateway; its proxies run in the pod network.",
+		"trust_forwarded_for = true",
+		fmt.Sprintf("trusted_proxies = [\"%s\"]", PodNetwork),
+	}
+}
+
+// withConsole is text with the console at https://console behind Kuben's
+// Gateway: a plain-http public_url becomes that address, and an existing
+// `[security]` gains the trust of the Gateway's proxies. Every other line
+// stays as it is.
+func withConsole(text, console string) string {
+	trusted := strings.Contains(text, "trust_forwarded_for")
+	inServer := true
+	out := []string{}
+	for _, line := range lines(text) {
+		key := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(key, "[") {
+			inServer = strings.TrimRight(key, " \t") == "[server]"
+		}
+		if inServer && strings.HasPrefix(key, "public_url") && strings.Contains(line, `"http://`) {
+			line = fmt.Sprintf("public_url = \"https://%s\"", console)
+		}
+		out = append(out, line)
+		if !trusted && strings.TrimSpace(line) == "[security]" {
+			out = append(out, consoleTrust()...)
+		}
+	}
+	result := strings.Join(out, "\n")
+	if strings.HasSuffix(text, "\n") {
+		result += "\n"
+	}
+	return result
 }
 
 // agentSection is the `[agent]` section of the local agent (M2.8): pods
@@ -277,6 +312,8 @@ func unitTemplate() string {
 		"Environment=KUBEN_TELEMETRY__LOG_FORMAT=pretty\n" +
 		"Restart=always\n" +
 		"RestartSec=2\n" +
+		// serve drains in about 11 s; never wait systemd's 90 s default.
+		"TimeoutStopSec=30\n" +
 		"NoNewPrivileges=true\n" +
 		"ProtectSystem=full\n" +
 		"PrivateTmp=true\n" +

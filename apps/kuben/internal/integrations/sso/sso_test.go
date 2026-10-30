@@ -20,7 +20,7 @@ func ssoConfig() config.SsoCfg {
 	cfg.Enabled = true
 	cfg.Issuer = opt.Some("https://idp.example.com/")
 	cfg.ClientID = opt.Some("kuben-console")
-	cfg.ClientSecret = "s3cret"
+	cfg.ClientSecret = config.NewSecret("s3cret")
 	cfg.Groups = map[string]string{"platform-admins": "admin", "devs": "developer"}
 	cfg.AllowedDomains = []string{"example.com"}
 	return cfg
@@ -64,7 +64,7 @@ func TestConfigurationIsCheckedUpFront(t *testing.T) {
 		url  opt.Val[string]
 	}{
 		{"no issuer", edit(func(c *config.SsoCfg) { c.Issuer = opt.None[string]() }), opt.Some("https://kuben.example.com")},
-		{"no secret", edit(func(c *config.SsoCfg) { c.ClientSecret = "" }), opt.Some("https://kuben.example.com")},
+		{"no secret", edit(func(c *config.SsoCfg) { c.ClientSecret = config.NewSecret("") }), opt.Some("https://kuben.example.com")},
 		{"http", ssoConfig(), opt.Some("http://kuben.example.com")},
 		{"no public url", ssoConfig(), opt.None[string]()},
 		{"no groups", edit(func(c *config.SsoCfg) { c.Groups = map[string]string{} }), opt.Some("https://kuben.example.com")},

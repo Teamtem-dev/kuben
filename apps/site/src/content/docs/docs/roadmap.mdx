@@ -25,7 +25,7 @@ Both 1.2 and the 2.0 pre-releases do all of this:
 
 ## Coming in 2.1 <Badge text="unreleased" variant="caution" />
 
-In development, not in a release yet. 2.1 only adds to 2.0: one database migration, new API operations and CLI commands, nothing existing changes.
+Arrives with `2.0.0-alpha.2` and keeps maturing toward 2.1. It only adds: one database migration, new API operations and CLI commands, nothing existing changes.
 
 - **Git providers.** Connect GitHub (by token), GitLab (gitlab.com or self-hosted), Gitea or Forgejo to an organization with an access token, checked before it is saved and sealed with the keyring; browse repositories and branches, connect an app to a repository and branch from the console, and deploy on push through a webhook per connection. See [Git providers](/docs/guides/git-providers/).
 - **Organization registries.** One registry login for every environment, with presets for Docker Hub, GHCR, GitLab, Quay and Harbor, a live test, rotation, and pull secrets bound automatically; an environment's own login still wins. See [Container registries](/docs/guides/registries/).
@@ -45,9 +45,9 @@ In development, not in a release yet. 2.1 only adds to 2.0: one database migrati
 
 Until 2.0.0 is out:
 
-- **The default install stays on 1.2.x.** Pre-releases never become GitHub's `latest` release, the image's `latest` tag or Helm's default chart version, so `install.sh` and `helm install` without a version keep installing 1.2.x.
-- **You try 2.0 by naming it:** `--version v2.0.0-alpha.N` for [the installer](/docs/getting-started/binary/#try-the-20-pre-release), `--version 2.0.0-alpha.N` for [Helm](/docs/getting-started/quickstart/#try-the-20-pre-release).
-- **2.0.0 adds no database migration**, so going back from 2.0.0 to 1.2.x is swapping the image.
+- **Helm and the image stay on 1.2.x by default.** Pre-releases never become GitHub's `latest` release, the image's `latest` tag or Helm's default chart version, so `helm install` without a version keeps installing 1.2.x.
+- **A new server gets 2.0 from [the installer](/docs/getting-started/binary/#which-version)**, which picks the newest release, pre-releases included; a 1.x server moves with `--version v2.0.0-alpha.N`. [Helm](/docs/getting-started/quickstart/#try-the-20-pre-release) needs `--version 2.0.0-alpha.N`.
+- **Migration 0035 comes with `2.0.0-alpha.2`**, so going back from it to 1.2.x takes a restore, not only swapping the image ([upgrade guide](/docs/operations/upgrading/#upgrading-across-migration-0035)).
 - **1.2 is to get security fixes** for six months after 2.0.0.
 
 ## Not built yet

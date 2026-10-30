@@ -20,11 +20,11 @@ import (
 
 func TestOnlyAllowlistedConfigurationIsKept(t *testing.T) {
 	cfg := config.Default()
-	cfg.Database.URL = "postgres://kuben:hunter22@db.example.com/kuben"
-	cfg.Bootstrap.AdminPassword = "admin-secret"
+	cfg.Database.URL = config.NewSecret("postgres://kuben:hunter22@db.example.com/kuben")
+	cfg.Bootstrap.AdminPassword = config.NewSecret("admin-secret")
 	cfg.Bootstrap.AdminEmail = "ops@example.com"
-	cfg.SSO.ClientSecret = "sso-secret"
-	cfg.Git.GithubWebhookSecret = "hook-secret"
+	cfg.SSO.ClientSecret = config.NewSecret("sso-secret")
+	cfg.Git.GithubWebhookSecret = config.NewSecret("hook-secret")
 	cfg.Telemetry.OTLPEndpoint = opt.Some("https://u:otlp-secret@otel.example.com")
 	cfg.Server.PublicURL = opt.Some("https://user:pw-secret@kuben.example.com")
 	cfg.Notify.AllowHTTP = true

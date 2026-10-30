@@ -46,16 +46,16 @@ Browse to `http://localhost:8080` and sign in as `admin@kuben.local`. The [quick
 
 The image `ghcr.io/teamtem-dev/kuben` (amd64 and arm64, distroless, non-root) and archives for every platform are on the [releases page](https://github.com/Teamtem-dev/kuben/releases), with a signed checksum list, SBOMs and build attestations.
 
-### Try a 2.0 pre-release
+### Try 2.0
 
-Pre-releases are never picked by default: name one explicitly, on a test installation first. Replace `v2.0.0-alpha.1` with the newest pre-release on the [releases page](https://github.com/Teamtem-dev/kuben/releases).
+On a new server the installer picks the newest release, pre-releases included, so `curl -fsSL https://kuben.teamtem.com/install | sh` installs 2.0; a server already on 1.x stays on 1.x unless you name the version. Helm never picks a pre-release on its own. Replace `v2.0.0-alpha.2` with the newest pre-release on the [releases page](https://github.com/Teamtem-dev/kuben/releases), on a test installation first.
 
 ```bash
-# the binary and kuben setup
-curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v2.0.0-alpha.1
+# an existing 1.x server
+curl -fsSL https://kuben.teamtem.com/install | sh -s -- --version v2.0.0-alpha.2
 
 # Helm
-helm upgrade --install kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --create-namespace --version 2.0.0-alpha.1
+helm upgrade --install kuben oci://ghcr.io/teamtem-dev/charts/kuben -n kuben-system --create-namespace --version 2.0.0-alpha.2
 ```
 
 2.0 keeps the database schema, the REST API, the custom resources and the configuration of 1.2, so going back to 1.2.x is a matter of installing the older version. Run `kuben upgrade-check` with the new binary first. See [Upgrading from 1.2 to 2.0](https://kuben.teamtem.com/docs/operations/upgrading/#upgrading-from-12-to-20).

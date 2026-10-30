@@ -245,6 +245,8 @@ func failing(s doctor.Status) bool { return s == doctor.StatusFail || s == docto
 // downstream.
 func Diagnose(g Graph) []Finding {
 	findings := []Finding{}
+	// Filled as causes are found: only layers with a cause have a key.
+	//exhaustive:ignore
 	explained := map[Layer][]Layer{}
 	withStatus := func(layers []Layer, status doctor.Status) []Layer {
 		out := []Layer{}

@@ -61,11 +61,11 @@ linters:
     exhaustive:
       check:
         - switch
-        - map
+        - mapliteral
       default-signifies-exhaustive: false
       # Kinds of other packages' enums we deliberately switch on partially;
       # a ResourceList holds the resources it limits, never all of them.
-      ignore-enum-types: ^(reflect\.Kind|k8s\.io/api/core/v1\.ResourceName)$
+      ignore-types: ^(reflect\.Kind|k8s\.io/api/core/v1\.ResourceName)$
     gochecksumtype:
       default-signifies-exhaustive: false
     funlen:

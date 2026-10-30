@@ -28,9 +28,9 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
   ██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ██║╚██╗██║
   ██║  ██╗╚██████╔╝██████╔╝███████╗██║ ╚████║
   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝
-  v1.2.1 · a Kubernetes PaaS in a single binary · kuben.teamtem.com
+  a Kubernetes PaaS in a single binary · kuben.teamtem.com
 
-✔ Installed kuben v1.2.1 (x86_64-unknown-linux-musl) to /usr/local/bin/kuben. sha256 3f9e…
+✔ Installed kuben v2.0.0-alpha.2 (x86_64-unknown-linux-musl) to /usr/local/bin/kuben. sha256 3f9e…
 ✔ Preflight checks. Ubuntu 24.04.4 LTS, x86_64, 4 GB RAM
 ✔ Creating the kuben system user. kuben (uid 998)
 ✔ PostgreSQL. PostgreSQL 16.9 (Ubuntu 16.9-0ubuntu0.24.04.1), role and database kuben
@@ -45,13 +45,17 @@ curl -fsSL https://kuben.teamtem.com/install.sh | sh
 ✔ Opening port 3000 in the firewall. ufw
 ✔ The console at https://kuben.apps.example.com. point DNS for kuben.apps.example.com at this server; the certificate follows
 
-Kuben is running. Finish the setup in your browser:
+Kuben is running. Open this link to create the admin account:
 
     https://kuben.apps.example.com/setup#token=8f2c…d1
 
   Until DNS and the certificate are ready: run `ssh -L 3000:127.0.0.1:3000 <you>@203.0.113.7` on your computer, then open http://localhost:3000/setup#token=8f2c…d1
-  The link is valid for 30 minutes; print a new one with `kuben setup-token`.
+  Valid for 30 minutes · a new link: kuben setup-token
+  Apps get HTTPS addresses under apps.example.com; point a wildcard DNS record (*.apps.example.com) at this server.
+  Docs: https://kuben.teamtem.com/docs/getting-started/binary/
 ```
+
+The logo shows as soon as the command starts, and each step keeps a spinner and its elapsed time while it runs.
 
 That run was started with a base domain and an email for Let's Encrypt, so apps get HTTPS addresses right away:
 
@@ -73,7 +77,17 @@ Without a terminal, or with `--yes`, it takes that free port on its own; `--port
 
 Open the link and create the admin account: organization, email, password. The token in the link is what keeps a stranger who finds the port first from doing the same; `kuben setup-token` prints a fresh link when it has expired. Nothing is seeded and nothing is written to the log.
 
-The password never crosses plain HTTP from another machine. The page accepts it over HTTPS (the console's own address above), or from the server itself. Without a domain, setup therefore prints the link through an SSH tunnel:
+Without a domain (and without the sslip.io name [below](#https-without-a-domain-of-your-own)), setup asks whether the setup page may be used directly over plain HTTP:
+
+```text
+? Allow web setup directly over HTTP (http://<ip>:<port> without SSH tunnel)? (Y/n) › Y
+…
+Kuben is running. Open this link to create the admin account:
+
+    http://203.0.113.7:3000/setup#token=8f2c…d1
+```
+
+`--allow-http-setup` answers yes up front. Answered no (or with `--bind-local`), the password never crosses plain HTTP from another machine: the page accepts it over HTTPS (the console's own address above), or from the server itself, and setup prints the link through an SSH tunnel:
 
 ```text
     http://localhost:3000/setup#token=8f2c…d1
@@ -98,14 +112,15 @@ Until the console has an `https://` address the session cookie is not `Secure` (
 - **Signature, when cosign is there.** `checksums.txt` is signed keyless with Sigstore by the release workflow; with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) installed, the script accepts it only with a signature from this repository's release workflow for that tag. `--require-signature` (`KUBEN_REQUIRE_SIGNATURE=1`) refuses to install without one.
 - **No partial execution.** The whole script is a `main()` called on the last line, so a truncated download runs nothing.
 - **Native architecture.** An x86_64 shell under Rosetta on Apple Silicon still gets the arm64 binary.
-- **No API calls, no telemetry.** The latest version is found through the `releases/latest` redirect; the only hosts contacted are GitHub and, through `kuben setup`, the pinned downloads of the bundle lock (k3s's installer, the Gateway API CRDs, cert-manager's chart), the image registries and the distribution's package mirrors when PostgreSQL is missing.
+- **No telemetry.** The newest version is read from GitHub's release feed (the `releases/latest` redirect with `--stable`); the only hosts contacted are GitHub and, through `kuben setup`, the pinned downloads of the bundle lock (k3s's installer, the Gateway API CRDs, cert-manager's chart), the image registries and the distribution's package mirrors when PostgreSQL is missing.
 - **Tested after every release, and every day.** CI runs this script on fresh Ubuntu runners (x86_64 and arm64), creates the admin through the setup page, deploys an app, upgrades and uninstalls.
 
 Other options, as flags or environment variables:
 
 | Flag | Variable | Default |
 |---|---|---|
-| `--version v1.2.1` | `KUBEN_VERSION` | latest stable release (1.2.x until 2.0.0 is out) |
+| `--version v2.0.0-alpha.2` | `KUBEN_VERSION` | the newest release, pre-releases included; a server that runs 1.x stays on 1.x |
+| `--stable` | `KUBEN_STABLE=1` | the latest stable release instead |
 | `--dir <path>` | `KUBEN_INSTALL_DIR` | `/usr/local/bin` |
 | `--no-sudo` | `KUBEN_NO_SUDO=1` | uses `sudo` when the directory is not writable and `sudo` exists |
 | `--binary-only` | `KUBEN_BINARY_ONLY=1` | run `kuben setup` on a Linux server as root |
@@ -113,21 +128,34 @@ Other options, as flags or environment variables:
 
 On Windows, download `kuben-x86_64-pc-windows-msvc.zip` from the [releases page](https://github.com/Teamtem-dev/kuben/releases).
 
-### Try the 2.0 pre-release
+### Which version
 
-The latest stable release is what the script installs by default, and it stays on 1.2.x until 2.0.0 is out. Kuben 2.0 comes first as pre-releases (`v2.0.0-alpha.N`, then `-beta.N`, then `-rc.N`), which the script installs only when you name one:
-
-```bash
-curl -fsSL https://kuben.teamtem.com/install.sh | sh -s -- --version v2.0.0-alpha.N
-```
-
-or, with the variable:
+Kuben 2.0 comes as pre-releases first (`v2.0.0-alpha.N`, then `-beta.N`, then `-rc.N`). On a new server the script installs the newest release, pre-releases included, so the one command above installs 2.0. A server that already runs 1.x is upgraded within 1.x; move it to 2.0 by naming the version, after [the upgrade guide](/docs/operations/upgrading/#upgrading-from-12-to-20):
 
 ```bash
-curl -fsSL https://kuben.teamtem.com/install.sh | KUBEN_VERSION=v2.0.0-alpha.N sh
+curl -fsSL https://kuben.teamtem.com/install | sh -s -- --version v2.0.0-alpha.N
 ```
 
-Replace `N` with a number from the [releases page](https://github.com/Teamtem-dev/kuben/releases). Put an alpha on a test server, not on the one your team uses: alphas carry no upgrade guarantee. The [roadmap](/docs/roadmap/#the-20-release-train) says what each stage promises.
+`--stable` installs the latest stable release (1.2.x until 2.0.0 is out). Put an alpha on a test server, not on the one your team uses: alphas carry no upgrade guarantee. The [roadmap](/docs/roadmap/#the-20-release-train) says what each stage promises.
+
+### HTTPS without a domain of your own
+
+A server without a domain still gets HTTPS. When it has a public IPv4 address, setup offers a free name from [sslip.io](https://sslip.io), where `203-0-113-7.sslip.io` and every name under it resolve to `203.0.113.7`:
+
+```text
+? Serve the console over HTTPS at https://kuben.203-0-113-7.sslip.io (a free sslip.io name, Let's Encrypt)? (Y/n) › Y
+…
+✔ The console at https://kuben.203-0-113-7.sslip.io. sslip.io already points it at this server
+✔ The HTTPS certificate. issued by Let's Encrypt · 48s
+
+Kuben is running. Open this link to create the admin account:
+
+    https://kuben.203-0-113-7.sslip.io/setup#token=8f2c…d1
+```
+
+Setup waits up to three minutes for the certificate, so the link opens as soon as it is printed; if it is not there by then, setup says so and cert-manager keeps trying. Apps get addresses under the same name (`<app>-<environment>.203-0-113-7.sslip.io`) with no DNS record to make. `--sslip` answers yes up front (the installer passes it through); with `--yes` or without a terminal, setup asks nothing and stays on plain HTTP. Later runs, upgrades included, keep the name. Let's Encrypt must reach ports 80 and 443; the account has no email unless `--acme-email` gives one.
+
+An sslip.io name belongs to a shared, third-party service and to the server's address: use a domain of your own (`--domain`) for a team.
 
 ### Download, verify, then run
 
