@@ -124,6 +124,8 @@ $(kubectl -n "$NS" get events --sort-by=.lastTimestamp 2>&1 | tail -n 8)"
       kubectl -n "$NS" get events --sort-by=.lastTimestamp 2>/dev/null | tail -n 30 || true
       kubectl -n "$NS" logs "deploy/${RELEASE}" --tail=100 2>/dev/null || true
       kubectl -n "$NS" logs "deploy/${RELEASE}" --previous --tail=50 2>/dev/null || true
+      # A failed pre-upgrade hook stays until the next upgrade: its output is the reason.
+      kubectl -n "$NS" logs "job/${RELEASE}-backup-pre-upgrade" --all-containers --tail=50 2>/dev/null || true
       kubectl get projects,environments,apps -A 2>/dev/null || true
       kubectl -n "$APP_NS" get all 2>/dev/null || true
     fi
