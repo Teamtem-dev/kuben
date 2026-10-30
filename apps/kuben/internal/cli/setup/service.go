@@ -79,7 +79,7 @@ func (m *machine) updateConfig(st *ui.Step, text string, port uint16, wants conf
 			suffix = ", the cluster agent added"
 		}
 		st.Done(fmt.Sprintf("port %d%s, everything else kept", port, suffix))
-		if wants.console.IsSome() && !hasSection(text, "security") {
+		if wants.console.IsSome() && !book.Journal().Owns(journal.KindFile, ConfigFile) {
 			m.ui.Note("Set server.public_url to the console's https:// address in the configuration.")
 		}
 	} else {
@@ -97,8 +97,9 @@ type configUpdate struct {
 
 // updatedConfig is text with port, and — when setup wrote it (owned) — the
 // sections it gained since: `[agent]` for the local agent, `[security]`,
-// or `insecure_setup` under an existing `[security]`. A configuration
-// someone else wrote is theirs.
+// or `insecure_setup` under an existing `[security]`; with a console
+// added, its https:// public_url and the trust of its proxies. A
+// configuration someone else wrote is theirs.
 func updatedConfig(text string, port uint16, wants configWants, owned bool) configUpdate {
 	updated := text
 	if old, ok := configPort(text); ok && old != port {
@@ -120,6 +121,9 @@ func updatedConfig(text string, port uint16, wants configWants, owned bool) conf
 			}
 			updated = updated[:insertAt] + "insecure_setup = true\n" + updated[insertAt:]
 		}
+	}
+	if console, ok := wants.console.Get(); ok && owned {
+		updated = withConsole(updated, console)
 	}
 	return configUpdate{text: updated, agent: agent}
 }
@@ -175,6 +179,20 @@ func (m *machine) removeBackupTimer(ctx context.Context, book *journal.Book) err
 	}
 	_, err := m.run(ctx, "systemctl", "daemon-reload")
 	return err
+}
+
+// backupBeforeUpgrade backs the database up while the old version still
+// runs: the new one applies its migrations when it starts, and going back
+// over a migration takes a restore. Without a backup the upgrade goes on:
+// a warning, not a server left on the old version halfway through.
+func (m *machine) backupBeforeUpgrade(ctx context.Context) {
+	st := m.ui.Step("Backing up the database")
+	defer st.Close()
+	if _, err := m.run(ctx, "runuser", "-u", User, "--", Bin, "backup"); err != nil {
+		st.Warn(fmt.Sprintf("no backup before the upgrade: %v; take one with `sudo -u %s kuben backup`", err, User))
+		return
+	}
+	st.Done("kept under the backup directory")
 }
 
 // startService installs the unit and (re)starts the service: only when its
@@ -357,7 +375,7 @@ func (m *machine) consoleURL(ctx context.Context, cfg config.Config) string {
 	return cfg.ConsoleURLWithHost(m.advertise(ctx).Or("localhost"))
 }
 
-func (m *machine) announce(ctx context.Context, cfg config.Config, owner ids, freshConfig bool, host hostFacts,
+func (m *machine) announce(ctx context.Context, cfg config.Config, owner ids, freshConfig bool,
 	managed opt.Val[Wanted],
 ) error {
 	port := cfg.BindPort()
@@ -384,13 +402,13 @@ func (m *machine) announce(ctx context.Context, cfg config.Config, owner ids, fr
 		}
 		link, notes := firstrun.SetupGuide(cfg, token, m.advertise(ctx))
 		url = link
-		m.ui.Heading("Kuben is running. Finish the setup in your browser:")
+		m.ui.Heading("Kuben is running. Open this link to create the admin account:")
 		m.eprintln("\n    " + url + "\n")
 		for _, n := range notes {
 			m.ui.Note(n)
 		}
 		if token.IsSome() {
-			m.ui.Note("The link is valid for 30 minutes; print a new one with `kuben setup-token`.")
+			m.ui.Note("Valid for 30 minutes · a new link: kuben setup-token")
 		}
 	} else {
 		url = m.consoleURL(ctx, cfg)
@@ -401,11 +419,8 @@ func (m *machine) announce(ctx context.Context, cfg config.Config, owner ids, fr
 		}
 		m.eprintln("\n    " + url + "\n")
 	}
-	if !cfg.BindIsLoopback() {
-		m.ui.Note("Behind a cloud firewall (Hetzner, AWS, GCP, …)? Allow the port there too.")
-	}
 	m.ui.Note(appsNote(managed))
-	m.ui.Note(fmt.Sprintf("%s · %s / %s", Docs, host.os, host.arch))
+	m.ui.Note("Docs: " + Docs)
 	m.println(url)
 	return nil
 }
@@ -418,12 +433,14 @@ func appsNote(managed opt.Val[Wanted]) string {
 	}
 	domain, hasDomain := w.Domain.Get()
 	switch {
+	case hasDomain && isSslip(domain) && w.AcmeEmail.IsSome():
+		return fmt.Sprintf("Apps get HTTPS addresses under %s; no DNS record to make.", domain)
 	case hasDomain && w.AcmeEmail.IsSome():
 		return fmt.Sprintf("Apps get HTTPS addresses under %[1]s; point a wildcard DNS record (*.%[1]s) at this server.", domain)
 	case hasDomain:
 		return fmt.Sprintf("Apps get plain-HTTP addresses under %s; add --acme-email you@example.com for HTTPS.", domain)
 	default:
-		return "Apps get public addresses once a base domain is set: kuben setup --domain apps.example.com --acme-email you@example.com"
+		return "HTTPS and app addresses: kuben setup --domain <domain> --acme-email <email>"
 	}
 }
 

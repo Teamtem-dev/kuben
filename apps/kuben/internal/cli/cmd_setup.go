@@ -28,6 +28,7 @@ type setupFlags struct {
 	acmeStaging    bool
 	datastore      setup.Datastore
 	allowHTTPSetup bool
+	sslip          bool
 }
 
 func setupCmd(g *globals) *cobra.Command {
@@ -67,6 +68,8 @@ func setupCmd(g *globals) *cobra.Command {
 		"that will grow)")
 	flags.BoolVar(&f.allowHTTPSetup, "allow-http-setup", false, "Let the first admin be created over plain HTTP from "+
 		"another machine, on a network you trust. Without it: HTTPS or an SSH tunnel")
+	flags.BoolVar(&f.sslip, "sslip", false, "Without --domain: serve the console and apps over HTTPS under "+
+		"<ip>.sslip.io, a free name for this server's public address (asked when there is a terminal)")
 	return cmd
 }
 
@@ -96,6 +99,7 @@ func (f setupFlags) opts(c *cobra.Command) setup.Opts {
 		AcmeStaging:    f.acmeStaging,
 		Datastore:      f.datastore,
 		AllowHTTPSetup: f.allowHTTPSetup,
+		Sslip:          f.sslip,
 	}
 }
 

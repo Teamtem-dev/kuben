@@ -114,7 +114,7 @@ Makes the Linux server it runs on a Kuben server. The one-line installer runs it
 
 ```bash
 sudo kuben setup [--plan] [--domain <domain>] [--acme-email <email>] [--acme-staging] [--datastore sqlite|etcd]
-                 [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--allow-http-setup] [--yes]
+                 [--port 3000] [--kubeconfig <file>] [--no-k3s] [--bind-local] [--allow-http-setup] [--sslip] [--yes]
 ```
 
 `--plan` shows what a run would do, from the same checks, and changes nothing.
@@ -129,7 +129,7 @@ Every run is recorded in the **install journal**, `/var/lib/kuben/install/journa
 | PostgreSQL | installs it from the distribution's packages when it is missing (apt, dnf, zypper), starts it and creates the role and database `kuben`. Kuben connects over the Unix socket with peer authentication, so there is no password. A config that already names another PostgreSQL is kept as is |
 | Cluster | uses `--kubeconfig`, an installed k3s, or the kubeconfig of the current user; otherwise installs [k3s](https://k3s.io) v1.36.4+k3s1 with its installer for that release, checked against a pinned SHA-256, with reserved CPU and memory and eviction thresholds, SQLite or (`--datastore etcd`) embedded etcd, and waits for the node to be Ready (`--no-k3s` fails instead). A copy of the kubeconfig, readable by `kuben` only, goes to `/var/lib/kuben/kubeconfig` |
 | Platform | on this server's k3s only (never on a `--kubeconfig` cluster): Traefik as the Gateway API provider, the Gateway API v1.5.1 CRDs (checksum-verified) and cert-manager v1.21.2 with Gateway API support when missing, the namespace `kuben-system`, and with `--acme-email` the ClusterIssuer `letsencrypt` (HTTP-01 through Kuben's Gateway). What exists is used, never upgraded |
-| Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig, and `[security]`: the Gateway's pod network `10.42.0.0/16` as the only trusted proxy when the console gets an HTTPS address, `insecure_setup` with `--allow-http-setup`); an existing file is kept, and a file setup wrote gains missing sections once |
+| Config | `/etc/kuben/config.toml` (port, public URL, database `postgres:///kuben?host=/run/postgresql&user=kuben`, kubeconfig, and `[security]`: the Gateway's pod network `10.42.0.0/16` as the only trusted proxy when the console gets an HTTPS address, `insecure_setup` with `--allow-http-setup`); an existing file is kept, and a file setup wrote gains missing sections once (and the console's `https://` public URL when one is added) |
 | Port | refuses a port another process holds and names it |
 | Service | `kuben.service` (enabled, `Restart=always`), then waits for `/livez` and `/readyz`. A `kuben.service` that setup did not write is never replaced: setup stops and says so |
 | Agent | on this server's k3s: the cluster agent in `kuben-system` (the chart's manifest), enrolled automatically from what Kuben publishes once the first admin (and so the organization) exists; `[agent]` in the config makes Kuben listen on port 7443, and with ufw or firewalld active that port is opened for the pod network `10.42.0.0/16` only |
@@ -145,6 +145,7 @@ Every run is recorded in the **install journal**, `/var/lib/kuben/install/journa
 | `--no-k3s` | never install k3s |
 | `--bind-local` | listen on `127.0.0.1` only; reach the console through an SSH tunnel |
 | `--allow-http-setup` | let the first admin be created over plain HTTP from another machine, on a network you trust (`security.insecure_setup`) |
+| `--sslip` | without `--domain`: use `<ip>.sslip.io` as the base domain, so the console (`https://kuben.<ip>.sslip.io`) and apps get Let's Encrypt certificates with no DNS record to make; needs a public IPv4 address and ports 80 and 443. Asked when there is a terminal (Enter says yes), kept by later runs; the Let's Encrypt account has no email unless `--acme-email` gives one |
 | `--yes` | go ahead on warnings without asking |
 | `--plan` | print what a run would do; change nothing |
 | `--domain <domain>` | base domain for app hostnames (`KUBEN_DOMAIN`); point `*.<domain>` at the server |

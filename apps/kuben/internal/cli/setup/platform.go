@@ -301,26 +301,30 @@ func clusterIssuer(email string, staging bool) map[string]any {
 	if staging {
 		server = "https://acme-staging-v02.api.letsencrypt.org/directory"
 	}
+	acme := map[string]any{
+		"server":              server,
+		"privateKeySecretRef": map[string]any{"name": Issuer + "-account"},
+		// HTTP-01 through Kuben's own Gateway: the solver route attaches
+		// to its plain-HTTP listener.
+		"solvers": []any{map[string]any{"http01": map[string]any{"gatewayHTTPRoute": map[string]any{
+			"parentRefs": []any{map[string]any{
+				"group":       "gateway.networking.k8s.io",
+				"kind":        "Gateway",
+				"name":        "kuben",
+				"namespace":   GatewayNamespace,
+				"sectionName": "http",
+			}},
+		}}}},
+	}
+	// Empty: an account without an email (sslip.io without --acme-email).
+	if email != "" {
+		acme["email"] = email
+	}
 	return labelled(map[string]any{
 		"apiVersion": "cert-manager.io/v1",
 		"kind":       "ClusterIssuer",
 		"metadata":   map[string]any{"name": Issuer},
-		"spec": map[string]any{"acme": map[string]any{
-			"server":              server,
-			"email":               email,
-			"privateKeySecretRef": map[string]any{"name": Issuer + "-account"},
-			// HTTP-01 through Kuben's own Gateway: the solver route attaches
-			// to its plain-HTTP listener.
-			"solvers": []any{map[string]any{"http01": map[string]any{"gatewayHTTPRoute": map[string]any{
-				"parentRefs": []any{map[string]any{
-					"group":       "gateway.networking.k8s.io",
-					"kind":        "Gateway",
-					"name":        "kuben",
-					"namespace":   GatewayNamespace,
-					"sectionName": "http",
-				}},
-			}}}},
-		}},
+		"spec":       map[string]any{"acme": acme},
 	})
 }
 
@@ -831,7 +835,13 @@ func (m *machine) ensureConsole(ctx context.Context, kubeconfig, host, hub strin
 	}
 	if book.Journal().Owns(journal.KindKubernetesObject, Console) {
 		detail := fmt.Sprintf("point DNS for %s at this server; the certificate follows", host)
+		if isSslip(host) {
+			detail = "sslip.io already points it at this server"
+		}
 		st.Done(detail)
+		if isSslip(host) {
+			m.waitForCertificate(ctx, c, host)
+		}
 		return book.Done(changed, detail)
 	}
 	detail := fmt.Sprintf("a route %s/kuben-console is someone else's; kept", ConsoleNamespace)

@@ -1,6 +1,6 @@
 module github.com/Teamtem-dev/kuben/apps/kuben
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
@@ -26,7 +26,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/term v0.46.0
 	k8s.io/api v0.37.0

@@ -119,7 +119,7 @@ func newApp(t *testing.T) (*github.App, *fakeGitHub, *rsa.PublicKey) {
 	cfg := config.DefaultGitCfg()
 	cfg.GithubAppID = opt.Some[uint64](12345)
 	cfg.GithubPrivateKeyFile = opt.Some(keyFile(t, key))
-	cfg.GithubWebhookSecret = "s3cret"
+	cfg.GithubWebhookSecret = config.NewSecret("s3cret")
 	cfg.GithubAPIURL = server.URL + "/"
 	app, err := github.New(cfg, clock.Fixed(nowMs))
 	if err != nil {

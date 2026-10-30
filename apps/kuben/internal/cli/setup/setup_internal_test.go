@@ -371,7 +371,7 @@ func TestTheAppsNoteFollowsTheDomainAndTheIssuer(t *testing.T) {
 		want    string
 	}{
 		{opt.None[Wanted](), "Apps get public HTTPS addresses once a Gateway and a base domain are configured; see the docs."},
-		{opt.Some(Wanted{}), "Apps get public addresses once a base domain is set: kuben setup --domain apps.example.com --acme-email you@example.com"},
+		{opt.Some(Wanted{}), "HTTPS and app addresses: kuben setup --domain <domain> --acme-email <email>"},
 		{opt.Some(Wanted{Domain: opt.Some("apps.example.com")}), "Apps get plain-HTTP addresses under apps.example.com; add --acme-email you@example.com for HTTPS."},
 		{opt.Some(Wanted{Domain: opt.Some("apps.example.com"), AcmeEmail: opt.Some("a@b.c")}), "Apps get HTTPS addresses under apps.example.com; point a wildcard DNS record (*.apps.example.com) at this server."},
 	} {

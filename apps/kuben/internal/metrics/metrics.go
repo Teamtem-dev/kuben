@@ -156,7 +156,7 @@ func Serve(ctx context.Context, m *Metrics, bind string, logger *slog.Logger) <-
 		stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(stop) //nolint:errcheck // best effort on the way out
-		<-served
+		<-served               //nolint:errcheck // the server is stopping; Serve only says so
 	}()
 	return done
 }

@@ -85,7 +85,7 @@ func envLiteralHook(_, to reflect.Type, data any) (any, error) {
 	if !ok {
 		return data, nil
 	}
-	if to.Kind() == reflect.String {
+	if to.Kind() == reflect.String || to == reflect.TypeFor[Secret]() {
 		return literal.Text, nil
 	}
 	return literal.Value, nil

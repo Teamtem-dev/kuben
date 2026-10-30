@@ -1,6 +1,6 @@
 module github.com/Teamtem-dev/kuben/tools
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/alecthomas/go-check-sumtype v0.5.0 // indirect
@@ -54,7 +54,7 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260908205506-85c1c2202aba // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect

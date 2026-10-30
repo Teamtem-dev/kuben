@@ -208,7 +208,7 @@ func TestAnIncompleteConfigurationIsRefused(t *testing.T) {
 	missing := config.DefaultGitCfg()
 	missing.GithubAppID = opt.Some[uint64](1)
 	missing.GithubPrivateKeyFile = opt.Some("/nonexistent/kuben-github.pem")
-	missing.GithubWebhookSecret = "x"
+	missing.GithubWebhookSecret = config.NewSecret("x")
 	_, err = github.New(missing, clock.System{})
 	var key github.KeyUnreadable
 	if !errors.As(err, &key) || key.Path != "/nonexistent/kuben-github.pem" {

@@ -128,10 +128,13 @@ func planConsole(opts Opts) planLine {
 	switch {
 	case ok && opts.Kubeconfig.IsNone():
 		return planLine{"Console", fmt.Sprintf("https://%s through Kuben's Gateway; the first admin over HTTPS or an SSH tunnel", host)}
+	case opts.Sslip && opts.Domain.IsNone() && !opts.BindLocal && opts.Kubeconfig.IsNone():
+		return planLine{"Console", "https://kuben.<public ip>.sslip.io through Kuben's Gateway, a Let's Encrypt " +
+			"certificate (--sslip; plain HTTP when the server has no public IPv4 address)"}
 	case opts.AllowHTTPSetup:
 		return planLine{"Console", "plain HTTP on the port, the first admin included (--allow-http-setup)"}
 	default:
-		return planLine{"Console", "plain HTTP on the port; the first admin over an SSH tunnel (or --domain with --acme-email)"}
+		return planLine{"Console", "plain HTTP on the port; the first admin over an SSH tunnel (or --sslip, or --domain with --acme-email)"}
 	}
 }
 

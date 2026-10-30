@@ -184,7 +184,7 @@ func FromConfig(cfg config.SsoCfg, publicURL opt.Val[string], defaultOrg string)
 		if err != nil {
 			return nil, ConfigError{Reason: fmt.Sprintf("cannot read sso.client_secret_file %s: %v", path, err)}
 		}
-		secret = config.Secret(strings.TrimSpace(string(text)))
+		secret = config.NewSecret(strings.TrimSpace(string(text)))
 	case cfg.ClientSecret.IsSet():
 		secret = cfg.ClientSecret
 	default:

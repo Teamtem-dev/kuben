@@ -111,7 +111,11 @@ func SetupGuide(cfg config.Config, token, advertise opt.Val[string]) (string, []
 	ssh := fmt.Sprintf("ssh -L %[1]d:127.0.0.1:%[1]d <you>@%[2]s", port, server)
 	tunnel := SetupURLAt(fmt.Sprintf("http://localhost:%d", port), token)
 	if strings.HasPrefix(direct, "https://") {
-		return direct, []string{fmt.Sprintf("Until DNS and the certificate are ready: run `%s` on your computer, then open %s", ssh, tunnel)}
+		wait := "Until DNS and the certificate are ready"
+		if host, _, _ := strings.Cut(strings.TrimPrefix(direct, "https://"), "/"); strings.HasSuffix(host, ".sslip.io") {
+			wait = "The certificate takes a minute or two; until then"
+		}
+		return direct, []string{fmt.Sprintf("%s: run `%s` on your computer, then open %s", wait, ssh, tunnel)}
 	}
 	return tunnel, []string{
 		fmt.Sprintf("Run `%s` on your computer first; the admin password never travels over plain HTTP.", ssh),

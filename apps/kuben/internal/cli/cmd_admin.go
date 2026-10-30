@@ -86,7 +86,7 @@ func adminUser(ctx context.Context, cfg config.Config, st *store.Store, hasher *
 		}
 		return c.User, nil
 	}
-	cfg.Bootstrap.AdminPassword = config.Secret(password)
+	cfg.Bootstrap.AdminPassword = config.NewSecret(password)
 	if _, err := firstrun.EnsureAdmin(ctx, cfg, st, hasher, logger); err != nil {
 		return model.User{}, err //nolint:wrapcheck // explains itself
 	}

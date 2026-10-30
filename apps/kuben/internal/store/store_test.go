@@ -26,7 +26,7 @@ func TestASuperuserIsReportedAsBypassingRowSecurity(t *testing.T) {
 
 func TestOnlyPostgresURLsAreAccepted(t *testing.T) {
 	cfg := func(url string) config.DatabaseCfg {
-		return config.DatabaseCfg{URL: config.Secret(url), MaxConnections: 1}
+		return config.DatabaseCfg{URL: config.NewSecret(url), MaxConnections: 1}
 	}
 	_, err := store.Connect(t.Context(), cfg(" "))
 	if !errors.Is(err, store.NotConfiguredError{}) {

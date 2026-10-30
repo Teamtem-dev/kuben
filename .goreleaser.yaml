@@ -100,6 +100,9 @@ signs:
 
 release:
   prerelease: auto
+  # A re-run of a tag replaces what the failed run uploaded; without it the
+  # upload stops at `already_exists` and the image and chart are never built.
+  replace_existing_artifacts: true
   make_latest: "{{ if .Prerelease }}false{{ else }}true{{ end }}"
   extra_files:
     - glob: ./install.sh

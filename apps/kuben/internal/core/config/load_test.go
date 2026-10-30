@@ -14,7 +14,7 @@ import (
 	"github.com/Teamtem-dev/kuben/apps/kuben/internal/core/opt"
 )
 
-var optionals = cmp.AllowUnexported(opt.Val[string]{}, opt.Val[uint64]{})
+var optionals = cmp.AllowUnexported(opt.Val[string]{}, opt.Val[uint64]{}, config.Secret{})
 
 // wantDefaults are the defaults of the Rust `Default` impls, written out so
 // that a changed default is a failed test.
@@ -24,7 +24,7 @@ func wantDefaults() config.Config {
 			Bind: "0.0.0.0:8080", MetricsBind: "0.0.0.0:9090", ActivatorBind: "0.0.0.0:8081",
 			Roles: []config.Role{"all"}, RequestTimeoutSecs: 30, MaxBodyBytes: 1048576,
 		},
-		Database: config.DatabaseCfg{URL: "", MaxConnections: 4},
+		Database: config.DatabaseCfg{URL: config.NewSecret(""), MaxConnections: 4},
 		Runtime:  config.RuntimeCfg{MaxBlockingThreads: 16},
 		Kube:     config.KubeCfg{},
 		Security: config.SecurityCfg{
@@ -179,15 +179,15 @@ func TestEnvValuesParseLikeFigment(t *testing.T) {
 	want.Quota.OrgCPU, want.Quota.OrgMemory, want.Quota.OrgPods = opt.Some("16"), opt.Some("64Gi"), opt.Some[uint64](500)
 	want.Build.CPULimit, want.Build.NodePool, want.Build.ScannerImage = "1.50", opt.Some("pool=build"), ""
 	want.Git.GithubAppID = opt.Some[uint64](123456)
-	want.Git.GithubWebhookSecret = "  spaced\tsecreté "
-	want.Bootstrap.AdminPassword, want.Bootstrap.OrgName, want.Bootstrap.OrgSlug = "0123456789012", "true", "a,b"
+	want.Git.GithubWebhookSecret = config.NewSecret("  spaced\tsecreté ")
+	want.Bootstrap.AdminPassword, want.Bootstrap.OrgName, want.Bootstrap.OrgSlug = config.NewSecret("0123456789012"), "true", "a,b"
 	want.Telemetry.LogLevel, want.Telemetry.OTLPEndpoint = "debug,hyper=info", opt.Some("[broken")
 	want.SSO.Scopes = []string{"openid", "a b", "c", "12", "true"}
 	want.SSO.Groups = map[string]string{"admins": "admin", "team.devs": "developer", "ops": "viewer"}
 	want.SSO.DisplayName = "99999999999999999999"
 	want.Security.TrustedProxies = []string{"10.42.0.0/16", "fd00::/8"}
 	want.Security.LoginWindowSecs = 18446744073709551615
-	want.Database.URL, want.Database.MaxConnections = "postgres://kuben:pw@db/kuben", 20
+	want.Database.URL, want.Database.MaxConnections = config.NewSecret("postgres://kuben:pw@db/kuben"), 20
 	want.Domains.CnameTarget = opt.Some("trueish")
 	want.Backup.Dir = opt.Some(`"unterminated`)
 	want.Secrets.KeyringFile = opt.Some(`"bad \x escape"`)

@@ -103,7 +103,8 @@ func buildNode(newest opt.Val[buildFacts]) evidence.Node {
 	}
 	phase := debugName(b.phase)
 	status := doctor.StatusOK
-	//exhaustive:ignore // only failed, cancelled, blocked deviate from OK
+	// Only failed, cancelled, blocked deviate from OK.
+	//exhaustive:ignore
 	switch b.phase {
 	case build.Failed:
 		status = doctor.StatusFail
@@ -143,7 +144,8 @@ func releaseNode(newest opt.Val[runFacts]) evidence.Node {
 		return evidence.NewNode(evidence.Release, doctor.StatusWarn, "never deployed").WithAction("Deploy the app.")
 	}
 	status := doctor.StatusOK
-	//exhaustive:ignore // only failing/blocking phases deviate from OK
+	// Only failing/blocking phases deviate from OK.
+	//exhaustive:ignore
 	switch r.phase {
 	case run.Failed, run.RecoveryFailed, run.ManualActionRequired:
 		status = doctor.StatusFail
@@ -156,7 +158,8 @@ func releaseNode(newest opt.Val[runFacts]) evidence.Node {
 	if image, ok := r.image.Get(); ok {
 		node = node.Fact("image " + image)
 	}
-	//exhaustive:ignore // only actions for approval or failure
+	// Only actions for approval or failure.
+	//exhaustive:ignore
 	switch r.phase {
 	case run.AwaitingApproval:
 		node = node.WithAction("Ask an approver to approve the run.")

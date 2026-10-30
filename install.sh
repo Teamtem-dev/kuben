@@ -10,7 +10,9 @@
 # workstation, a non-root shell, macOS) it installs the binary only.
 #
 # Options (flag or environment variable):
-#   --version <tag>   KUBEN_VERSION=v1.0.0         release to install (default: latest)
+#   --version <tag>   KUBEN_VERSION=v1.0.0         release to install (default: the newest,
+#                                                  pre-releases included)
+#   --stable          KUBEN_STABLE=1               the latest stable release instead
 #   --dir <path>      KUBEN_INSTALL_DIR=<path>     install directory (default: /usr/local/bin)
 #   --no-sudo         KUBEN_NO_SUDO=1              never escalate; fail if <dir> is not writable
 #   --binary-only     KUBEN_BINARY_ONLY=1          install the binary, do not run `kuben setup`
@@ -19,7 +21,7 @@
 #   -h, --help
 #   Every other option goes to `kuben setup`: --plan, --domain <domain>,
 #   --acme-email <email>, --acme-staging, --datastore sqlite|etcd, --port <n>,
-#   --kubeconfig <file>, --no-k3s, --bind-local, --allow-http-setup, --yes.
+#   --kubeconfig <file>, --no-k3s, --bind-local, --allow-http-setup, --sslip, --yes.
 #
 # Guarantees:
 #   * HTTPS only (TLS >= 1.2), no redirects to plain HTTP.
@@ -101,9 +103,10 @@ spin_task() { # <label> <command...>
 # Not read from "$0": under `curl … | sh` that is the shell, not this file.
 usage() {
   cat <<'EOF'
-usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo] [--binary-only] [--uninstall] [setup options]
+usage: install.sh [--version <tag> | --stable] [--dir <path>] [--no-sudo] [--binary-only] [--uninstall] [setup options]
 
-  --version <tag>   KUBEN_VERSION=v1.0.0       release to install (default: latest)
+  --version <tag>   KUBEN_VERSION=v1.0.0       release to install (default: the newest, pre-releases included)
+  --stable          KUBEN_STABLE=1             the latest stable release instead
   --dir <path>      KUBEN_INSTALL_DIR=<path>   install directory (default: /usr/local/bin)
   --no-sudo         KUBEN_NO_SUDO=1            never escalate; fail if <dir> is not writable
   --binary-only     KUBEN_BINARY_ONLY=1        install the binary, do not run `kuben setup`
@@ -111,7 +114,7 @@ usage: install.sh [--version <tag>] [--dir <path>] [--no-sudo] [--binary-only] [
   --uninstall                                  remove the server set up by `kuben setup`
 
   Other options go to `kuben setup`: --plan, --domain <domain>, --acme-email <email>, --acme-staging,
-  --datastore sqlite|etcd, --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --allow-http-setup, --yes
+  --datastore sqlite|etcd, --port <n>, --kubeconfig <file>, --no-k3s, --bind-local, --allow-http-setup, --sslip, --yes
 EOF
 }
 
@@ -168,6 +171,36 @@ latest_tag() {
   esac
 }
 
+# The highest version among the tags on stdin; a release sorts after its
+# pre-releases, and alpha < beta < rc.
+highest_tag() {
+  awk '{
+    core = $0; sub(/^v/, "", core); pre = ""
+    if (index(core, "-")) { pre = substr(core, index(core, "-") + 1); core = substr(core, 1, index(core, "-") - 1) }
+    split(core, n, "."); split(pre, p, ".")
+    key = sprintf("%06d%06d%06d%s%-8s%06d", n[1], n[2], n[3], (pre == "" ? "1" : "0"), p[1], p[2])
+    gsub(/ /, "_", key)
+    print key, $0
+  }' | LC_ALL=C sort | tail -n 1 | cut -d " " -f 2
+}
+
+# The newest release, pre-releases included. GitHub lists releases by date,
+# not by version; its feed has no API rate limit, which a shared address
+# (a cloud provider's, a NAT) reaches easily.
+newest_tag() {
+  tag=""
+  if download "https://github.com/${REPO}/releases.atom" "$tmp/releases.atom" 2>/dev/null; then
+    tag=$(sed -n 's/.*releases\/tag\/\(v[0-9][^"<]*\).*/\1/p' "$tmp/releases.atom" | highest_tag)
+  fi
+  if [ -z "$tag" ] && download "https://api.github.com/repos/${REPO}/releases?per_page=30" "$tmp/releases.json" 2>/dev/null; then
+    tag=$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[0-9][^"]*\)".*/\1/p' "$tmp/releases.json" | highest_tag)
+  fi
+  case "$tag" in
+  v[0-9]*) echo "$tag" ;;
+  *) err "could not read the releases of ${REPO} from GitHub; name one with --version" ;;
+  esac
+}
+
 sha256_of() {
   if has sha256sum; then
     sha256sum "$1" | cut -d ' ' -f 1
@@ -219,6 +252,16 @@ verify_signature() { # <checksums> <version>
   say "Signature verified (Sigstore, ${REPO} release workflow, $2)"
 }
 
+# Whether kuben 1.x is installed in <dir>: re-running the installer upgrades
+# it within 1.x unless a version is named.
+installed_1x() { # <dir>
+  [ -x "$1/${BIN}" ] || return 1
+  case $("$1/${BIN}" --version 2>/dev/null | awk 'NR == 1 { print $2 }') in
+  1.*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
 # A Linux server with systemd, as root: `kuben setup` can do the rest.
 can_setup() {
   [ "$(uname -s)" = Linux ] && [ "$(id -u)" = 0 ] && [ -d /run/systemd/system ]
@@ -226,6 +269,7 @@ can_setup() {
 
 main() {
   version=${KUBEN_VERSION:-}
+  stable=${KUBEN_STABLE:-0}
   dir=${KUBEN_INSTALL_DIR:-/usr/local/bin}
   no_sudo=${KUBEN_NO_SUDO:-0}
   binary_only=${KUBEN_BINARY_ONLY:-0}
@@ -239,6 +283,10 @@ main() {
       [ $# -ge 2 ] || err "--version needs a value"
       version=$2
       shift 2
+      ;;
+    --stable)
+      stable=1
+      shift
       ;;
     --dir)
       [ $# -ge 2 ] || err "--dir needs a value"
@@ -270,7 +318,7 @@ main() {
       setup_args="$setup_args $1 $2"
       shift 2
       ;;
-    --no-k3s | --bind-local | --yes | -y | --plan | --acme-staging | --allow-http-setup)
+    --no-k3s | --bind-local | --yes | -y | --plan | --acme-staging | --allow-http-setup | --sslip)
       setup_args="$setup_args $1"
       shift
       ;;
@@ -293,18 +341,30 @@ main() {
   trap 'exit 130' INT TERM
 
   target=$(detect_target)
-  # `kuben setup` of 2.x takes the banner and the download line from us
-  # (KUBEN_BANNER_PRINTED, KUBEN_INSTALLED); 1.x prints its own, so for a
-  # 1.x release that runs setup we print neither and show each only once.
   will_setup=0
   if [ "$binary_only" != 1 ] && can_setup; then will_setup=1; fi
-  [ -n "$version" ] || version=$(latest_tag)
+  # `kuben setup` of 2.x takes the banner and the download line from us
+  # (KUBEN_BANNER_PRINTED, KUBEN_INSTALLED); 1.x prints its own, so for a
+  # 1.x release that runs setup neither is printed here. The newest release
+  # is 2.x or later: its banner comes first, before anything touches the
+  # network. A named or stable release is looked up first (one quick request).
+  if [ -z "$version" ] && [ "$stable" != 1 ] && installed_1x "$dir"; then
+    stable=1
+    note "kuben 1.x is installed: upgrading within 1.x. For 2.x: --version <v2 tag> (see the upgrade guide)"
+  fi
+  if [ -z "$version" ] && [ "$stable" != 1 ]; then
+    banner
+    own_banner=1
+    version=$(newest_tag)
+  else
+    [ -n "$version" ] || version=$(latest_tag)
+    own_banner=1
+    case "$version" in
+    1.* | v1.*) if [ "$will_setup" = 1 ]; then own_banner=0; fi ;;
+    esac
+    if [ "$own_banner" = 1 ]; then banner "$version"; fi
+  fi
   case "$version" in v*) ;; *) version="v${version}" ;; esac
-  own_banner=1
-  case "$version" in
-  v1.*) [ "$will_setup" = 1 ] && own_banner=0 ;;
-  esac
-  [ "$own_banner" = 1 ] && banner "$version"
 
   archive="${BIN}-${target}.tar.gz"
   base="https://github.com/${REPO}/releases/download/${version}"
