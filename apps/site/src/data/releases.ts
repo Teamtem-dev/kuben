@@ -9,20 +9,20 @@ export type Release = {
 }
 
 export const releases: Release[] = [
-  // Not released yet: uncomment when v2.0.0-alpha.2 is tagged, with its date.
-  // {
-  //   version: 'v2.0.0-alpha.2',
-  //   date: '',
-  //   title: 'A server that opens: HTTPS without a domain, and a shorter install',
-  //   prerelease: true,
-  //   highlights: [
-  //     'curl -fsSL https://kuben.teamtem.com/install | sh installs 2.0 on a new server; a server on 1.x stays on 1.x, and --stable asks for the stable line.',
-  //     'HTTPS without a domain: setup offers a free sslip.io name for the server\'s public address, waits for the Let\'s Encrypt certificate and prints a link that opens (--sslip).',
-  //     'Upgrading a server backs up the database first; the service stops within 30 seconds; the output of setup is shorter and shows the logo and each step as they happen.',
-  //     'Git providers, organization registries and build logs arrive here: this release adds migration 0035, so going back to alpha.1 or 1.2 takes a restore.',
-  //     'Go 1.27.3 and golang.org/x/net 0.60: 12 vulnerabilities reachable from the code are fixed.',
-  //   ],
-  // },
+  {
+    version: 'v2.0.0-alpha.2',
+    date: '2026-10-30',
+    title: 'A server that opens: HTTPS without a domain, and a shorter install',
+    prerelease: true,
+    highlights: [
+      'curl -fsSL https://kuben.teamtem.com/install | sh installs 2.0 on a new server; a server on 1.x stays on 1.x, and --stable asks for the stable line.',
+      'HTTPS without a domain: setup offers a free sslip.io name for the server\'s public address, waits for the Let\'s Encrypt certificate and prints a link that opens (--sslip).',
+      'The service stops within 30 seconds; the output of setup is shorter and shows the logo and each step as they happen.',
+      'Git providers, organization registries and build logs arrive here: this release adds migration 0035, so going back to alpha.1 or 1.2 takes a restore.',
+      'Go 1.27.3 and golang.org/x/net 0.60: 12 vulnerabilities reachable from the code are fixed.',
+      'Known issue: pg_dump cannot read the row-secured tables as Kuben\'s own role, so `kuben backup` and the daily backup fail, and an upgrade from alpha.1 with data stops before migrating. Hold upgrades of existing servers until the next release; a new install is not affected.',
+    ],
+  },
   // Not released yet: uncomment when v2.1.0 is tagged, with its date.
   // {
   //   version: 'v2.1.0',
