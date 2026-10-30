@@ -441,7 +441,8 @@ for r in "${repos[@]}" external-ci-app; do
   expect 204 DELETE "/projects/$P/environments/$ENV/apps/$r"
 done
 expect 202 DELETE "/projects/$P/environments/$ENV"
-eventually 90 "project has no environments" bash -c "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments' | jq -e 'length == 0'"
+# Queued builds finish first (TargetDeleting), and they take turns on two workers.
+eventually 240 "project has no environments" bash -c "curl -fsS -b '$work/cookies' '$BASE/projects/$P/environments' | jq -e 'length == 0'"
 expect 204 DELETE "/projects/$P"
 
 echo "==> M3 E2E BUILD TESTS PASSED SUCCESSFULLY <=="

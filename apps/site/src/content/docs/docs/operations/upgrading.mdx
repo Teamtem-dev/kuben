@@ -118,6 +118,10 @@ Kuben records every version that started against the database, so after a rollba
 
 ## Upgrading across migration 0035
 
+<Aside type="caution" title="Known issue in 2.0.0-alpha.2">
+`pg_dump` cannot read the row-secured tables as Kuben's own database role, so `kuben backup` fails on PostgreSQL. A new server starts normally, but its daily backup fails. A server with data on an older version stops before migrating, because a failed backup stops the migration, and the Helm `pre-upgrade` hook fails before it changes anything. Hold upgrades of existing installations until the next release.
+</Aside>
+
 Migration `0035_integrations` arrives with `2.0.0-alpha.2`. It adds the tables for Git connections (GitLab, Gitea/Forgejo, GitHub tokens) and organization registries, and build stages and kept build logs. The server applies it on start, after the backup the pre-upgrade hook (Helm) or `kuben setup` (a server) takes; `kuben upgrade-check` reports it as a pending migration.
 
 Going back to `2.0.0-alpha.1` or 1.2 is therefore **not** an image swap: an older version refuses a database that has a migration it does not know. Keep the backup taken before the upgrade, and restore it (`kuben restore`) if you need to go back.
